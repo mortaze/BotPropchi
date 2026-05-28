@@ -1,0 +1,190 @@
+// prisma/schema.prisma
+// اسکیمای کامل دیتابیس
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── کاربران ───────────────────────────────────────────────
+model User {
+  id             Int      @id @default(autoincrement())
+  telegramId     BigInt   @unique
+  username       String?
+  firstName      String
+  lastName       String?
+  points         Int      @default(0)
+  totalReferrals Int      @default(0)
+  isBlocked      Boolean  @default(false)
+  lastActiveAt   DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // روابط
+  referredBy     User?    @relation("Referrals", fields: [referredById], references: [id])
+  referredById   Int?
+  referrals      User[]   @relation("Referrals")
+
+  pointLogs      PointLog[]
+  lotteryEntries LotteryEntry[]
+  clickLogs      ClickLog[]
+
+  @@map("users")
+}
+
+// ─── پراپ فرم‌ها ──────────────────────────────────────────
+model PropFirm {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  logoUrl     String?
+  websiteUrl  String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  discountCodes DiscountCode[]
+
+  @@map("prop_firms")
+}
+
+// ─── کدهای تخفیف ──────────────────────────────────────────
+model DiscountCode {
+  id              Int              @id @default(autoincrement())
+  title           String
+  code            String           @unique
+  discountPercent Float
+  affiliateLink   String?
+  expiresAt       DateTime?
+  isFeatured      Boolean          @default(false)
+  isActive        Boolean          @default(true)
+  category        DiscountCategory @default(OTHER)
+  usageCount      Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  propFirm   PropFirm @relation(fields: [propFirmId], references: [id])
+  propFirmId Int
+
+  clickLogs ClickLog[]
+
+  @@map("discount_codes")
+}
+
+enum DiscountCategory {
+  HIGHEST_DISCOUNT      // بیشترین تخفیف
+  NO_TIME_LIMIT         // بدون محدودیت زمانی
+  FIRST_PURCHASE        // مخصوص اولین خرید
+  TWO_PHASE_ONLY        // فقط چالش دو مرحله‌ای
+  NEWEST                // جدیدترین
+  MOST_POPULAR          // محبوب‌ترین
+  OTHER
+}
+
+// ─── سیستم امتیاز ─────────────────────────────────────────
+model PointLog {
+  id          Int           @id @default(autoincrement())
+  userId      Int
+  amount      Int
+  type        PointLogType
+  description String?
+  createdAt   DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("point_logs")
+}
+
+enum PointLogType {
+  REFERRAL          // دعوت دوست
+  DAILY_ACTIVITY    // فعالیت روزانه
+  LINK_CLICK        // کلیک روی لینک
+  AFFILIATE_PURCHASE // خرید از افیلیت
+  LOTTERY_ENTRY     // شرکت در قرعه‌کشی
+  ADMIN_GRANT       // اعطای ادمین
+  PENALTY           // کسر توسط ادمین
+}
+
+// ─── قرعه‌کشی ─────────────────────────────────────────────
+model Lottery {
+  id              Int           @id @default(autoincrement())
+  title           String
+  description     String?
+  prize           String
+  startAt         DateTime
+  endAt           DateTime
+  winnersCount    Int           @default(1)
+  minPoints       Int           @default(0)   // حداقل امتیاز برای شرکت
+  isActive        Boolean       @default(true)
+  isCompleted     Boolean       @default(false)
+  announcementMsg String?       // متن اعلام نتیجه
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  entries LotteryEntry[]
+
+  @@map("lotteries")
+}
+
+model LotteryEntry {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  lotteryId Int
+  isWinner  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  lottery Lottery @relation(fields: [lotteryId], references: [id])
+
+  @@unique([userId, lotteryId]) // هر کاربر فقط یک بار شرکت می‌کند
+  @@map("lottery_entries")
+}
+
+// ─── کانال‌های اجباری ─────────────────────────────────────
+model RequiredChannel {
+  id         Int      @id @default(autoincrement())
+  channelId  String   @unique   // مثلاً @mychannel
+  title      String
+  inviteLink String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@map("required_channels")
+}
+
+// ─── لاگ کلیک‌ها ──────────────────────────────────────────
+model ClickLog {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  discountCodeId Int
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id])
+  discountCode DiscountCode @relation(fields: [discountCodeId], references: [id])
+
+  @@map("click_logs")
+}
+
+// ─── ادمین‌ها ──────────────────────────────────────────────
+model Admin {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  role         AdminRole @default(MODERATOR)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@map("admins")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
