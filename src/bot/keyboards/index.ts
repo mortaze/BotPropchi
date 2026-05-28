@@ -4,7 +4,9 @@
 import { Markup } from 'telegraf';
 import { DiscountCode, PropFirm } from '@prisma/client';
 
-type DiscountWithFirm = DiscountCode & { propFirm: PropFirm };
+type DiscountWithFirm = DiscountCode & {
+  propFirm: PropFirm;
+};
 
 // ─── منوی اصلی ────────────────────────────────────────────
 export const mainMenuKeyboard = Markup.keyboard([
@@ -19,34 +21,73 @@ export const mainMenuKeyboard = Markup.keyboard([
 // ─── دسته‌بندی کدهای تخفیف ────────────────────────────────
 export const categoryKeyboard = Markup.inlineKeyboard([
   [
-    Markup.button.callback('💸 بیشترین تخفیف', 'cat:HIGHEST_DISCOUNT'),
-    Markup.button.callback('♾ بدون محدودیت زمانی', 'cat:NO_TIME_LIMIT'),
+    Markup.button.callback(
+      '💸 بیشترین تخفیف',
+      'cat:HIGHEST_DISCOUNT'
+    ),
+    Markup.button.callback(
+      '♾ بدون محدودیت زمانی',
+      'cat:NO_TIME_LIMIT'
+    ),
   ],
   [
-    Markup.button.callback('🆕 اولین خرید', 'cat:FIRST_PURCHASE'),
-    Markup.button.callback('2⃣ دو مرحله‌ای', 'cat:TWO_PHASE_ONLY'),
+    Markup.button.callback(
+      '🆕 اولین خرید',
+      'cat:FIRST_PURCHASE'
+    ),
+    Markup.button.callback(
+      '2⃣ دو مرحله‌ای',
+      'cat:TWO_PHASE_ONLY'
+    ),
   ],
   [
-    Markup.button.callback('🕐 جدیدترین', 'cat:NEWEST'),
-    Markup.button.callback('🔥 محبوب‌ترین', 'cat:MOST_POPULAR'),
+    Markup.button.callback(
+      '🕐 جدیدترین',
+      'cat:NEWEST'
+    ),
+    Markup.button.callback(
+      '🔥 محبوب‌ترین',
+      'cat:MOST_POPULAR'
+    ),
   ],
-  [Markup.button.callback('📋 همه کدها', 'cat:ALL')],
+  [
+    Markup.button.callback(
+      '📋 همه کدها',
+      'cat:ALL'
+    ),
+  ],
 ]);
 
-// ─── نمایش یک کد تخفیف با دکمه‌ها ───────────────────────
-export function discountCardKeyboard(discount: DiscountWithFirm) {
-  const buttons = [];
+// ─── نمایش کارت کد تخفیف ─────────────────────────────────
+export function discountCardKeyboard(
+  discount: DiscountWithFirm
+) {
+  const buttons: any[] = [];
 
+  // دکمه لینک افیلیت
   if (discount.affiliateLink) {
-    buttons.push([Markup.button.url('🛒 خرید از لینک افیلیت', discount.affiliateLink)]);
+    buttons.push([
+      Markup.button.url(
+        '🛒 خرید از لینک افیلیت',
+        discount.affiliateLink
+      ),
+    ]);
   }
 
+  // دکمه کپی کد
   buttons.push([
-    Markup.button.callback(`📋 کپی کد: ${discount.code}`, `copy:${discount.id}`),
+    Markup.button.callback(
+      `📋 کپی کد: ${discount.code}`,
+      `copy:${discount.id}`
+    ),
   ]);
 
+  // دکمه برگشت
   buttons.push([
-    Markup.button.callback('« برگشت', 'back:discounts'),
+    Markup.button.callback(
+      '« برگشت',
+      'back:discounts'
+    ),
   ]);
 
   return Markup.inlineKeyboard(buttons);
@@ -58,45 +99,86 @@ export function paginationKeyboard(
   totalPages: number,
   callbackPrefix: string
 ) {
-  const buttons = [];
+  const buttons: any[] = [];
 
   if (currentPage > 1) {
-    buttons.push(Markup.button.callback('◀️ قبلی', `${callbackPrefix}:${currentPage - 1}`));
+    buttons.push(
+      Markup.button.callback(
+        '◀️ قبلی',
+        `${callbackPrefix}:${currentPage - 1}`
+      )
+    );
   }
 
   buttons.push(
-    Markup.button.callback(`${currentPage} از ${totalPages}`, 'noop')
+    Markup.button.callback(
+      `${currentPage} از ${totalPages}`,
+      'noop'
+    )
   );
 
   if (currentPage < totalPages) {
-    buttons.push(Markup.button.callback('بعدی ▶️', `${callbackPrefix}:${currentPage + 1}`));
+    buttons.push(
+      Markup.button.callback(
+        'بعدی ▶️',
+        `${callbackPrefix}:${currentPage + 1}`
+      )
+    );
   }
 
   return Markup.inlineKeyboard([buttons]);
 }
 
-// ─── دکمه‌های کانال اجباری ────────────────────────────────
+// ─── عضویت اجباری کانال ──────────────────────────────────
 export function joinChannelsKeyboard(
-  channels: Array<{ title: string; inviteLink: string | null; channelId: string }>
+  channels: Array<{
+    title: string;
+    inviteLink: string | null;
+    channelId: string;
+  }>
 ) {
-  const buttons = channels.map((ch) => [
+  const buttons: any[] = channels.map((ch) => [
     Markup.button.url(
       `📢 عضویت در ${ch.title}`,
-      ch.inviteLink || `https://t.me/${ch.channelId.replace('@', '')}`
+      ch.inviteLink ||
+        `https://t.me/${ch.channelId.replace('@', '')}`
     ),
   ]);
-  buttons.push([Markup.button.callback('✅ عضو شدم، بررسی کن', 'check:membership')]);
+
+  buttons.push([
+    Markup.button.callback(
+      '✅ عضو شدم، بررسی کن',
+      'check:membership'
+    ),
+  ]);
+
   return Markup.inlineKeyboard(buttons);
 }
 
 // ─── قرعه‌کشی ─────────────────────────────────────────────
-export function lotteryKeyboard(lotteryId: number, hasEntered: boolean) {
+export function lotteryKeyboard(
+  lotteryId: number,
+  hasEntered: boolean
+) {
   if (hasEntered) {
     return Markup.inlineKeyboard([
-      [Markup.button.callback('✅ شما ثبت‌نام کرده‌اید', 'noop')],
+      [
+        Markup.button.callback(
+          '✅ شما ثبت‌نام کرده‌اید',
+          'noop'
+        ),
+      ],
     ]);
   }
+
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🎰 شرکت در قرعه‌کشی', `lottery:enter:${lotteryId}`)],
+    [
+      Markup.button.callback(
+        '🎰 شرکت در قرعه‌کشی',
+        `lottery:enter:${lotteryId}`
+      ),
+    ],
   ]);
-}
+}git add .
+git commit -m "fix telegraf keyboard types"
+git push
