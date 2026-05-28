@@ -179,6 +179,4 @@ export function lotteryKeyboard(
       ),
     ],
   ]);
-}git add .
-git commit -m "fix telegraf keyboard types"
-git push
+}
