@@ -67,7 +67,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const category = ctx.match[1] as DiscountCategory | 'ALL';
     const page = 1;
 
-    const result: PaginatedResult<any> =
+    const result: any =
       category === 'ALL'
         ? await discountService.getAll(page)
         : await discountService.getByCategory(
@@ -105,7 +105,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const category = ctx.match[1] as DiscountCategory | 'ALL';
     const page = parseInt(ctx.match[2]);
 
-    const result: PaginatedResult<any> =
+    const result: any =
       category === 'ALL'
         ? await discountService.getAll(page)
         : await discountService.getByCategory(
@@ -199,7 +199,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     const query = ctx.message.text;
 
-    const result: PaginatedResult<any> =
+    const result: any =
       await discountService.search(query);
 
     if (!result.items || result.items.length === 0) {

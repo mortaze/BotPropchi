@@ -27,7 +27,7 @@ lotteryRouter.post('/', async (req, res) => {
     ...parsed.data,
     startAt: new Date(parsed.data.startAt),
     endAt: new Date(parsed.data.endAt),
-  });
+  } as any);
   res.status(201).json(lottery);
 });
 
