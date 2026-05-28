@@ -46,7 +46,7 @@ discountRouter.post('/', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   try {
-    const code = await prisma.discountCode.create({ data: parsed.data });
+    const code = await prisma.discountCode.create({ data: parsed.data as any, });
     cache.delByPrefix('discounts:');
     res.status(201).json(code);
   } catch (err: any) {
@@ -93,6 +93,6 @@ discountRouter.post('/prop-firms', async (req, res) => {
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const firm = await prisma.propFirm.create({ data: parsed.data });
+  const firm = await prisma.propFirm.create({ data: parsed.data as any, });
   res.status(201).json(firm);
 });

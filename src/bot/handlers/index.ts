@@ -14,12 +14,11 @@ import {
 import { DiscountCategory } from '@prisma/client';
 import { logger } from '../../utils/logger';
 
+
+
+
 // ─── تایپ نتایج pagination ────────────────────────────────
-interface PaginatedResult<T> {
-  items: T[];
-  total: number;
-  pages: number;
-}
+type PaginatedResult<T> = { items: T[]; total: number; pages: number; };
 
 // ─── فرمت متن کد تخفیف ────────────────────────────────────
 function formatDiscount(d: any, index?: number): string {
@@ -66,8 +65,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     const category = ctx.match[1] as DiscountCategory | 'ALL';
     const page = 1;
-
-    const result: PaginatedResult<any> =
+const result = ( category === 'ALL' ? await discountService.getAll(page) : await discountService.getByCategory( category as DiscountCategory, page ) ) as PaginatedResult<any>;
       category === 'ALL'
         ? await discountService.getAll(page)
         : await discountService.getByCategory(
@@ -105,7 +103,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const category = ctx.match[1] as DiscountCategory | 'ALL';
     const page = parseInt(ctx.match[2]);
 
-    const result: PaginatedResult<any> =
+  const result = ( category === 'ALL' ? await discountService.getAll(page) : await discountService.getByCategory( category as DiscountCategory, page ) ) as PaginatedResult<any>;
       category === 'ALL'
         ? await discountService.getAll(page)
         : await discountService.getByCategory(
@@ -161,7 +159,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   // ─── پراپ فرم‌ها ─────────────────────────────────────────
   bot.hears('🏢 پراپ فرم‌ها', async (ctx) => {
-    const firms: any[] = await discountService.getPropFirms();
+    const firms = (await discountService.getPropFirms()) as any[];
 
     if (!firms || firms.length === 0) {
       return ctx.reply('❌ هنوز پراپ فرمی ثبت نشده.');

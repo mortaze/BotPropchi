@@ -23,11 +23,7 @@ lotteryRouter.post('/', async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const lottery = await lotteryRepository.create({
-    ...parsed.data,
-    startAt: new Date(parsed.data.startAt),
-    endAt: new Date(parsed.data.endAt),
-  });
+ const lottery = await lotteryRepository.create({ ...(parsed.data as any), startAt: new Date(parsed.data.startAt), endAt: new Date(parsed.data.endAt), });
   res.status(201).json(lottery);
 });
 

@@ -171,14 +171,6 @@ export function lotteryKeyboard(
     ]);
   }
 
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback(
-        '🎰 شرکت در قرعه‌کشی',
-        `lottery:enter:${lotteryId}`
-      ),
-    ],
-  ]);
-}git add .
-git commit -m "fix telegraf keyboard types"
-git push
+  return Markup.inlineKeyboard([ [ Markup.button.callback( '🎰 شرکت در قرعه‌کشی', `lottery:enter:${lotteryId}` ), ], ]); }
+
+
