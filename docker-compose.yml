@@ -1,33 +1,49 @@
-version: '3.9'
+# version: '3.9'
 
+# services:
+#   # دیتابیس PostgreSQL
+#   db:
+#     image: postgres:16-alpine
+#     restart: unless-stopped
+#     environment:
+#       POSTGRES_DB: propbot
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: ${DB_PASSWORD:-strongpassword}
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     ports:
+#       - "5432:5432"
+
+#   # ربات
+#   bot:
+#     build: .
+#     restart: unless-stopped
+#     depends_on:
+#       - db
+#     env_file:
+#       - .env
+#     environment:
+#       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-strongpassword}@db:5432/propbot
+#     ports:
+#       - "${PORT:-3000}:3000"
+#     volumes:
+#       - ./logs:/app/logs
+
+# volumes:
+#   postgres_data:
 services:
-  # دیتابیس PostgreSQL
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+  postgres:
+    image: postgres:16
+    container_name: propbot-postgres
+    restart: always
     environment:
-      POSTGRES_DB: propbot
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-strongpassword}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: propbot
     ports:
       - "5432:5432"
-
-  # ربات
-  bot:
-    build: .
-    restart: unless-stopped
-    depends_on:
-      - db
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-strongpassword}@db:5432/propbot
-    ports:
-      - "${PORT:-3000}:3000"
     volumes:
-      - ./logs:/app/logs
+      - postgres_data:/var/lib/postgresql/data
 
 volumes:
   postgres_data:
