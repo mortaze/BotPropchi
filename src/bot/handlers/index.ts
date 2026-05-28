@@ -1,6 +1,4 @@
-```ts
-// src/bot/handlers/index.ts
-// تمام هندلرهای ربات
+
 
 import { Telegraf, Context } from 'telegraf';
 import { userService } from '../../services/user.service';
@@ -376,4 +374,4 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   logger.info('✅ تمام هندلرهای ربات ثبت شدند');
 }
-```
+
