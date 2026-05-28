@@ -1,6 +1,8 @@
+
 // src/index.ts
 // نقطه شروع پروژه
 
+import express from 'express';
 import { Telegraf } from 'telegraf';
 import { config } from './config';
 import { logger } from './utils/logger';
@@ -22,10 +24,24 @@ async function bootstrap() {
   await prisma.$connect();
   logger.info('✅ اتصال به دیتابیس برقرار شد');
 
+  // ───── تست سلامت سرور ─────
+  const app = express();
+
+  app.get('/', (req, res) => {
+    res.json({
+      status: 'ok',
+      message: 'BotPropchi API Running 🚀',
+    });
+  });
+
+  app.listen(process.env.PORT || 3000, () => {
+    logger.info('✅ Health server started');
+  });
+
   // ساخت ربات
   const bot = new Telegraf(config.bot.token);
 
-  // میانجی‌ها (ترتیب مهم است)
+  // میانجی‌ها
   bot.use(loggingMiddleware());
   bot.use(rateLimitMiddleware(20, 60_000));
   bot.use(userMiddleware());
@@ -34,28 +50,41 @@ async function bootstrap() {
   // هندلرها
   registerHandlers(bot);
 
-  // مدیریت خطاهای کلی
+  // مدیریت خطا
   bot.catch((err, ctx) => {
     logger.error(`خطا برای کاربر ${ctx.from?.id}:`, err);
-    ctx.reply('❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.').catch(() => {});
+
+    ctx.reply('❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.')
+      .catch(() => {});
   });
 
-  // راه‌اندازی API ادمین
+  // API ادمین
   startAdminApi();
 
-  // زمان‌بند خودکار (برگزاری قرعه‌کشی)
+  // Scheduler
   startScheduler(bot);
 
-  // شروع ربات
+  // اجرای ربات
   await bot.launch();
-  logger.info(`✅ ربات @${(await bot.telegram.getMe()).username} راه‌اندازی شد`);
 
-  // خاموش کردن صحیح
-  process.once('SIGINT', () => { bot.stop('SIGINT'); prisma.$disconnect(); });
-  process.once('SIGTERM', () => { bot.stop('SIGTERM'); prisma.$disconnect(); });
+  logger.info(
+    `✅ ربات @${(await bot.telegram.getMe()).username} راه‌اندازی شد`
+  );
+
+  // خاموش شدن صحیح
+  process.once('SIGINT', () => {
+    bot.stop('SIGINT');
+    prisma.$disconnect();
+  });
+
+  process.once('SIGTERM', () => {
+    bot.stop('SIGTERM');
+    prisma.$disconnect();
+  });
 }
 
 bootstrap().catch((err) => {
   logger.error('خطای بحرانی هنگام راه‌اندازی:', err);
   process.exit(1);
 });
+
