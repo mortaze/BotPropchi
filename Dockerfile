@@ -1,25 +1,40 @@
-# Dockerfile
-FROM node:20-alpine AS builder
+# ─────────────────────────────────────────
+# Stage 1: Build
+# ─────────────────────────────────────────
+FROM node:20-slim AS builder
 
 WORKDIR /app
+
+# نصب OpenSSL
+RUN apt-get update -y && apt-get install -y openssl
+
 COPY package*.json ./
+
 RUN npm ci
+
 COPY . .
+
+# Prisma generate
 RUN npx prisma generate
+
+# Build Typescript
 RUN npm run build
 
-# ─── Production image ─────────────────────────────────────
-FROM node:20-alpine AS runner
+
+# ─────────────────────────────────────────
+# Stage 2: Production
+# ─────────────────────────────────────────
+FROM node:20-slim
+
 WORKDIR /app
 
-COPY --from=builder /app/dist ./dist
+RUN apt-get update -y && apt-get install -y openssl
+
+COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/package.json ./
 
-RUN mkdir -p logs
-
-ENV NODE_ENV=production
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
