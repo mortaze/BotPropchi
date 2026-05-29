@@ -1,97 +1,111 @@
-// src/repositories/lottery.repository.ts
-// کوئری‌های قرعه‌کشی
-
-import { prisma } from '../prisma/client';
+import { prisma } from "../config";
 
 export const lotteryRepository = {
-  // قرعه‌کشی فعال جاری
-  async getActive() {
-    return prisma.lottery.findFirst({
-      where: {
-        isActive: true,
-        isCompleted: false,
-        startAt: { lte: new Date() },
-        endAt: { gt: new Date() },
-      },
-      include: {
-        _count: { select: { entries: true } },
-      },
-    });
-  },
-
-  // تمام قرعه‌کشی‌های پایان‌یافته
-  async getCompleted(limit = 5) {
+  async getAll() {
     return prisma.lottery.findMany({
-      where: { isCompleted: true },
-      orderBy: { endAt: 'desc' },
-      take: limit,
+      orderBy: {
+        createdAt: "desc",
+      },
       include: {
-        entries: { where: { isWinner: true }, include: { user: true } },
+        _count: {
+          select: {
+            entries: true,
+          },
+        },
       },
     });
-  },
-
-  // ثبت‌نام در قرعه‌کشی
-  async enter(userId: number, lotteryId: number) {
-    return prisma.lotteryEntry.create({
-      data: { userId, lotteryId },
-    });
-  },
-
-  // بررسی ثبت‌نام قبلی
-  async hasEntered(userId: number, lotteryId: number) {
-    const entry = await prisma.lotteryEntry.findUnique({
-      where: { userId_lotteryId: { userId, lotteryId } },
-    });
-    return !!entry;
-  },
-
-  // انتخاب تصادفی برندگان و تکمیل قرعه‌کشی
-  async drawWinners(lotteryId: number, winnersCount: number) {
-    const entries = await prisma.lotteryEntry.findMany({
-      where: { lotteryId },
-      include: { user: true },
-    });
-
-    if (entries.length === 0) return [];
-
-    // زدن ترتیب تصادفی (Fisher-Yates shuffle)
-    const shuffled = [...entries].sort(() => Math.random() - 0.5);
-    const winners = shuffled.slice(0, Math.min(winnersCount, shuffled.length));
-
-    // ذخیره برندگان و بستن قرعه‌کشی
-    await prisma.$transaction([
-      ...winners.map((w) =>
-        prisma.lotteryEntry.update({
-          where: { id: w.id },
-          data: { isWinner: true },
-        })
-      ),
-      prisma.lottery.update({
-        where: { id: lotteryId },
-        data: { isCompleted: true },
-      }),
-    ]);
-
-    return winners.map((w) => w.user);
   },
 
   async findById(id: number) {
     return prisma.lottery.findUnique({
       where: { id },
-      include: { _count: { select: { entries: true } } },
+      include: {
+        entries: {
+          include: {
+            user: true,
+          },
+        },
+      },
     });
   },
 
-  async create(data: {
-    title: string;
-    description?: string;
-    prize: string;
-    startAt: Date;
-    endAt: Date;
-    winnersCount: number;
-    minPoints: number;
-  }) {
-    return prisma.lottery.create({ data });
+  async create(data: any) {
+    return prisma.lottery.create({
+      data: {
+        title: data.title,
+        prize: data.prize,
+        description: data.description || "",
+        startAt: new Date(data.startAt),
+        endAt: new Date(data.endAt),
+        winnersCount: Number(data.winnersCount || 1),
+        minPoints: Number(data.minPoints || 0),
+        isActive: true,
+        isCompleted: false,
+      },
+    });
+  },
+
+  async hasEntered(userId: number, lotteryId: number) {
+    const entry = await prisma.lotteryEntry.findFirst({
+      where: {
+        userId,
+        lotteryId,
+      },
+    });
+
+    return !!entry;
+  },
+
+  async enter(userId: number, lotteryId: number) {
+    return prisma.lotteryEntry.create({
+      data: {
+        userId,
+        lotteryId,
+      },
+    });
+  },
+
+  async drawWinners(lotteryId: number, winnersCount: number) {
+    const entries = await prisma.lotteryEntry.findMany({
+      where: {
+        lotteryId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!entries.length) {
+      return [];
+    }
+
+    const shuffled = [...entries].sort(
+      () => 0.5 - Math.random()
+    );
+
+    const winners = shuffled.slice(0, winnersCount);
+
+    for (const winner of winners) {
+      await prisma.lotteryEntry.update({
+        where: {
+          id: winner.id,
+        },
+        data: {
+          isWinner: true,
+        },
+      });
+    }
+
+    await prisma.lottery.update({
+      where: {
+        id: lotteryId,
+      },
+      data: {
+        isCompleted: true,
+        isActive: false,
+      },
+    });
+
+    return winners;
   },
 };
