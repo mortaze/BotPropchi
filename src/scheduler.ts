@@ -37,15 +37,15 @@ export const startScheduler = () => {
 
           const winners = await lotteryService.draw(lottery.id);
 
-          const winnerNames = winners
-            .map(
-              (w) =>
-                w.user.username ||
-                w.user.firstName ||
-                `User-${w.user.id}`
-            )
-            .join(" , ");
-
+       const winnerNames = winners
+  .map((w) => {
+    return (
+      w.user?.username ||
+      w.user?.firstName ||
+      `User-${w.user?.id}`
+    );
+  })
+  .join(" , ");
           logger.info(
             `🏆 Lottery "${lottery.title}" completed`
           );
