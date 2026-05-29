@@ -1,88 +1,64 @@
-// src/api/routes/lottery.routes.ts
-
 import { Router } from "express";
 import { lotteryService } from "../../services/lottery.service";
+import { lotteryRepository } from "../../repositories/lottery.repository";
+import { logger } from "../../utils/logger";
 
 const router = Router();
 
 /**
- * دریافت لیست قرعه‌کشی‌ها
+ * GET ALL LOTTERIES
  */
 router.get("/", async (_req, res) => {
   try {
-    const lotteries = await lotteryService.getHistory();
+    logger.info("📥 GET /api/lotteries");
+
+    const lotteries = await lotteryRepository.getAll();
 
     return res.json(lotteries);
   } catch (error: any) {
-    console.error("❌ GET LOTTERIES ERROR:", error);
+    logger.error("❌ GET LOTTERIES ERROR", error);
 
     return res.status(500).json({
       success: false,
-      error: error.message || "خطا در دریافت قرعه‌کشی‌ها",
+      error: error.message,
     });
   }
 });
 
 /**
- * دریافت قرعه‌کشی فعال
+ * CREATE LOTTERY
  */
-router.get("/active", async (_req, res) => {
+router.post("/", async (req, res) => {
   try {
-    const lottery = await lotteryService.getActiveLottery();
+    logger.info("📥 POST /api/lotteries");
+    logger.info("BODY:", req.body);
+
+    const lottery = await lotteryRepository.create(req.body);
+
+    logger.info("✅ LOTTERY CREATED", lottery);
 
     return res.json({
       success: true,
       lottery,
     });
   } catch (error: any) {
-    console.error("❌ GET ACTIVE LOTTERY ERROR:", error);
+    logger.error("❌ CREATE LOTTERY ERROR", error);
 
     return res.status(500).json({
       success: false,
-      error: error.message || "خطا در دریافت قرعه‌کشی فعال",
+      error: error.message,
     });
   }
 });
 
 /**
- * شرکت در قرعه‌کشی
- */
-router.post("/:id/enter", async (req, res) => {
-  try {
-    const lotteryId = Number(req.params.id);
-    const { telegramId } = req.body;
-
-    if (!telegramId) {
-      return res.status(400).json({
-        success: false,
-        error: "telegramId الزامی است",
-      });
-    }
-
-    const result = await lotteryService.enterLottery(
-      BigInt(telegramId),
-      lotteryId
-    );
-
-    return res.json(result);
-  } catch (error: any) {
-    console.error("❌ ENTER LOTTERY ERROR:", error);
-
-    return res.status(500).json({
-      success: false,
-      error: error.message || "خطا در ثبت در قرعه‌کشی",
-    });
-  }
-});
-
-/**
- * برگزاری قرعه‌کشی
+ * DRAW LOTTERY
  */
 router.post("/:id/draw", async (req, res) => {
   try {
     const lotteryId = Number(req.params.id);
 
-    console.log("🎯 DRAW LOTTERY:", lotteryId);
+    logger.info(`🎯 DRAW LOTTERY ${lotteryId}`);
 
     const winners = await lotteryService.draw(lotteryId);
 
@@ -95,22 +71,17 @@ router.post("/:id/draw", async (req, res) => {
       )
       .join(" ، ");
 
-    console.log("🏆 WINNERS:", winnerNames);
-
     return res.json({
       success: true,
       winners,
-      message:
-        winnerNames.length > 0
-          ? `برندگان: ${winnerNames}`
-          : "هیچ شرکت‌کننده‌ای در قرعه‌کشی وجود نداشت",
+      message: `برندگان: ${winnerNames}`,
     });
   } catch (error: any) {
-    console.error("❌ DRAW LOTTERY ERROR:", error);
+    logger.error("❌ DRAW ERROR", error);
 
     return res.status(400).json({
       success: false,
-      error: error.message || "خطا در برگزاری قرعه‌کشی",
+      error: error.message,
     });
   }
 });
