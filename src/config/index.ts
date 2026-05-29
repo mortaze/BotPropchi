@@ -1,6 +1,6 @@
 // src/config/index.ts
 // تنظیمات مرکزی پروژه
-export { prisma } from "./prisma/client";
+export { prisma } from "../prisma/client";
 import dotenv from 'dotenv';
 dotenv.config();
 
