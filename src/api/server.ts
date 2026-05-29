@@ -15,7 +15,7 @@ import { logger } from '../utils/logger';
 
 import { authRouter } from './routes/auth.routes';
 import { discountRouter } from './routes/discount.routes';
-import { lotteryRouter } from './routes/lottery.routes';
+import lotteryRouter from "./routes/lottery.routes";
 import { userRouter } from './routes/user.routes';
 
 import { authMiddleware } from './middlewares/auth.middleware';
@@ -80,12 +80,8 @@ export function startAdminApi() {
     discountRouter
   );
 
-  app.use(
-    '/api/lotteries',
-    authMiddleware,
-    lotteryRouter
-  );
 
+app.use("/api/lotteries", lotteryRouter);
   app.use(
     '/api/users',
     authMiddleware,
