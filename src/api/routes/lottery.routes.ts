@@ -1,6 +1,6 @@
 
 // src/api/routes/lottery.routes.ts
-
+import { lotteryService } from "../../services/lottery.service";
 router.post("/:id/draw", async (req, res) => {
   try {
     const lotteryId = Number(req.params.id);
@@ -21,4 +21,4 @@ router.post("/:id/draw", async (req, res) => {
     });
   }
 });
-
+export default router;
