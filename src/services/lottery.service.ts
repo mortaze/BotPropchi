@@ -1,7 +1,7 @@
 
 // src/services/lottery.service.ts
 
-import { prisma } from "../config/db";
+import { prisma } from '../config/prisma/client';
 import { lotteryRepository } from "../repositories/lottery.repository";
 import { userRepository } from "../repositories/user.repository";
 import { PointLogType } from "@prisma/client";
