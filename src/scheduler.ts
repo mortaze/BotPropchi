@@ -1,42 +1,80 @@
+
 // src/scheduler.ts
-// زمان‌بند خودکار
 
-import cron from 'node-cron';
-import { Telegraf } from 'telegraf';
-import { prisma } from './prisma/client';
-import { lotteryService } from './services/lottery.service';
-import { logger } from './utils/logger';
-import { config } from './config';
+import cron from "node-cron";
+import { prisma } from "./config/prisma/client";
+import { lotteryService } from "./services/lottery.service";
+import { logger } from "./utils/logger";
 
-export function startScheduler(bot: Telegraf) {
-  // هر ۵ دقیقه بررسی کند که آیا قرعه‌کشی‌ای باید بسته شود
-  cron.schedule('*/5 * * * *', async () => {
+export const startScheduler = () => {
+  logger.info("⏰ Lottery Scheduler Started");
+
+  // هر 1 دقیقه بررسی قرعه‌کشی‌ها
+  cron.schedule("* * * * *", async () => {
     try {
-      const expiredLotteries = await prisma.lottery.findMany({
-        where: { isActive: true, isCompleted: false, endAt: { lte: new Date() } },
+      logger.info("🔍 Checking lotteries...");
+
+      const lotteries = await prisma.lottery.findMany({
+        where: {
+          isActive: true,
+          isCompleted: false,
+          endAt: {
+            lte: new Date(),
+          },
+        },
       });
 
-      for (const lottery of expiredLotteries) {
-        const winners = await lotteryService.draw(lottery.id);
-        logger.info(`قرعه‌کشی "${lottery.title}" به صورت خودکار برگزار شد`);
+      if (!lotteries.length) {
+        logger.info("📭 No lotteries ready for draw");
+        return;
+      }
 
-        if (winners.length > 0) {
-          const winnerNames = winners.map((w) => `@${w.username || w.firstName}`).join('، ');
-          const msg =
-            `🎉 *نتیجه قرعه‌کشی ${lottery.title}*\n\n` +
-            `🏆 برنده‌ها: ${winnerNames}\n` +
-            `🎁 جایزه: ${lottery.prize}`;
+      for (const lottery of lotteries) {
+        try {
+          logger.info(
+            `🎯 Drawing lottery: ${lottery.id} | ${lottery.title}`
+          );
 
-          // اطلاع‌رسانی به ادمین
-          await bot.telegram.sendMessage(Number(config.bot.adminTelegramId), msg, {
-            parse_mode: 'Markdown',
+          const winners = await lotteryService.draw(lottery.id);
+
+          const winnerNames = winners
+            .map(
+              (w) =>
+                w.user.username ||
+                w.user.firstName ||
+                `User-${w.user.id}`
+            )
+            .join(" , ");
+
+          logger.info(
+            `🏆 Lottery "${lottery.title}" completed`
+          );
+
+          logger.info(`🏅 Winners: ${winnerNames}`);
+
+          await prisma.lottery.update({
+            where: { id: lottery.id },
+            data: {
+              isCompleted: true,
+              isActive: false,
+            },
           });
+
+          logger.info(
+            `✅ Lottery ${lottery.id} marked as completed`
+          );
+        } catch (err: any) {
+          logger.error(
+            `❌ Draw failed for lottery ${lottery.id}`
+          );
+
+          logger.error(err.message);
         }
       }
-    } catch (err) {
-      logger.error('خطا در scheduler قرعه‌کشی:', err);
+    } catch (err: any) {
+      logger.error("❌ Scheduler Error");
+      logger.error(err.message);
     }
   });
+};
 
-  logger.info('✅ زمان‌بند خودکار راه‌اندازی شد');
-}
