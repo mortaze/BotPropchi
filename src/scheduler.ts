@@ -2,7 +2,7 @@
 // src/scheduler.ts
 
 import cron from "node-cron";
-import { prisma } from "./config/prisma/client";
+import { prisma } from "./config";
 import { lotteryService } from "./services/lottery.service";
 import { logger } from "./utils/logger";
 
