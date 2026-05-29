@@ -50,7 +50,7 @@ async function bootstrap() {
   startAdminApi();
 
   // اجرای Scheduler
-  startScheduler(bot);
+  startScheduler();
 
   // اجرای ربات
   await bot.launch();
