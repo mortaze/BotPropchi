@@ -1,4 +1,4 @@
-```ts
+
 // src/api/routes/lottery.routes.ts
 
 import { Router } from "express";
@@ -292,4 +292,4 @@ router.delete(
 );
 
 export default router;
-```
+
