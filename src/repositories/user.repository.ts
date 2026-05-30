@@ -77,6 +77,46 @@ export const userRepository = {
     });
     return rank + 1;
   },
+  // متد های جدید قرعه کشی 
+  async getLotteryWinnerInfo(userId: number) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      telegramId: true,
+      username: true,
+      firstName: true,
+      lastName: true,
+      points: true,
+    },
+  });
+}
+  //متد کسر امتیاز قرعه کشی 
+  async deductPoints(
+  userId: number,
+  amount: number,
+  description?: string
+) {
+  return prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        points: {
+          decrement: amount,
+        },
+      },
+    }),
+
+    prisma.pointLog.create({
+      data: {
+        userId,
+        amount: -amount,
+        type: PointLogType.LOTTERY_ENTRY,
+        description,
+      },
+    }),
+  ]);
+}
 
   // ثبت رفرال جدید
   async incrementReferrals(userId: number) {
