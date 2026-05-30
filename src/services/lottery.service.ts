@@ -4,7 +4,7 @@ import { lotteryRepository } from "../repositories/lottery.repository";
 import { userRepository } from "../repositories/user.repository";
 import { PointLogType } from "@prisma/client";
 import { logger } from "../utils/logger";
-
+import { notificationService } from "./notification.service";
 export const lotteryService = {
   async getActiveLottery() {
     return lotteryRepository.getActive();
@@ -90,7 +90,33 @@ export const lotteryService = {
 
     // ثبت شرکت
     await lotteryRepository.enter(user.id, lotteryId);
+//بعد ازین که برنده ثبت شد
+    await notificationService.sendLotteryWinnerMessage(
+  winner.user.telegramId,
+  lottery.title,
+  lottery.prize
+);
+    //برای ادمین
+    await notificationService.sendAdminMessage(
+  `
+🏆 برنده جدید قرعه کشی
 
+Lottery:
+${lottery.title}
+
+Prize:
+${lottery.prize}
+
+User:
+${winner.user.firstName}
+
+Username:
+@${winner.user.username || "-"}
+
+Telegram:
+${winner.user.telegramId}
+`
+);
     return {
       success: true,
       message: `✅ با موفقیت در قرعه‌کشی شرکت کردید (${lottery.minPoints} امتیاز کسر شد)`,
