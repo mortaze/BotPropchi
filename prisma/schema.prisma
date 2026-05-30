@@ -1,190 +1,350 @@
 // prisma/schema.prisma
-// اسکیمای کامل دیتابیس
 
 generator client {
-  provider = "prisma-client-js"
+provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+provider = "postgresql"
+url      = env("DATABASE_URL")
 }
 
-// ─── کاربران ───────────────────────────────────────────────
+////////////////////////////////////////////////////////////
+// USERS
+////////////////////////////////////////////////////////////
+
 model User {
-  id             Int      @id @default(autoincrement())
-  telegramId     BigInt   @unique
-  username       String?
-  firstName      String
-  lastName       String?
-  points         Int      @default(0)
-  totalReferrals Int      @default(0)
-  isBlocked      Boolean  @default(false)
-  lastActiveAt   DateTime @default(now())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+id             Int      @id @default(autoincrement())
+telegramId     BigInt   @unique
+username       String?
+firstName      String
+lastName       String?
 
-  // روابط
-  referredBy     User?    @relation("Referrals", fields: [referredById], references: [id])
-  referredById   Int?
-  referrals      User[]   @relation("Referrals")
+points         Int      @default(0)
 
-  pointLogs      PointLog[]
-  lotteryEntries LotteryEntry[]
-  clickLogs      ClickLog[]
+totalReferrals Int      @default(0)
 
-  @@map("users")
+isBlocked      Boolean  @default(false)
+
+lastActiveAt   DateTime @default(now())
+
+createdAt      DateTime @default(now())
+updatedAt      DateTime @updatedAt
+
+referredById   Int?
+
+referredBy User? @relation(
+"UserReferrals",
+fields: [referredById],
+references: [id]
+)
+
+referrals User[] @relation("UserReferrals")
+
+pointLogs      PointLog[]
+lotteryEntries LotteryEntry[]
+lotteryWins    LotteryWinner[]
+clickLogs      ClickLog[]
+
+@@map("users")
 }
 
-// ─── پراپ فرم‌ها ──────────────────────────────────────────
+////////////////////////////////////////////////////////////
+// PROP FIRMS
+////////////////////////////////////////////////////////////
+
 model PropFirm {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  slug        String   @unique
-  description String?
-  logoUrl     String?
-  websiteUrl  String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+id          Int      @id @default(autoincrement())
+name        String   @unique
+slug        String   @unique
 
-  discountCodes DiscountCode[]
+description String?
+logoUrl     String?
+websiteUrl  String?
 
-  @@map("prop_firms")
+isActive    Boolean  @default(true)
+
+createdAt   DateTime @default(now())
+updatedAt   DateTime @updatedAt
+
+discountCodes DiscountCode[]
+
+@@map("prop_firms")
 }
 
-// ─── کدهای تخفیف ──────────────────────────────────────────
+////////////////////////////////////////////////////////////
+// DISCOUNT CODES
+////////////////////////////////////////////////////////////
+
 model DiscountCode {
-  id              Int              @id @default(autoincrement())
-  title           String
-  code            String           @unique
-  discountPercent Float
-  affiliateLink   String?
-  expiresAt       DateTime?
-  isFeatured      Boolean          @default(false)
-  isActive        Boolean          @default(true)
-  category        DiscountCategory @default(OTHER)
-  usageCount      Int              @default(0)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+id              Int      @id @default(autoincrement())
 
-  propFirm   PropFirm @relation(fields: [propFirmId], references: [id])
-  propFirmId Int
+title           String
 
-  clickLogs ClickLog[]
+code            String   @unique
 
-  @@map("discount_codes")
+discountPercent Float
+
+affiliateLink   String?
+
+expiresAt       DateTime?
+
+isFeatured      Boolean  @default(false)
+
+isActive        Boolean  @default(true)
+
+category        DiscountCategory @default(OTHER)
+
+usageCount      Int      @default(0)
+
+createdAt       DateTime @default(now())
+updatedAt       DateTime @updatedAt
+
+propFirmId      Int
+
+propFirm PropFirm @relation(
+fields: [propFirmId],
+references: [id],
+onDelete: Cascade
+)
+
+clickLogs ClickLog[]
+
+@@map("discount_codes")
 }
 
 enum DiscountCategory {
-  HIGHEST_DISCOUNT      // بیشترین تخفیف
-  NO_TIME_LIMIT         // بدون محدودیت زمانی
-  FIRST_PURCHASE        // مخصوص اولین خرید
-  TWO_PHASE_ONLY        // فقط چالش دو مرحله‌ای
-  NEWEST                // جدیدترین
-  MOST_POPULAR          // محبوب‌ترین
-  OTHER
+HIGHEST_DISCOUNT
+NO_TIME_LIMIT
+FIRST_PURCHASE
+TWO_PHASE_ONLY
+NEWEST
+MOST_POPULAR
+OTHER
 }
 
-// ─── سیستم امتیاز ─────────────────────────────────────────
+////////////////////////////////////////////////////////////
+// POINTS
+////////////////////////////////////////////////////////////
+
 model PointLog {
-  id          Int           @id @default(autoincrement())
-  userId      Int
-  amount      Int
-  type        PointLogType
-  description String?
-  createdAt   DateTime      @default(now())
+id          Int      @id @default(autoincrement())
 
-  user User @relation(fields: [userId], references: [id])
+userId      Int
 
-  @@map("point_logs")
+amount      Int
+
+type        PointLogType
+
+description String?
+
+createdAt   DateTime @default(now())
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@map("point_logs")
 }
 
 enum PointLogType {
-  REFERRAL          // دعوت دوست
-  DAILY_ACTIVITY    // فعالیت روزانه
-  LINK_CLICK        // کلیک روی لینک
-  AFFILIATE_PURCHASE // خرید از افیلیت
-  LOTTERY_ENTRY     // شرکت در قرعه‌کشی
-  ADMIN_GRANT       // اعطای ادمین
-  PENALTY           // کسر توسط ادمین
+REFERRAL
+DAILY_ACTIVITY
+LINK_CLICK
+AFFILIATE_PURCHASE
+LOTTERY_ENTRY
+ADMIN_GRANT
+PENALTY
 }
 
-// ─── قرعه‌کشی ─────────────────────────────────────────────
+////////////////////////////////////////////////////////////
+// LOTTERY
+////////////////////////////////////////////////////////////
+
 model Lottery {
-  id              Int           @id @default(autoincrement())
-  title           String
-  description     String?
-  prize           String
-  startAt         DateTime
-  endAt           DateTime
-  winnersCount    Int           @default(1)
-  minPoints       Int           @default(0)   // حداقل امتیاز برای شرکت
-  isActive        Boolean       @default(true)
-  isCompleted     Boolean       @default(false)
-  announcementMsg String?       // متن اعلام نتیجه
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+id              Int      @id @default(autoincrement())
 
-  entries LotteryEntry[]
+title           String
 
-  @@map("lotteries")
+description     String?
+
+prize           String
+
+startAt         DateTime
+
+endAt           DateTime
+
+winnersCount    Int      @default(1)
+
+minPoints       Int      @default(0)
+
+entryCost       Int      @default(10)
+
+isActive        Boolean  @default(true)
+
+isCompleted     Boolean  @default(false)
+
+announcementMsg String?
+
+createdAt       DateTime @default(now())
+
+updatedAt       DateTime @updatedAt
+
+entries LotteryEntry[]
+
+winners LotteryWinner[]
+
+@@map("lotteries")
 }
 
 model LotteryEntry {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  lotteryId Int
-  isWinner  Boolean  @default(false)
-  createdAt DateTime @default(now())
+id          Int      @id @default(autoincrement())
 
-  user    User    @relation(fields: [userId], references: [id])
-  lottery Lottery @relation(fields: [lotteryId], references: [id])
+userId      Int
 
-  @@unique([userId, lotteryId]) // هر کاربر فقط یک بار شرکت می‌کند
-  @@map("lottery_entries")
+lotteryId   Int
+
+createdAt   DateTime @default(now())
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+lottery Lottery @relation(
+fields: [lotteryId],
+references: [id],
+onDelete: Cascade
+)
+
+@@unique([userId, lotteryId])
+
+@@index([lotteryId])
+
+@@index([userId])
+
+@@map("lottery_entries")
 }
 
-// ─── کانال‌های اجباری ─────────────────────────────────────
+model LotteryWinner {
+id Int @id @default(autoincrement())
+
+lotteryId Int
+
+userId Int
+
+prize String
+
+winnerTelegramId BigInt
+
+winnerUsername String?
+
+winnerFirstName String
+
+winnerLastName String?
+
+notified Boolean @default(false)
+
+prizeDelivered Boolean @default(false)
+
+wonAt DateTime @default(now())
+
+lottery Lottery @relation(
+fields: [lotteryId],
+references: [id],
+onDelete: Cascade
+)
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@unique([lotteryId, userId])
+
+@@index([lotteryId])
+
+@@index([userId])
+
+@@map("lottery_winners")
+}
+
+////////////////////////////////////////////////////////////
+// REQUIRED CHANNELS
+////////////////////////////////////////////////////////////
+
 model RequiredChannel {
-  id         Int      @id @default(autoincrement())
-  channelId  String   @unique   // مثلاً @mychannel
-  title      String
-  inviteLink String?
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
+id Int @id @default(autoincrement())
 
-  @@map("required_channels")
+channelId String @unique
+
+title String
+
+inviteLink String?
+
+isActive Boolean @default(true)
+
+createdAt DateTime @default(now())
+
+@@map("required_channels")
 }
 
-// ─── لاگ کلیک‌ها ──────────────────────────────────────────
+////////////////////////////////////////////////////////////
+// CLICK LOGS
+////////////////////////////////////////////////////////////
+
 model ClickLog {
-  id             Int      @id @default(autoincrement())
-  userId         Int
-  discountCodeId Int
-  createdAt      DateTime @default(now())
+id Int @id @default(autoincrement())
 
-  user         User         @relation(fields: [userId], references: [id])
-  discountCode DiscountCode @relation(fields: [discountCodeId], references: [id])
+userId Int
 
-  @@map("click_logs")
+discountCodeId Int
+
+createdAt DateTime @default(now())
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+discountCode DiscountCode @relation(
+fields: [discountCodeId],
+references: [id],
+onDelete: Cascade
+)
+
+@@map("click_logs")
 }
 
-// ─── ادمین‌ها ──────────────────────────────────────────────
-model Admin {
-  id           Int       @id @default(autoincrement())
-  username     String    @unique
-  passwordHash String
-  role         AdminRole @default(MODERATOR)
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
+////////////////////////////////////////////////////////////
+// ADMINS
+////////////////////////////////////////////////////////////
 
-  @@map("admins")
+model Admin {
+id Int @id @default(autoincrement())
+
+username String @unique
+
+passwordHash String
+
+role AdminRole @default(MODERATOR)
+
+isActive Boolean @default(true)
+
+lastLoginAt DateTime?
+
+createdAt DateTime @default(now())
+
+@@map("admins")
 }
 
 enum AdminRole {
-  SUPER_ADMIN
-  ADMIN
-  MODERATOR
+SUPER_ADMIN
+ADMIN
+MODERATOR
 }
