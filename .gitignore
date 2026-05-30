@@ -1,5 +1,27 @@
-node_modules/
-dist/
-.env
-logs/
+# Dependencies
+node_modules
+**/node_modules
+
+# Next.js
+.next
+**/.next
+
+# Build
+dist
+build
+coverage
+
+# Logs
+logs
 *.log
+
+# Environment
+.env
+.env.*
+
+# Prisma
+.prisma
+
+# OS
+.DS_Store
+Thumbs.db
