@@ -1,69 +1,26 @@
-// src/app/dashboard/users/[id]/page.tsx
 "use client";
-import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { usersApi } from "@/services/api";
-import { Card, CardHeader, CardContent, Badge, Button, Skeleton } from "@/components/ui";
-import { formatDate, formatNumber } from "@/lib/utils";
-import { ArrowRight, Star, Shield, Calendar, Hash } from "lucide-react";
 
-export default function UserDetailPage() {
-  const { id } = useParams();
-  const router = useRouter();
-  const { data: usersData, isLoading } = useQuery({
-    queryKey: ["users", 1],
-    queryFn: () => usersApi.getAll(1),
-  });
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "next/navigation";
+import { toast } from "sonner";
+import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input } from "@/components/ui";
+import { getApiError, usersApi } from "@/services/api";
 
-  const user = usersData?.users?.find((u: any) => u.id === parseInt(id as string));
+const formatNumber = (value?: number) => new Intl.NumberFormat("fa-IR").format(value ?? 0);
+const formatDate = (value?: string) => value ? new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 
-  return (
-    <div className="space-y-5 max-w-2xl">
-      <button onClick={() => router.back()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowRight className="w-4 h-4" />
-        بازگشت به لیست
-      </button>
-
-      {isLoading ? (
-        <Card><CardContent><Skeleton className="h-40 w-full" /></CardContent></Card>
-      ) : !user ? (
-        <Card><CardContent><p className="text-center text-muted-foreground py-10">کاربر یافت نشد</p></CardContent></Card>
-      ) : (
-        <>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-primary/10 border-2 border-primary/20 flex items-center justify-center text-2xl font-bold text-primary">
-                  {user.firstName[0]}
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-foreground">{user.firstName} {user.lastName}</h2>
-                  <p className="text-muted-foreground">{user.username ? `@${user.username}` : "بدون یوزرنیم"}</p>
-                  <Badge variant={user.isBlocked ? "danger" : "success"} className="mt-1">
-                    {user.isBlocked ? "بلاک شده" : "فعال"}
-                  </Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { icon: <Star className="w-4 h-4 text-yellow-500" />, label: "امتیاز", value: formatNumber(user.points) },
-              { icon: <Shield className="w-4 h-4 text-blue-500" />, label: "دعوت‌های موفق", value: user.totalReferrals },
-              { icon: <Calendar className="w-4 h-4 text-green-500" />, label: "تاریخ عضویت", value: formatDate(user.createdAt) },
-              { icon: <Hash className="w-4 h-4 text-purple-500" />, label: "آیدی تلگرام", value: user.telegramId },
-            ].map((item, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">{item.icon}<span className="text-xs text-muted-foreground">{item.label}</span></div>
-                  <p className="font-semibold text-foreground">{item.value}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
+export default function UserDetailsPage() {
+  const id = Number(useParams<{ id: string }>().id);
+  const [amount, setAmount] = useState(0);
+  const [description, setDescription] = useState("");
+  const queryClient = useQueryClient();
+  const query = useQuery({ queryKey: ["user", id], queryFn: () => usersApi.getById(id), enabled: Number.isFinite(id) });
+  const grantMutation = useMutation({ mutationFn: () => usersApi.grantPoints(id, amount, description || undefined), onSuccess: () => { toast.success("امتیاز ثبت شد"); setAmount(0); setDescription(""); queryClient.invalidateQueries({ queryKey: ["user", id] }); }, onError: (error) => toast.error(getApiError(error)) });
+  const user = query.data;
+  if (query.isLoading) return <div className="skeleton h-80" />;
+  if (!user) return <EmptyState title="کاربر یافت نشد" />;
+  const rankHint = "رتبه دقیق endpoint اختصاصی ندارد؛ با امتیاز فعلی و لیدربورد backend محاسبه می‌شود.";
+  return <div className="space-y-6"><div><h1 className="text-2xl font-bold">{user.firstName} {user.lastName}</h1><p className="text-sm text-muted-foreground">@{user.username ?? "-"} · Telegram ID: {user.telegramId}</p></div><div className="grid gap-4 md:grid-cols-4"><Metric title="امتیاز" value={formatNumber(user.points)} /><Metric title="رفرال" value={formatNumber(user.totalReferrals)} /><Metric title="وضعیت" value={user.isBlocked ? "مسدود" : "فعال"} /><Metric title="آخرین فعالیت" value={formatDate(user.lastActiveAt)} /></div><Card><CardHeader><h2 className="font-semibold">اعطای امتیاز دستی</h2></CardHeader><CardContent className="grid gap-3 md:grid-cols-3"><Input label="مقدار" type="number" value={amount} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(Number(e.target.value))} /><Input label="توضیح" value={description} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription(e.target.value)} /><div className="flex items-end"><Button loading={grantMutation.isPending} onClick={() => grantMutation.mutate()} disabled={!amount}>ثبت امتیاز</Button></div></CardContent></Card><div className="grid gap-4 xl:grid-cols-2"><Card><CardHeader><h2 className="font-semibold">لاگ امتیاز</h2><p className="text-xs text-muted-foreground">{rankHint}</p></CardHeader><CardContent>{user.pointLogs.length ? user.pointLogs.map((log) => <div key={log.id} className="mb-2 flex justify-between rounded-lg bg-muted/40 p-3"><div><p>{log.description ?? log.type}</p><p className="text-xs text-muted-foreground">{formatDate(log.createdAt)}</p></div><Badge variant={log.amount >= 0 ? "success" : "danger"}>{formatNumber(log.amount)}</Badge></div>) : <EmptyState />}</CardContent></Card><Card><CardHeader><h2 className="font-semibold">قرعه‌کشی‌ها و برنده‌ها</h2></CardHeader><CardContent>{user.lotteryWins.map((win) => <div key={win.id} className="mb-2 rounded-lg bg-muted/40 p-3"><p className="font-medium">{win.lottery?.title}</p><p className="text-xs text-muted-foreground">{win.prize} · {formatDate(win.wonAt)}</p></div>)}{!user.lotteryWins.length && <EmptyState title="برنده‌ای ثبت نشده" />}</CardContent></Card></div><Card><CardHeader><h2 className="font-semibold">کلیک‌های تخفیف</h2></CardHeader><CardContent>{user.clickLogs.length ? user.clickLogs.map((click) => <div key={click.id} className="mb-2 flex justify-between rounded-lg bg-muted/40 p-3"><span>{click.discountCode?.title ?? click.discountCodeId}</span><span className="text-xs text-muted-foreground">{formatDate(click.createdAt)}</span></div>) : <EmptyState />}</CardContent></Card></div>;
 }
+function Metric({ title, value }: { title: string; value: string }) { return <div className="stat-card"><p className="text-sm text-muted-foreground">{title}</p><p className="mt-2 font-bold">{value}</p></div>; }

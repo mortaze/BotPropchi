@@ -1,0 +1,21 @@
+"use client";
+
+import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "next/navigation";
+import { toast } from "sonner";
+import { Badge, Button, Card, CardContent, CardHeader, EmptyState } from "@/components/ui";
+import { getApiError, lotteriesApi } from "@/services/api";
+
+const formatDate = (value?: string) => value ? new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
+
+export default function LotteryDetailsPage() {
+  const id = Number(useParams<{ id: string }>().id); const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["lottery", id], queryFn: () => lotteriesApi.getById(id), enabled: Number.isFinite(id) });
+  const winnersQuery = useQuery({ queryKey: ["lottery", id, "winners"], queryFn: () => lotteriesApi.getWinners(id), enabled: Number.isFinite(id) });
+  const drawMutation = useMutation({ mutationFn: () => lotteriesApi.draw(id), onSuccess: (data) => { toast.success(data.message); qc.invalidateQueries({ queryKey: ["lottery", id] }); qc.invalidateQueries({ queryKey: ["lottery", id, "winners"] }); }, onError: (error) => toast.error(getApiError(error)) });
+  const lottery = query.data?.lottery;
+  if (query.isLoading) return <div className="skeleton h-96" />; if (!lottery) return <EmptyState />;
+  return <div className="space-y-6"><div className="flex items-start justify-between gap-3"><div><h1 className="text-2xl font-bold">{lottery.title}</h1><p className="text-sm text-muted-foreground">{lottery.description ?? "بدون توضیح"}</p></div><div className="flex gap-2"><Link href={`/dashboard/lotteries/edit/${id}`}><Button variant="secondary">ویرایش</Button></Link><Button loading={drawMutation.isPending} disabled={lottery.isCompleted} onClick={() => drawMutation.mutate()}>Run Lottery Now</Button></div></div><div className="grid gap-4 md:grid-cols-4"><Metric title="جایزه" value={lottery.prize} /><Metric title="شروع" value={formatDate(lottery.startAt)} /><Metric title="پایان" value={formatDate(lottery.endAt)} /><Metric title="وضعیت" value={lottery.isCompleted ? "تکمیل" : lottery.isActive ? "فعال" : "غیرفعال"} /></div><div className="grid gap-4 xl:grid-cols-2"><Card><CardHeader><h2 className="font-semibold">شرکت‌کنندگان</h2></CardHeader><CardContent>{lottery.entries?.length ? lottery.entries.map((entry) => <div key={entry.id} className="mb-2 flex justify-between rounded-lg bg-muted/40 p-3"><Link href={`/dashboard/users/${entry.user.id}`} className="font-medium hover:text-primary">{entry.user.firstName} {entry.user.lastName}</Link><span className="text-xs text-muted-foreground">{formatDate(entry.createdAt)}</span></div>) : <EmptyState title="شرکت‌کننده‌ای وجود ندارد" />}</CardContent></Card><Card><CardHeader><h2 className="font-semibold">برندگان</h2></CardHeader><CardContent>{(winnersQuery.data?.winners ?? lottery.winners ?? []).length ? (winnersQuery.data?.winners ?? lottery.winners ?? []).map((winner) => <div key={winner.id} className="mb-2 flex justify-between rounded-lg bg-muted/40 p-3"><div><p className="font-medium">{winner.winnerFirstName} {winner.winnerLastName}</p><p className="text-xs text-muted-foreground">@{winner.winnerUsername ?? "-"} · {winner.prize}</p></div><Badge variant={winner.prizeDelivered ? "success" : "warning"}>{winner.prizeDelivered ? "تحویل شده" : "در انتظار تحویل"}</Badge></div>) : <EmptyState title="برنده‌ای ثبت نشده" />}</CardContent></Card></div></div>;
+}
+function Metric({ title, value }: { title: string; value: string }) { return <div className="stat-card"><p className="text-sm text-muted-foreground">{title}</p><p className="mt-2 font-bold">{value}</p></div>; }

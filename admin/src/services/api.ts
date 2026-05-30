@@ -1,310 +1,166 @@
-// src/services/api.ts
-
-import axios, {
-  AxiosError,
-  AxiosResponse,
-  InternalAxiosRequestConfig,
-} from "axios";
-
+import axios, { AxiosError } from "axios";
 import Cookies from "js-cookie";
+import type { AdminUser, DiscountCategory, DiscountCode, Lottery, LotteryWinner, PropFirm, User, UserDetails } from "@/types";
 
-// ─────────────────────────────────────────────
-// BASE URL
-// ─────────────────────────────────────────────
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://botpropchi-production.up.railway.app";
-
-// ─────────────────────────────────────────────
-// AXIOS INSTANCE
-// ─────────────────────────────────────────────
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://botpropchi-production.up.railway.app";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 20000,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  timeout: 20_000,
+  headers: { "Content-Type": "application/json" },
 });
 
-// ─────────────────────────────────────────────
-// REQUEST INTERCEPTOR
-// ─────────────────────────────────────────────
-
-api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = Cookies.get("admin_token");
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    // LOGS
-    console.group("🚀 API REQUEST");
-    console.log("URL:", `${config.baseURL}${config.url}`);
-    console.log("METHOD:", config.method?.toUpperCase());
-    console.log("HEADERS:", config.headers);
-    console.log("PARAMS:", config.params || null);
-    console.log("DATA:", config.data || null);
-    console.groupEnd();
-
-    return config;
-  },
-  (error) => {
-    console.error("❌ REQUEST ERROR:", error);
-    return Promise.reject(error);
+export function getApiError(error: unknown, fallback = "خطای نامشخص رخ داد") {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { error?: unknown; message?: string } | undefined;
+    if (typeof data?.error === "string") return data.error;
+    if (typeof data?.message === "string") return data.message;
+    if (data?.error && typeof data.error === "object") return "اطلاعات ارسالی معتبر نیست";
+    return error.message || fallback;
   }
-);
+  if (error instanceof Error) return error.message;
+  return fallback;
+}
 
-// ─────────────────────────────────────────────
-// RESPONSE INTERCEPTOR
-// ─────────────────────────────────────────────
+api.interceptors.request.use((config) => {
+  const token = Cookies.get("admin_token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
 api.interceptors.response.use(
-  (response: AxiosResponse) => {
-    console.group("✅ API RESPONSE");
-    console.log("URL:", response.config.url);
-    console.log("STATUS:", response.status);
-    console.log("DATA:", response.data);
-    console.groupEnd();
-
-    return response;
-  },
-
-  (error: AxiosError<any>) => {
-    console.group("❌ API ERROR");
-
-    console.error("URL:", error.config?.url);
-    console.error("METHOD:", error.config?.method);
-    console.error("STATUS:", error.response?.status);
-    console.error("MESSAGE:", error.message);
-    console.error("RESPONSE DATA:", error.response?.data);
-
-    console.groupEnd();
-
-    // logout on unauthorized
+  (response) => response,
+  (error: AxiosError) => {
     if (error.response?.status === 401) {
       Cookies.remove("admin_token");
-
-      if (typeof window !== "undefined") {
+      Cookies.remove("admin_user");
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
         window.location.href = "/login";
       }
     }
-
     return Promise.reject(error);
-  }
+  },
 );
 
-// ─────────────────────────────────────────────
-// AUTH API
-// ─────────────────────────────────────────────
-
 export const authApi = {
-  login: async (username: string, password: string) => {
-    const response = await api.post("/api/auth/login", {
-      username,
-      password,
-    });
-
-    return response.data;
+  async login(username: string, password: string): Promise<{ success: boolean; token: string; admin: AdminUser }> {
+    const { data } = await api.post("/api/auth/login", { username, password });
+    return data;
   },
-
-  me: async () => {
-    const response = await api.get("/api/auth/me");
-
-    return response.data;
+  async me(): Promise<{ success: boolean; admin: AdminUser }> {
+    const { data } = await api.get("/api/auth/me");
+    return data;
   },
 };
-
-// ─────────────────────────────────────────────
-// USERS API
-// ─────────────────────────────────────────────
 
 export const usersApi = {
-  getAll: async (page = 1, search?: string) => {
-    const response = await api.get("/api/users", {
-      params: {
-        page,
-        search,
-      },
-    });
-
-    return response.data;
+  async getAll(params: { page?: number; limit?: number } = {}): Promise<{ users: User[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/users", { params: { page: params.page ?? 1, limit: params.limit ?? 20 } });
+    return data;
   },
-
-  getStats: async () => {
-    const response = await api.get("/api/users/stats");
-
-    return response.data;
+  async getStats(): Promise<{ total: number; today: number; totalPoints: number }> {
+    const { data } = await api.get("/api/users/stats");
+    return data;
   },
-
-  block: async (
-    id: number,
-    isBlocked: boolean
-  ) => {
-    const response = await api.patch(
-      `/api/users/${id}/block`,
-      {
-        isBlocked,
-      }
-    );
-
-    return response.data;
+  async getById(id: number): Promise<UserDetails> {
+    const { data } = await api.get(`/api/users/${id}`);
+    return data;
   },
-
-  addPoints: async (
-    id: number,
-    amount: number,
-    description?: string
-  ) => {
-    const response = await api.post(
-      `/api/users/${id}/points`,
-      {
-        amount,
-        description,
-      }
-    );
-
-    return response.data;
+  async setBlocked(id: number, isBlocked: boolean): Promise<{ id: number; isBlocked: boolean }> {
+    const { data } = await api.patch(`/api/users/${id}/block`, { isBlocked });
+    return data;
+  },
+  async grantPoints(id: number, amount: number, description?: string): Promise<{ success: boolean; message: string }> {
+    const { data } = await api.post(`/api/users/${id}/grant`, { amount, description });
+    return data;
   },
 };
 
-// ─────────────────────────────────────────────
-// DISCOUNTS API
-// ─────────────────────────────────────────────
+export interface DiscountPayload {
+  title: string;
+  code: string;
+  discountPercent: number;
+  propFirmId: number;
+  affiliateLink?: string | null;
+  expiresAt?: string | null;
+  isFeatured: boolean;
+  isActive: boolean;
+  category: DiscountCategory;
+}
 
 export const discountsApi = {
-  getAll: async (page = 1) => {
-    const response = await api.get(
-      "/api/discounts",
-      {
-        params: { page },
-      }
-    );
-
-    return response.data;
+  async getAll(params: { page?: number; limit?: number; q?: string; category?: DiscountCategory | "" } = {}): Promise<{ items: DiscountCode[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/discounts", { params: { page: params.page ?? 1, limit: params.limit ?? 10, q: params.q || undefined, category: params.category || undefined } });
+    return data;
   },
-
-  create: async (data: any) => {
-    console.group("🟡 CREATE DISCOUNT");
-    console.log("PAYLOAD:", data);
-    console.groupEnd();
-
-    const response = await api.post(
-      "/api/discounts",
-      data
-    );
-
-    console.group("🟢 CREATE DISCOUNT RESPONSE");
-    console.log(response.data);
-    console.groupEnd();
-
-    return response.data;
+  async getById(id: number): Promise<DiscountCode> {
+    const { data } = await api.get(`/api/discounts/${id}`);
+    return data;
   },
-
-  update: async (
-    id: number,
-    data: any
-  ) => {
-    const response = await api.put(
-      `/api/discounts/${id}`,
-      data
-    );
-
-    return response.data;
+  async create(payload: DiscountPayload): Promise<DiscountCode> {
+    const { data } = await api.post("/api/discounts", payload);
+    return data;
   },
-
-  delete: async (id: number) => {
-    const response = await api.delete(
-      `/api/discounts/${id}`
-    );
-
-    return response.data;
+  async update(id: number, payload: Partial<DiscountPayload>): Promise<DiscountCode> {
+    const { data } = await api.put(`/api/discounts/${id}`, payload);
+    return data;
   },
-
-  getPropFirms: async () => {
-    const response = await api.get(
-      "/api/discounts/prop-firms"
-    );
-
-    console.group("🏢 PROP FIRMS");
-    console.log(response.data);
-    console.groupEnd();
-
-    return response.data;
+  async delete(id: number): Promise<{ success: boolean; message: string }> {
+    const { data } = await api.delete(`/api/discounts/${id}`);
+    return data;
   },
-
-  createPropFirm: async (data: any) => {
-    console.group("🟡 CREATE PROP FIRM");
-    console.log("PAYLOAD:", data);
-    console.groupEnd();
-
-    const response = await api.post(
-      "/api/discounts/prop-firms",
-      data
-    );
-
-    console.group("🟢 CREATE PROP FIRM RESPONSE");
-    console.log(response.data);
-    console.groupEnd();
-
-    return response.data;
+  async getPropFirms(): Promise<PropFirm[]> {
+    const { data } = await api.get("/api/discounts/prop-firms");
+    return data;
+  },
+  async createPropFirm(payload: Omit<PropFirm, "id" | "createdAt" | "updatedAt" | "_count">): Promise<PropFirm> {
+    const { data } = await api.post("/api/discounts/prop-firms", payload);
+    return data;
   },
 };
 
-// ───────────────── LOTTERIES API ─────────────────
+export interface LotteryPayload {
+  title: string;
+  description?: string | null;
+  prize: string;
+  startAt: string;
+  endAt: string;
+  winnersCount: number;
+  minPoints: number;
+  entryCost: number;
+  isActive: boolean;
+  announcementMsg?: string | null;
+}
 
 export const lotteriesApi = {
-  getAll: async () => {
-    const res = await api.get("/api/lotteries");
-
-    console.log("🎯 LOTTERIES RAW RESPONSE:");
-    console.log(res.data);
-
-    // اگر بک‌اند مستقیم آرایه برگرداند
-    if (Array.isArray(res.data)) {
-      return res.data;
-    }
-
-    // اگر داخل data باشد
-    if (Array.isArray(res.data?.data)) {
-      return res.data.data;
-    }
-
-    // اگر داخل lotteries باشد
-    if (Array.isArray(res.data?.lotteries)) {
-      return res.data.lotteries;
-    }
-
-    console.warn("⚠️ Unknown lotteries response shape");
-
-    return [];
+  async getAll(params: { page?: number; limit?: number } = {}): Promise<{ success: boolean; items: Lottery[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/lotteries", { params: { page: params.page ?? 1, limit: params.limit ?? 20 } });
+    return data;
   },
-
-  create: async (data: any) => {
-    console.log("🟡 CREATE LOTTERY PAYLOAD:", data);
-
-    const res = await api.post("/api/lotteries", data);
-
-    console.log("🟢 CREATE LOTTERY RESPONSE:");
-    console.log(res.data);
-
-    return res.data;
+  async getById(id: number): Promise<{ success: boolean; lottery: Lottery }> {
+    const { data } = await api.get(`/api/lotteries/${id}`);
+    return data;
   },
-
-  draw: async (id: number) => {
-    console.log("🎲 DRAW LOTTERY:", id);
-
-    const res = await api.post(`/api/lotteries/${id}/draw`);
-
-    console.log("🏆 DRAW RESPONSE:");
-    console.log(res.data);
-
-    return res.data;
+  async create(payload: LotteryPayload): Promise<{ success: boolean; lottery: Lottery }> {
+    const { data } = await api.post("/api/lotteries", payload);
+    return data;
+  },
+  async update(id: number, payload: Partial<LotteryPayload>): Promise<{ success: boolean; lottery: Lottery }> {
+    const { data } = await api.put(`/api/lotteries/${id}`, payload);
+    return data;
+  },
+  async delete(id: number): Promise<{ success: boolean; message: string }> {
+    const { data } = await api.delete(`/api/lotteries/${id}`);
+    return data;
+  },
+  async draw(id: number): Promise<{ success: boolean; winners: LotteryWinner[]; message: string }> {
+    const { data } = await api.post(`/api/lotteries/${id}/draw`);
+    return data;
+  },
+  async getWinners(id: number): Promise<{ success: boolean; winners: LotteryWinner[] }> {
+    const { data } = await api.get(`/api/lotteries/${id}/winners`);
+    return data;
   },
 };
-
-// ─────────────────────────────────────────────
 
 export default api;
