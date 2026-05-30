@@ -1,22 +1,34 @@
-// src/services/lottery.service.ts
+//BotPropchi/src/services /lottery.service.ts
 
 import { lotteryRepository } from "../repositories/lottery.repository";
 import { userRepository } from "../repositories/user.repository";
-import { PointLogType } from "@prisma/client";
 import { logger } from "../utils/logger";
 import { notificationService } from "./notification.service";
+
 export const lotteryService = {
   async getActiveLottery() {
     return lotteryRepository.getActive();
   },
 
   async getHistory() {
-    return lotteryRepository.getCompleted(10);
+    return lotteryRepository.getCompleted(20);
   },
 
-  // شرکت در قرعه‌کشی
-  async enterLottery(telegramId: bigint, lotteryId: number) {
-    const user = await userRepository.findByTelegramId(telegramId);
+  async getById(id: number) {
+    return lotteryRepository.findById(id);
+  },
+
+  /**
+   * ثبت نام در قرعه کشی
+   */
+  async enterLottery(
+    telegramId: bigint,
+    lotteryId: number
+  ) {
+    const user =
+      await userRepository.findByTelegramId(
+        telegramId
+      );
 
     if (!user) {
       return {
@@ -25,141 +37,210 @@ export const lotteryService = {
       };
     }
 
-    const lottery = await lotteryRepository.findById(lotteryId);
+    const lottery =
+      await lotteryRepository.findById(
+        lotteryId
+      );
 
     if (!lottery) {
       return {
         success: false,
-        message: "قرعه‌کشی یافت نشد",
+        message: "قرعه کشی یافت نشد",
       };
     }
 
-    // بررسی فعال بودن
-    if (!lottery.isActive || lottery.isCompleted) {
+    if (
+      !lottery.isActive ||
+      lottery.isCompleted
+    ) {
       return {
         success: false,
-        message: "این قرعه‌کشی فعال نیست",
+        message:
+          "این قرعه کشی فعال نیست",
       };
     }
 
-    // بررسی زمان
     const now = new Date();
 
     if (now < lottery.startAt) {
       return {
         success: false,
-        message: "قرعه‌کشی هنوز شروع نشده",
+        message:
+          "قرعه کشی هنوز شروع نشده است",
       };
     }
 
     if (now > lottery.endAt) {
       return {
         success: false,
-        message: "زمان قرعه‌کشی تمام شده",
+        message:
+          "زمان ثبت نام به پایان رسیده است",
       };
     }
 
-    // بررسی امتیاز
-    if (user.points < lottery.minPoints) {
-      return {
-        success: false,
-        message: `حداقل امتیاز لازم ${lottery.minPoints} است`,
-      };
-    }
-
-    // بررسی ثبت قبلی
-    const alreadyEntered = await lotteryRepository.hasEntered(
-      user.id,
-      lotteryId
-    );
+    const alreadyEntered =
+      await lotteryRepository.hasEntered(
+        user.id,
+        lotteryId
+      );
 
     if (alreadyEntered) {
       return {
         success: false,
-        message: "شما قبلاً شرکت کرده‌اید",
+        message:
+          "شما قبلاً ثبت نام کرده اید",
       };
     }
 
-    // کم کردن امتیاز
-    await userRepository.addPoints(
+    const entryCost =
+      lottery.entryCost || 0;
+
+    if (user.points < entryCost) {
+      return {
+        success: false,
+        message:
+          "امتیاز شما برای شرکت کافی نیست",
+      };
+    }
+
+    if (entryCost > 0) {
+      await userRepository.deductPoints(
+        user.id,
+        entryCost,
+        `شرکت در قرعه کشی ${lottery.title}`
+      );
+    }
+
+    await lotteryRepository.enter(
       user.id,
-      -lottery.minPoints,
-      PointLogType.LOTTERY_ENTRY,
-      `شرکت در قرعه‌کشی ${lottery.title}`
+      lotteryId
     );
 
-    // ثبت شرکت
-    await lotteryRepository.enter(user.id, lotteryId);
-//بعد ازین که برنده ثبت شد
-    await notificationService.sendLotteryWinnerMessage(
-  winner.user.telegramId,
-  lottery.title,
-  lottery.prize
-);
-    //برای ادمین
-    await notificationService.sendAdminMessage(
-  `
-🏆 برنده جدید قرعه کشی
-
-Lottery:
-${lottery.title}
-
-Prize:
-${lottery.prize}
-
-User:
-${winner.user.firstName}
-
-Username:
-@${winner.user.username || "-"}
-
-Telegram:
-${winner.user.telegramId}
-`
-);
     return {
       success: true,
-      message: `✅ با موفقیت در قرعه‌کشی شرکت کردید (${lottery.minPoints} امتیاز کسر شد)`,
+      message:
+        entryCost > 0
+          ? `✅ ثبت نام انجام شد و ${entryCost} امتیاز کسر شد`
+          : "✅ ثبت نام انجام شد",
     };
   },
 
-  // برگزاری قرعه‌کشی
-  async draw(lotteryId: number) {
-    logger.info(`🎯 شروع قرعه‌کشی | lotteryId=${lotteryId}`);
+  /**
+   * برگزاری قرعه کشی
+   * force=true => دکمه ادمین
+   * force=false => زمانبندی اتوماتیک
+   */
+  async draw(
+    lotteryId: number,
+    force = false
+  ) {
+    logger.info(
+      `🎯 DRAW START lottery=${lotteryId}`
+    );
 
-    const lottery = await lotteryRepository.findById(lotteryId);
+    const lottery =
+      await lotteryRepository.findById(
+        lotteryId
+      );
 
     if (!lottery) {
-      throw new Error("قرعه‌کشی یافت نشد");
+      throw new Error(
+        "قرعه کشی یافت نشد"
+      );
     }
 
     if (lottery.isCompleted) {
-      throw new Error("این قرعه‌کشی قبلاً برگزار شده");
+      throw new Error(
+        "قرعه کشی قبلاً برگزار شده"
+      );
     }
 
-    // جلوگیری از draw زودتر از موعد
-    const now = new Date();
-
-    if (now < lottery.endAt) {
-      throw new Error("هنوز زمان قرعه‌کشی نرسیده");
+    if (
+      !force &&
+      new Date() < lottery.endAt
+    ) {
+      throw new Error(
+        "هنوز زمان برگزاری نرسیده است"
+      );
     }
 
-    const winners = await lotteryRepository.drawWinners(
-      lotteryId,
-      lottery.winnersCount
-    );
+    const winners =
+      await lotteryRepository.drawWinners(
+        lottery.id
+      );
+
+    if (!winners.length) {
+      logger.warn(
+        `Lottery ${lottery.id} has no participants`
+      );
+
+      return [];
+    }
+
+    for (const winner of winners) {
+      try {
+        await notificationService.sendLotteryWinnerMessage(
+          winner.winnerTelegramId,
+          lottery.title,
+          lottery.prize
+        );
+
+        await lotteryRepository.markWinnerNotified(
+          winner.id
+        );
+
+        await notificationService.sendAdminMessage(
+          `
+🏆 برنده جدید قرعه کشی
+
+🎰 Lottery:
+${lottery.title}
+
+🎁 Prize:
+${lottery.prize}
+
+👤 Name:
+${winner.winnerFirstName}
+
+📛 Username:
+@${winner.winnerUsername || "-"}
+
+🆔 Telegram:
+${winner.winnerTelegramId}
+`
+        );
+      } catch (err) {
+        logger.error(
+          "winner notification failed",
+          err
+        );
+      }
+    }
 
     logger.info(
-      `🏆 برندگان قرعه‌کشی ${lotteryId}: ${winners
-        .map(
-          (w) =>
-            w.user.username ||
-            w.user.firstName ||
-            `User-${w.user.id}`
-        )
-        .join(", ")}`
+      `🏆 Lottery ${lottery.id} completed with ${winners.length} winners`
     );
 
     return winners;
+  },
+
+  async deleteLottery(id: number) {
+    return lotteryRepository.delete(id);
+  },
+
+  async updateLottery(
+    id: number,
+    data: any
+  ) {
+    return lotteryRepository.update(
+      id,
+      data
+    );
+  },
+
+  async getWinners(lotteryId: number) {
+    return lotteryRepository.getWinners(
+      lotteryId
+    );
   },
 };
