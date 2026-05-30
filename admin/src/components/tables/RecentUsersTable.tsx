@@ -10,7 +10,7 @@ import Link from "next/link";
 export default function RecentUsersTable() {
   const { data, isLoading } = useQuery({
     queryKey: ["users", 1],
-    queryFn: () => usersApi.getAll(1),
+    queryFn: () => usersApi.getAll({ page: 1, limit: 8 }),
   });
   const users: User[] = data?.users || [];
 

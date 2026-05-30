@@ -1,110 +1,21 @@
-// src/app/dashboard/discounts/page.tsx
 "use client";
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { discountsApi } from "@/services/api";
-import { DiscountCode, CATEGORY_LABELS } from "@/types";
-import { Card, CardHeader, CardContent, Badge, Button, Pagination, TableRowSkeleton, EmptyState } from "@/components/ui";
-import { formatDate } from "@/lib/utils";
-import { Plus, Edit2, Trash2, Star } from "lucide-react";
-import { toast } from "sonner";
+
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Search } from "lucide-react";
+import { toast } from "sonner";
+import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Pagination, Select, TableRowSkeleton } from "@/components/ui";
+import { discountsApi, getApiError } from "@/services/api";
+import { CATEGORY_LABELS, type DiscountCategory } from "@/types";
+
+const categories = Object.keys(CATEGORY_LABELS) as DiscountCategory[];
+const formatDate = (value?: string | null) => value ? new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium" }).format(new Date(value)) : "بدون انقضا";
 
 export default function DiscountsPage() {
-  const [page, setPage] = useState(1);
-  const qc = useQueryClient();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["discounts", page],
-    queryFn: () => discountsApi.getAll(page),
-  });
-
-  const items: DiscountCode[] = data?.items || [];
-  const pages = data?.pages || 1;
-
-  const deleteMutation = useMutation({
-    mutationFn: discountsApi.delete,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["discounts"] }); toast.success("کد حذف شد"); },
-    onError: () => toast.error("خطا در حذف"),
-  });
-
-  return (
-    <div className="space-y-5">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold text-foreground">کدهای تخفیف</h2>
-              <p className="text-sm text-muted-foreground mt-0.5">مجموع {data?.total || 0} کد</p>
-            </div>
-            <Link href="/dashboard/discounts/create">
-              <Button size="sm"><Plus className="w-4 h-4 ml-1" />کد جدید</Button>
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>عنوان</th>
-                  <th>کد</th>
-                  <th>پراپ فرم</th>
-                  <th>تخفیف</th>
-                  <th>دسته‌بندی</th>
-                  <th>وضعیت</th>
-                  <th>استفاده</th>
-                  <th>انقضا</th>
-                  <th>عملیات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} cols={9} />)
-                ) : items.length === 0 ? (
-                  <tr><td colSpan={9}><EmptyState title="کدی یافت نشد" description="اولین کد تخفیف را اضافه کنید" /></td></tr>
-                ) : (
-                  items.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <div className="flex items-center gap-1.5">
-                          {item.isFeatured && <Star className="w-3.5 h-3.5 text-yellow-500 shrink-0" fill="currentColor" />}
-                          <span className="font-medium text-foreground text-sm">{item.title}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <code className="px-2 py-0.5 rounded bg-muted text-xs font-mono">{item.code}</code>
-                      </td>
-                      <td className="text-sm text-muted-foreground">{item.propFirm?.name}</td>
-                      <td><span className="font-semibold text-green-500">{item.discountPercent}%</span></td>
-                      <td><Badge variant="info">{CATEGORY_LABELS[item.category]}</Badge></td>
-                      <td><Badge variant={item.isActive ? "success" : "warning"}>{item.isActive ? "فعال" : "غیرفعال"}</Badge></td>
-                      <td className="text-sm text-muted-foreground">{item.usageCount}</td>
-                      <td className="text-xs text-muted-foreground">
-                        {item.expiresAt ? formatDate(item.expiresAt) : <span className="text-green-500">نامحدود</span>}
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-1">
-                          <Link href={`/dashboard/discounts/edit/${item.id}`}>
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0"><Edit2 className="w-3.5 h-3.5" /></Button>
-                          </Link>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
-                            loading={deleteMutation.isPending}
-                            onClick={() => { if (confirm("حذف شود؟")) deleteMutation.mutate(item.id); }}>
-                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={page} pages={pages} onChange={setPage} />
-        </CardContent>
-      </Card>
-    </div>
-  );
+  const [page, setPage] = useState(1); const [q, setQ] = useState(""); const [category, setCategory] = useState<DiscountCategory | "">(""); const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["discounts", page, q, category], queryFn: () => discountsApi.getAll({ page, limit: 10, q, category }) });
+  const deleteMutation = useMutation({ mutationFn: discountsApi.delete, onSuccess: () => { toast.success("کد حذف شد"); qc.invalidateQueries({ queryKey: ["discounts"] }); }, onError: (error) => toast.error(getApiError(error)) });
+  const toggleMutation = useMutation({ mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => discountsApi.update(id, { isActive }), onSuccess: () => { toast.success("وضعیت کد به‌روزرسانی شد"); qc.invalidateQueries({ queryKey: ["discounts"] }); }, onError: (error) => toast.error(getApiError(error)) });
+  return <div className="space-y-6"><div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold">مدیریت تخفیف‌ها</h1><p className="text-sm text-muted-foreground">CRUD کامل، فعال/غیرفعال، جستجو و دسته‌بندی</p></div><Link href="/dashboard/discounts/create"><Button><Plus className="h-4 w-4" />ایجاد</Button></Link></div><Card><CardHeader><div className="grid gap-3 md:grid-cols-[1fr_260px]"><div className="relative"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input className="input pr-10" placeholder="جستجو در backend..." value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} /></div><Select value={category} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => { setCategory(e.target.value as DiscountCategory | ""); setPage(1); }}><option value="">همه دسته‌ها</option>{categories.map((cat) => <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>)}</Select></div></CardHeader><CardContent className="overflow-x-auto p-0"><table className="data-table"><thead><tr><th>عنوان</th><th>کد</th><th>پراپ فرم</th><th>درصد</th><th>دسته</th><th>استفاده</th><th>انقضا</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{query.isLoading && Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} cols={9} />)}{(query.data?.items ?? []).map((item) => <tr key={item.id}><td className="font-medium">{item.title}</td><td><code className="rounded bg-muted px-2 py-1">{item.code}</code></td><td>{item.propFirm?.name ?? item.propFirmId}</td><td>{item.discountPercent}%</td><td>{CATEGORY_LABELS[item.category]}</td><td>{item.usageCount}</td><td>{formatDate(item.expiresAt)}</td><td><Badge variant={item.isActive ? "success" : "warning"}>{item.isActive ? "فعال" : "غیرفعال"}</Badge></td><td className="flex flex-wrap gap-2"><Link href={`/dashboard/discounts/edit/${item.id}`}><Button size="sm" variant="secondary">ویرایش</Button></Link><Button size="sm" variant="outline" loading={toggleMutation.isPending} onClick={() => toggleMutation.mutate({ id: item.id, isActive: !item.isActive })}>{item.isActive ? "غیرفعال" : "فعال"}</Button><Button size="sm" variant="danger" loading={deleteMutation.isPending} onClick={() => confirm("حذف شود؟") && deleteMutation.mutate(item.id)}>حذف</Button></td></tr>)}</tbody></table>{!query.isLoading && !query.data?.items.length && <EmptyState />}</CardContent><Pagination page={page} pages={query.data?.pages ?? 1} onChange={setPage} /></Card></div>;
 }
