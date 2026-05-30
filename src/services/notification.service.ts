@@ -1,60 +1,70 @@
-import { Telegraf } from "telegraf";
+// src/services/notification.service.ts
+// سیستم ارسال اعلان تلگرام
 
-import { config } from "../config";
-import { logger } from "../utils/logger";
+import { Telegraf } from 'telegraf';
+import { config } from '../config';
+import { logger } from '../utils/logger';
 
 const bot = new Telegraf(config.bot.token);
 
+type Recipient = number | bigint | string;
+
+function toChatId(recipient: Recipient) {
+  return typeof recipient === 'bigint' ? Number(recipient) : recipient;
+}
+
 export const notificationService = {
-  async sendLotteryWinnerMessage(
-    telegramId: bigint,
-    lotteryTitle: string,
-    prize: string
-  ) {
+  async sendLotteryWinnerMessage(telegramId: bigint, lotteryTitle: string, prize: string) {
     try {
       await bot.telegram.sendMessage(
         Number(telegramId),
+        `🏆 تبریک
 
-        `🎉 تبریک!
+شما برنده قرعه‌کشی «${lotteryTitle}» شدید.
 
-شما برنده قرعه‌کشی "${lotteryTitle}" شدید.
-
-🏆 جایزه:
+🎁 جایزه:
 ${prize}
 
-برای دریافت جایزه به آیدی زیر پیام دهید:
-
+برای دریافت جایزه به:
 ${config.notifications.winnerContact}
 
-موفق باشید 🌹`
+پیام دهید.`
       );
 
       return true;
     } catch (error) {
-      logger.error(
-        `Failed to send winner message to ${telegramId}`,
-        error
-      );
-
+      logger.error(`Failed to send winner message to ${telegramId}`, error);
       return false;
     }
   },
 
   async sendAdminMessage(message: string) {
     try {
-      await bot.telegram.sendMessage(
-        Number(config.bot.adminTelegramId),
-        message
-      );
-
+      await bot.telegram.sendMessage(Number(config.bot.adminTelegramId), message);
       return true;
     } catch (error) {
-      logger.error(
-        "Failed to send admin notification",
-        error
-      );
-
+      logger.error('Failed to send admin notification', error);
       return false;
     }
+  },
+
+  async sendBroadcast(message: string, recipients: Recipient[]) {
+    return this.sendToUsers(recipients, message);
+  },
+
+  async sendToUsers(recipients: Recipient[], message: string) {
+    const result = { sent: 0, failed: 0 };
+
+    for (const recipient of recipients) {
+      try {
+        await bot.telegram.sendMessage(toChatId(recipient), message);
+        result.sent += 1;
+      } catch (error) {
+        result.failed += 1;
+        logger.error(`Failed to send message to ${recipient}`, error);
+      }
+    }
+
+    return result;
   },
 };

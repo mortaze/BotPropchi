@@ -1,93 +1,137 @@
 // src/repositories/discount.repository.ts
-// کوئری‌های کدهای تخفیف
+// کوئری‌های کدهای تخفیف مطابق schema جدید
 
-import { DiscountCategory } from '@prisma/client';
+import { DiscountCategory, Prisma } from '@prisma/client';
 import { prisma } from '../prisma/client';
 
-const ACTIVE_FILTER = {
-  isActive: true,
-  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-};
+function activeFilter() {
+  return {
+    isActive: true,
+    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+  } satisfies Prisma.DiscountCodeWhereInput;
+}
 
 export const discountRepository = {
-  // لیست کدها با صفحه‌بندی
-  async findAll(page = 1, limit = 5) {
+  async getAll(page = 1, limit = 5, activeOnly = true) {
     const skip = (page - 1) * limit;
-    const [items, total] = await Promise.all([
-      prisma.discountCode.findMany({
-        where: ACTIVE_FILTER,
-        include: { propFirm: true },
-        orderBy: [{ isFeatured: 'desc' }, { usageCount: 'desc' }],
-        skip,
-        take: limit,
-      }),
-      prisma.discountCode.count({ where: ACTIVE_FILTER }),
-    ]);
-    return { items, total, pages: Math.ceil(total / limit) };
-  },
+    const where = activeOnly ? activeFilter() : {};
 
-  // فیلتر بر اساس دسته‌بندی
-  async findByCategory(category: DiscountCategory, page = 1, limit = 5) {
-    const skip = (page - 1) * limit;
-    const where = { ...ACTIVE_FILTER, category };
     const [items, total] = await Promise.all([
       prisma.discountCode.findMany({
         where,
         include: { propFirm: true },
-        orderBy: { usageCount: 'desc' },
+        orderBy: [{ isFeatured: 'desc' }, { usageCount: 'desc' }, { createdAt: 'desc' }],
         skip,
         take: limit,
       }),
       prisma.discountCode.count({ where }),
     ]);
+
     return { items, total, pages: Math.ceil(total / limit) };
   },
 
-  // جستجو بر اساس نام پراپ فرم
+  async getByCategory(category: DiscountCategory, page = 1, limit = 5) {
+    const skip = (page - 1) * limit;
+    const where = { ...activeFilter(), category };
+
+    const [items, total] = await Promise.all([
+      prisma.discountCode.findMany({
+        where,
+        include: { propFirm: true },
+        orderBy: [{ usageCount: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take: limit,
+      }),
+      prisma.discountCode.count({ where }),
+    ]);
+
+    return { items, total, pages: Math.ceil(total / limit) };
+  },
+
   async search(query: string, page = 1, limit = 5) {
     const skip = (page - 1) * limit;
     const where = {
-      ...ACTIVE_FILTER,
-      propFirm: { name: { contains: query, mode: 'insensitive' as const } },
+      ...activeFilter(),
+      OR: [
+        { title: { contains: query, mode: 'insensitive' as const } },
+        { code: { contains: query, mode: 'insensitive' as const } },
+        { propFirm: { name: { contains: query, mode: 'insensitive' as const } } },
+      ],
     };
+
     const [items, total] = await Promise.all([
       prisma.discountCode.findMany({
         where,
         include: { propFirm: true },
+        orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
       prisma.discountCode.count({ where }),
     ]);
+
     return { items, total, pages: Math.ceil(total / limit) };
   },
 
-  async findById(id: number) {
-    return prisma.discountCode.findUnique({
-      where: { id },
-      include: { propFirm: true },
-    });
+  async getDetails(id: number) {
+    return prisma.discountCode.findUnique({ where: { id }, include: { propFirm: true } });
   },
 
-  // ثبت کلیک و افزایش usageCount
-  async registerClick(discountCodeId: number, userId: number) {
+  async incrementUsage(discountCodeId: number, userId?: number) {
+    if (!userId) {
+      return prisma.discountCode.update({
+        where: { id: discountCodeId },
+        data: { usageCount: { increment: 1 } },
+      });
+    }
+
     return prisma.$transaction([
       prisma.discountCode.update({
         where: { id: discountCodeId },
         data: { usageCount: { increment: 1 } },
       }),
-      prisma.clickLog.create({
-        data: { discountCodeId, userId },
-      }),
+      prisma.clickLog.create({ data: { discountCodeId, userId } }),
     ]);
   },
 
-  // پراپ فرم‌ها
-  async getAllPropFirms() {
+  async getPropFirms(activeOnly = true) {
     return prisma.propFirm.findMany({
-      where: { isActive: true },
+      where: activeOnly ? { isActive: true } : {},
       include: { _count: { select: { discountCodes: true } } },
       orderBy: { name: 'asc' },
     });
+  },
+
+  async create(data: Prisma.DiscountCodeUncheckedCreateInput) {
+    return prisma.discountCode.create({ data, include: { propFirm: true } });
+  },
+
+  async update(id: number, data: Prisma.DiscountCodeUncheckedUpdateInput) {
+    return prisma.discountCode.update({ where: { id }, data, include: { propFirm: true } });
+  },
+
+  async delete(id: number) {
+    return prisma.discountCode.delete({ where: { id } });
+  },
+
+  // نام‌های قدیمی برای سازگاری با کد فعلی
+  findAll(page = 1, limit = 5) {
+    return this.getAll(page, limit);
+  },
+
+  findByCategory(category: DiscountCategory, page = 1, limit = 5) {
+    return this.getByCategory(category, page, limit);
+  },
+
+  findById(id: number) {
+    return this.getDetails(id);
+  },
+
+  registerClick(discountCodeId: number, userId: number) {
+    return this.incrementUsage(discountCodeId, userId);
+  },
+
+  getAllPropFirms() {
+    return this.getPropFirms();
   },
 };

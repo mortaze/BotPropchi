@@ -1,295 +1,146 @@
-
 // src/api/routes/lottery.routes.ts
+// API مدیریت قرعه‌کشی‌ها
 
-import { Router } from "express";
-import { prisma } from "../../config";
-import { lotteryService } from "../../services/lottery.service";
-import { authMiddleware } from "../middlewares/auth.middleware";
-import { logger } from "../../utils/logger";
+import { Router } from 'express';
+import { z } from 'zod';
+import { lotteryService } from '../../services/lottery.service';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
-/**
- * GET ALL LOTTERIES
- */
-router.get("/", authMiddleware, async (_req, res) => {
+const numberField = z.coerce.number().int();
+const dateField = z.coerce.date();
+
+const lotterySchema = z.object({
+  title: z.string().min(2),
+  description: z.string().optional().nullable(),
+  prize: z.string().min(1),
+  startAt: dateField,
+  endAt: dateField,
+  winnersCount: numberField.positive().default(1),
+  minPoints: numberField.min(0).default(0),
+  entryCost: numberField.min(0).default(10),
+  isActive: z.boolean().default(true),
+  announcementMsg: z.string().optional().nullable(),
+});
+
+function serializeBigInts(value: any): any {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map(serializeBigInts);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serializeBigInts(item)]));
+  }
+  return value;
+}
+
+router.get('/', async (req, res) => {
   try {
-    const lotteries = await prisma.lottery.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 20);
+    const result = await lotteryService.getAll(page, limit);
 
-      include: {
-        entries: {
-          include: {
-            user: true,
-          },
-        },
-
-        _count: {
-          select: {
-            entries: true,
-          },
-        },
-      },
-    });
-
-    const formatted = lotteries.map((lottery) => ({
-      id: lottery.id,
-      title: lottery.title,
-      description: lottery.description,
-      prize: lottery.prize,
-
-      startAt: lottery.startAt,
-      endAt: lottery.endAt,
-
-      winnersCount: lottery.winnersCount,
-      minPoints: lottery.minPoints,
-
-      isActive: lottery.isActive,
-      isCompleted: lottery.isCompleted,
-
-      createdAt: lottery.createdAt,
-
-      participantsCount: lottery._count.entries,
-
-      winners: lottery.entries
-        .filter((e) => e.isWinner)
-        .map((e) => ({
-          id: e.user.id,
-
-          telegramId:
-            e.user.telegramId?.toString() || null,
-
-          username: e.user.username,
-
-          firstName: e.user.firstName,
-
-          lastName: e.user.lastName,
-        })),
-    }));
-
-    return res.json({
-      success: true,
-      lotteries: formatted,
-    });
-  } catch (error: any) {
-    logger.error("❌ GET LOTTERIES ERROR", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "خطا در دریافت قرعه‌کشی‌ها",
-    });
+    return res.json({ success: true, ...serializeBigInts(result) });
+  } catch (error) {
+    logger.error('❌ GET LOTTERIES ERROR', error);
+    return res.status(500).json({ success: false, error: 'خطا در دریافت قرعه‌کشی‌ها' });
   }
 });
 
-/**
- * CREATE LOTTERY
- */
-router.post("/", authMiddleware, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      prize,
-      startAt,
-      endAt,
-      winnersCount,
-      minPoints,
-      announcementMsg,
-    } = req.body;
-
-    // validation
-    if (
-      !title ||
-      !prize ||
-      !startAt ||
-      !endAt
-    ) {
-      return res.status(400).json({
-        success: false,
-        error: "اطلاعات ناقص است",
-      });
+    const parsed = lotterySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: parsed.error.flatten() });
     }
 
-    const startDate = new Date(startAt);
-    const endDate = new Date(endAt);
-
-    // جلوگیری از باگ تاریخ
-    if (endDate <= startDate) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "تاریخ پایان باید بعد از تاریخ شروع باشد",
-      });
+    if (parsed.data.endAt <= parsed.data.startAt) {
+      return res.status(400).json({ success: false, error: 'تاریخ پایان باید بعد از تاریخ شروع باشد' });
     }
 
-    const lottery = await prisma.lottery.create({
-      data: {
-        title,
-        description,
-        prize,
+    const lottery = await lotteryService.createLottery(parsed.data);
+    logger.info(`✅ Lottery created ${lottery.id}`);
 
-        startAt: startDate,
-        endAt: endDate,
-
-        winnersCount:
-          Number(winnersCount) || 1,
-
-        minPoints:
-          Number(minPoints) || 0,
-
-        announcementMsg:
-          announcementMsg || "",
-
-        isActive: true,
-        isCompleted: false,
-      },
-    });
-
-    logger.info(
-      `✅ Lottery created ${lottery.id}`
-    );
-
-    return res.json({
-      success: true,
-      lottery,
-    });
+    return res.status(201).json({ success: true, lottery: serializeBigInts(lottery) });
   } catch (error: any) {
-    logger.error(
-      "❌ CREATE LOTTERY ERROR",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      error: "خطا در ساخت قرعه‌کشی",
-    });
+    logger.error('❌ CREATE LOTTERY ERROR', error);
+    return res.status(500).json({ success: false, error: error.message || 'خطا در ساخت قرعه‌کشی' });
   }
 });
 
-/**
- * DRAW LOTTERY
- */
-router.post(
-  "/:id/draw",
-  authMiddleware,
-  async (req, res) => {
-    try {
-      const lotteryId = Number(req.params.id);
+router.get('/:id', async (req, res) => {
+  try {
+    const lottery = await lotteryService.getById(Number(req.params.id));
 
-      logger.info(
-        `🎯 DRAW LOTTERY ${lotteryId}`
-      );
-
-      const lottery =
-        await prisma.lottery.findUnique({
-          where: {
-            id: lotteryId,
-          },
-        });
-
-      if (!lottery) {
-        return res.status(404).json({
-          success: false,
-          error: "قرعه‌کشی یافت نشد",
-        });
-      }
-
-      // جلوگیری از draw زودتر
-      if (new Date() < lottery.endAt) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "هنوز زمان قرعه‌کشی نرسیده",
-        });
-      }
-
-      const winners =
-        await lotteryService.draw(
-          lotteryId
-        );
-
-      const formattedWinners =
-        winners.map((w) => ({
-          id: w.user.id,
-
-          telegramId:
-            w.user.telegramId?.toString() ||
-            null,
-
-          username: w.user.username,
-
-          firstName: w.user.firstName,
-
-          lastName: w.user.lastName,
-        }));
-
-      return res.json({
-        success: true,
-
-        winners: formattedWinners,
-
-        message: `برندگان: ${formattedWinners
-          .map(
-            (w) =>
-              w.username ||
-              w.firstName ||
-              `User-${w.id}`
-          )
-          .join(" ، ")}`,
-      });
-    } catch (error: any) {
-      logger.error("❌ DRAW ERROR", error);
-
-      return res.status(500).json({
-        success: false,
-        error:
-          error.message ||
-          "خطا در قرعه‌کشی",
-      });
+    if (!lottery) {
+      return res.status(404).json({ success: false, error: 'قرعه‌کشی یافت نشد' });
     }
+
+    return res.json({ success: true, lottery: serializeBigInts(lottery) });
+  } catch (error) {
+    logger.error('❌ GET LOTTERY DETAILS ERROR', error);
+    return res.status(500).json({ success: false, error: 'خطا در دریافت جزئیات قرعه‌کشی' });
   }
-);
+});
 
-/**
- * DELETE LOTTERY
- */
-router.delete(
-  "/:id",
-  authMiddleware,
-  async (req, res) => {
-    try {
-      const lotteryId = Number(req.params.id);
-
-      await prisma.lotteryEntry.deleteMany({
-        where: {
-          lotteryId,
-        },
-      });
-
-      await prisma.lottery.delete({
-        where: {
-          id: lotteryId,
-        },
-      });
-
-      return res.json({
-        success: true,
-      });
-    } catch (error: any) {
-      logger.error(
-        "❌ DELETE LOTTERY ERROR",
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error: "خطا در حذف قرعه‌کشی",
-      });
+router.put('/:id', async (req, res) => {
+  try {
+    const parsed = lotterySchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: parsed.error.flatten() });
     }
+
+    const current = await lotteryService.getById(Number(req.params.id));
+    if (!current) {
+      return res.status(404).json({ success: false, error: 'قرعه‌کشی یافت نشد' });
+    }
+
+    const startAt = parsed.data.startAt ?? current.startAt;
+    const endAt = parsed.data.endAt ?? current.endAt;
+    if (endAt <= startAt) {
+      return res.status(400).json({ success: false, error: 'تاریخ پایان باید بعد از تاریخ شروع باشد' });
+    }
+
+    const lottery = await lotteryService.updateLottery(Number(req.params.id), parsed.data);
+    return res.json({ success: true, lottery: serializeBigInts(lottery) });
+  } catch (error: any) {
+    logger.error('❌ UPDATE LOTTERY ERROR', error);
+    return res.status(500).json({ success: false, error: error.message || 'خطا در ویرایش قرعه‌کشی' });
   }
-);
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    await lotteryService.deleteLottery(Number(req.params.id));
+    return res.json({ success: true, message: 'قرعه‌کشی حذف شد' });
+  } catch (error: any) {
+    logger.error('❌ DELETE LOTTERY ERROR', error);
+    return res.status(500).json({ success: false, error: error.message || 'خطا در حذف قرعه‌کشی' });
+  }
+});
+
+router.post('/:id/draw', async (req, res) => {
+  try {
+    const winners = await lotteryService.draw(Number(req.params.id), true);
+
+    return res.json({
+      success: true,
+      winners: serializeBigInts(winners),
+      message: winners.length ? 'قرعه‌کشی با موفقیت انجام شد' : 'قرعه‌کشی انجام شد اما شرکت‌کننده‌ای وجود نداشت',
+    });
+  } catch (error: any) {
+    logger.error('❌ DRAW ERROR', error);
+    return res.status(400).json({ success: false, error: error.message || 'خطا در قرعه‌کشی' });
+  }
+});
+
+router.get('/:id/winners', async (req, res) => {
+  try {
+    const winners = await lotteryService.getWinners(Number(req.params.id));
+    return res.json({ success: true, winners: serializeBigInts(winners) });
+  } catch (error) {
+    logger.error('❌ GET WINNERS ERROR', error);
+    return res.status(500).json({ success: false, error: 'خطا در دریافت برندگان' });
+  }
+});
 
 export default router;
-

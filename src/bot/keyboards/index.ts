@@ -156,21 +156,24 @@ export function joinChannelsKeyboard(
 }
 
 // ─── قرعه‌کشی ─────────────────────────────────────────────
-export function lotteryKeyboard(
-  lotteryId: number,
-  hasEntered: boolean
-) {
+export function lotteryKeyboard(lotteryId: number, hasEntered: boolean) {
+  const buttons = [
+    [
+      Markup.button.callback('🏆 برندگان', `lottery:winners:${lotteryId}`),
+      Markup.button.callback('📜 تاریخچه', 'lottery:history'),
+    ],
+  ];
+
   if (hasEntered) {
-    return Markup.inlineKeyboard([
-      [
-        Markup.button.callback(
-          '✅ شما ثبت‌نام کرده‌اید',
-          'noop'
-        ),
-      ],
-    ]);
+    buttons.unshift([Markup.button.callback('✅ شما ثبت‌نام کرده‌اید', 'noop')]);
+  } else {
+    buttons.unshift([Markup.button.callback('🎰 شرکت در قرعه‌کشی', `lottery:enter:${lotteryId}`)]);
   }
 
-  return Markup.inlineKeyboard([ [ Markup.button.callback( '🎰 شرکت در قرعه‌کشی', `lottery:enter:${lotteryId}` ), ], ]); }
+  return Markup.inlineKeyboard(buttons);
+}
 
+export function lotteryHistoryKeyboard() {
+  return Markup.inlineKeyboard([[Markup.button.callback('📜 تاریخچه قرعه‌کشی‌ها', 'lottery:history')]]);
+}
 
