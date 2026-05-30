@@ -1,35 +1,30 @@
 // src/api/routes/user.routes.ts
 // API مدیریت کاربران
 
+import { PointLogType } from '@prisma/client';
 import { Router } from 'express';
+import { z } from 'zod';
 import { prisma } from '../../prisma/client';
 import { userRepository } from '../../repositories/user.repository';
-import { PointLogType } from '@prisma/client';
-import { z } from 'zod';
 
 export const userRouter = Router();
 
-// لیست کاربران
+function serializeBigInts(value: any): any {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map(serializeBigInts);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serializeBigInts(item)]));
+  }
+  return value;
+}
+
+// لیست کاربران: GET /api/users
 userRouter.get('/', async (req, res) => {
-  const page = parseInt(req.query.page as string || '1');
-  const limit = 20;
-  const skip = (page - 1) * limit;
+  const page = Number(req.query.page || 1);
+  const limit = Number(req.query.limit || 20);
+  const result = await userRepository.list(page, limit);
 
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-      select: {
-        id: true, telegramId: true, firstName: true,
-        username: true, points: true, totalReferrals: true,
-        isBlocked: true, createdAt: true,
-      },
-    }),
-    prisma.user.count(),
-  ]);
-
-  res.json({ users: users.map(u => ({...u, telegramId: u.telegramId.toString()})), total });
+  res.json(serializeBigInts(result));
 });
 
 // آمار کلی
@@ -39,25 +34,64 @@ userRouter.get('/stats', async (_req, res) => {
     prisma.user.count({ where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } }),
     prisma.user.aggregate({ _sum: { points: true } }),
   ]);
+
   res.json({ total, today, totalPoints: totalPoints._sum.points || 0 });
 });
 
-// بلاک/آنبلاک کاربر
-userRouter.patch('/:id/block', async (req, res) => {
-  const id = parseInt(req.params.id);
-  const { isBlocked } = req.body;
-  const user = await prisma.user.update({ where: { id }, data: { isBlocked } });
-  res.json({ id: user.id, isBlocked: user.isBlocked });
+// پروفایل: GET /api/users/:id
+userRouter.get('/:id', async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: Number(req.params.id) },
+    include: {
+      pointLogs: { orderBy: { createdAt: 'desc' }, take: 50 },
+      lotteryEntries: { include: { lottery: true }, orderBy: { createdAt: 'desc' } },
+      lotteryWins: { include: { lottery: true }, orderBy: { wonAt: 'desc' } },
+      clickLogs: { include: { discountCode: true }, orderBy: { createdAt: 'desc' }, take: 50 },
+    },
+  });
+
+  if (!user) return res.status(404).json({ success: false, error: 'کاربر یافت نشد' });
+  res.json(serializeBigInts(user));
 });
 
-// اعطای امتیاز به صورت دستی
+// بلاک: POST /api/users/:id/block
+userRouter.post('/:id/block', async (req, res) => {
+  const user = await userRepository.block(Number(req.params.id));
+  res.json(serializeBigInts({ id: user.id, isBlocked: user.isBlocked }));
+});
+
+// آنبلاک: POST /api/users/:id/unblock
+userRouter.post('/:id/unblock', async (req, res) => {
+  const user = await userRepository.unblock(Number(req.params.id));
+  res.json(serializeBigInts({ id: user.id, isBlocked: user.isBlocked }));
+});
+
+// مسیر قدیمی برای سازگاری
+userRouter.patch('/:id/block', async (req, res) => {
+  const id = Number(req.params.id);
+  const { isBlocked } = z.object({ isBlocked: z.boolean() }).parse(req.body);
+  const user = isBlocked ? await userRepository.block(id) : await userRepository.unblock(id);
+  res.json(serializeBigInts({ id: user.id, isBlocked: user.isBlocked }));
+});
+
+// امتیاز دستی: POST /api/users/:id/grant
+userRouter.post('/:id/grant', async (req, res) => {
+  const id = Number(req.params.id);
+  const { amount, description } = z
+    .object({ amount: z.number().int(), description: z.string().optional() })
+    .parse(req.body);
+
+  await userRepository.addPoints(id, amount, PointLogType.ADMIN_GRANT, description || 'اعطای امتیاز دستی توسط ادمین');
+  res.json({ success: true, message: `${amount} امتیاز برای کاربر ${id} ثبت شد` });
+});
+
+// مسیر قدیمی برای سازگاری
 userRouter.post('/:id/points', async (req, res) => {
-  const id = parseInt(req.params.id);
-  const { amount, description } = z.object({
-    amount: z.number().int(),
-    description: z.string().optional(),
-  }).parse(req.body);
+  const id = Number(req.params.id);
+  const { amount, description } = z
+    .object({ amount: z.number().int(), description: z.string().optional() })
+    .parse(req.body);
 
   await userRepository.addPoints(id, amount, PointLogType.ADMIN_GRANT, description);
-  res.json({ message: `${amount} امتیاز به کاربر ${id} داده شد` });
+  res.json({ success: true, message: `${amount} امتیاز به کاربر ${id} داده شد` });
 });

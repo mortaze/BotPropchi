@@ -1,12 +1,10 @@
-// prisma/schema.prisma
-
 generator client {
-provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-provider = "postgresql"
-url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 ////////////////////////////////////////////////////////////
@@ -14,39 +12,27 @@ url      = env("DATABASE_URL")
 ////////////////////////////////////////////////////////////
 
 model User {
-id             Int      @id @default(autoincrement())
-telegramId     BigInt   @unique
-username       String?
-firstName      String
-lastName       String?
+  id             Int      @id @default(autoincrement())
+  telegramId     BigInt   @unique
+  username       String?
+  firstName      String
+  lastName       String?
+  points         Int      @default(0)
+  totalReferrals Int      @default(0)
+  isBlocked      Boolean  @default(false)
+  lastActiveAt   DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  referredById   Int?
 
-points         Int      @default(0)
+  referredBy     User?    @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals      User[]   @relation("UserReferrals")
+  pointLogs      PointLog[]
+  lotteryEntries LotteryEntry[]
+  lotteryWins    LotteryWinner[]
+  clickLogs      ClickLog[]
 
-totalReferrals Int      @default(0)
-
-isBlocked      Boolean  @default(false)
-
-lastActiveAt   DateTime @default(now())
-
-createdAt      DateTime @default(now())
-updatedAt      DateTime @updatedAt
-
-referredById   Int?
-
-referredBy User? @relation(
-"UserReferrals",
-fields: [referredById],
-references: [id]
-)
-
-referrals User[] @relation("UserReferrals")
-
-pointLogs      PointLog[]
-lotteryEntries LotteryEntry[]
-lotteryWins    LotteryWinner[]
-clickLogs      ClickLog[]
-
-@@map("users")
+  @@map("users")
 }
 
 ////////////////////////////////////////////////////////////
@@ -54,22 +40,18 @@ clickLogs      ClickLog[]
 ////////////////////////////////////////////////////////////
 
 model PropFirm {
-id          Int      @id @default(autoincrement())
-name        String   @unique
-slug        String   @unique
+  id            Int      @id @default(autoincrement())
+  name          String   @unique
+  slug          String   @unique
+  description   String?
+  logoUrl       String?
+  websiteUrl    String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  discountCodes DiscountCode[]
 
-description String?
-logoUrl     String?
-websiteUrl  String?
-
-isActive    Boolean  @default(true)
-
-createdAt   DateTime @default(now())
-updatedAt   DateTime @updatedAt
-
-discountCodes DiscountCode[]
-
-@@map("prop_firms")
+  @@map("prop_firms")
 }
 
 ////////////////////////////////////////////////////////////
@@ -77,50 +59,34 @@ discountCodes DiscountCode[]
 ////////////////////////////////////////////////////////////
 
 model DiscountCode {
-id              Int      @id @default(autoincrement())
+  id              Int              @id @default(autoincrement())
+  title           String
+  code            String           @unique
+  discountPercent Float
+  affiliateLink   String?
+  expiresAt       DateTime?
+  isFeatured      Boolean          @default(false)
+  isActive        Boolean          @default(true)
+  category        DiscountCategory @default(OTHER)
+  usageCount      Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  propFirmId      Int
 
-title           String
+  propFirm PropFirm @relation(fields: [propFirmId], references: [id], onDelete: Cascade)
+  clickLogs ClickLog[]
 
-code            String   @unique
-
-discountPercent Float
-
-affiliateLink   String?
-
-expiresAt       DateTime?
-
-isFeatured      Boolean  @default(false)
-
-isActive        Boolean  @default(true)
-
-category        DiscountCategory @default(OTHER)
-
-usageCount      Int      @default(0)
-
-createdAt       DateTime @default(now())
-updatedAt       DateTime @updatedAt
-
-propFirmId      Int
-
-propFirm PropFirm @relation(
-fields: [propFirmId],
-references: [id],
-onDelete: Cascade
-)
-
-clickLogs ClickLog[]
-
-@@map("discount_codes")
+  @@map("discount_codes")
 }
 
 enum DiscountCategory {
-HIGHEST_DISCOUNT
-NO_TIME_LIMIT
-FIRST_PURCHASE
-TWO_PHASE_ONLY
-NEWEST
-MOST_POPULAR
-OTHER
+  HIGHEST_DISCOUNT
+  NO_TIME_LIMIT
+  FIRST_PURCHASE
+  TWO_PHASE_ONLY
+  NEWEST
+  MOST_POPULAR
+  OTHER
 }
 
 ////////////////////////////////////////////////////////////
@@ -128,35 +94,26 @@ OTHER
 ////////////////////////////////////////////////////////////
 
 model PointLog {
-id          Int      @id @default(autoincrement())
+  id          Int          @id @default(autoincrement())
+  userId      Int
+  amount      Int
+  type        PointLogType
+  description String?
+  createdAt   DateTime     @default(now())
 
-userId      Int
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-amount      Int
-
-type        PointLogType
-
-description String?
-
-createdAt   DateTime @default(now())
-
-user User @relation(
-fields: [userId],
-references: [id],
-onDelete: Cascade
-)
-
-@@map("point_logs")
+  @@map("point_logs")
 }
 
 enum PointLogType {
-REFERRAL
-DAILY_ACTIVITY
-LINK_CLICK
-AFFILIATE_PURCHASE
-LOTTERY_ENTRY
-ADMIN_GRANT
-PENALTY
+  REFERRAL
+  DAILY_ACTIVITY
+  LINK_CLICK
+  AFFILIATE_PURCHASE
+  LOTTERY_ENTRY
+  ADMIN_GRANT
+  PENALTY
 }
 
 ////////////////////////////////////////////////////////////
@@ -164,113 +121,62 @@ PENALTY
 ////////////////////////////////////////////////////////////
 
 model Lottery {
-id              Int      @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
+  title           String
+  description     String?
+  prize           String
+  startAt         DateTime
+  endAt           DateTime
+  winnersCount    Int      @default(1)
+  minPoints       Int      @default(0)
+  entryCost       Int      @default(10)
+  isActive        Boolean  @default(true)
+  isCompleted     Boolean  @default(false)
+  announcementMsg String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-title           String
+  entries LotteryEntry[]
+  winners LotteryWinner[]
 
-description     String?
-
-prize           String
-
-startAt         DateTime
-
-endAt           DateTime
-
-winnersCount    Int      @default(1)
-
-minPoints       Int      @default(0)
-
-entryCost       Int      @default(10)
-
-isActive        Boolean  @default(true)
-
-isCompleted     Boolean  @default(false)
-
-announcementMsg String?
-
-createdAt       DateTime @default(now())
-
-updatedAt       DateTime @updatedAt
-
-entries LotteryEntry[]
-
-winners LotteryWinner[]
-
-@@map("lotteries")
+  @@map("lotteries")
 }
 
 model LotteryEntry {
-id          Int      @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  lotteryId Int
+  createdAt DateTime @default(now())
 
-userId      Int
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lottery Lottery @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
 
-lotteryId   Int
-
-createdAt   DateTime @default(now())
-
-user User @relation(
-fields: [userId],
-references: [id],
-onDelete: Cascade
-)
-
-lottery Lottery @relation(
-fields: [lotteryId],
-references: [id],
-onDelete: Cascade
-)
-
-@@unique([userId, lotteryId])
-
-@@index([lotteryId])
-
-@@index([userId])
-
-@@map("lottery_entries")
+  @@unique([userId, lotteryId])
+  @@index([lotteryId])
+  @@index([userId])
+  @@map("lottery_entries")
 }
 
 model LotteryWinner {
-id Int @id @default(autoincrement())
+  id               Int      @id @default(autoincrement())
+  lotteryId        Int
+  userId           Int
+  prize            String
+  winnerTelegramId BigInt
+  winnerUsername   String?
+  winnerFirstName  String
+  winnerLastName   String?
+  notified         Boolean  @default(false)
+  prizeDelivered   Boolean  @default(false)
+  wonAt            DateTime @default(now())
 
-lotteryId Int
+  lottery Lottery @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-userId Int
-
-prize String
-
-winnerTelegramId BigInt
-
-winnerUsername String?
-
-winnerFirstName String
-
-winnerLastName String?
-
-notified Boolean @default(false)
-
-prizeDelivered Boolean @default(false)
-
-wonAt DateTime @default(now())
-
-lottery Lottery @relation(
-fields: [lotteryId],
-references: [id],
-onDelete: Cascade
-)
-
-user User @relation(
-fields: [userId],
-references: [id],
-onDelete: Cascade
-)
-
-@@unique([lotteryId, userId])
-
-@@index([lotteryId])
-
-@@index([userId])
-
-@@map("lottery_winners")
+  @@unique([lotteryId, userId])
+  @@index([lotteryId])
+  @@index([userId])
+  @@map("lottery_winners")
 }
 
 ////////////////////////////////////////////////////////////
@@ -278,19 +184,14 @@ onDelete: Cascade
 ////////////////////////////////////////////////////////////
 
 model RequiredChannel {
-id Int @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
+  channelId  String   @unique
+  title      String
+  inviteLink String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
 
-channelId String @unique
-
-title String
-
-inviteLink String?
-
-isActive Boolean @default(true)
-
-createdAt DateTime @default(now())
-
-@@map("required_channels")
+  @@map("required_channels")
 }
 
 ////////////////////////////////////////////////////////////
@@ -298,27 +199,15 @@ createdAt DateTime @default(now())
 ////////////////////////////////////////////////////////////
 
 model ClickLog {
-id Int @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  discountCodeId Int
+  createdAt      DateTime @default(now())
 
-userId Int
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  discountCode DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
 
-discountCodeId Int
-
-createdAt DateTime @default(now())
-
-user User @relation(
-fields: [userId],
-references: [id],
-onDelete: Cascade
-)
-
-discountCode DiscountCode @relation(
-fields: [discountCodeId],
-references: [id],
-onDelete: Cascade
-)
-
-@@map("click_logs")
+  @@map("click_logs")
 }
 
 ////////////////////////////////////////////////////////////
@@ -326,25 +215,19 @@ onDelete: Cascade
 ////////////////////////////////////////////////////////////
 
 model Admin {
-id Int @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  role         AdminRole @default(MODERATOR)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
 
-username String @unique
-
-passwordHash String
-
-role AdminRole @default(MODERATOR)
-
-isActive Boolean @default(true)
-
-lastLoginAt DateTime?
-
-createdAt DateTime @default(now())
-
-@@map("admins")
+  @@map("admins")
 }
 
 enum AdminRole {
-SUPER_ADMIN
-ADMIN
-MODERATOR
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
 }
