@@ -18,6 +18,9 @@ export const config = {
     token: required('BOT_TOKEN'),
     adminTelegramId: BigInt(required('ADMIN_TELEGRAM_ID')),
   },
+  notifications: {
+  winnerContact: process.env.WINNER_CONTACT || "@MrKhodae",
+},
 
   api: {
     port: parseInt(process.env.PORT || '3000'),
