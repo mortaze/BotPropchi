@@ -183,6 +183,48 @@ export const referralsApi = {
   },
 };
 
+export type TelegramGroupStatus = "PENDING" | "APPROVED" | "REJECTED" | "DISABLED";
+export type KeywordReplyResponseType = "TEXT" | "PHOTO" | "DOCUMENT";
+export interface KeywordReplyPayload { keyword: string; response?: string | null; responseType: KeywordReplyResponseType; parseMode?: import("@/types").BroadcastParseMode | null; mediaFileId?: string | null; isActive?: boolean; }
+
+export const groupsApi = {
+  async getAll(): Promise<{ success: boolean; items: import("@/types").TelegramGroup[] }> {
+    const { data } = await api.get("/api/groups");
+    return data;
+  },
+  async setStatus(id: number, status: TelegramGroupStatus): Promise<{ success: boolean; group: import("@/types").TelegramGroup }> {
+    const { data } = await api.patch(`/api/groups/${id}/status`, { status });
+    return data;
+  },
+  async refreshAdmin(id: number): Promise<{ success: boolean; group: import("@/types").TelegramGroup }> {
+    const { data } = await api.post(`/api/groups/${id}/refresh-admin`);
+    return data;
+  },
+};
+
+export const keywordRepliesApi = {
+  async getAll(): Promise<{ success: boolean; items: import("@/types").KeywordReply[] }> {
+    const { data } = await api.get("/api/keyword-replies");
+    return data;
+  },
+  async create(payload: KeywordReplyPayload): Promise<{ success: boolean; item: import("@/types").KeywordReply }> {
+    const { data } = await api.post("/api/keyword-replies", payload);
+    return data;
+  },
+  async update(id: number, payload: Partial<KeywordReplyPayload>): Promise<{ success: boolean; item: import("@/types").KeywordReply }> {
+    const { data } = await api.patch(`/api/keyword-replies/${id}`, payload);
+    return data;
+  },
+  async delete(id: number): Promise<{ success: boolean }> {
+    const { data } = await api.delete(`/api/keyword-replies/${id}`);
+    return data;
+  },
+  async history(): Promise<{ success: boolean; items: import("@/types").KeywordReplyLog[] }> {
+    const { data } = await api.get("/api/keyword-replies/history");
+    return data;
+  },
+};
+
 export default api;
 
 export interface RequiredChannelPayload {

@@ -21,6 +21,7 @@ model User {
   totalReferrals Int      @default(0)
   isBlocked      Boolean  @default(false)
   lastActiveAt   DateTime @default(now())
+  membershipVerifiedAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   referredById   Int?
@@ -346,6 +347,85 @@ model ClickLog {
   discountCode DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
 
   @@map("click_logs")
+}
+
+////////////////////////////////////////////////////////////
+// GROUP MANAGEMENT
+////////////////////////////////////////////////////////////
+
+model TelegramGroup {
+  id             Int                 @id @default(autoincrement())
+  chatId         BigInt              @unique
+  title          String
+  username       String?
+  status         TelegramGroupStatus @default(PENDING)
+  botIsAdmin     Boolean             @default(false)
+  botAdminCheckedAt DateTime?
+  addedAt        DateTime            @default(now())
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  disabledAt     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  keywordLogs    KeywordReplyLog[]
+
+  @@index([status])
+  @@index([botIsAdmin])
+  @@map("telegram_groups")
+}
+
+enum TelegramGroupStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISABLED
+}
+
+////////////////////////////////////////////////////////////
+// KEYWORD REPLIES
+////////////////////////////////////////////////////////////
+
+model KeywordReply {
+  id          Int                       @id @default(autoincrement())
+  keyword     String
+  response    String?
+  responseType KeywordReplyResponseType @default(TEXT)
+  parseMode   BroadcastParseMode?
+  mediaFileId String?
+  isActive    Boolean                   @default(true)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  logs        KeywordReplyLog[]
+
+  @@index([isActive])
+  @@index([keyword])
+  @@map("keyword_replies")
+}
+
+enum KeywordReplyResponseType {
+  TEXT
+  PHOTO
+  DOCUMENT
+}
+
+model KeywordReplyLog {
+  id              Int      @id @default(autoincrement())
+  keywordReplyId  Int
+  telegramGroupId Int
+  userTelegramId  BigInt
+  messageId       Int
+  matchedText     String
+  createdAt       DateTime @default(now())
+
+  keywordReply  KeywordReply  @relation(fields: [keywordReplyId], references: [id], onDelete: Cascade)
+  telegramGroup TelegramGroup @relation(fields: [telegramGroupId], references: [id], onDelete: Cascade)
+
+  @@index([keywordReplyId])
+  @@index([telegramGroupId])
+  @@index([createdAt])
+  @@map("keyword_reply_logs")
 }
 
 ////////////////////////////////////////////////////////////

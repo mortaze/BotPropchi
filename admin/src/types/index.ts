@@ -260,3 +260,16 @@ export interface Broadcast {
   updatedAt: string;
   logs?: BroadcastLog[];
 }
+
+
+export type TelegramGroupStatus = "PENDING" | "APPROVED" | "REJECTED" | "DISABLED";
+export interface TelegramGroup {
+  id: number; chatId: string; title: string; username?: string | null; status: TelegramGroupStatus; botIsAdmin: boolean; botAdminCheckedAt?: string | null; addedAt: string; approvedAt?: string | null; rejectedAt?: string | null; disabledAt?: string | null; createdAt: string; updatedAt: string;
+}
+export type KeywordReplyResponseType = "TEXT" | "PHOTO" | "DOCUMENT";
+export interface KeywordReply {
+  id: number; keyword: string; response?: string | null; responseType: KeywordReplyResponseType; parseMode?: BroadcastParseMode | null; mediaFileId?: string | null; isActive: boolean; createdAt: string; updatedAt: string;
+}
+export interface KeywordReplyLog {
+  id: number; keywordReplyId: number; telegramGroupId: number; userTelegramId: string; messageId: number; matchedText: string; createdAt: string; keywordReply?: KeywordReply; telegramGroup?: TelegramGroup;
+}
