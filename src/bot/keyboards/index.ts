@@ -9,14 +9,24 @@ type DiscountWithFirm = DiscountCode & {
 };
 
 // ─── منوی اصلی ────────────────────────────────────────────
-export const mainMenuKeyboard = Markup.keyboard([
-  ['🎯 کدهای تخفیف', '🏢 پراپ فرم‌ها'],
-  ['🎰 قرعه‌کشی', '⭐️ امتیاز من'],
-  ['🏆 لیدربورد', '👥 دعوت دوستان'],
-  ['🔍 جستجو'],
-])
-  .resize()
-  .persistent();
+export function buildMainMenuKeyboard(isAdmin = false) {
+  const rows = [
+    ['🎯 کدهای تخفیف', '🏢 پراپ فرم‌ها'],
+    ['🎰 قرعه‌کشی', '⭐️ امتیاز من'],
+    ['🏆 لیدربورد', '👥 دعوت دوستان'],
+    ['🔍 جستجو'],
+  ];
+  if (isAdmin) rows.push(['⚙️ پنل ادمین']);
+  return Markup.keyboard(rows).resize().persistent();
+}
+
+export const mainMenuKeyboard = buildMainMenuKeyboard(false);
+
+export const botAdminPanelKeyboard = Markup.keyboard([
+  ['📢 فوروارد همگانی', '👥 مدیریت ادمین‌ها'],
+  ['📊 گزارشات', '📣 ارسال اعلان'],
+  ['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی'],
+]).resize().persistent();
 
 // ─── دسته‌بندی کدهای تخفیف ────────────────────────────────
 export const categoryKeyboard = Markup.inlineKeyboard([

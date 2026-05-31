@@ -8,6 +8,9 @@ import { joinChannelsKeyboard } from '../keyboards';
 import { logger } from '../../utils/logger';
 import { cache } from '../../utils/cache';
 import { groupService } from '../../services/group.service';
+import { botAdminService } from '../../services/bot-admin.service';
+import { systemLogService } from '../../services/system-log.service';
+import { SystemEventType } from '@prisma/client';
 
 // ─── ثبت / به‌روزرسانی کاربر ──────────────────────────────
 export function userMiddleware() {
@@ -43,6 +46,9 @@ export function membershipMiddleware(bot: Telegraf) {
     if (!ctx.from) return next();
     if (ctx.chat && ctx.chat.type !== 'private') return next();
 
+    const activeAdmin = await botAdminService.getActive(ctx.from.id).catch(() => null);
+    if (activeAdmin) return next();
+
     const callbackData = (ctx.callbackQuery as any)?.data as string | undefined;
     if (callbackData === 'check:membership') {
       return next();
@@ -68,6 +74,7 @@ export function membershipMiddleware(bot: Telegraf) {
       return next();
     }
 
+    await systemLogService.log({ eventType: SystemEventType.FORCE_JOIN, telegramId: ctx.from.id, message: 'Force join blocked user', metadata: { notJoined } as any });
     await ctx.reply(
       'ابتدا در کانال‌ها و گروه‌های زیر عضو شوید.',
       joinChannelsKeyboard(notJoined)

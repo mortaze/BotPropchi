@@ -35,6 +35,7 @@ model User {
   lotteryEntries LotteryEntry[]
   lotteryWins    LotteryWinner[]
   clickLogs      ClickLog[]
+  systemLogs     SystemLog[]
 
   @@index([referredById])
   @@map("users")
@@ -231,11 +232,16 @@ model RequiredChannel {
   username   String?
   type       RequiredChannelType     @default(CHANNEL)
   inviteLink String?
+  status     RequiredChannelStatus   @default(APPROVED)
   isActive   Boolean                 @default(true)
+  approvedAt DateTime?
+  rejectedAt DateTime?
+  disabledAt DateTime?
   createdAt  DateTime                @default(now())
   updatedAt  DateTime                @updatedAt
 
   @@index([isActive])
+  @@index([status])
   @@index([type])
   @@map("required_channels")
 }
@@ -243,6 +249,13 @@ model RequiredChannel {
 enum RequiredChannelType {
   CHANNEL
   GROUP
+}
+
+enum RequiredChannelStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISABLED
 }
 
 
@@ -308,6 +321,7 @@ enum BroadcastType {
   STICKER
   ANIMATION
   MEDIA_GROUP
+  COPY_MESSAGE
 }
 
 enum BroadcastParseMode {
@@ -426,6 +440,80 @@ model KeywordReplyLog {
   @@index([telegramGroupId])
   @@index([createdAt])
   @@map("keyword_reply_logs")
+}
+
+
+////////////////////////////////////////////////////////////
+// BOT ADMINS
+////////////////////////////////////////////////////////////
+
+model BotAdmin {
+  id         Int            @id @default(autoincrement())
+  telegramId BigInt         @unique
+  username   String?
+  firstName  String?
+  lastName   String?
+  role       BotAdminRole   @default(ADMIN)
+  status     BotAdminStatus @default(ACTIVE)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([status])
+  @@index([role])
+  @@map("bot_admins")
+}
+
+enum BotAdminRole {
+  OWNER
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum BotAdminStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+////////////////////////////////////////////////////////////
+// SYSTEM LOGS
+////////////////////////////////////////////////////////////
+
+model SystemLog {
+  id             Int            @id @default(autoincrement())
+  eventType      SystemEventType
+  level          SystemLogLevel  @default(INFO)
+  message        String
+  userId         Int?
+  telegramId     BigInt?
+  metadata       Json?
+  createdAt      DateTime       @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventType])
+  @@index([level])
+  @@index([userId])
+  @@index([telegramId])
+  @@index([createdAt])
+  @@map("system_logs")
+}
+
+enum SystemEventType {
+  USER_LOGIN
+  FORCE_JOIN
+  REFERRAL
+  BROADCAST
+  LOTTERY
+  DISCOUNT_CLICK
+  ERROR
+  ADMIN_ACTION
+  GROUP_INTEGRATION
+}
+
+enum SystemLogLevel {
+  INFO
+  WARN
+  ERROR
 }
 
 ////////////////////////////////////////////////////////////

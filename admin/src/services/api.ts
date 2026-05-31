@@ -234,6 +234,7 @@ export interface RequiredChannelPayload {
   type: "CHANNEL" | "GROUP";
   inviteLink?: string | null;
   isActive?: boolean;
+  status?: import("@/types").RequiredChannelStatus;
 }
 
 export const requiredChannelsApi = {
@@ -285,6 +286,48 @@ export const broadcastsApi = {
   },
   async sendTest(id: number, telegramId?: string): Promise<{ success: boolean }> {
     const { data } = await api.post(`/api/broadcasts/${id}/test`, { telegramId });
+    return data;
+  },
+};
+
+export const analyticsApi = {
+  async dashboard(): Promise<{ success: boolean; data: import("@/types").AnalyticsDashboard }> {
+    const { data } = await api.get("/api/analytics/dashboard");
+    return data;
+  },
+};
+
+export interface BotAdminPayload {
+  telegramId: string;
+  username?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  role: import("@/types").BotAdminRole;
+  status?: import("@/types").BotAdminStatus;
+}
+
+export const botAdminsApi = {
+  async getAll(): Promise<{ success: boolean; items: import("@/types").BotAdmin[] }> {
+    const { data } = await api.get("/api/bot-admins");
+    return data;
+  },
+  async create(payload: BotAdminPayload): Promise<{ success: boolean; item: import("@/types").BotAdmin }> {
+    const { data } = await api.post("/api/bot-admins", payload);
+    return data;
+  },
+  async update(id: number, payload: Partial<BotAdminPayload>): Promise<{ success: boolean; item: import("@/types").BotAdmin }> {
+    const { data } = await api.patch(`/api/bot-admins/${id}`, payload);
+    return data;
+  },
+  async delete(id: number): Promise<{ success: boolean }> {
+    const { data } = await api.delete(`/api/bot-admins/${id}`);
+    return data;
+  },
+};
+
+export const systemLogsApi = {
+  async getAll(params: { page?: number; limit?: number; eventType?: import("@/types").SystemEventType; telegramId?: string; userId?: number; from?: string; to?: string } = {}): Promise<{ success: boolean; items: import("@/types").SystemLog[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/system-logs", { params: { page: params.page ?? 1, limit: params.limit ?? 20, ...params } });
     return data;
   },
 };

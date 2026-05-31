@@ -62,6 +62,14 @@ export const broadcastRepository = {
     return prisma.broadcastLog.updateMany({ where: { broadcastId, status: BroadcastLogStatus.FAILED }, data: { status: BroadcastLogStatus.PENDING, error: null } });
   },
 
+  failedErrorSamples(broadcastId: number) {
+    return prisma.broadcastLog.findMany({
+      where: { broadcastId, status: BroadcastLogStatus.FAILED },
+      select: { error: true },
+      take: 10000,
+    });
+  },
+
   async refreshCounters(broadcastId: number) {
     const [success, failed, pending] = await Promise.all([
       prisma.broadcastLog.count({ where: { broadcastId, status: BroadcastLogStatus.SUCCESS } }),

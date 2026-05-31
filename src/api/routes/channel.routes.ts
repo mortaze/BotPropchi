@@ -1,4 +1,4 @@
-import { RequiredChannelType } from '@prisma/client';
+import { RequiredChannelStatus, RequiredChannelType } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 import { channelService } from '../../services/channel.service';
@@ -13,6 +13,7 @@ const channelSchema = z.object({
   type: z.nativeEnum(RequiredChannelType).default(RequiredChannelType.CHANNEL),
   inviteLink: z.string().url().optional().nullable(),
   isActive: z.boolean().optional(),
+  status: z.nativeEnum(RequiredChannelStatus).optional(),
 });
 
 channelRouter.get('/', async (_req, res) => res.json({ success: true, items: serializeBigInts(await channelService.list()) }));

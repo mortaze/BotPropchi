@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Building2, Gift, LayoutDashboard, Megaphone, MessageSquareReply, RadioTower, ShieldCheck, Share2, Ticket, Users } from "lucide-react";
+import { BarChart3, Building2, FileText, Gift, LayoutDashboard, Megaphone, MessageSquareReply, RadioTower, ShieldCheck, Share2, Ticket, UserCog, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -15,6 +15,9 @@ const navItems = [
   { href: "/dashboard/groups", label: "مدیریت گروه‌ها", icon: ShieldCheck },
   { href: "/dashboard/keyword-replies", label: "پاسخ‌های خودکار", icon: MessageSquareReply },
   { href: "/dashboard/broadcasts", label: "پیام همگانی", icon: Megaphone },
+  { href: "/dashboard/bot-admins", label: "ادمین‌های ربات", icon: UserCog },
+  { href: "/dashboard/analytics", label: "گزارشات", icon: BarChart3 },
+  { href: "/dashboard/system-logs", label: "لاگ سیستم", icon: FileText },
   { href: "/dashboard/prop-firms", label: "پراپ فرم‌ها", icon: Building2 },
 ];
 

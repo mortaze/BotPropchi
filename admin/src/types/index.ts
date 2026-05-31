@@ -1,4 +1,6 @@
 export type AdminRole = "SUPER_ADMIN" | "ADMIN" | "MODERATOR";
+export type BotAdminRole = "OWNER" | "SUPER_ADMIN" | "ADMIN";
+export type BotAdminStatus = "ACTIVE" | "SUSPENDED";
 
 export interface AdminUser {
   id: number;
@@ -209,6 +211,7 @@ export interface ReferralAdminResponse {
 }
 
 export type RequiredChannelType = "CHANNEL" | "GROUP";
+export type RequiredChannelStatus = "PENDING" | "APPROVED" | "REJECTED" | "DISABLED";
 export interface RequiredChannel {
   id: number;
   channelId: string;
@@ -217,7 +220,11 @@ export interface RequiredChannel {
   username?: string | null;
   type: RequiredChannelType;
   inviteLink?: string | null;
+  status: RequiredChannelStatus;
   isActive: boolean;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  disabledAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -273,3 +280,9 @@ export interface KeywordReply {
 export interface KeywordReplyLog {
   id: number; keywordReplyId: number; telegramGroupId: number; userTelegramId: string; messageId: number; matchedText: string; createdAt: string; keywordReply?: KeywordReply; telegramGroup?: TelegramGroup;
 }
+
+
+export interface BotAdmin { id: number; telegramId: string; username?: string | null; firstName?: string | null; lastName?: string | null; role: BotAdminRole; status: BotAdminStatus; createdAt: string; updatedAt: string; }
+export type SystemEventType = "USER_LOGIN" | "FORCE_JOIN" | "REFERRAL" | "BROADCAST" | "LOTTERY" | "DISCOUNT_CLICK" | "ERROR" | "ADMIN_ACTION" | "GROUP_INTEGRATION";
+export interface SystemLog { id: number; eventType: SystemEventType; level: "INFO" | "WARN" | "ERROR"; message: string; userId?: number | null; telegramId?: string | null; metadata?: unknown; createdAt: string; user?: ReferralUserSummary | null; }
+export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: number; activeWeek: number; activeMonth: number; newUsers: number }; referrals: { totalInvites: number; successful: number; failed: number; conversionRate: number }; forceJoin: { approved: number; rejected: number; pending: number }; discounts: { topClicks: unknown[]; topUsage: DiscountCode[]; popularPropFirms: PropFirm[] }; lotteries: { participants: number; winners: number; pointsSpent: number }; broadcasts: { total: number; successRate: number; errorRate: number; success: number; failed: number }; charts: { dailyUsers: unknown[]; dailyBroadcasts: unknown[] } }

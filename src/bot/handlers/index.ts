@@ -1,4 +1,4 @@
-import { DiscountCategory } from '@prisma/client';
+import { BotAdminRole, BotAdminStatus, DiscountCategory, SystemEventType } from '@prisma/client';
 import { Context, Telegraf } from 'telegraf';
 import { channelService } from '../../services/channel.service';
 import { discountService } from '../../services/discount.service';
@@ -6,6 +6,10 @@ import { lotteryService } from '../../services/lottery.service';
 import { groupService } from '../../services/group.service';
 import { keywordReplyService } from '../../services/keyword-reply.service';
 import { referralService } from '../../services/referral.service';
+import { analyticsService } from '../../services/analytics.service';
+import { botAdminService } from '../../services/bot-admin.service';
+import { broadcastService } from '../../services/broadcast.service';
+import { systemLogService } from '../../services/system-log.service';
 import { userService } from '../../services/user.service';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
@@ -14,7 +18,8 @@ import {
   lotteryHistoryKeyboard,
   lotteryKeyboard,
   joinChannelsKeyboard,
-  mainMenuKeyboard,
+  botAdminPanelKeyboard,
+  buildMainMenuKeyboard,
   paginationKeyboard,
 } from '../keyboards';
 
@@ -40,13 +45,59 @@ async function getDiscountPage(category: DiscountCategory | 'ALL', page: number)
     : await discountService.getByCategory(category as DiscountCategory, page)) as PaginatedResult<any>;
 }
 
+
+function formatDuration(ms: number) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes ? `${minutes} دقیقه و ${rest} ثانیه` : `${rest} ثانیه`;
+}
+
+async function adminReplyOptions(telegramId?: number) {
+  const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
+  return buildMainMenuKeyboard(Boolean(admin));
+}
+
+const mediaGroupBuffers = new Map<string, { timer: NodeJS.Timeout; ctx: any; messageIds: number[] }>();
+
+async function finalizeBotBroadcast(ctx: any, messageIds: number[]) {
+  const startedAt = Date.now();
+  const broadcast = await broadcastService.createTelegramCopyBroadcast({
+    title: `Bot panel broadcast ${new Date().toISOString()}`,
+    sourceChatId: ctx.chat.id,
+    messageIds,
+    createdBy: `telegram:${ctx.from.id}`,
+  });
+  if (!broadcast) return ctx.reply('❌ خطا در ایجاد ارسال همگانی رخ داد.');
+  const summary = await broadcastService.summarizeDelivery(broadcast.id);
+  const total = summary.broadcast?.totalRecipients ?? 0;
+  const success = summary.broadcast?.successCount ?? 0;
+  const failed = summary.broadcast?.failedCount ?? 0;
+  await ctx.reply([
+    '✅ ارسال همگانی پایان یافت',
+    '',
+    `👥 کل کاربران: ${total}`,
+    `✅ موفق: ${success}`,
+    `❌ ناموفق: ${failed}`,
+    `⛔ بلاک کرده‌اند: ${summary.blocked}`,
+    `🚫 حذف شده: ${summary.deleted}`,
+    `⏱ مدت زمان ارسال: ${formatDuration(Date.now() - startedAt)}`,
+  ].join('\n'));
+}
+
 export function registerHandlers(bot: Telegraf<Context>) {
   bot.on('my_chat_member', async (ctx: any, next) => {
     const chat = ctx.update.my_chat_member?.chat;
     const newStatus = ctx.update.my_chat_member?.new_chat_member?.status;
-    if (chat && (chat.type === 'group' || chat.type === 'supergroup') && newStatus !== 'left' && newStatus !== 'kicked') {
-      await groupService.upsertFromChat({ id: chat.id, title: chat.title, username: chat.username });
-      await groupService.refreshBotAdmin(bot, chat.id).catch(logger.error);
+    if (chat && newStatus !== 'left' && newStatus !== 'kicked') {
+      if (chat.type === 'group' || chat.type === 'supergroup') {
+        await groupService.upsertFromChat({ id: chat.id, title: chat.title, username: chat.username });
+        await groupService.refreshBotAdmin(bot, chat.id).catch(logger.error);
+      }
+      if (chat.type === 'channel' || chat.type === 'group' || chat.type === 'supergroup') {
+        await channelService.registerPendingFromChat({ id: chat.id, title: chat.title, username: chat.username, type: chat.type }).catch(logger.error);
+        await systemLogService.log({ eventType: SystemEventType.GROUP_INTEGRATION, message: 'Bot added to chat and queued for force-join approval', metadata: { chat } as any });
+      }
     }
     return next();
   });
@@ -67,8 +118,134 @@ export function registerHandlers(bot: Telegraf<Context>) {
       `سلام *${name}* عزیز! 👋\n\n` +
         '🎯 به ربات کدهای تخفیف پراپ فرم خوش آمدید\n\n' +
         'از منوی زیر انتخاب کنید:',
-      { parse_mode: 'Markdown', ...mainMenuKeyboard }
+      { parse_mode: 'Markdown', ...(await adminReplyOptions(ctx.from?.id)) }
     );
+  });
+
+
+
+  bot.hears('⚙️ پنل ادمین', async (ctx) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    await ctx.reply('⚙️ پنل مدیریت ربات', botAdminPanelKeyboard);
+  });
+
+  bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {
+    await ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));
+  });
+
+  bot.hears('📢 فوروارد همگانی', async (ctx) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    cache.set(`admin_broadcast:${ctx.from.id}`, true, 600);
+    await ctx.reply('پیام مورد نظر را ارسال یا فوروارد کنید.');
+  });
+
+  bot.hears('📣 ارسال اعلان', async (ctx) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    cache.set(`admin_broadcast:${ctx.from.id}`, true, 600);
+    await ctx.reply('متن یا رسانه اعلان را ارسال کنید.');
+  });
+
+  bot.hears('👥 مدیریت ادمین‌ها', async (ctx) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const admins = await botAdminService.list();
+    const text = admins.map((item) => `${item.status === 'ACTIVE' ? '✅' : '⏸'} ${item.role} — ${item.telegramId.toString()} ${item.username ? '@' + item.username : ''}`).join('\n') || 'ادمینی ثبت نشده است.';
+    await ctx.reply(`👥 مدیریت ادمین‌ها\n\nبرای افزودن ادمین پیام را به شکل زیر ارسال کنید:\n/admin_add TELEGRAM_ID ROLE\nمثال: /admin_add 123456 ADMIN\n\n${text}`);
+  });
+
+  bot.command('admin_add', async (ctx: any) => {
+    if (!(await botAdminService.canManage(ctx.from.id))) return;
+    const [, telegramId, role = 'ADMIN'] = ctx.message.text.split(/\s+/);
+    if (!telegramId || !['OWNER', 'SUPER_ADMIN', 'ADMIN'].includes(role)) return ctx.reply('فرمت صحیح: /admin_add TELEGRAM_ID ROLE');
+    const item = await botAdminService.upsert({ telegramId, role: role as BotAdminRole, status: BotAdminStatus.ACTIVE });
+    await ctx.reply(`✅ ادمین ثبت شد: ${item.telegramId.toString()} (${item.role})`);
+  });
+
+  bot.command('admin_suspend', async (ctx: any) => {
+    const [, id] = ctx.message.text.split(/\s+/);
+    if (!(await botAdminService.canManage(ctx.from.id))) return;
+    await botAdminService.update(Number(id), { status: BotAdminStatus.SUSPENDED });
+    await ctx.reply('⏸ ادمین تعلیق شد.');
+  });
+
+  bot.command('admin_activate', async (ctx: any) => {
+    const [, id] = ctx.message.text.split(/\s+/);
+    if (!(await botAdminService.canManage(ctx.from.id))) return;
+    await botAdminService.update(Number(id), { status: BotAdminStatus.ACTIVE });
+    await ctx.reply('✅ ادمین فعال شد.');
+  });
+
+  bot.command('admin_delete', async (ctx: any) => {
+    const [, id] = ctx.message.text.split(/\s+/);
+    if (!(await botAdminService.canManage(ctx.from.id))) return;
+    const admins = await botAdminService.list();
+    const target = admins.find((item) => item.id === Number(id));
+    if (target?.role === 'OWNER' && !(await botAdminService.canManage(ctx.from.id, BotAdminRole.OWNER))) return ctx.reply('❌ حذف Owner مجاز نیست.');
+    await botAdminService.delete(Number(id));
+    await ctx.reply('🗑 ادمین حذف شد.');
+  });
+
+  bot.hears('📊 گزارشات', async (ctx) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const report = await analyticsService.dashboard();
+    await ctx.reply([
+      '📊 گزارشات',
+      `👥 کل کاربران: ${report.users.totalUsers}`,
+      `🟢 فعال امروز: ${report.users.activeToday}`,
+      `📅 فعال هفته: ${report.users.activeWeek}`,
+      `🆕 کاربران جدید ماه: ${report.users.newUsers}`,
+      `👥 دعوت‌ها: ${report.referrals.totalInvites} | موفق: ${report.referrals.successful} | نرخ تبدیل: ${report.referrals.conversionRate}%`,
+      `📢 عضویت اجباری فعال: ${report.forceJoin.approved} | در انتظار: ${report.forceJoin.pending}`,
+      `📣 Broadcast: ${report.broadcasts.total} | موفقیت: ${report.broadcasts.successRate}% | خطا: ${report.broadcasts.errorRate}%`,
+      `🎰 قرعه‌کشی: ${report.lotteries.participants} شرکت‌کننده | ${report.lotteries.winners} برنده`,
+    ].join('\n'));
+  });
+
+  bot.hears('⚙️ تنظیمات', async (ctx) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    await ctx.reply('⚙️ تنظیمات مدیریتی از پنل وب و دستورات ادمین قابل مدیریت است.');
+  });
+
+  bot.on('message', async (ctx: any, next) => {
+    if (!ctx.from || !cache.get<boolean>(`admin_broadcast:${ctx.from.id}`)) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return next();
+    const mediaGroupId = ctx.message.media_group_id;
+    if (mediaGroupId) {
+      const key = `admin_media_group:${ctx.chat.id}:${mediaGroupId}`;
+      const existing = mediaGroupBuffers.get(key);
+      if (existing) {
+        existing.messageIds.push(ctx.message.message_id);
+        clearTimeout(existing.timer);
+        existing.timer = setTimeout(() => {
+          const buffered = mediaGroupBuffers.get(key);
+          if (buffered) {
+            mediaGroupBuffers.delete(key);
+            cache.del(`admin_broadcast:${buffered.ctx.from.id}`);
+            finalizeBotBroadcast(buffered.ctx, buffered.messageIds).catch(logger.error);
+          }
+        }, 1200);
+      } else {
+        const timer = setTimeout(() => {
+          const buffered = mediaGroupBuffers.get(key);
+          if (buffered) {
+            mediaGroupBuffers.delete(key);
+            cache.del(`admin_broadcast:${buffered.ctx.from.id}`);
+            finalizeBotBroadcast(buffered.ctx, buffered.messageIds).catch(logger.error);
+          }
+        }, 1200);
+        mediaGroupBuffers.set(key, { timer, ctx, messageIds: [ctx.message.message_id] });
+      }
+      return ctx.reply('📦 مدیا گروه دریافت شد؛ ارسال تا چند لحظه دیگر شروع می‌شود.');
+    }
+    cache.del(`admin_broadcast:${ctx.from.id}`);
+    await ctx.reply('⏳ ارسال همگانی شروع شد...');
+    await finalizeBotBroadcast(ctx, [ctx.message.message_id]);
   });
 
   bot.hears('🎯 کدهای تخفیف', async (ctx) => {
@@ -353,7 +530,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     cache.set(`membership:${ctx.from?.id}`, true, 300);
     await userService.markMembershipVerified(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
     await userService.processPendingReferral(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
-    await ctx.reply('✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.', mainMenuKeyboard);
+    await ctx.reply('✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.', await adminReplyOptions(ctx.from?.id));
   });
 
   bot.action('noop', async (ctx) => {

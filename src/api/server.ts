@@ -16,6 +16,9 @@ import { broadcastService } from "../services/broadcast.service";
 import { logger } from "../utils/logger";
 
 import { authRouter } from "./routes/auth.routes";
+import { analyticsRouter } from "./routes/analytics.routes";
+import { botAdminRouter } from "./routes/bot-admin.routes";
+import { systemLogRouter } from "./routes/system-log.routes";
 import { discountRouter } from "./routes/discount.routes";
 import lotteryRouter from "./routes/lottery.routes";
 import { userRouter } from "./routes/user.routes";
@@ -170,6 +173,10 @@ export function startAdminApi(bot?: Telegraf) {
     authMiddleware,
     keywordReplyRouter
   );
+
+  app.use("/api/bot-admins", authMiddleware, botAdminRouter);
+  app.use("/api/analytics", authMiddleware, analyticsRouter);
+  app.use("/api/system-logs", authMiddleware, systemLogRouter);
 
   // ───────────────── 404 HANDLER ─────────────────
   app.use(
