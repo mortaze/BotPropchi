@@ -1,5 +1,6 @@
 import { DiscountCategory } from '@prisma/client';
 import { Context, Telegraf } from 'telegraf';
+import { channelService } from '../../services/channel.service';
 import { discountService } from '../../services/discount.service';
 import { lotteryService } from '../../services/lottery.service';
 import { referralService } from '../../services/referral.service';
@@ -10,6 +11,7 @@ import {
   categoryKeyboard,
   lotteryHistoryKeyboard,
   lotteryKeyboard,
+  joinChannelsKeyboard,
   mainMenuKeyboard,
   paginationKeyboard,
 } from '../keyboards';
@@ -314,7 +316,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.action('check:membership', async (ctx) => {
     cache.del(`membership:${ctx.from?.id}`);
     await ctx.answerCbQuery('در حال بررسی...');
-    await ctx.reply('✅ عضویت شما بررسی شد. حالا /start بزنید.');
+    const result = await channelService.checkMembership(bot, BigInt(ctx.from!.id));
+    if (!result.isMember) {
+      return ctx.reply('ابتدا در کانال‌ها و گروه‌های زیر عضو شوید.', joinChannelsKeyboard(result.notJoined));
+    }
+    cache.set(`membership:${ctx.from?.id}`, true, 300);
+    await userService.processPendingReferral(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
+    await ctx.reply('✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.', mainMenuKeyboard);
   });
 
   bot.action('noop', async (ctx) => {

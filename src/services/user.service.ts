@@ -49,9 +49,9 @@ export const userService = {
       referredById,
     });
 
-    // کاربرانی که قبلاً به دلیل باگ startPayload ساخته شده‌اند ولی Referral ندارند هم فقط یک‌بار قابل اتصال هستند.
+    // ثبت Referral تا زمان تأیید عضویت اجباری انجام نمی‌شود؛ referredById نقش pending referral را دارد.
     if (shouldRegisterReferral && referredById) {
-      await referralService.registerSuccessfulReferral(referredById, user.id, user.firstName);
+      logger.info(`Referral pending membership verification referrerId=${referredById}, referredUserId=${user.id}`);
     }
 
     // امتیاز فعالیت روزانه باید با lastActiveAt قبلی سنجیده شود، نه مقدار به‌روزشده upsert.
@@ -69,6 +69,14 @@ export const userService = {
     if (lastActiveAt < today) {
       await userRepository.addPoints(userId, 5, PointLogType.DAILY_ACTIVITY, 'فعالیت روزانه');
     }
+  },
+
+  async processPendingReferral(telegramId: bigint) {
+    const user = await userRepository.findByTelegramId(telegramId);
+    if (!user?.referredById) return null;
+    const existing = await prisma.referral.findUnique({ where: { referredUserId: user.id } });
+    if (existing) return existing;
+    return referralService.registerSuccessfulReferral(user.referredById, user.id, user.firstName, true);
   },
 
   // لینک رفرال اختصاصی کاربر

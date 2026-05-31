@@ -29,6 +29,7 @@ model User {
   referrals      User[]     @relation("UserReferrals")
   sentReferrals  Referral[] @relation("ReferralReferrer")
   receivedReferral Referral? @relation("ReferralReferred")
+  broadcastLogs  BroadcastLog[]
   pointLogs      PointLog[]
   lotteryEntries LotteryEntry[]
   lotteryWins    LotteryWinner[]
@@ -128,11 +129,13 @@ enum PointLogType {
 ////////////////////////////////////////////////////////////
 
 model Referral {
-  id             Int      @id @default(autoincrement())
-  referrerId     Int
-  referredUserId Int      @unique
-  rewardPoints   Int
-  createdAt      DateTime @default(now())
+  id                         Int      @id @default(autoincrement())
+  referrerId                 Int
+  referredUserId             Int      @unique
+  rewardPoints               Int
+  membershipVerifiedAt       DateTime?
+  membershipVerificationStatus String   @default("VERIFIED")
+  createdAt                  DateTime @default(now())
 
   referrer     User @relation("ReferralReferrer", fields: [referrerId], references: [id], onDelete: Cascade)
   referredUser User @relation("ReferralReferred", fields: [referredUserId], references: [id], onDelete: Cascade)
@@ -220,14 +223,113 @@ model LotteryWinner {
 ////////////////////////////////////////////////////////////
 
 model RequiredChannel {
-  id         Int      @id @default(autoincrement())
-  channelId  String   @unique
+  id         Int                     @id @default(autoincrement())
+  channelId  String                  @unique
+  chatId     String?
   title      String
+  username   String?
+  type       RequiredChannelType     @default(CHANNEL)
   inviteLink String?
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  isActive   Boolean                 @default(true)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
 
+  @@index([isActive])
+  @@index([type])
   @@map("required_channels")
+}
+
+enum RequiredChannelType {
+  CHANNEL
+  GROUP
+}
+
+
+////////////////////////////////////////////////////////////
+// BROADCASTS
+////////////////////////////////////////////////////////////
+
+model Broadcast {
+  id             Int              @id @default(autoincrement())
+  title          String
+  messageType    BroadcastType    @default(TEXT)
+  content        String?
+  mediaFileId    String?
+  mediaItems     Json?
+  parseMode      BroadcastParseMode?
+  inlineKeyboard Json?
+  status         BroadcastStatus  @default(DRAFT)
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  totalRecipients Int             @default(0)
+  successCount   Int              @default(0)
+  failedCount    Int              @default(0)
+  createdBy      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  logs BroadcastLog[]
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("broadcasts")
+}
+
+model BroadcastLog {
+  id          Int                @id @default(autoincrement())
+  broadcastId Int
+  userId      Int
+  telegramId  BigInt
+  status      BroadcastLogStatus @default(PENDING)
+  attempts    Int                @default(0)
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([broadcastId, userId])
+  @@index([broadcastId, status])
+  @@index([telegramId])
+  @@map("broadcast_logs")
+}
+
+enum BroadcastType {
+  TEXT
+  PHOTO
+  VIDEO
+  DOCUMENT
+  VOICE
+  AUDIO
+  STICKER
+  ANIMATION
+  MEDIA_GROUP
+}
+
+enum BroadcastParseMode {
+  MARKDOWN
+  HTML
+}
+
+enum BroadcastStatus {
+  DRAFT
+  SCHEDULED
+  QUEUED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum BroadcastLogStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  SKIPPED
 }
 
 ////////////////////////////////////////////////////////////

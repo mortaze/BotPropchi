@@ -41,16 +41,17 @@ export function membershipMiddleware(bot: Telegraf) {
   return async (ctx: Context, next: () => Promise<void>) => {
     if (!ctx.from) return next();
 
-    // دستور /start و callback بررسی عضویت رو رد کن
-    const text = (ctx.message as any)?.text as string | undefined;
     const callbackData = (ctx.callbackQuery as any)?.data as string | undefined;
-    if (text?.startsWith('/start') || callbackData === 'check:membership') {
+    if (callbackData === 'check:membership') {
       return next();
     }
 
     const cacheKey = `membership:${ctx.from.id}`;
     const isMemberCached = cache.get<boolean>(cacheKey);
-    if (isMemberCached) return next();
+    if (isMemberCached) {
+      await userService.processPendingReferral(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
+      return next();
+    }
 
     const { isMember, notJoined } = await channelService.checkMembership(
       bot,
@@ -59,11 +60,12 @@ export function membershipMiddleware(bot: Telegraf) {
 
     if (isMember) {
       cache.set(cacheKey, true, 300); // 5 دقیقه کش
+      await userService.processPendingReferral(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
       return next();
     }
 
     await ctx.reply(
-      '⚠️ برای استفاده از ربات، ابتدا در کانال‌های زیر عضو شوید:',
+      'ابتدا در کانال‌ها و گروه‌های زیر عضو شوید.',
       joinChannelsKeyboard(notJoined)
     );
   };

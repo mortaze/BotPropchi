@@ -68,7 +68,8 @@
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; font-family: "Vazirmatn", sans-serif; }
+  html, body, button, input, textarea, select, table, dialog { font-family: var(--font-admin), BYekan, Tahoma, Arial, sans-serif; }
+  body { @apply bg-background text-foreground; }
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }

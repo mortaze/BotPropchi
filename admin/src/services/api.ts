@@ -184,3 +184,65 @@ export const referralsApi = {
 };
 
 export default api;
+
+export interface RequiredChannelPayload {
+  title: string;
+  chatId: string;
+  username?: string | null;
+  type: "CHANNEL" | "GROUP";
+  inviteLink?: string | null;
+  isActive?: boolean;
+}
+
+export const requiredChannelsApi = {
+  async getAll(): Promise<{ success: boolean; items: import("@/types").RequiredChannel[] }> {
+    const { data } = await api.get("/api/required-channels");
+    return data;
+  },
+  async create(payload: RequiredChannelPayload): Promise<{ success: boolean; channel: import("@/types").RequiredChannel }> {
+    const { data } = await api.post("/api/required-channels", payload);
+    return data;
+  },
+  async update(id: number, payload: Partial<RequiredChannelPayload>): Promise<{ success: boolean; channel: import("@/types").RequiredChannel }> {
+    const { data } = await api.patch(`/api/required-channels/${id}`, payload);
+    return data;
+  },
+  async delete(id: number): Promise<{ success: boolean }> {
+    const { data } = await api.delete(`/api/required-channels/${id}`);
+    return data;
+  },
+};
+
+export interface BroadcastPayload {
+  title: string;
+  messageType: import("@/types").BroadcastType;
+  content?: string | null;
+  mediaFileId?: string | null;
+  mediaItems?: unknown;
+  parseMode?: import("@/types").BroadcastParseMode | null;
+  inlineKeyboard?: Array<Array<{ text: string; url?: string; callback_data?: string }>>;
+  scheduledAt?: string | null;
+}
+
+export const broadcastsApi = {
+  async getAll(params: { page?: number; limit?: number; status?: import("@/types").BroadcastStatus } = {}): Promise<{ success: boolean; items: import("@/types").Broadcast[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/broadcasts", { params: { page: params.page ?? 1, limit: params.limit ?? 20, status: params.status } });
+    return data;
+  },
+  async getById(id: number): Promise<{ success: boolean; broadcast: import("@/types").Broadcast }> {
+    const { data } = await api.get(`/api/broadcasts/${id}`);
+    return data;
+  },
+  async create(payload: BroadcastPayload): Promise<{ success: boolean; broadcast: import("@/types").Broadcast }> {
+    const { data } = await api.post("/api/broadcasts", payload);
+    return data;
+  },
+  async action(id: number, action: "enqueue" | "pause" | "resume" | "cancel" | "retry"): Promise<{ success: boolean; broadcast: import("@/types").Broadcast }> {
+    const { data } = await api.post(`/api/broadcasts/${id}/${action}`);
+    return data;
+  },
+  async sendTest(id: number, telegramId?: string): Promise<{ success: boolean }> {
+    const { data } = await api.post(`/api/broadcasts/${id}/test`, { telegramId });
+    return data;
+  },
+};
