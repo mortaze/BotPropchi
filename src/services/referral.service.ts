@@ -1,0 +1,214 @@
+import { Prisma, PointLogType } from '@prisma/client';
+import { prisma } from '../prisma/client';
+import { logger } from '../utils/logger';
+
+const SETTINGS_ID = 1;
+const DEFAULT_REWARD_POINTS = 20;
+
+export function buildReferralCode(userId: number): string {
+  return `REF_${userId.toString(36).toUpperCase().padStart(6, '0')}`;
+}
+
+export function parseReferralCode(code?: string | null): number | null {
+  if (!code) return null;
+  const normalized = code.trim();
+  if (!normalized) return null;
+
+  const refMatch = normalized.match(/^REF_([0-9A-Z]+)$/i);
+  if (refMatch) {
+    const id = parseInt(refMatch[1], 36);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  }
+
+  const legacyMatch = normalized.match(/^ref_(\d+)$/i);
+  if (legacyMatch) return Number(legacyMatch[1]);
+
+  if (/^\d+$/.test(normalized)) return Number(normalized);
+  return null;
+}
+
+export const referralService = {
+  async getSettings() {
+    return prisma.referralSettings.upsert({
+      where: { id: SETTINGS_ID },
+      update: {},
+      create: { id: SETTINGS_ID, inviteRewardPoints: DEFAULT_REWARD_POINTS, isEnabled: true },
+    });
+  },
+
+  async updateSettings(data: { inviteRewardPoints?: number; isEnabled?: boolean }) {
+    logger.info('Updating referral settings', data);
+    return prisma.referralSettings.upsert({
+      where: { id: SETTINGS_ID },
+      update: data,
+      create: {
+        id: SETTINGS_ID,
+        inviteRewardPoints: data.inviteRewardPoints ?? DEFAULT_REWARD_POINTS,
+        isEnabled: data.isEnabled ?? true,
+      },
+    });
+  },
+
+  async getReferralLink(userId: number, botUsername: string) {
+    return `https://t.me/${botUsername}?start=${buildReferralCode(userId)}`;
+  },
+
+  async registerSuccessfulReferral(referrerId: number, referredUserId: number, referredFirstName?: string) {
+    if (referrerId === referredUserId) {
+      logger.warn(`Self referral ignored for userId=${referredUserId}`);
+      return null;
+    }
+
+    const settings = await this.getSettings();
+    if (!settings.isEnabled) {
+      logger.info(`Referral ignored because system is disabled. referrerId=${referrerId}, referredUserId=${referredUserId}`);
+      return null;
+    }
+
+    const existing = await prisma.referral.findUnique({ where: { referredUserId } });
+    if (existing) {
+      logger.info(`Duplicate referral ignored for referredUserId=${referredUserId}`);
+      return existing;
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const referral = await tx.referral.create({
+        data: {
+          referrerId,
+          referredUserId,
+          rewardPoints: settings.inviteRewardPoints,
+        },
+      });
+
+      await tx.user.update({
+        where: { id: referrerId },
+        data: {
+          points: { increment: settings.inviteRewardPoints },
+          totalReferrals: { increment: 1 },
+        },
+      });
+
+      await tx.pointLog.create({
+        data: {
+          userId: referrerId,
+          amount: settings.inviteRewardPoints,
+          type: PointLogType.REFERRAL_REWARD,
+          description: `پاداش دعوت ${referredFirstName || `کاربر ${referredUserId}`}`,
+        },
+      });
+
+      return referral;
+    }).catch(async (error) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        logger.info(`Referral race duplicate ignored for referredUserId=${referredUserId}`);
+        return prisma.referral.findUnique({ where: { referredUserId } });
+      }
+      throw error;
+    });
+
+    logger.info(`Referral reward granted. referrerId=${referrerId}, referredUserId=${referredUserId}, points=${settings.inviteRewardPoints}`);
+    return result;
+  },
+
+  async getMe(userId: number, botUsername = 'BotPropchiBot') {
+    const [user, totalReward] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          sentReferrals: {
+            include: { referredUser: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      }),
+      prisma.referral.aggregate({ where: { referrerId: userId }, _sum: { rewardPoints: true }, _count: true }),
+    ]);
+
+    if (!user) return null;
+    return {
+      user,
+      referralLink: await this.getReferralLink(user.id, botUsername),
+      inviteCount: totalReward._count,
+      totalRewardPoints: totalReward._sum.rewardPoints || 0,
+      referrals: user.sentReferrals,
+    };
+  },
+
+  async getStats() {
+    const [totalInvites, totalRewards, settings] = await Promise.all([
+      prisma.referral.count(),
+      prisma.referral.aggregate({ _sum: { rewardPoints: true } }),
+      this.getSettings(),
+    ]);
+
+    return {
+      totalInvites,
+      totalRewardPoints: totalRewards._sum.rewardPoints || 0,
+      settings,
+    };
+  },
+
+  async getLeaderboard(limit = 10) {
+    const grouped = await prisma.referral.groupBy({
+      by: ['referrerId'],
+      _count: { _all: true },
+      _sum: { rewardPoints: true },
+      orderBy: [{ _count: { referrerId: 'desc' } }, { _sum: { rewardPoints: 'desc' } }],
+      take: limit,
+    });
+
+    const users = await prisma.user.findMany({
+      where: { id: { in: grouped.map((item) => item.referrerId) } },
+      select: { id: true, telegramId: true, username: true, firstName: true, lastName: true, points: true, totalReferrals: true },
+    });
+    const userMap = new Map(users.map((user) => [user.id, user]));
+
+    return grouped.map((item) => ({
+      referrer: userMap.get(item.referrerId),
+      referrerId: item.referrerId,
+      inviteCount: item._count._all,
+      totalRewardPoints: item._sum.rewardPoints || 0,
+    }));
+  },
+
+  async getAdminList(params: { page?: number; limit?: number; q?: string; referrerId?: number }) {
+    const page = Math.max(1, params.page || 1);
+    const limit = Math.min(100, Math.max(1, params.limit || 20));
+    const skip = (page - 1) * limit;
+    const q = params.q?.trim();
+
+    const where: any = {
+      ...(params.referrerId ? { referrerId: params.referrerId } : {}),
+      ...(q
+        ? {
+            OR: [
+              { referrer: { firstName: { contains: q, mode: 'insensitive' } } },
+              { referrer: { lastName: { contains: q, mode: 'insensitive' } } },
+              { referrer: { username: { contains: q, mode: 'insensitive' } } },
+              { referredUser: { firstName: { contains: q, mode: 'insensitive' } } },
+              { referredUser: { lastName: { contains: q, mode: 'insensitive' } } },
+              { referredUser: { username: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    };
+
+    const [items, total, stats, leaderboard] = await Promise.all([
+      prisma.referral.findMany({
+        where,
+        include: {
+          referrer: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true, points: true, totalReferrals: true } },
+          referredUser: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true, createdAt: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.referral.count({ where }),
+      this.getStats(),
+      this.getLeaderboard(10),
+    ]);
+
+    return { items, total, pages: Math.ceil(total / limit), stats, leaderboard };
+  },
+};

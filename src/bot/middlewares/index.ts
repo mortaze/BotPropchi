@@ -15,9 +15,7 @@ export function userMiddleware() {
 
     try {
       const startPayload = (ctx as any).startPayload as string | undefined;
-      const referralCode = startPayload?.startsWith('ref_')
-        ? startPayload.replace('ref_', '')
-        : undefined;
+      const referralCode = startPayload?.trim() || undefined;
 
       await userService.registerOrUpdate({
         telegramId: BigInt(ctx.from.id),

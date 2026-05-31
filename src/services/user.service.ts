@@ -4,6 +4,7 @@
 import { userRepository } from '../repositories/user.repository';
 import { PointLogType } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { parseReferralCode, referralService } from './referral.service';
 
 export const userService = {
   // ثبت کاربر هنگام /start
@@ -12,21 +13,25 @@ export const userService = {
     username?: string;
     firstName: string;
     lastName?: string;
-    referralCode?: string; // آیدی عددی دعوت‌کننده به صورت string
+    referralCode?: string;
   }) {
-    let referredById: number | undefined;
+    const existingUser = await userRepository.findByTelegramId(params.telegramId);
+    let referredById: number | undefined = existingUser?.referredById ?? undefined;
 
-    // پردازش کد رفرال
-    if (params.referralCode) {
-      try {
-        const referrerId = parseInt(params.referralCode);
+    // پردازش کد رفرال فقط برای کاربر جدید و کاربری که معرف ندارد
+    if (!existingUser && params.referralCode) {
+      const referrerId = parseReferralCode(params.referralCode);
+
+      if (referrerId) {
         const referrer = await userRepository.findById(referrerId);
 
-        // جلوگیری از خود-رفرال و رفرال تکراری
+        // جلوگیری از خود-رفرال و رفرال نامعتبر
         if (referrer && referrer.telegramId !== params.telegramId) {
           referredById = referrer.id;
+        } else {
+          logger.warn('رفرال خودکار یا نامعتبر نادیده گرفته شد:', params.referralCode);
         }
-      } catch {
+      } else {
         logger.warn('کد رفرال نامعتبر:', params.referralCode);
       }
     }
@@ -39,13 +44,9 @@ export const userService = {
       referredById,
     });
 
-    // اگر کاربر جدید است و رفرال داشت، امتیاز به دعوت‌کننده بده
-    if (referredById && user.createdAt.getTime() === user.updatedAt.getTime()) {
-      await Promise.all([
-        userRepository.addPoints(referredById, 50, PointLogType.REFERRAL, `دعوت ${user.firstName}`),
-        userRepository.incrementReferrals(referredById),
-      ]);
-      logger.info(`امتیاز رفرال داده شد به userId=${referredById}`);
+    // فقط برای کاربر جدید و فقط یک‌بار پاداش رفرال ثبت می‌شود
+    if (!existingUser && referredById) {
+      await referralService.registerSuccessfulReferral(referredById, user.id, user.firstName);
     }
 
     // امتیاز فعالیت روزانه
@@ -65,7 +66,11 @@ export const userService = {
 
   // لینک رفرال اختصاصی کاربر
   async getReferralLink(userId: number, botUsername: string): Promise<string> {
-    return `https://t.me/${botUsername}?start=ref_${userId}`;
+    return referralService.getReferralLink(userId, botUsername);
+  },
+
+  async getReferralStats(userId: number, botUsername: string) {
+    return referralService.getMe(userId, botUsername);
   },
 
   async getProfile(telegramId: bigint) {

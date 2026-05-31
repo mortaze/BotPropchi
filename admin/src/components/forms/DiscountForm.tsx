@@ -7,6 +7,7 @@ import { z } from "zod";
 import { discountsApi, type DiscountPayload } from "@/services/api";
 import { CATEGORY_LABELS, type DiscountCategory, type DiscountCode } from "@/types";
 import { Button, Input, Select, Toggle } from "@/components/ui";
+import { safeToISOString } from "@/lib/utils";
 
 const categories = Object.keys(CATEGORY_LABELS) as DiscountCategory[];
 
@@ -55,7 +56,7 @@ export default function DiscountForm({ initial, loading, submitLabel = "ذخیر
         ...values,
         code: values.code.toUpperCase(),
         affiliateLink: values.affiliateLink || null,
-        expiresAt: values.expiresAt ? new Date(values.expiresAt).toISOString() : null,
+        expiresAt: safeToISOString(values.expiresAt),
       }))}
     >
       <Input label="عنوان" error={errors.title?.message} {...register("title")} />

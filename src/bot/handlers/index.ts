@@ -2,6 +2,7 @@ import { DiscountCategory } from '@prisma/client';
 import { Context, Telegraf } from 'telegraf';
 import { discountService } from '../../services/discount.service';
 import { lotteryService } from '../../services/lottery.service';
+import { referralService } from '../../services/referral.service';
 import { userService } from '../../services/user.service';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
@@ -252,13 +253,20 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     if (!profile) return;
 
-    const link = await userService.getReferralLink(profile.id, botInfo.username || '');
+    const referralStats = await userService.getReferralStats(profile.id, botInfo.username || 'BotPropchiBot');
+    const link = referralStats?.referralLink || await userService.getReferralLink(profile.id, botInfo.username || 'BotPropchiBot');
+    const referralSettings = await referralService.getSettings();
+    profile.referralRewardPoints = referralSettings.inviteRewardPoints;
+    profile.totalReferralRewardPoints = referralStats?.totalRewardPoints || 0;
+    profile.totalReferrals = referralStats?.inviteCount ?? profile.totalReferrals;
+    profile.referralRewardPoints = await profile.referralRewardPoints;
 
     await ctx.reply(
       `👥 *لینک دعوت اختصاصی شما:*\n\n` +
         `${link}\n\n` +
-        `✅ به ازای هر دوستی که دعوت کنید *۵۰ امتیاز* دریافت می‌کنید\n` +
-        `👤 دعوت‌شدگان تا کنون: ${profile.totalReferrals} نفر`,
+        `✅ پاداش هر دعوت موفق: *${profile.referralRewardPoints ?? 0} امتیاز*\n` +
+        `👤 دعوت‌شدگان تا کنون: ${profile.totalReferrals} نفر\n` +
+        `🎁 مجموع امتیاز دعوت‌ها: ${profile.totalReferralRewardPoints ?? 0}`,
       { parse_mode: 'Markdown' }
     );
   });

@@ -151,3 +151,54 @@ export interface LotteryWinner {
   user?: User;
   lottery?: Lottery;
 }
+
+export interface ReferralSettings {
+  id: number;
+  inviteRewardPoints: number;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferralUserSummary {
+  id: number;
+  telegramId: string;
+  username?: string | null;
+  firstName: string;
+  lastName?: string | null;
+  points?: number;
+  totalReferrals?: number;
+  createdAt?: string;
+}
+
+export interface ReferralItem {
+  id: number;
+  referrerId: number;
+  referredUserId: number;
+  rewardPoints: number;
+  createdAt: string;
+  referrer: ReferralUserSummary;
+  referredUser: ReferralUserSummary;
+}
+
+export interface ReferralStats {
+  totalInvites: number;
+  totalRewardPoints: number;
+  settings: ReferralSettings;
+}
+
+export interface ReferralLeaderboardItem {
+  referrerId: number;
+  referrer?: ReferralUserSummary;
+  inviteCount: number;
+  totalRewardPoints: number;
+}
+
+export interface ReferralAdminResponse {
+  success: boolean;
+  items: ReferralItem[];
+  total: number;
+  pages: number;
+  stats: ReferralStats;
+  leaderboard: ReferralLeaderboardItem[];
+}
