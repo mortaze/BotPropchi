@@ -247,29 +247,69 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply(`🏆 *برترین کاربران:*\n\n${text}`, { parse_mode: 'Markdown' });
   });
 
-  bot.hears('👥 دعوت دوستان', async (ctx) => {
+ bot.hears('👥 دعوت دوستان', async (ctx) => {
+  try {
     const botInfo = await bot.telegram.getMe();
-    const profile: any = await userService.getProfile(BigInt(ctx.from.id));
 
-    if (!profile) return;
+    const profile: any = await userService.getProfile(
+      BigInt(ctx.from.id)
+    );
 
-    const referralStats = await userService.getReferralStats(profile.id, botInfo.username || 'BotPropchiBot');
-    const link = referralStats?.referralLink || await userService.getReferralLink(profile.id, botInfo.username || 'BotPropchiBot');
-    const referralSettings = await referralService.getSettings();
-    profile.referralRewardPoints = referralSettings.inviteRewardPoints;
-    profile.totalReferralRewardPoints = referralStats?.totalRewardPoints || 0;
-    profile.totalReferrals = referralStats?.inviteCount ?? profile.totalReferrals;
-    profile.referralRewardPoints = await profile.referralRewardPoints;
+    if (!profile) {
+      return ctx.reply(
+        '❌ اطلاعات کاربری شما یافت نشد'
+      );
+    }
+
+    const referralStats =
+      await userService.getReferralStats(
+        profile.id,
+        botInfo.username || 'BotPropchiBot'
+      );
+
+    const link =
+      referralStats?.referralLink ||
+      (await userService.getReferralLink(
+        profile.id,
+        botInfo.username || 'BotPropchiBot'
+      ));
+
+    const referralSettings =
+      await referralService.getSettings();
+
+    const rewardPoints =
+      referralSettings?.inviteRewardPoints ?? 0;
+
+    const totalReferrals =
+      referralStats?.inviteCount ??
+      profile.totalReferrals ??
+      0;
+
+    const totalRewardPoints =
+      referralStats?.totalRewardPoints ?? 0;
 
     await ctx.reply(
-      `👥 *لینک دعوت اختصاصی شما:*\n\n` +
-        `${link}\n\n` +
-        `✅ پاداش هر دعوت موفق: *${profile.referralRewardPoints ?? 0} امتیاز*\n` +
-        `👤 دعوت‌شدگان تا کنون: ${profile.totalReferrals} نفر\n` +
-        `🎁 مجموع امتیاز دعوت‌ها: ${profile.totalReferralRewardPoints ?? 0}`,
-      { parse_mode: 'Markdown' }
+      [
+        '👥 لینک دعوت اختصاصی شما:',
+        '',
+        link,
+        '',
+        `✅ پاداش هر دعوت موفق: ${rewardPoints} امتیاز`,
+        `👤 دعوت‌شدگان تا کنون: ${totalReferrals} نفر`,
+        `🎁 مجموع امتیاز دعوت‌ها: ${totalRewardPoints}`,
+      ].join('\n')
     );
-  });
+  } catch (error) {
+    logger.error(
+      'Referral Handler Error:',
+      error
+    );
+
+    await ctx.reply(
+      '❌ خطا در دریافت اطلاعات دعوت دوستان'
+    );
+  }
+});
 
   bot.action('check:membership', async (ctx) => {
     cache.del(`membership:${ctx.from?.id}`);
