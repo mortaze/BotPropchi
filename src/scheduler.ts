@@ -4,11 +4,18 @@
 import cron from 'node-cron';
 import { prisma } from './config';
 import { lotteryService } from './services/lottery.service';
+import { broadcastService } from './services/broadcast.service';
 import { logger } from './utils/logger';
 
 export function startScheduler() {
   cron.schedule('* * * * *', async () => {
     const now = new Date();
+
+    try {
+      await broadcastService.processDueScheduled();
+    } catch (err) {
+      logger.error('❌ Broadcast scheduler error', err);
+    }
 
     try {
       const lotteries = await prisma.lottery.findMany({

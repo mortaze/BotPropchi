@@ -121,16 +121,16 @@ export default function ReferralsPage() {
                     <th>معرف</th>
                     <th>کاربر دعوت شده</th>
                     <th>تاریخ ثبت</th>
-                    <th>امتیاز داده شده</th>
+                    <th>امتیاز داده شده</th><th>وضعیت تایید عضویت</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {query.isLoading ? Array.from({ length: 5 }).map((_, index) => <TableRowSkeleton key={index} cols={4} />) : filteredItems.map((item) => (
+                  {query.isLoading ? Array.from({ length: 5 }).map((_, index) => <TableRowSkeleton key={index} cols={5} />) : filteredItems.map((item) => (
                     <tr key={item.id}>
                       <td><p className="font-medium">{userLabel(item.referrer)}</p><p className="text-xs text-muted-foreground">@{item.referrer?.username ?? "-"}</p></td>
                       <td><p className="font-medium">{userLabel(item.referredUser)}</p><p className="text-xs text-muted-foreground">@{item.referredUser?.username ?? "-"}</p></td>
                       <td>{safeDateFormat(item.createdAt, { dateStyle: "medium", timeStyle: "short" })}</td>
-                      <td><Badge variant="success">{formatNumber(item.rewardPoints)} امتیاز</Badge></td>
+                      <td><Badge variant="success">{formatNumber(item.rewardPoints)} امتیاز</Badge></td><td><Badge variant="info">تایید شده</Badge></td>
                     </tr>
                   ))}
                 </tbody>

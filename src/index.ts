@@ -47,7 +47,7 @@ async function bootstrap() {
   });
 
   // اجرای API
-  startAdminApi();
+  startAdminApi(bot);
 
   // اجرای Scheduler
   startScheduler();

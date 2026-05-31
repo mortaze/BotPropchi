@@ -52,11 +52,11 @@ export function TableRowSkeleton({ cols = 5 }: { cols?: number }) {
 }
 
 // ─── Empty State ───────────────────────────────────────────
-export function EmptyState({ title = "چیزی یافت نشد", description }: { title?: string; description?: string }) {
+export function EmptyState({ title = "چیزی یافت نشد", description, icon }: { title?: string; description?: string; icon?: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
-        <Inbox className="w-6 h-6 text-muted-foreground" />
+        {icon || <Inbox className="w-6 h-6 text-muted-foreground" />}
       </div>
       <p className="font-medium text-foreground">{title}</p>
       {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
@@ -136,6 +136,23 @@ export function Input({ label, error, className, ...props }: {
     <div className="space-y-1.5">
       {label && <label className="block text-sm font-medium text-foreground">{label}</label>}
       <input className={cn(
+        "w-full px-3 py-2.5 rounded-lg border bg-background text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
+        error ? "border-destructive" : "border-input", className
+      )} {...props} />
+      {error && <p className="text-destructive text-xs">{error}</p>}
+    </div>
+  );
+}
+
+
+// ─── Textarea ──────────────────────────────────────────────
+export function Textarea({ label, error, className, ...props }: {
+  label?: string; error?: string; className?: string; [k: string]: any;
+}) {
+  return (
+    <div className="space-y-1.5">
+      {label && <label className="block text-sm font-medium text-foreground">{label}</label>}
+      <textarea className={cn(
         "w-full px-3 py-2.5 rounded-lg border bg-background text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
         error ? "border-destructive" : "border-input", className
       )} {...props} />

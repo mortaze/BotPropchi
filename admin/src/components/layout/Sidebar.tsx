@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Building2, Gift, LayoutDashboard, Share2, Ticket, Users } from "lucide-react";
+import { BarChart3, Building2, Gift, LayoutDashboard, Megaphone, RadioTower, Share2, Ticket, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -11,6 +11,8 @@ const navItems = [
   { href: "/dashboard/lotteries", label: "قرعه‌کشی‌ها", icon: Ticket },
   { href: "/dashboard/discounts", label: "تخفیف‌ها", icon: Gift },
   { href: "/dashboard/referrals", label: "دعوت دوستان", icon: Share2 },
+  { href: "/dashboard/required-channels", label: "عضویت اجباری", icon: RadioTower },
+  { href: "/dashboard/broadcasts", label: "پیام همگانی", icon: Megaphone },
   { href: "/dashboard/prop-firms", label: "پراپ فرم‌ها", icon: Building2 },
 ];
 

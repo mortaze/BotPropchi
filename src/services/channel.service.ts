@@ -1,62 +1,59 @@
-// src/services/channel.service.ts
-// بررسی و مدیریت عضویت اجباری در کانال‌ها
-
-import { Prisma } from '@prisma/client';
+import { RequiredChannelType } from '@prisma/client';
 import { Telegraf } from 'telegraf';
 import { channelRepository } from '../repositories/channel.repository';
 import { logger } from '../utils/logger';
 
 export const channelService = {
-  async findAll() {
+  list() {
     return channelRepository.findAll();
   },
 
-  async findActive() {
-    return channelRepository.findActive();
+  create(data: { title: string; chatId: string; username?: string | null; type: RequiredChannelType; inviteLink?: string | null; isActive?: boolean }) {
+    const normalizedChatId = data.chatId.trim();
+    return channelRepository.create({
+      title: data.title,
+      chatId: normalizedChatId,
+      channelId: normalizedChatId,
+      username: data.username?.replace('@', '') || (normalizedChatId.startsWith('@') ? normalizedChatId.replace('@', '') : null),
+      type: data.type,
+      inviteLink: data.inviteLink,
+      isActive: data.isActive ?? true,
+    });
   },
 
-  async create(data: Prisma.RequiredChannelCreateInput) {
-    return channelRepository.create(data);
+  update(id: number, data: Partial<{ title: string; chatId: string; username?: string | null; type: RequiredChannelType; inviteLink?: string | null; isActive: boolean }>) {
+    const chatId = data.chatId?.trim();
+    return channelRepository.update(id, {
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(chatId !== undefined ? { chatId, channelId: chatId } : {}),
+      ...(data.username !== undefined ? { username: data.username?.replace('@', '') || null } : {}),
+      ...(data.type !== undefined ? { type: data.type } : {}),
+      ...(data.inviteLink !== undefined ? { inviteLink: data.inviteLink } : {}),
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+    });
   },
 
-  async update(id: number, data: Prisma.RequiredChannelUpdateInput) {
-    return channelRepository.update(id, data);
-  },
-
-  async delete(id: number) {
+  delete(id: number) {
     return channelRepository.delete(id);
   },
 
-  // بررسی عضویت کاربر در تمام کانال‌های اجباری
-  async checkMembership(bot: Telegraf, telegramId: bigint): Promise<{
-    isMember: boolean;
-    notJoined: Array<{ title: string; inviteLink: string | null; channelId: string }>;
-  }> {
+  async checkMembership(bot: Telegraf, telegramId: bigint) {
     const channels = await channelRepository.findActive();
-
     if (channels.length === 0) return { isMember: true, notJoined: [] };
 
+    const validStatuses = ['member', 'administrator', 'creator'];
     const notJoined: Array<{ title: string; inviteLink: string | null; channelId: string }> = [];
 
     for (const channel of channels) {
+      const chatIdentifier = channel.chatId || channel.channelId || (channel.username ? `@${channel.username}` : '');
       try {
-        const member = await bot.telegram.getChatMember(channel.channelId, Number(telegramId));
-        const isJoined = ['member', 'administrator', 'creator'].includes(member.status);
-
-        if (!isJoined) {
-          notJoined.push({
-            title: channel.title,
-            inviteLink: channel.inviteLink,
-            channelId: channel.channelId,
-          });
+        const member = await bot.telegram.getChatMember(chatIdentifier, Number(telegramId));
+        if (!validStatuses.includes(member.status)) {
+          notJoined.push({ title: channel.title, inviteLink: channel.inviteLink, channelId: chatIdentifier });
         }
       } catch (err) {
-        logger.warn(`خطا در بررسی عضویت کانال ${channel.channelId}:`, err);
-        notJoined.push({
-          title: channel.title,
-          inviteLink: channel.inviteLink,
-          channelId: channel.channelId,
-        });
+        logger.warn(`خطا در بررسی عضویت ${chatIdentifier}:`, err);
+        notJoined.push({ title: channel.title, inviteLink: channel.inviteLink, channelId: chatIdentifier });
       }
     }
 

@@ -11,6 +11,8 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 
 import { config } from "../config";
+import { Telegraf } from "telegraf";
+import { broadcastService } from "../services/broadcast.service";
 import { logger } from "../utils/logger";
 
 import { authRouter } from "./routes/auth.routes";
@@ -18,10 +20,13 @@ import { discountRouter } from "./routes/discount.routes";
 import lotteryRouter from "./routes/lottery.routes";
 import { userRouter } from "./routes/user.routes";
 import { referralRouter } from "./routes/referral.routes";
+import { broadcastRouter } from "./routes/broadcast.routes";
+import { channelRouter } from "./routes/channel.routes";
 
 import { authMiddleware } from "./middlewares/auth.middleware";
 
-export function startAdminApi() {
+export function startAdminApi(bot?: Telegraf) {
+  if (bot) broadcastService.setBot(bot);
   const app = express();
 
   // ───────────────── TRUST PROXY (Railway) ─────────────────
@@ -138,6 +143,18 @@ export function startAdminApi() {
     "/api/referrals",
     authMiddleware,
     referralRouter
+  );
+
+  app.use(
+    "/api/broadcasts",
+    authMiddleware,
+    broadcastRouter
+  );
+
+  app.use(
+    "/api/required-channels",
+    authMiddleware,
+    channelRouter
   );
 
   // ───────────────── 404 HANDLER ─────────────────

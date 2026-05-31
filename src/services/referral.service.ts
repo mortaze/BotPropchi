@@ -54,7 +54,7 @@ export const referralService = {
     return `https://t.me/${botUsername}?start=${buildReferralCode(userId)}`;
   },
 
-  async registerSuccessfulReferral(referrerId: number, referredUserId: number, referredFirstName?: string) {
+  async registerSuccessfulReferral(referrerId: number, referredUserId: number, referredFirstName?: string, membershipVerified = false) {
     logger.info(`Referral registration started referrerId=${referrerId}, referredUserId=${referredUserId}`);
 
     if (referrerId === referredUserId) {
@@ -113,6 +113,8 @@ export const referralService = {
           referrerId,
           referredUserId,
           rewardPoints: settings.inviteRewardPoints,
+          membershipVerifiedAt: membershipVerified ? new Date() : null,
+          membershipVerificationStatus: membershipVerified ? 'VERIFIED' : 'LEGACY_VERIFIED',
         },
       });
 

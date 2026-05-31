@@ -207,3 +207,56 @@ export interface ReferralAdminResponse {
   stats: ReferralStats;
   leaderboard: ReferralLeaderboardItem[];
 }
+
+export type RequiredChannelType = "CHANNEL" | "GROUP";
+export interface RequiredChannel {
+  id: number;
+  channelId: string;
+  chatId?: string | null;
+  title: string;
+  username?: string | null;
+  type: RequiredChannelType;
+  inviteLink?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type BroadcastType = "TEXT" | "PHOTO" | "VIDEO" | "DOCUMENT" | "VOICE" | "AUDIO" | "STICKER" | "ANIMATION" | "MEDIA_GROUP";
+export type BroadcastStatus = "DRAFT" | "SCHEDULED" | "QUEUED" | "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED";
+export type BroadcastParseMode = "MARKDOWN" | "HTML";
+export type BroadcastLogStatus = "PENDING" | "SUCCESS" | "FAILED" | "SKIPPED";
+export interface BroadcastLog {
+  id: number;
+  broadcastId: number;
+  userId: number;
+  telegramId: string;
+  status: BroadcastLogStatus;
+  attempts: number;
+  error?: string | null;
+  sentAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: ReferralUserSummary;
+}
+export interface Broadcast {
+  id: number;
+  title: string;
+  messageType: BroadcastType;
+  content?: string | null;
+  mediaFileId?: string | null;
+  mediaItems?: unknown;
+  parseMode?: BroadcastParseMode | null;
+  inlineKeyboard?: unknown;
+  status: BroadcastStatus;
+  scheduledAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  totalRecipients: number;
+  successCount: number;
+  failedCount: number;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  logs?: BroadcastLog[];
+}
