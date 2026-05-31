@@ -23,6 +23,8 @@ export interface User {
   lastName?: string | null;
   points: number;
   totalReferrals: number;
+  referralCount?: number;
+  referralRewardPoints?: number;
   isBlocked: boolean;
   lastActiveAt: string;
   createdAt: string;
@@ -49,6 +51,9 @@ export interface ClickLog {
 
 export interface UserDetails extends User {
   pointLogs: PointLog[];
+  sentReferrals: ReferralItem[];
+  receivedReferral?: ReferralItem | null;
+  referredBy?: ReferralUserSummary | null;
   lotteryEntries: Array<{ id: number; lotteryId: number; userId: number; createdAt: string; lottery: Lottery }>;
   lotteryWins: LotteryWinner[];
   clickLogs: ClickLog[];
@@ -177,8 +182,8 @@ export interface ReferralItem {
   referredUserId: number;
   rewardPoints: number;
   createdAt: string;
-  referrer: ReferralUserSummary;
-  referredUser: ReferralUserSummary;
+  referrer?: ReferralUserSummary;
+  referredUser?: ReferralUserSummary;
 }
 
 export interface ReferralStats {

@@ -27,7 +27,7 @@ export default function ReferralsPage() {
     if (!q) return items;
     return items.filter((item) =>
       [item.referrer, item.referredUser].some((user) =>
-        [user.firstName, user.lastName, user.username, String(user.id)].filter(Boolean).some((value) => String(value).toLowerCase().includes(q)),
+        user ? [user.firstName, user.lastName, user.username, String(user.id)].filter(Boolean).some((value) => String(value).toLowerCase().includes(q)) : false,
       ),
     );
   }, [query.data?.items, search]);
@@ -127,8 +127,8 @@ export default function ReferralsPage() {
                 <tbody>
                   {query.isLoading ? Array.from({ length: 5 }).map((_, index) => <TableRowSkeleton key={index} cols={4} />) : filteredItems.map((item) => (
                     <tr key={item.id}>
-                      <td><p className="font-medium">{userLabel(item.referrer)}</p><p className="text-xs text-muted-foreground">@{item.referrer.username ?? "-"}</p></td>
-                      <td><p className="font-medium">{userLabel(item.referredUser)}</p><p className="text-xs text-muted-foreground">@{item.referredUser.username ?? "-"}</p></td>
+                      <td><p className="font-medium">{userLabel(item.referrer)}</p><p className="text-xs text-muted-foreground">@{item.referrer?.username ?? "-"}</p></td>
+                      <td><p className="font-medium">{userLabel(item.referredUser)}</p><p className="text-xs text-muted-foreground">@{item.referredUser?.username ?? "-"}</p></td>
                       <td>{safeDateFormat(item.createdAt, { dateStyle: "medium", timeStyle: "short" })}</td>
                       <td><Badge variant="success">{formatNumber(item.rewardPoints)} امتیاز</Badge></td>
                     </tr>

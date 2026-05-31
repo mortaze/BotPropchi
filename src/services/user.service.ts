@@ -1,13 +1,14 @@
 // src/services/user.service.ts
 // منطق تجاری مربوط به کاربران و سیستم رفرال
 
-import { userRepository } from '../repositories/user.repository';
 import { PointLogType } from '@prisma/client';
+import { userRepository } from '../repositories/user.repository';
+import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
 import { parseReferralCode, referralService } from './referral.service';
 
 export const userService = {
-  // ثبت کاربر هنگام /start
+  // ثبت کاربر هنگام /start و هر تعامل دیگر
   async registerOrUpdate(params: {
     telegramId: bigint;
     username?: string;
@@ -16,23 +17,27 @@ export const userService = {
     referralCode?: string;
   }) {
     const existingUser = await userRepository.findByTelegramId(params.telegramId);
+    const previousLastActiveAt = existingUser?.lastActiveAt;
     let referredById: number | undefined = existingUser?.referredById ?? undefined;
+    let shouldRegisterReferral = false;
 
-    // پردازش کد رفرال فقط برای کاربر جدید و کاربری که معرف ندارد
-    if (!existingUser && params.referralCode) {
+    if (params.referralCode && !existingUser?.referredById) {
       const referrerId = parseReferralCode(params.referralCode);
 
       if (referrerId) {
         const referrer = await userRepository.findById(referrerId);
 
-        // جلوگیری از خود-رفرال و رفرال نامعتبر
         if (referrer && referrer.telegramId !== params.telegramId) {
           referredById = referrer.id;
+          shouldRegisterReferral = true;
+          logger.info(
+            `Referral code accepted telegramId=${params.telegramId.toString()}, referrerId=${referrer.id}, isNewUser=${!existingUser}`
+          );
         } else {
-          logger.warn('رفرال خودکار یا نامعتبر نادیده گرفته شد:', params.referralCode);
+          logger.warn(`Self or invalid referral ignored. code=${params.referralCode}, telegramId=${params.telegramId.toString()}`);
         }
       } else {
-        logger.warn('کد رفرال نامعتبر:', params.referralCode);
+        logger.warn(`Invalid referral code ignored. code=${params.referralCode}`);
       }
     }
 
@@ -44,13 +49,15 @@ export const userService = {
       referredById,
     });
 
-    // فقط برای کاربر جدید و فقط یک‌بار پاداش رفرال ثبت می‌شود
-    if (!existingUser && referredById) {
+    // کاربرانی که قبلاً به دلیل باگ startPayload ساخته شده‌اند ولی Referral ندارند هم فقط یک‌بار قابل اتصال هستند.
+    if (shouldRegisterReferral && referredById) {
       await referralService.registerSuccessfulReferral(referredById, user.id, user.firstName);
     }
 
-    // امتیاز فعالیت روزانه
-    await this.checkDailyBonus(user.id, user.lastActiveAt);
+    // امتیاز فعالیت روزانه باید با lastActiveAt قبلی سنجیده شود، نه مقدار به‌روزشده upsert.
+    if (previousLastActiveAt) {
+      await this.checkDailyBonus(user.id, previousLastActiveAt);
+    }
 
     return user;
   },
@@ -76,8 +83,17 @@ export const userService = {
   async getProfile(telegramId: bigint) {
     const user = await userRepository.findByTelegramId(telegramId);
     if (!user) return null;
-    const rank = await userRepository.getUserRank(user.id);
-    return { ...user, rank };
+    const [rank, referralAggregate] = await Promise.all([
+      userRepository.getUserRank(user.id),
+      prisma.referral.aggregate({ where: { referrerId: user.id }, _count: true, _sum: { rewardPoints: true } }),
+    ]);
+    return {
+      ...user,
+      totalReferrals: referralAggregate._count,
+      referralCount: referralAggregate._count,
+      referralRewardPoints: referralAggregate._sum.rewardPoints || 0,
+      rank,
+    };
   },
 
   async getLeaderboard() {

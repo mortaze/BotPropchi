@@ -14,8 +14,12 @@ export function userMiddleware() {
     if (!ctx.from) return next();
 
     try {
+      const text = (ctx.message as any)?.text as string | undefined;
       const startPayload = (ctx as any).startPayload as string | undefined;
-      const referralCode = startPayload?.trim() || undefined;
+      const referralCode =
+        startPayload?.trim() ||
+        (text?.startsWith('/start') ? text.split(/\s+/).slice(1).join(' ').trim() : '') ||
+        undefined;
 
       await userService.registerOrUpdate({
         telegramId: BigInt(ctx.from.id),

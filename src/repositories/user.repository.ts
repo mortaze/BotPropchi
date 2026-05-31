@@ -3,6 +3,7 @@
 
 import { PointLogType } from '@prisma/client';
 import { prisma } from '../prisma/client';
+import { pointService } from '../services/point.service';
 
 export const userRepository = {
   // پیدا کردن یا ساختن کاربر جدید (هنگام /start)
@@ -59,43 +60,51 @@ export const userRepository = {
           lastActiveAt: true,
           createdAt: true,
           updatedAt: true,
+          referredById: true,
         },
       }),
       prisma.user.count(),
     ]);
 
-    return { users, total, pages: Math.ceil(total / limit) };
-  },
-
-  // اضافه کردن امتیاز به کاربر
-  async addPoints(userId: number, amount: number, type: PointLogType, description?: string) {
-    return prisma.$transaction([
-      prisma.user.update({
-        where: { id: userId },
-        data: { points: { increment: amount } },
-      }),
-      prisma.pointLog.create({
-        data: { userId, amount, type, description },
-      }),
-    ]);
-  },
-
-  // کسر امتیاز، مخصوص قرعه‌کشی و جریمه‌ها
-  async deductPoints(userId: number, amount: number, description?: string) {
-    return prisma.$transaction([
-      prisma.user.update({
-        where: { id: userId },
-        data: { points: { decrement: amount } },
-      }),
-      prisma.pointLog.create({
-        data: {
-          userId,
-          amount: -Math.abs(amount),
-          type: PointLogType.LOTTERY_ENTRY,
-          description,
+    const userIds = users.map((user) => user.id);
+    const referralAggregates = userIds.length
+      ? await prisma.referral.groupBy({
+          by: ['referrerId'],
+          where: { referrerId: { in: userIds } },
+          _count: { _all: true },
+          _sum: { rewardPoints: true },
+        })
+      : [];
+    const referralMap = new Map(
+      referralAggregates.map((item) => [
+        item.referrerId,
+        {
+          referralCount: item._count._all,
+          referralRewardPoints: item._sum.rewardPoints || 0,
         },
-      }),
-    ]);
+      ])
+    );
+
+    return {
+      users: users.map((user) => ({
+        ...user,
+        totalReferrals: referralMap.get(user.id)?.referralCount ?? user.totalReferrals,
+        referralCount: referralMap.get(user.id)?.referralCount ?? 0,
+        referralRewardPoints: referralMap.get(user.id)?.referralRewardPoints ?? 0,
+      })),
+      total,
+      pages: Math.ceil(total / limit),
+    };
+  },
+
+  // اضافه کردن امتیاز به کاربر؛ wrapper سازگار با کدهای قدیمی، منطق اصلی در pointService است.
+  async addPoints(userId: number, amount: number, type: PointLogType, description?: string) {
+    return pointService.addPoints(userId, amount, type, description);
+  },
+
+  // کسر امتیاز، مخصوص قرعه‌کشی و جریمه‌ها؛ wrapper سازگار با کدهای قدیمی.
+  async deductPoints(userId: number, amount: number, description?: string) {
+    return pointService.deductPoints(userId, amount, PointLogType.LOTTERY_ENTRY, description);
   },
 
   async block(id: number) {
@@ -148,7 +157,7 @@ export const userRepository = {
     });
   },
 
-  // ثبت رفرال جدید
+  // فقط برای سازگاری با کدهای قدیمی؛ ثبت رفرال واقعی باید از referralService انجام شود.
   async incrementReferrals(userId: number) {
     return prisma.user.update({
       where: { id: userId },
