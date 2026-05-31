@@ -11,13 +11,27 @@ export const channelRepository = {
 
   async findActive() {
     return prisma.requiredChannel.findMany({
-      where: { isActive: true },
+      where: { isActive: true, status: 'APPROVED' },
       orderBy: { createdAt: 'desc' },
     });
   },
 
   async create(data: Prisma.RequiredChannelCreateInput) {
     return prisma.requiredChannel.create({ data });
+  },
+
+  async upsertByChannelId(channelId: string, data: Prisma.RequiredChannelCreateInput) {
+    return prisma.requiredChannel.upsert({
+      where: { channelId },
+      update: {
+        title: data.title,
+        chatId: data.chatId,
+        username: data.username,
+        type: data.type,
+        inviteLink: data.inviteLink,
+      },
+      create: data,
+    });
   },
 
   async update(id: number, data: Prisma.RequiredChannelUpdateInput) {

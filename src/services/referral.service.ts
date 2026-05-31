@@ -1,7 +1,8 @@
-import { Prisma, PointLogType } from '@prisma/client';
+import { Prisma, PointLogType, SystemEventType } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
 import { pointService } from './point.service';
+import { systemLogService } from './system-log.service';
 
 const SETTINGS_ID = 1;
 const DEFAULT_REWARD_POINTS = 20;
@@ -142,6 +143,7 @@ export const referralService = {
 
     if (result) {
       logger.info(`Referral reward granted. referrerId=${referrerId}, referredUserId=${referredUserId}, points=${settings.inviteRewardPoints}`);
+      await systemLogService.log({ eventType: SystemEventType.REFERRAL, userId: referrerId, message: 'Referral reward granted', metadata: { referrerId, referredUserId, points: settings.inviteRewardPoints } });
     }
     return result;
   },

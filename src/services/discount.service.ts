@@ -1,10 +1,11 @@
 // src/services/discount.service.ts
 // منطق تجاری کدهای تخفیف
 
-import { DiscountCategory, Prisma, PointLogType } from '@prisma/client';
+import { DiscountCategory, Prisma, PointLogType, SystemEventType } from '@prisma/client';
 import { discountRepository } from '../repositories/discount.repository';
 import { userRepository } from '../repositories/user.repository';
 import { cache } from '../utils/cache';
+import { systemLogService } from './system-log.service';
 
 const CACHE_KEY = {
   allCodes: (page: number) => `discounts:all:${page}`,
@@ -57,6 +58,7 @@ export const discountService = {
     await Promise.all([
       discountRepository.incrementUsage(discountCodeId, userId),
       userRepository.addPoints(userId, 2, PointLogType.LINK_CLICK, 'کلیک روی لینک افیلیت'),
+      systemLogService.log({ eventType: SystemEventType.DISCOUNT_CLICK, userId, message: 'Discount code clicked', metadata: { discountCodeId } }),
     ]);
 
     clearDiscountCache();

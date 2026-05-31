@@ -1,8 +1,9 @@
-import { Broadcast, BroadcastParseMode, BroadcastStatus, BroadcastType, Prisma } from '@prisma/client';
+import { Broadcast, BroadcastLogStatus, BroadcastParseMode, BroadcastStatus, BroadcastType, Prisma, SystemEventType } from '@prisma/client';
 import { Telegraf } from 'telegraf';
 import { config } from '../config';
 import { broadcastRepository } from '../repositories/broadcast.repository';
 import { logger } from '../utils/logger';
+import { systemLogService } from './system-log.service';
 
 const TELEGRAM_DELAY_MS = Number(process.env.BROADCAST_DELAY_MS || 70);
 const BATCH_SIZE = Number(process.env.BROADCAST_BATCH_SIZE || 25);
@@ -98,6 +99,29 @@ class BroadcastService {
     await Promise.all(due.items.filter((item) => item.scheduledAt && item.scheduledAt <= new Date()).map((item) => this.enqueue(item.id)));
   }
 
+  async createTelegramCopyBroadcast(input: { title: string; sourceChatId: number | string; messageIds: number[]; createdBy?: string | null }) {
+    const broadcast = await broadcastRepository.create({
+      title: input.title,
+      messageType: BroadcastType.COPY_MESSAGE,
+      mediaItems: { sourceChatId: String(input.sourceChatId), messageIds: input.messageIds },
+      status: BroadcastStatus.QUEUED,
+      createdBy: input.createdBy,
+    });
+    await broadcastRepository.createPendingLogs(broadcast.id);
+    await this.process(broadcast.id);
+    const completed = await this.get(broadcast.id);
+    await systemLogService.log({ eventType: SystemEventType.BROADCAST, message: `Telegram broadcast completed: ${broadcast.title}`, metadata: { broadcastId: broadcast.id } });
+    return completed;
+  }
+
+  async summarizeDelivery(id: number) {
+    const broadcast = await broadcastRepository.findById(id);
+    const failedLogs = await broadcastRepository.failedErrorSamples(id);
+    const blocked = failedLogs.filter((log) => /blocked|bot was blocked|forbidden/i.test(log.error || '')).length;
+    const deleted = failedLogs.filter((log) => /chat not found|user is deactivated|deactivated/i.test(log.error || '')).length;
+    return { broadcast, blocked, deleted };
+  }
+
   private async process(id: number) {
     if (this.running.has(id)) return;
     this.running.add(id);
@@ -170,6 +194,16 @@ class BroadcastService {
         return this.bot.telegram.sendAnimation(chatId, broadcast.mediaFileId || '', options);
       case BroadcastType.MEDIA_GROUP:
         return this.bot.telegram.sendMediaGroup(chatId, (broadcast.mediaItems as any[]) || []);
+      case BroadcastType.COPY_MESSAGE: {
+        const payload = (broadcast.mediaItems || {}) as any;
+        const sourceChatId = payload.sourceChatId;
+        const messageIds = Array.isArray(payload.messageIds) ? payload.messageIds : [];
+        for (const messageId of messageIds) {
+          await this.bot.telegram.copyMessage(chatId, sourceChatId, Number(messageId));
+          await sleep(15);
+        }
+        return;
+      }
       default:
         throw new Error('نوع پیام پشتیبانی نمی‌شود');
     }

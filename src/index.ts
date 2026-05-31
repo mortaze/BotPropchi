@@ -17,6 +17,7 @@ import {
 import { registerHandlers } from './bot/handlers';
 import { startAdminApi } from './api/server';
 import { startScheduler } from './scheduler';
+import { botAdminService } from './services/bot-admin.service';
 
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
@@ -25,6 +26,7 @@ async function bootstrap() {
   await prisma.$connect();
 
   logger.info('✅ اتصال به دیتابیس برقرار شد');
+  await botAdminService.ensureOwner();
 
   // ساخت ربات
   const bot = new Telegraf(config.bot.token);
