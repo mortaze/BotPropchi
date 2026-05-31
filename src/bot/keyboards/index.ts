@@ -16,14 +16,14 @@ export function buildMainMenuKeyboard(isAdmin = false) {
     ['🏆 لیدربورد', '👥 دعوت دوستان'],
     ['🔍 جستجو'],
   ];
-  if (isAdmin) rows.push(['⚙️ پنل ادمین']);
+  if (isAdmin) rows.push(['🔐 ادمین']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
 export const mainMenuKeyboard = buildMainMenuKeyboard(false);
 
 export const botAdminPanelKeyboard = Markup.keyboard([
-  ['📢 فوروارد همگانی', '👥 مدیریت ادمین‌ها'],
+  ['📢 پیام همگانی', '👥 مدیریت ادمین‌ها'],
   ['📊 گزارشات', '📣 ارسال اعلان'],
   ['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی'],
 ]).resize().persistent();
@@ -145,11 +145,12 @@ export function joinChannelsKeyboard(
     title: string;
     inviteLink: string | null;
     channelId: string;
+    buttonText?: string | null;
   }>
 ) {
   const buttons: any[] = channels.map((ch) => [
     Markup.button.url(
-      `📢 عضویت در ${ch.title}`,
+      ch.buttonText || `📢 عضویت در ${ch.title}`,
       ch.inviteLink ||
         `https://t.me/${ch.channelId.replace('@', '')}`
     ),

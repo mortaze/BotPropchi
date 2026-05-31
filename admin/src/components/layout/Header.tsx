@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { Button } from "@/components/ui";
+import { useUIStore } from "@/store/ui.store";
 
 const labels: Record<string, string> = {
   dashboard: "داشبورد",
@@ -21,6 +22,7 @@ export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { admin, logout } = useAuthStore();
+  const toggleSidebar = useUIStore((state) => state.toggleSidebar);
   const segments = pathname.split("/").filter(Boolean);
 
   return (
@@ -28,7 +30,7 @@ export default function Header() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Menu className="h-4 w-4 md:hidden" />
+            <button type="button" onClick={toggleSidebar} className="rounded-lg p-2 text-muted-foreground hover:bg-muted md:hidden" aria-label="باز کردن منو"><Menu className="h-5 w-5" /></button>
             {segments.map((segment, index) => (
               <span key={`${segment}-${index}`} className="flex items-center gap-2">
                 {index > 0 && <span>/</span>}

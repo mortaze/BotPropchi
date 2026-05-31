@@ -1,4 +1,4 @@
-import { Broadcast, BroadcastLogStatus, BroadcastParseMode, BroadcastStatus, BroadcastType, Prisma, SystemEventType } from '@prisma/client';
+import { Broadcast, BroadcastLogStatus, BroadcastParseMode, BroadcastStatus, BroadcastType, Prisma, SystemEventType, SystemLogLevel } from '@prisma/client';
 import { Telegraf } from 'telegraf';
 import { config } from '../config';
 import { broadcastRepository } from '../repositories/broadcast.repository';
@@ -110,7 +110,7 @@ class BroadcastService {
     await broadcastRepository.createPendingLogs(broadcast.id);
     await this.process(broadcast.id);
     const completed = await this.get(broadcast.id);
-    await systemLogService.log({ eventType: SystemEventType.BROADCAST, message: `Telegram broadcast completed: ${broadcast.title}`, metadata: { broadcastId: broadcast.id } });
+    await systemLogService.log({ eventType: SystemEventType.BROADCAST, message: `Telegram broadcast completed: ${broadcast.title}`, metadata: { broadcastId: broadcast.id, source: 'bot_panel' } });
     return completed;
   }
 
@@ -144,6 +144,7 @@ class BroadcastService {
             const message = error instanceof Error ? error.message : String(error);
             logger.warn(`Broadcast ${id} failed for ${log.telegramId.toString()}: ${message}`);
             await broadcastRepository.markLogFailed(log.id, message.slice(0, 900));
+            await systemLogService.log({ eventType: SystemEventType.BROADCAST, level: SystemLogLevel.WARN, telegramId: log.telegramId, message: 'Broadcast delivery failed', metadata: { broadcastId: id, error: message.slice(0, 900) } });
           }
           await sleep(TELEGRAM_DELAY_MS);
         }

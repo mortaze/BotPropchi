@@ -9,6 +9,10 @@ export const channelRepository = {
     return prisma.requiredChannel.findMany({ orderBy: { createdAt: 'desc' } });
   },
 
+  async findById(id: number) {
+    return prisma.requiredChannel.findUnique({ where: { id } });
+  },
+
   async findActive() {
     return prisma.requiredChannel.findMany({
       where: { isActive: true, status: 'APPROVED' },

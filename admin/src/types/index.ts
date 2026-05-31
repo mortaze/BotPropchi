@@ -1,5 +1,5 @@
 export type AdminRole = "SUPER_ADMIN" | "ADMIN" | "MODERATOR";
-export type BotAdminRole = "OWNER" | "SUPER_ADMIN" | "ADMIN";
+export type BotAdminRole = "OWNER" | "SUPER_ADMIN" | "ADMIN" | "MODERATOR";
 export type BotAdminStatus = "ACTIVE" | "SUSPENDED";
 
 export interface AdminUser {
@@ -217,9 +217,14 @@ export interface RequiredChannel {
   channelId: string;
   chatId?: string | null;
   title: string;
+  displayTitle?: string | null;
   username?: string | null;
   type: RequiredChannelType;
   inviteLink?: string | null;
+  buttonText?: string | null;
+  botStatus?: string | null;
+  botStatusCheckedAt?: string | null;
+  lastError?: string | null;
   status: RequiredChannelStatus;
   isActive: boolean;
   approvedAt?: string | null;

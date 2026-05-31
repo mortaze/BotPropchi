@@ -124,7 +124,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
 
 
-  bot.hears('⚙️ پنل ادمین', async (ctx) => {
+  bot.hears('🔐 ادمین', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     await ctx.reply('⚙️ پنل مدیریت ربات', botAdminPanelKeyboard);
@@ -134,7 +134,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));
   });
 
-  bot.hears('📢 فوروارد همگانی', async (ctx) => {
+  bot.hears('📢 پیام همگانی', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     cache.set(`admin_broadcast:${ctx.from.id}`, true, 600);
@@ -159,8 +159,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.command('admin_add', async (ctx: any) => {
     if (!(await botAdminService.canManage(ctx.from.id))) return;
     const [, telegramId, role = 'ADMIN'] = ctx.message.text.split(/\s+/);
-    if (!telegramId || !['OWNER', 'SUPER_ADMIN', 'ADMIN'].includes(role)) return ctx.reply('فرمت صحیح: /admin_add TELEGRAM_ID ROLE');
+    if (!telegramId || !['OWNER', 'SUPER_ADMIN', 'ADMIN', 'MODERATOR'].includes(role)) return ctx.reply('فرمت صحیح: /admin_add TELEGRAM_ID ROLE');
     const item = await botAdminService.upsert({ telegramId, role: role as BotAdminRole, status: BotAdminStatus.ACTIVE });
+    await systemLogService.log({ eventType: SystemEventType.ADMIN_ACTION, telegramId: ctx.from.id, message: 'Bot admin added from bot', metadata: { targetTelegramId: item.telegramId.toString(), role: item.role } });
     await ctx.reply(`✅ ادمین ثبت شد: ${item.telegramId.toString()} (${item.role})`);
   });
 
@@ -185,6 +186,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const target = admins.find((item) => item.id === Number(id));
     if (target?.role === 'OWNER' && !(await botAdminService.canManage(ctx.from.id, BotAdminRole.OWNER))) return ctx.reply('❌ حذف Owner مجاز نیست.');
     await botAdminService.delete(Number(id));
+    await systemLogService.log({ eventType: SystemEventType.ADMIN_ACTION, telegramId: ctx.from.id, message: 'Bot admin deleted from bot', metadata: { id } });
     await ctx.reply('🗑 ادمین حذف شد.');
   });
 
@@ -521,13 +523,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
 });
 
   bot.action('check:membership', async (ctx) => {
-    cache.del(`membership:${ctx.from?.id}`);
+    cache.del(`membership:v2:${ctx.from?.id}`);
     await ctx.answerCbQuery('در حال بررسی...');
-    const result = await channelService.checkMembership(bot, BigInt(ctx.from!.id));
+    const result = await channelService.checkMembership(bot, BigInt(ctx.from!.id), { force: true });
     if (!result.isMember) {
-      return ctx.reply('ابتدا در کانال‌ها و گروه‌های زیر عضو شوید.', joinChannelsKeyboard(result.notJoined));
+      await userService.markMembershipUnverified(BigInt(ctx.from!.id), 'manual_recheck_failed').catch(logger.error);
+      return ctx.reply('شما از کانال اجباری خارج شده‌اید.\nبرای ادامه استفاده از ربات مجدداً عضو شوید.', joinChannelsKeyboard(result.notJoined));
     }
-    cache.set(`membership:${ctx.from?.id}`, true, 300);
+    cache.set(`membership:v2:${ctx.from?.id}`, { isMember: true, notJoined: [] }, 180);
     await userService.markMembershipVerified(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
     await userService.processPendingReferral(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
     await ctx.reply('✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.', await adminReplyOptions(ctx.from?.id));

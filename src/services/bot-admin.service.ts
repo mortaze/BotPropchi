@@ -25,6 +25,7 @@ export const botAdminService = {
     if (!actor) return false;
     if (actor.role === BotAdminRole.OWNER) return true;
     if (actor.role === BotAdminRole.SUPER_ADMIN) return targetRole !== BotAdminRole.OWNER;
+    if (actor.role === BotAdminRole.ADMIN) return targetRole === BotAdminRole.MODERATOR;
     return false;
   },
 
