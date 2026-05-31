@@ -10,11 +10,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fa" dir="rtl" suppressHydrationWarning>
+    <html lang="fa" dir="rtl" className="dark" suppressHydrationWarning>
       <body className="font-sans antialiased bg-background text-foreground">
         <Providers>
           {children}
-          <Toaster position="top-center" richColors dir="rtl" />
+          <Toaster position="top-center" richColors theme="dark" dir="rtl" />
         </Providers>
       </body>
     </html>

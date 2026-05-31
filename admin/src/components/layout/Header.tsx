@@ -11,6 +11,7 @@ const labels: Record<string, string> = {
   users: "کاربران",
   lotteries: "قرعه‌کشی‌ها",
   discounts: "تخفیف‌ها",
+  referrals: "دعوت دوستان",
   "prop-firms": "پراپ فرم‌ها",
   create: "ایجاد",
   edit: "ویرایش",

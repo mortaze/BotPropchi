@@ -17,6 +17,7 @@ import { authRouter } from "./routes/auth.routes";
 import { discountRouter } from "./routes/discount.routes";
 import lotteryRouter from "./routes/lottery.routes";
 import { userRouter } from "./routes/user.routes";
+import { referralRouter } from "./routes/referral.routes";
 
 import { authMiddleware } from "./middlewares/auth.middleware";
 
@@ -130,6 +131,13 @@ export function startAdminApi() {
     "/api/users",
     authMiddleware,
     userRouter
+  );
+
+  // ───────────────── REFERRAL ROUTES ─────────────────
+  app.use(
+    "/api/referrals",
+    authMiddleware,
+    referralRouter
   );
 
   // ───────────────── 404 HANDLER ─────────────────

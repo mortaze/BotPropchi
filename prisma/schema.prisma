@@ -25,8 +25,10 @@ model User {
   updatedAt      DateTime @updatedAt
   referredById   Int?
 
-  referredBy     User?    @relation("UserReferrals", fields: [referredById], references: [id])
-  referrals      User[]   @relation("UserReferrals")
+  referredBy     User?      @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals      User[]     @relation("UserReferrals")
+  sentReferrals  Referral[] @relation("ReferralReferrer")
+  receivedReferral Referral? @relation("ReferralReferred")
   pointLogs      PointLog[]
   lotteryEntries LotteryEntry[]
   lotteryWins    LotteryWinner[]
@@ -108,12 +110,43 @@ model PointLog {
 
 enum PointLogType {
   REFERRAL
+  REFERRAL_REWARD
   DAILY_ACTIVITY
   LINK_CLICK
   AFFILIATE_PURCHASE
   LOTTERY_ENTRY
   ADMIN_GRANT
   PENALTY
+}
+
+
+////////////////////////////////////////////////////////////
+// REFERRALS
+////////////////////////////////////////////////////////////
+
+model Referral {
+  id             Int      @id @default(autoincrement())
+  referrerId     Int
+  referredUserId Int      @unique
+  rewardPoints   Int
+  createdAt      DateTime @default(now())
+
+  referrer     User @relation("ReferralReferrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredUser User @relation("ReferralReferred", fields: [referredUserId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId])
+  @@index([createdAt])
+  @@map("referrals")
+}
+
+model ReferralSettings {
+  id                 Int      @id @default(1)
+  inviteRewardPoints Int      @default(20)
+  isEnabled          Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  @@map("referral_settings")
 }
 
 ////////////////////////////////////////////////////////////

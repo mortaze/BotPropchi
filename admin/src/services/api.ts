@@ -1,6 +1,6 @@
 import axios, { AxiosError } from "axios";
 import Cookies from "js-cookie";
-import type { AdminUser, DiscountCategory, DiscountCode, Lottery, LotteryWinner, PropFirm, User, UserDetails } from "@/types";
+import type { AdminUser, DiscountCategory, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails } from "@/types";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://botpropchi-production.up.railway.app";
 
@@ -159,6 +159,26 @@ export const lotteriesApi = {
   },
   async getWinners(id: number): Promise<{ success: boolean; winners: LotteryWinner[] }> {
     const { data } = await api.get(`/api/lotteries/${id}/winners`);
+    return data;
+  },
+};
+
+
+export const referralsApi = {
+  async getAdmin(params: { page?: number; limit?: number; q?: string; referrerId?: number } = {}): Promise<ReferralAdminResponse> {
+    const { data } = await api.get("/api/referrals/admin", { params: { page: params.page ?? 1, limit: params.limit ?? 20, q: params.q || undefined, referrerId: params.referrerId } });
+    return data;
+  },
+  async getStats(): Promise<{ success: boolean; data: ReferralStats }> {
+    const { data } = await api.get("/api/referrals/stats");
+    return data;
+  },
+  async getLeaderboard(limit = 10): Promise<{ success: boolean; data: ReferralLeaderboardItem[] }> {
+    const { data } = await api.get("/api/referrals/leaderboard", { params: { limit } });
+    return data;
+  },
+  async updateSettings(payload: Partial<Pick<ReferralSettings, "inviteRewardPoints" | "isEnabled">>): Promise<{ success: boolean; settings: ReferralSettings }> {
+    const { data } = await api.patch("/api/referrals/settings", payload);
     return data;
   },
 };

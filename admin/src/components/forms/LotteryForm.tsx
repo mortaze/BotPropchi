@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button, Input, Toggle } from "@/components/ui";
+import { safeToISOString } from "@/lib/utils";
 import type { Lottery } from "@/types";
 import type { LotteryPayload } from "@/services/api";
 
@@ -18,10 +19,14 @@ const schema = z.object({
   minPoints: z.coerce.number().int().min(0),
   entryCost: z.coerce.number().int().min(0),
   isActive: z.boolean(),
-}).refine((data) => new Date(data.endAt) > new Date(data.startAt), { path: ["endAt"], message: "تاریخ پایان باید بعد از شروع باشد" });
+}).refine((data) => {
+  const start = safeToISOString(data.startAt);
+  const end = safeToISOString(data.endAt);
+  return Boolean(start && end && new Date(end).getTime() > new Date(start).getTime());
+}, { path: ["endAt"], message: "تاریخ پایان باید بعد از شروع باشد" });
 
 type FormValues = z.infer<typeof schema>;
-const toLocal = (value?: string) => value ? value.slice(0, 16) : "";
+const toLocal = (value?: string | null) => safeToISOString(value)?.slice(0, 16) ?? "";
 
 export default function LotteryForm({ initial, loading, submitLabel = "ذخیره", onSubmit }: { initial?: Lottery; loading?: boolean; submitLabel?: string; onSubmit: (payload: LotteryPayload) => void }) {
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormValues>({
@@ -42,8 +47,8 @@ export default function LotteryForm({ initial, loading, submitLabel = "ذخیر�
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit((values) => onSubmit({
       ...values,
-      startAt: new Date(values.startAt).toISOString(),
-      endAt: new Date(values.endAt).toISOString(),
+      startAt: safeToISOString(values.startAt) ?? "",
+      endAt: safeToISOString(values.endAt) ?? "",
       description: values.description || null,
       announcementMsg: values.announcementMsg || null,
     }))}>
