@@ -1,15 +1,29 @@
 // src/services/user.service.ts
 // منطق تجاری مربوط به کاربران و سیستم رفرال
 
-import { PointLogType } from '@prisma/client';
+import { PointLogType, SystemEventType, SystemLogLevel } from '@prisma/client';
 import { userRepository } from '../repositories/user.repository';
 import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
 import { parseReferralCode, referralService } from './referral.service';
+import { systemLogService } from './system-log.service';
 
 export const userService = {
   markMembershipVerified(telegramId: bigint) {
     return prisma.user.update({ where: { telegramId }, data: { membershipVerifiedAt: new Date() } });
+  },
+
+  async markMembershipUnverified(telegramId: bigint, reason: string) {
+    const user = await prisma.user.update({ where: { telegramId }, data: { membershipVerifiedAt: null } });
+    await systemLogService.log({
+      eventType: SystemEventType.FORCE_JOIN,
+      level: SystemLogLevel.WARN,
+      telegramId,
+      userId: user.id,
+      message: 'User membership access revoked',
+      metadata: { reason },
+    });
+    return user;
   },
 
   // ثبت کاربر هنگام /start و هر تعامل دیگر

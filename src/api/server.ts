@@ -24,7 +24,7 @@ import lotteryRouter from "./routes/lottery.routes";
 import { userRouter } from "./routes/user.routes";
 import { referralRouter } from "./routes/referral.routes";
 import { broadcastRouter } from "./routes/broadcast.routes";
-import { channelRouter } from "./routes/channel.routes";
+import { createChannelRouter } from "./routes/channel.routes";
 import { createGroupRouter } from "./routes/group.routes";
 import { keywordReplyRouter } from "./routes/keyword-reply.routes";
 
@@ -159,7 +159,7 @@ export function startAdminApi(bot?: Telegraf) {
   app.use(
     "/api/required-channels",
     authMiddleware,
-    channelRouter
+    createChannelRouter(bot)
   );
 
   app.use(

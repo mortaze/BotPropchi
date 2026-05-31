@@ -6,7 +6,6 @@ import { userService } from '../../services/user.service';
 import { channelService } from '../../services/channel.service';
 import { joinChannelsKeyboard } from '../keyboards';
 import { logger } from '../../utils/logger';
-import { cache } from '../../utils/cache';
 import { groupService } from '../../services/group.service';
 import { botAdminService } from '../../services/bot-admin.service';
 import { systemLogService } from '../../services/system-log.service';
@@ -54,29 +53,18 @@ export function membershipMiddleware(bot: Telegraf) {
       return next();
     }
 
-    const cacheKey = `membership:${ctx.from.id}`;
-    const isMemberCached = cache.get<boolean>(cacheKey);
-    if (isMemberCached) {
-      await userService.markMembershipVerified(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
-      await userService.processPendingReferral(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
-      return next();
-    }
-
-    const { isMember, notJoined } = await channelService.checkMembership(
-      bot,
-      BigInt(ctx.from.id)
-    );
+    const { isMember, notJoined } = await channelService.checkMembership(bot, BigInt(ctx.from.id));
 
     if (isMember) {
-      cache.set(cacheKey, true, 300); // 5 دقیقه کش
       await userService.markMembershipVerified(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
       await userService.processPendingReferral(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
       return next();
     }
 
+    await userService.markMembershipUnverified(BigInt(ctx.from.id), 'required_channel_missing').catch((err) => logger.error('خطا در ثبت خروج از کانال:', err));
     await systemLogService.log({ eventType: SystemEventType.FORCE_JOIN, telegramId: ctx.from.id, message: 'Force join blocked user', metadata: { notJoined } as any });
     await ctx.reply(
-      'ابتدا در کانال‌ها و گروه‌های زیر عضو شوید.',
+      'شما از کانال اجباری خارج شده‌اید.\nبرای ادامه استفاده از ربات مجدداً عضو شوید.',
       joinChannelsKeyboard(notJoined)
     );
   };

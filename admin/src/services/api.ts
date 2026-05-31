@@ -229,10 +229,12 @@ export default api;
 
 export interface RequiredChannelPayload {
   title: string;
+  displayTitle?: string | null;
   chatId: string;
   username?: string | null;
   type: "CHANNEL" | "GROUP";
   inviteLink?: string | null;
+  buttonText?: string | null;
   isActive?: boolean;
   status?: import("@/types").RequiredChannelStatus;
 }
@@ -248,6 +250,10 @@ export const requiredChannelsApi = {
   },
   async update(id: number, payload: Partial<RequiredChannelPayload>): Promise<{ success: boolean; channel: import("@/types").RequiredChannel }> {
     const { data } = await api.patch(`/api/required-channels/${id}`, payload);
+    return data;
+  },
+  async refreshBotStatus(id: number): Promise<{ success: boolean; channel: import("@/types").RequiredChannel }> {
+    const { data } = await api.post(`/api/required-channels/${id}/refresh-bot-status`);
     return data;
   },
   async delete(id: number): Promise<{ success: boolean }> {
