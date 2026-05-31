@@ -1,6 +1,7 @@
 import { Prisma, PointLogType } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
+import { pointService } from './point.service';
 
 const SETTINGS_ID = 1;
 const DEFAULT_REWARD_POINTS = 20;
@@ -54,6 +55,8 @@ export const referralService = {
   },
 
   async registerSuccessfulReferral(referrerId: number, referredUserId: number, referredFirstName?: string) {
+    logger.info(`Referral registration started referrerId=${referrerId}, referredUserId=${referredUserId}`);
+
     if (referrerId === referredUserId) {
       logger.warn(`Self referral ignored for userId=${referredUserId}`);
       return null;
@@ -67,11 +70,44 @@ export const referralService = {
 
     const existing = await prisma.referral.findUnique({ where: { referredUserId } });
     if (existing) {
-      logger.info(`Duplicate referral ignored for referredUserId=${referredUserId}`);
+      await prisma.user.updateMany({
+        where: { id: referredUserId, referredById: null },
+        data: { referredById: existing.referrerId },
+      });
+      logger.info(`Duplicate referral ignored for referredUserId=${referredUserId}; referredById sync attempted`);
       return existing;
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      const [referrer, referredUser] = await Promise.all([
+        tx.user.findUnique({ where: { id: referrerId }, select: { id: true, telegramId: true, isBlocked: true } }),
+        tx.user.findUnique({ where: { id: referredUserId }, select: { id: true, telegramId: true, referredById: true } }),
+      ]);
+
+      if (!referrer || !referredUser) {
+        logger.warn(`Referral ignored because user was not found. referrerId=${referrerId}, referredUserId=${referredUserId}`);
+        return null;
+      }
+
+      if (referrer.telegramId === referredUser.telegramId) {
+        logger.warn(`Self referral ignored by telegramId for userId=${referredUserId}`);
+        return null;
+      }
+
+      if (referredUser.referredById && referredUser.referredById !== referrerId) {
+        logger.info(
+          `Referral ignored because referred user already has another referrer. referredUserId=${referredUserId}, referredById=${referredUser.referredById}`
+        );
+        return null;
+      }
+
+      if (!referredUser.referredById) {
+        await tx.user.update({
+          where: { id: referredUserId },
+          data: { referredById: referrerId },
+        });
+      }
+
       const referral = await tx.referral.create({
         data: {
           referrerId,
@@ -80,21 +116,17 @@ export const referralService = {
         },
       });
 
+      await pointService.addPoints(
+        referrerId,
+        settings.inviteRewardPoints,
+        PointLogType.REFERRAL_REWARD,
+        `پاداش دعوت ${referredFirstName || `کاربر ${referredUserId}`}`,
+        tx
+      );
+
       await tx.user.update({
         where: { id: referrerId },
-        data: {
-          points: { increment: settings.inviteRewardPoints },
-          totalReferrals: { increment: 1 },
-        },
-      });
-
-      await tx.pointLog.create({
-        data: {
-          userId: referrerId,
-          amount: settings.inviteRewardPoints,
-          type: PointLogType.REFERRAL_REWARD,
-          description: `پاداش دعوت ${referredFirstName || `کاربر ${referredUserId}`}`,
-        },
+        data: { totalReferrals: { increment: 1 } },
       });
 
       return referral;
@@ -106,7 +138,9 @@ export const referralService = {
       throw error;
     });
 
-    logger.info(`Referral reward granted. referrerId=${referrerId}, referredUserId=${referredUserId}, points=${settings.inviteRewardPoints}`);
+    if (result) {
+      logger.info(`Referral reward granted. referrerId=${referrerId}, referredUserId=${referredUserId}, points=${settings.inviteRewardPoints}`);
+    }
     return result;
   },
 

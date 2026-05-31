@@ -44,6 +44,14 @@ userRouter.get('/:id', async (req, res) => {
     where: { id: Number(req.params.id) },
     include: {
       pointLogs: { orderBy: { createdAt: 'desc' }, take: 50 },
+      sentReferrals: {
+        include: { referredUser: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true, createdAt: true } } },
+        orderBy: { createdAt: 'desc' },
+      },
+      receivedReferral: {
+        include: { referrer: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true } } },
+      },
+      referredBy: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true } },
       lotteryEntries: { include: { lottery: true }, orderBy: { createdAt: 'desc' } },
       lotteryWins: { include: { lottery: true }, orderBy: { wonAt: 'desc' } },
       clickLogs: { include: { discountCode: true }, orderBy: { createdAt: 'desc' }, take: 50 },
@@ -51,7 +59,21 @@ userRouter.get('/:id', async (req, res) => {
   });
 
   if (!user) return res.status(404).json({ success: false, error: 'کاربر یافت نشد' });
-  res.json(serializeBigInts(user));
+
+  const referralAggregate = await prisma.referral.aggregate({
+    where: { referrerId: user.id },
+    _count: true,
+    _sum: { rewardPoints: true },
+  });
+
+  res.json(
+    serializeBigInts({
+      ...user,
+      totalReferrals: referralAggregate._count,
+      referralCount: referralAggregate._count,
+      referralRewardPoints: referralAggregate._sum.rewardPoints || 0,
+    })
+  );
 });
 
 // بلاک: POST /api/users/:id/block

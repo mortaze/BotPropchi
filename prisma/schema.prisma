@@ -34,6 +34,7 @@ model User {
   lotteryWins    LotteryWinner[]
   clickLogs      ClickLog[]
 
+  @@index([referredById])
   @@map("users")
 }
 
@@ -105,6 +106,8 @@ model PointLog {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([type])
   @@map("point_logs")
 }
 
