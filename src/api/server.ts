@@ -22,6 +22,8 @@ import { userRouter } from "./routes/user.routes";
 import { referralRouter } from "./routes/referral.routes";
 import { broadcastRouter } from "./routes/broadcast.routes";
 import { channelRouter } from "./routes/channel.routes";
+import { createGroupRouter } from "./routes/group.routes";
+import { keywordReplyRouter } from "./routes/keyword-reply.routes";
 
 import { authMiddleware } from "./middlewares/auth.middleware";
 
@@ -155,6 +157,18 @@ export function startAdminApi(bot?: Telegraf) {
     "/api/required-channels",
     authMiddleware,
     channelRouter
+  );
+
+  app.use(
+    "/api/groups",
+    authMiddleware,
+    createGroupRouter(bot)
+  );
+
+  app.use(
+    "/api/keyword-replies",
+    authMiddleware,
+    keywordReplyRouter
   );
 
   // ───────────────── 404 HANDLER ─────────────────

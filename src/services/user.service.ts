@@ -8,6 +8,10 @@ import { logger } from '../utils/logger';
 import { parseReferralCode, referralService } from './referral.service';
 
 export const userService = {
+  markMembershipVerified(telegramId: bigint) {
+    return prisma.user.update({ where: { telegramId }, data: { membershipVerifiedAt: new Date() } });
+  },
+
   // ثبت کاربر هنگام /start و هر تعامل دیگر
   async registerOrUpdate(params: {
     telegramId: bigint;

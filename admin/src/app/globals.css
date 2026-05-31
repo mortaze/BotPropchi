@@ -1,3 +1,19 @@
+@font-face {
+  font-family: "BYekan";
+  src: url("/font/BYekan.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "BYekan";
+  src: url("/font/BYekanBold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -68,7 +84,7 @@
 
 @layer base {
   * { @apply border-border; }
-  html, body, button, input, textarea, select, table, dialog { font-family: var(--font-admin), BYekan, Tahoma, Arial, sans-serif; }
+  html, body, button, input, textarea, select, table, dialog, [role="dialog"], [data-radix-popper-content-wrapper] { font-family: var(--font-vazir), BYekan, Tahoma, Arial, sans-serif !important; }
   body { @apply bg-background text-foreground; }
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }

@@ -3,6 +3,8 @@ import { Context, Telegraf } from 'telegraf';
 import { channelService } from '../../services/channel.service';
 import { discountService } from '../../services/discount.service';
 import { lotteryService } from '../../services/lottery.service';
+import { groupService } from '../../services/group.service';
+import { keywordReplyService } from '../../services/keyword-reply.service';
 import { referralService } from '../../services/referral.service';
 import { userService } from '../../services/user.service';
 import { cache } from '../../utils/cache';
@@ -39,6 +41,25 @@ async function getDiscountPage(category: DiscountCategory | 'ALL', page: number)
 }
 
 export function registerHandlers(bot: Telegraf<Context>) {
+  bot.on('my_chat_member', async (ctx: any, next) => {
+    const chat = ctx.update.my_chat_member?.chat;
+    const newStatus = ctx.update.my_chat_member?.new_chat_member?.status;
+    if (chat && (chat.type === 'group' || chat.type === 'supergroup') && newStatus !== 'left' && newStatus !== 'kicked') {
+      await groupService.upsertFromChat({ id: chat.id, title: chat.title, username: chat.username });
+      await groupService.refreshBotAdmin(bot, chat.id).catch(logger.error);
+    }
+    return next();
+  });
+
+  bot.on('new_chat_members', async (ctx: any, next) => {
+    const me = await bot.telegram.getMe();
+    const added = ctx.message.new_chat_members?.some((member: any) => member.id === me.id);
+    if (added && ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
+      await groupService.upsertFromChat({ id: ctx.chat.id, title: ctx.chat.title, username: ctx.chat.username });
+      await groupService.refreshBotAdmin(bot, ctx.chat.id).catch(logger.error);
+    }
+    return next();
+  });
   bot.start(async (ctx) => {
     const name = ctx.from?.first_name || 'کاربر';
 
@@ -129,6 +150,15 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.on('text', async (ctx: any, next) => {
+    if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
+      const group = (ctx.state as any).telegramGroup;
+      if (group) {
+        const handled = await keywordReplyService.handleGroupText(ctx, group.id);
+        if (handled) return;
+      }
+      return next();
+    }
+
     const isSearchMode = cache.get<boolean>(`search_mode:${ctx.from.id}`);
 
     if (!isSearchMode) {
@@ -321,6 +351,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return ctx.reply('ابتدا در کانال‌ها و گروه‌های زیر عضو شوید.', joinChannelsKeyboard(result.notJoined));
     }
     cache.set(`membership:${ctx.from?.id}`, true, 300);
+    await userService.markMembershipVerified(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
     await userService.processPendingReferral(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
     await ctx.reply('✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.', mainMenuKeyboard);
   });

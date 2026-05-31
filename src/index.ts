@@ -9,6 +9,7 @@ import { prisma } from './prisma/client';
 import {
   userMiddleware,
   membershipMiddleware,
+  groupAccessMiddleware,
   rateLimitMiddleware,
   loggingMiddleware,
 } from './bot/middlewares';
@@ -31,6 +32,7 @@ async function bootstrap() {
   // Middleware ها
   bot.use(loggingMiddleware());
   bot.use(rateLimitMiddleware(20, 60_000));
+  bot.use(groupAccessMiddleware(bot));
   bot.use(userMiddleware());
   bot.use(membershipMiddleware(bot));
 

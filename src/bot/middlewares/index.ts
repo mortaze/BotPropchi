@@ -7,6 +7,7 @@ import { channelService } from '../../services/channel.service';
 import { joinChannelsKeyboard } from '../keyboards';
 import { logger } from '../../utils/logger';
 import { cache } from '../../utils/cache';
+import { groupService } from '../../services/group.service';
 
 // ─── ثبت / به‌روزرسانی کاربر ──────────────────────────────
 export function userMiddleware() {
@@ -40,6 +41,7 @@ export function userMiddleware() {
 export function membershipMiddleware(bot: Telegraf) {
   return async (ctx: Context, next: () => Promise<void>) => {
     if (!ctx.from) return next();
+    if (ctx.chat && ctx.chat.type !== 'private') return next();
 
     const callbackData = (ctx.callbackQuery as any)?.data as string | undefined;
     if (callbackData === 'check:membership') {
@@ -49,6 +51,7 @@ export function membershipMiddleware(bot: Telegraf) {
     const cacheKey = `membership:${ctx.from.id}`;
     const isMemberCached = cache.get<boolean>(cacheKey);
     if (isMemberCached) {
+      await userService.markMembershipVerified(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
       await userService.processPendingReferral(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
       return next();
     }
@@ -60,6 +63,7 @@ export function membershipMiddleware(bot: Telegraf) {
 
     if (isMember) {
       cache.set(cacheKey, true, 300); // 5 دقیقه کش
+      await userService.markMembershipVerified(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
       await userService.processPendingReferral(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
       return next();
     }
@@ -68,6 +72,26 @@ export function membershipMiddleware(bot: Telegraf) {
       'ابتدا در کانال‌ها و گروه‌های زیر عضو شوید.',
       joinChannelsKeyboard(notJoined)
     );
+  };
+}
+
+
+// ─── محدودیت فعالیت گروهی ─────────────────────────────────
+export function groupAccessMiddleware(bot: Telegraf) {
+  return async (ctx: Context, next: () => Promise<void>) => {
+    if (!ctx.chat || ctx.chat.type === 'private') return next();
+    if ((ctx as any).updateType === 'my_chat_member' || (ctx.message as any)?.new_chat_members) return next();
+    if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') return next();
+
+    const result = await groupService.canOperateInGroup(bot, {
+      id: ctx.chat.id,
+      title: (ctx.chat as any).title,
+      username: (ctx.chat as any).username,
+    });
+
+    if (!result.allowed) return;
+    (ctx.state as any).telegramGroup = result.group;
+    return next();
   };
 }
 
