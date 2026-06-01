@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Building2, FileText, Gift, LayoutDashboard, Megaphone, MessageSquareReply, RadioTower, Settings, ShieldCheck, Share2, Ticket, UserCog, Users, X } from "lucide-react";
+import { BarChart3, Building2, FileText, Gift, LayoutDashboard, Megaphone, MessageSquareReply, RadioTower, Settings, ShieldCheck, Share2, Star, Ticket, UserCog, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
 import { settingsApi } from "@/services/api";
 
-const iconMap = { dashboard: LayoutDashboard, users: Users, lotteries: Ticket, discounts: Gift, "prop-firms": Building2, referrals: Share2, "required-channels": RadioTower, groups: ShieldCheck, "keyword-replies": MessageSquareReply, broadcasts: Megaphone, "bot-admins": UserCog, "admin-users": UserCog, analytics: BarChart3, "system-logs": FileText, settings: Settings } as const;
+const iconMap = { dashboard: LayoutDashboard, users: Users, lotteries: Ticket, discounts: Gift, "prop-firms": Building2, referrals: Share2, scoring: Star, "required-channels": RadioTower, groups: ShieldCheck, "keyword-replies": MessageSquareReply, broadcasts: Megaphone, "bot-admins": UserCog, "admin-users": UserCog, analytics: BarChart3, "system-logs": FileText, settings: Settings } as const;
 const fallback = [
   { key: "dashboard", href: "/dashboard", label: "داشبورد" },
   { key: "users", href: "/dashboard/users", label: "کاربران" },
@@ -44,8 +44,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 export default function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useUIStore();
   return <>
-    <aside className="fixed inset-y-0 right-0 z-30 hidden w-64 border-l border-sidebar-border bg-sidebar p-4 md:block"><SidebarContent /></aside>
+    <aside className="fixed inset-y-0 right-0 z-30 hidden h-screen w-64 overflow-y-auto overscroll-contain border-l border-sidebar-border bg-sidebar p-4 md:block"><SidebarContent /></aside>
     <div className={cn("fixed inset-0 z-40 bg-black/45 opacity-0 backdrop-blur-sm transition-opacity duration-300 md:hidden", sidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none")} onClick={() => setSidebarOpen(false)} />
-    <aside className={cn("fixed inset-y-0 right-0 z-50 w-72 max-w-[82vw] border-l border-sidebar-border bg-sidebar p-4 shadow-2xl transition-transform duration-300 ease-out md:hidden", sidebarOpen ? "translate-x-0" : "translate-x-full")} onClick={(event) => event.stopPropagation()}><SidebarContent onNavigate={() => setSidebarOpen(false)} /></aside>
+    <aside className={cn("fixed inset-y-0 right-0 z-50 h-screen w-72 max-w-[82vw] overflow-y-auto overscroll-contain border-l border-sidebar-border bg-sidebar p-4 shadow-2xl transition-transform duration-300 ease-out md:hidden", sidebarOpen ? "translate-x-0" : "translate-x-full")} onClick={(event) => event.stopPropagation()}><SidebarContent onNavigate={() => setSidebarOpen(false)} /></aside>
   </>;
 }

@@ -3,6 +3,7 @@ import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
 import { pointService } from './point.service';
 import { systemLogService } from './system-log.service';
+import { scoringService } from './scoring.service';
 
 const SETTINGS_ID = 1;
 const DEFAULT_REWARD_POINTS = 20;
@@ -31,15 +32,19 @@ export function parseReferralCode(code?: string | null): number | null {
 
 export const referralService = {
   async getSettings() {
+    const scoring = await scoringService.getSettings();
     return prisma.referralSettings.upsert({
       where: { id: SETTINGS_ID },
-      update: {},
-      create: { id: SETTINGS_ID, inviteRewardPoints: DEFAULT_REWARD_POINTS, isEnabled: true },
+      update: { inviteRewardPoints: scoring.referralRewardPoints },
+      create: { id: SETTINGS_ID, inviteRewardPoints: scoring.referralRewardPoints ?? DEFAULT_REWARD_POINTS, isEnabled: true },
     });
   },
 
   async updateSettings(data: { inviteRewardPoints?: number; isEnabled?: boolean }) {
     logger.info('Updating referral settings', data);
+    if (typeof data.inviteRewardPoints === 'number') {
+      await scoringService.updateSettings({ referralRewardPoints: data.inviteRewardPoints });
+    }
     return prisma.referralSettings.upsert({
       where: { id: SETTINGS_ID },
       update: data,

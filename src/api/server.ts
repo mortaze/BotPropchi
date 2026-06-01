@@ -29,6 +29,7 @@ import { createGroupRouter } from "./routes/group.routes";
 import { keywordReplyRouter } from "./routes/keyword-reply.routes";
 import { settingsRouter } from "./routes/settings.routes";
 import { adminUserRouter } from "./routes/admin-user.routes";
+import { scoringRouter } from "./routes/scoring.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -154,6 +155,8 @@ export function startAdminApi(bot?: Telegraf) {
     requireFeature("referrals"),
     referralRouter
   );
+
+  app.use("/api/scoring", authMiddleware, requireFeature("points"), scoringRouter);
 
   app.use(
     "/api/broadcasts",

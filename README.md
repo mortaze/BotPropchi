@@ -174,3 +174,56 @@ POST  /api/users/:id/points    # اعطای امتیاز
 - `JWT_SECRET` را یک رشته تصادفی ۶۴ کاراکتری بگذارید
 - در Production از HTTPS استفاده کنید
 - فایل `.env` را هرگز commit نکنید
+
+## 📌 APIهای افزوده‌شده
+
+همه مسیرهای زیر به هدر `Authorization: Bearer <JWT>` نیاز دارند. مسیرهای Owner-only در Backend با RBAC محافظت می‌شوند و فقط نقش `OWNER`/`SUPER_ADMIN` اجازه دسترسی دارد.
+
+### سیستم امتیازدهی
+
+```http
+GET   /api/scoring/settings
+PATCH /api/scoring/settings
+```
+
+بدنه نمونه برای به‌روزرسانی:
+
+```json
+{
+  "startPoints": 10,
+  "channelJoinPoints": 5,
+  "futureActivityPoints": 0,
+  "dailyActivityPoints": 5,
+  "linkClickPoints": 2,
+  "referralRewardPoints": 20,
+  "welcomeMessageText": "سلام {name} عزیز!",
+  "initialPointsMessageText": "🎁 {points} امتیاز اولیه دریافت کردید.",
+  "isWelcomeMessageEnabled": true
+}
+```
+
+نکته: سرویس‌های ربات برای امتیاز شروع، فعالیت روزانه، کلیک لینک خرید و دعوت موفق از همین تنظیمات مرکزی استفاده می‌کنند.
+
+### پراپ فرم‌ها
+
+```http
+GET    /api/discounts/prop-firms
+POST   /api/discounts/prop-firms
+PATCH  /api/discounts/prop-firms/:id
+```
+
+فیلدهای قابل ارسال برای ایجاد/ویرایش پراپ فرم:
+
+```json
+{
+  "name": "Prop Firm",
+  "slug": "prop-firm",
+  "description": "توضیح اختیاری",
+  "logoUrl": "https://example.com/logo.png",
+  "websiteUrl": "https://example.com/buy",
+  "reviewLink": "https://example.com/review",
+  "isActive": true
+}
+```
+
+اگر `reviewLink` خالی باشد، دکمه «بررسی پراپ» در ربات نمایش داده نمی‌شود.

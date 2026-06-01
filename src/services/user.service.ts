@@ -7,6 +7,8 @@ import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
 import { parseReferralCode, referralService } from './referral.service';
 import { systemLogService } from './system-log.service';
+import { pointService } from './point.service';
+import { scoringService } from './scoring.service';
 
 export const userService = {
   markMembershipVerified(telegramId: bigint) {
@@ -59,6 +61,7 @@ export const userService = {
       }
     }
 
+    const isNewUser = !existingUser;
     const user = await userRepository.upsert({
       telegramId: params.telegramId,
       username: params.username,
@@ -66,6 +69,13 @@ export const userService = {
       lastName: params.lastName,
       referredById,
     });
+
+    if (isNewUser) {
+      const scoring = await scoringService.getSettings();
+      if (scoring.startPoints > 0) {
+        await pointService.addPoints(user.id, scoring.startPoints, PointLogType.ADMIN_GRANT, 'امتیاز شروع ربات');
+      }
+    }
 
     // ثبت Referral تا زمان تأیید عضویت اجباری انجام نمی‌شود؛ referredById نقش pending referral را دارد.
     if (shouldRegisterReferral && referredById) {
@@ -85,7 +95,10 @@ export const userService = {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (lastActiveAt < today) {
-      await userRepository.addPoints(userId, 5, PointLogType.DAILY_ACTIVITY, 'فعالیت روزانه');
+      const scoring = await scoringService.getSettings();
+      if (scoring.dailyActivityPoints > 0) {
+        await userRepository.addPoints(userId, scoring.dailyActivityPoints, PointLogType.DAILY_ACTIVITY, 'فعالیت روزانه');
+      }
     }
   },
 
