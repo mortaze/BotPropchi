@@ -1,7 +1,7 @@
 // src/repositories/discount.repository.ts
-// کوئری‌های کدهای تخفیف مطابق schema جدید
+// کوئری‌های کدهای تخفیف بر اساس پراپ فرم
 
-import { DiscountCategory, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma/client';
 
 function activeFilter() {
@@ -30,15 +30,15 @@ export const discountRepository = {
     return { items, total, pages: Math.ceil(total / limit) };
   },
 
-  async getByCategory(category: DiscountCategory, page = 1, limit = 5) {
+  async getByPropFirm(propFirmId: number, page = 1, limit = 5) {
     const skip = (page - 1) * limit;
-    const where = { ...activeFilter(), category };
+    const where = { ...activeFilter(), propFirmId };
 
     const [items, total] = await Promise.all([
       prisma.discountCode.findMany({
         where,
         include: { propFirm: true },
-        orderBy: [{ usageCount: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [{ isFeatured: 'desc' }, { usageCount: 'desc' }, { createdAt: 'desc' }],
         skip,
         take: limit,
       }),
@@ -79,24 +79,20 @@ export const discountRepository = {
 
   async incrementUsage(discountCodeId: number, userId?: number) {
     if (!userId) {
-      return prisma.discountCode.update({
-        where: { id: discountCodeId },
-        data: { usageCount: { increment: 1 } },
-      });
+      return prisma.discountCode.update({ where: { id: discountCodeId }, data: { usageCount: { increment: 1 } } });
     }
 
     return prisma.$transaction([
-      prisma.discountCode.update({
-        where: { id: discountCodeId },
-        data: { usageCount: { increment: 1 } },
-      }),
+      prisma.discountCode.update({ where: { id: discountCodeId }, data: { usageCount: { increment: 1 } } }),
       prisma.clickLog.create({ data: { discountCodeId, userId } }),
     ]);
   },
 
   async getPropFirms(activeOnly = true) {
     return prisma.propFirm.findMany({
-      where: activeOnly ? { isActive: true } : {},
+      where: activeOnly
+        ? { isActive: true, discountCodes: { some: { isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } } }
+        : {},
       include: { _count: { select: { discountCodes: true } } },
       orderBy: { name: 'asc' },
     });
@@ -114,13 +110,12 @@ export const discountRepository = {
     return prisma.discountCode.delete({ where: { id } });
   },
 
-  // نام‌های قدیمی برای سازگاری با کد فعلی
   findAll(page = 1, limit = 5) {
     return this.getAll(page, limit);
   },
 
-  findByCategory(category: DiscountCategory, page = 1, limit = 5) {
-    return this.getByCategory(category, page, limit);
+  findByPropFirm(propFirmId: number, page = 1, limit = 5) {
+    return this.getByPropFirm(propFirmId, page, limit);
   },
 
   findById(id: number) {

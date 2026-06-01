@@ -1,7 +1,6 @@
 // src/api/routes/discount.routes.ts
 // API مدیریت کدهای تخفیف
 
-import { DiscountCategory } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../prisma/client';
@@ -20,7 +19,6 @@ const codeSchema = z.object({
   expiresAt: z.coerce.date().optional().nullable(),
   isFeatured: z.boolean().default(false),
   isActive: z.boolean().default(true),
-  category: z.nativeEnum(DiscountCategory).default(DiscountCategory.OTHER),
 });
 
 function serializeBigInts(value: any): any {
@@ -32,30 +30,22 @@ function serializeBigInts(value: any): any {
   return value;
 }
 
-// لیست همه کدها
-// GET /api/discounts?category=MOST_POPULAR&q=ftmo&page=1&limit=10
-// GET /api/discounts/:id جزئیات
-// POST/PUT/DELETE CRUD کامل کدها
-
+// GET /api/discounts?propFirmId=1&q=ftmo&page=1&limit=10
 discountRouter.get('/', async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 10);
-  const category = req.query.category as DiscountCategory | undefined;
+  const propFirmId = req.query.propFirmId ? Number(req.query.propFirmId) : undefined;
   const query = req.query.q as string | undefined;
 
-  if (query) {
-    return res.json(serializeBigInts(await discountService.search(query, page, limit)));
-  }
-
-  if (category) {
-    return res.json(serializeBigInts(await discountService.getByCategory(category, page, limit)));
-  }
+  if (query) return res.json(serializeBigInts(await discountService.search(query, page, limit)));
+  if (propFirmId) return res.json(serializeBigInts(await discountService.getByPropFirm(propFirmId, page, limit)));
 
   return res.json(serializeBigInts(await discountService.getAll(page, limit)));
 });
 
-discountRouter.get('/prop-firms', async (_req, res) => {
-  const firms = await discountService.getPropFirms(false);
+discountRouter.get('/prop-firms', async (req, res) => {
+  const activeOnly = req.query.activeOnly !== 'false';
+  const firms = await discountService.getPropFirms(activeOnly);
   res.json(serializeBigInts(firms));
 });
 
@@ -82,7 +72,6 @@ discountRouter.get('/:id', async (req, res) => {
   res.json(serializeBigInts(discount));
 });
 
-// ایجاد کد جدید
 discountRouter.post('/', async (req, res) => {
   const parsed = codeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -96,7 +85,6 @@ discountRouter.post('/', async (req, res) => {
   }
 });
 
-// ویرایش کد
 discountRouter.put('/:id', async (req, res) => {
   const id = Number(req.params.id);
   const parsed = codeSchema.partial().safeParse(req.body);
@@ -106,7 +94,6 @@ discountRouter.put('/:id', async (req, res) => {
   res.json(serializeBigInts(updated));
 });
 
-// حذف کد
 discountRouter.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
   await discountService.delete(id);

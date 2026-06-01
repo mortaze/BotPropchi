@@ -1,6 +1,6 @@
 import axios, { AxiosError } from "axios";
 import Cookies from "js-cookie";
-import type { AdminUser, DiscountCategory, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails } from "@/types";
+import type { AdminUser, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails } from "@/types";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://botpropchi-production.up.railway.app";
 
@@ -85,12 +85,11 @@ export interface DiscountPayload {
   expiresAt?: string | null;
   isFeatured: boolean;
   isActive: boolean;
-  category: DiscountCategory;
 }
 
 export const discountsApi = {
-  async getAll(params: { page?: number; limit?: number; q?: string; category?: DiscountCategory | "" } = {}): Promise<{ items: DiscountCode[]; total: number; pages: number }> {
-    const { data } = await api.get("/api/discounts", { params: { page: params.page ?? 1, limit: params.limit ?? 10, q: params.q || undefined, category: params.category || undefined } });
+  async getAll(params: { page?: number; limit?: number; q?: string; propFirmId?: number | "" } = {}): Promise<{ items: DiscountCode[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/discounts", { params: { page: params.page ?? 1, limit: params.limit ?? 10, q: params.q || undefined, propFirmId: params.propFirmId || undefined } });
     return data;
   },
   async getById(id: number): Promise<DiscountCode> {
@@ -110,7 +109,7 @@ export const discountsApi = {
     return data;
   },
   async getPropFirms(): Promise<PropFirm[]> {
-    const { data } = await api.get("/api/discounts/prop-firms");
+    const { data } = await api.get("/api/discounts/prop-firms", { params: { activeOnly: false } });
     return data;
   },
   async createPropFirm(payload: Omit<PropFirm, "id" | "createdAt" | "updatedAt" | "_count">): Promise<PropFirm> {
