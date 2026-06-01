@@ -11,6 +11,7 @@ import { botAdminService } from '../../services/bot-admin.service';
 import { broadcastService } from '../../services/broadcast.service';
 import { systemLogService } from '../../services/system-log.service';
 import { settingsService } from '../../services/settings.service';
+import { scoringService } from '../../services/scoring.service';
 import { userService } from '../../services/user.service';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
@@ -112,13 +113,22 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
   bot.start(async (ctx) => {
     const name = ctx.from?.first_name || 'کاربر';
+    const scoring = await scoringService.getSettings();
 
-    await ctx.reply(
-      `سلام *${name}* عزیز! 👋\n\n` +
-        '🎯 به ربات کدهای تخفیف پراپ فرم خوش آمدید\n\n' +
-        'از منوی زیر انتخاب کنید:',
-      { parse_mode: 'Markdown', ...(await adminReplyOptions(ctx.from?.id)) }
-    );
+    if (scoring.isWelcomeMessageEnabled) {
+      await ctx.reply(
+        scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
+        { parse_mode: 'Markdown', ...(await adminReplyOptions(ctx.from?.id)) }
+      );
+      const profile = await userService.getProfile(BigInt(ctx.from!.id));
+      const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
+      if (scoring.startPoints > 0 && isFirstEntrance) {
+        await ctx.reply(scoringService.formatTemplate(scoring.initialPointsMessageText, { name, points: scoring.startPoints }));
+      }
+      return;
+    }
+
+    await ctx.reply('از منوی زیر انتخاب کنید:', await adminReplyOptions(ctx.from?.id));
   });
 
 
@@ -335,9 +345,28 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return ctx.reply('❌ هنوز پراپ فرمی ثبت نشده.');
     }
 
-    const text = firms.map((f: any) => `🏢 *${f.name}* — ${f._count?.discountCodes || 0} کد تخفیف`).join('\n');
+    await ctx.reply('📋 *پراپ فرم‌های موجود:*', { parse_mode: 'Markdown' });
 
-    await ctx.reply(`📋 *پراپ فرم‌های موجود:*\n\n${text}`, { parse_mode: 'Markdown' });
+    for (const firm of firms) {
+      const buttons: any[][] = [];
+      if (firm.websiteUrl) buttons.push([Markup.button.url('🛒 خرید', firm.websiteUrl)]);
+      buttons.push([Markup.button.callback('🎯 کد تخفیف', `firm:${firm.id}`)]);
+      if (firm.reviewLink) buttons.push([Markup.button.callback('🔎 بررسی پراپ', `propReview:${firm.id}`)]);
+
+      await ctx.reply(`🏢 *${firm.name}* — ${firm._count?.discountCodes || 0} کد تخفیف`, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(buttons),
+      });
+    }
+  });
+
+  bot.action(/^propReview:(\d+)$/, async (ctx: any) => {
+    const firmId = Number(ctx.match[1]);
+    const firms = (await discountService.getPropFirms(false)) as any[];
+    const firm = firms.find((item) => item.id === firmId);
+    if (!firm?.reviewLink) return ctx.answerCbQuery('لینک بررسی برای این پراپ ثبت نشده است.');
+    await ctx.answerCbQuery();
+    return ctx.reply(`🔎 لینک بررسی ${firm.name}:\n${firm.reviewLink}`);
   });
 
   bot.hears('🔍 جستجو', async (ctx) => {

@@ -6,6 +6,7 @@ import { discountRepository } from '../repositories/discount.repository';
 import { userRepository } from '../repositories/user.repository';
 import { cache } from '../utils/cache';
 import { systemLogService } from './system-log.service';
+import { scoringService } from './scoring.service';
 
 const CACHE_KEY = {
   allCodes: (page: number) => `discounts:all:${page}`,
@@ -55,11 +56,15 @@ export const discountService = {
 
   // وقتی کاربر روی لینک افیلیت کلیک می‌کند
   async handleClick(discountCodeId: number, userId: number) {
-    await Promise.all([
+    const scoring = await scoringService.getSettings();
+    const tasks: Promise<unknown>[] = [
       discountRepository.incrementUsage(discountCodeId, userId),
-      userRepository.addPoints(userId, 2, PointLogType.LINK_CLICK, 'کلیک روی لینک افیلیت'),
-      systemLogService.log({ eventType: SystemEventType.DISCOUNT_CLICK, userId, message: 'Discount code clicked', metadata: { discountCodeId } }),
-    ]);
+      systemLogService.log({ eventType: SystemEventType.DISCOUNT_CLICK, userId, message: 'Discount code clicked', metadata: { discountCodeId, points: scoring.linkClickPoints } }),
+    ];
+    if (scoring.linkClickPoints > 0) {
+      tasks.push(userRepository.addPoints(userId, scoring.linkClickPoints, PointLogType.LINK_CLICK, 'کلیک روی لینک افیلیت'));
+    }
+    await Promise.all(tasks);
 
     clearDiscountCache();
   },

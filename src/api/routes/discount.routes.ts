@@ -56,6 +56,7 @@ discountRouter.post('/prop-firms', async (req, res) => {
     description: z.string().optional().nullable(),
     logoUrl: optionalUrl,
     websiteUrl: optionalUrl,
+    reviewLink: optionalUrl,
     isActive: z.boolean().default(true),
   });
 
@@ -64,6 +65,26 @@ discountRouter.post('/prop-firms', async (req, res) => {
 
   const firm = await prisma.propFirm.create({ data: parsed.data as any });
   res.status(201).json(serializeBigInts(firm));
+});
+
+
+
+discountRouter.patch('/prop-firms/:id', async (req, res) => {
+  const schema = z.object({
+    name: z.string().min(2).optional(),
+    slug: z.string().min(2).optional(),
+    description: z.string().optional().nullable(),
+    logoUrl: optionalUrl,
+    websiteUrl: optionalUrl,
+    reviewLink: optionalUrl,
+    isActive: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+
+  const firm = await prisma.propFirm.update({ where: { id: Number(req.params.id) }, data: parsed.data as any });
+  res.json(serializeBigInts(firm));
 });
 
 discountRouter.get('/:id', async (req, res) => {

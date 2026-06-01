@@ -53,6 +53,7 @@ model PropFirm {
   description   String?
   logoUrl       String?
   websiteUrl    String?
+  reviewLink    String?
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -564,6 +565,24 @@ enum AdminRole {
   ADMIN
   MODERATOR
   OWNER
+}
+
+
+model ScoringSettings {
+  id                      Int      @id @default(1)
+  startPoints             Int      @default(0)
+  channelJoinPoints       Int      @default(0)
+  futureActivityPoints    Int      @default(0)
+  dailyActivityPoints     Int      @default(5)
+  linkClickPoints         Int      @default(2)
+  referralRewardPoints    Int      @default(20)
+  welcomeMessageText      String   @default("سلام {name} عزیز! 👋\n\n🎯 به ربات کدهای تخفیف پراپ فرم خوش آمدید\n\nاز منوی زیر انتخاب کنید:")
+  initialPointsMessageText String  @default("🎁 {points} امتیاز اولیه به حساب شما اضافه شد.")
+  isWelcomeMessageEnabled Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("scoring_settings")
 }
 
 model SystemSetting {

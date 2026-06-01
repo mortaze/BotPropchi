@@ -68,6 +68,7 @@ export interface PropFirm {
   description?: string | null;
   logoUrl?: string | null;
   websiteUrl?: string | null;
+  reviewLink?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -313,4 +314,19 @@ export interface PanelAdminUser {
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface ScoringSettings {
+  id: number;
+  startPoints: number;
+  channelJoinPoints: number;
+  futureActivityPoints: number;
+  dailyActivityPoints: number;
+  linkClickPoints: number;
+  referralRewardPoints: number;
+  welcomeMessageText: string;
+  initialPointsMessageText: string;
+  isWelcomeMessageEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
 }

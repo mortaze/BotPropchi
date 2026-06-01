@@ -116,6 +116,10 @@ export const discountsApi = {
     const { data } = await api.post("/api/discounts/prop-firms", payload);
     return data;
   },
+  async updatePropFirm(id: number, payload: Partial<Omit<PropFirm, "id" | "createdAt" | "updatedAt" | "_count">>): Promise<PropFirm> {
+    const { data } = await api.patch(`/api/discounts/prop-firms/${id}`, payload);
+    return data;
+  },
 };
 
 export interface LotteryPayload {
@@ -333,6 +337,18 @@ export const botAdminsApi = {
 export const systemLogsApi = {
   async getAll(params: { page?: number; limit?: number; eventType?: import("@/types").SystemEventType; telegramId?: string; userId?: number; from?: string; to?: string } = {}): Promise<{ success: boolean; items: import("@/types").SystemLog[]; total: number; pages: number }> {
     const { data } = await api.get("/api/system-logs", { params: { page: params.page ?? 1, limit: params.limit ?? 20, ...params } });
+    return data;
+  },
+};
+
+
+export const scoringApi = {
+  async getSettings(): Promise<{ success: boolean; item: import("@/types").ScoringSettings }> {
+    const { data } = await api.get("/api/scoring/settings");
+    return data;
+  },
+  async updateSettings(payload: Partial<import("@/types").ScoringSettings>): Promise<{ success: boolean; item: import("@/types").ScoringSettings }> {
+    const { data } = await api.patch("/api/scoring/settings", payload);
     return data;
   },
 };
