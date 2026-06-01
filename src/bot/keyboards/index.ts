@@ -9,15 +9,24 @@ type DiscountWithFirm = DiscountCode & {
 };
 
 // ─── منوی اصلی ────────────────────────────────────────────
-export function buildMainMenuKeyboard(isAdmin = false) {
-  const rows = [
-    ['🎯 کدهای تخفیف', '🏢 پراپ فرم‌ها'],
-    ['🎰 قرعه‌کشی', '⭐️ امتیاز من'],
-    ['🏆 لیدربورد', '👥 دعوت دوستان'],
-    ['🔍 جستجو'],
-  ];
+export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, boolean> = {}) {
+  const enabled = (key: string) => features[key] !== false;
+  const rows: string[][] = [];
+  const first = [];
+  if (enabled('discount_codes')) first.push('🎯 کدهای تخفیف');
+  if (enabled('prop_firms')) first.push('🏢 پراپ فرم‌ها');
+  if (first.length) rows.push(first);
+  const second = [];
+  if (enabled('lottery')) second.push('🎰 قرعه‌کشی');
+  if (enabled('points')) second.push('⭐️ امتیاز من');
+  if (second.length) rows.push(second);
+  const third = [];
+  if (enabled('leaderboard')) third.push('🏆 لیدربورد');
+  if (enabled('referrals')) third.push('👥 دعوت دوستان');
+  if (third.length) rows.push(third);
+  if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
   if (isAdmin) rows.push(['🔐 ادمین']);
-  return Markup.keyboard(rows).resize().persistent();
+  return Markup.keyboard(rows.length ? rows : [['🔐 ادمین']]).resize().persistent();
 }
 
 export const mainMenuKeyboard = buildMainMenuKeyboard(false);

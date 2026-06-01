@@ -10,6 +10,7 @@ import { analyticsService } from '../../services/analytics.service';
 import { botAdminService } from '../../services/bot-admin.service';
 import { broadcastService } from '../../services/broadcast.service';
 import { systemLogService } from '../../services/system-log.service';
+import { settingsService } from '../../services/settings.service';
 import { userService } from '../../services/user.service';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
@@ -53,7 +54,7 @@ function formatDuration(ms: number) {
 
 async function adminReplyOptions(telegramId?: number) {
   const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
-  return buildMainMenuKeyboard(Boolean(admin));
+  return buildMainMenuKeyboard(Boolean(admin), await settingsService.getFeatureMap());
 }
 
 const mediaGroupBuffers = new Map<string, { timer: NodeJS.Timeout; ctx: any; messageIds: number[] }>();
@@ -133,6 +134,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('📢 پیام همگانی', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('broadcasts'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     cache.set(`admin_broadcast:${ctx.from.id}`, true, 600);
@@ -189,6 +191,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('📊 گزارشات', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('reports'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const report = await analyticsService.dashboard();
@@ -249,6 +252,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('🎯 کدهای تخفیف', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('discount_codes'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const firms = (await discountService.getPropFirms()) as any[];
 
     if (!firms.length) {
@@ -324,6 +328,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('🏢 پراپ فرم‌ها', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('prop_firms'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const firms = (await discountService.getPropFirms()) as any[];
 
     if (!firms || firms.length === 0) {
@@ -336,6 +341,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('🔍 جستجو', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('discount_codes'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     await ctx.reply('🔍 نام پراپ فرم مورد نظر را بنویسید:');
     cache.set(`search_mode:${ctx.from?.id}`, true, 60);
   });
@@ -371,6 +377,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('🎰 قرعه‌کشی', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('lottery'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const lottery: any = await lotteryService.getActiveLottery();
 
     if (!lottery) {
@@ -459,6 +466,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('⭐️ امتیاز من', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('points'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const profile: any = await userService.getProfile(BigInt(ctx.from.id));
 
     if (!profile) {
@@ -475,6 +483,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('🏆 لیدربورد', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('leaderboard'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const board: any[] = await userService.getLeaderboard();
     const medals = ['🥇', '🥈', '🥉'];
     const text = board.map((u: any, i: number) => `${medals[i] || `${i + 1}.`} ${u.firstName} — ${u.points} امتیاز`).join('\n');
@@ -483,6 +492,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
  bot.hears('👥 دعوت دوستان', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('referrals'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
   try {
     const botInfo = await bot.telegram.getMe();
 

@@ -1,4 +1,4 @@
-export type AdminRole = "SUPER_ADMIN" | "ADMIN" | "MODERATOR";
+export type AdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export type BotAdminRole = "OWNER" | "SUPER_ADMIN" | "ADMIN" | "MODERATOR";
 export type BotAdminStatus = "ACTIVE" | "SUSPENDED";
 
@@ -283,3 +283,34 @@ export interface BotAdmin { id: number; telegramId: string; username?: string | 
 export type SystemEventType = "USER_LOGIN" | "FORCE_JOIN" | "REFERRAL" | "BROADCAST" | "LOTTERY" | "DISCOUNT_CLICK" | "ERROR" | "ADMIN_ACTION" | "GROUP_INTEGRATION";
 export interface SystemLog { id: number; eventType: SystemEventType; level: "INFO" | "WARN" | "ERROR"; message: string; userId?: number | null; telegramId?: string | null; metadata?: unknown; createdAt: string; user?: ReferralUserSummary | null; }
 export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: number; activeWeek: number; activeMonth: number; newUsers: number }; referrals: { totalInvites: number; successful: number; failed: number; conversionRate: number; topReferrers: Array<{ referrerId: number; _count: { _all: number }; _sum: { rewardPoints: number | null }; user?: User }> }; forceJoin: { channels: number; groups: number; verifiedUsers: number }; discounts: { topClicks: Array<{ discountCodeId: number; clicks: number; discountCode?: DiscountCode }>; topUsage: DiscountCode[]; topViewed: DiscountCode[] }; lotteries: { total: number; participants: number; ticketsSold: number; pointsSpent: number; totalChance: number; topLottery?: { lottery: Lottery; tickets: number; participants: number } | null }; broadcasts: { total: number; successRate: number; errorRate: number; success: number; failed: number }; groups: { approved: number; active: number }; charts: { dailyUsers: Array<{ date: string; count: number }>; dailyReferrals: Array<{ date: string; count: number }>; dailyDiscountClicks: Array<{ date: string; count: number }>; dailyLotteryEntries: Array<{ date: string; count: number }> } }
+
+export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
+export interface MenuOrderItem {
+  id: number;
+  key: string;
+  label: string;
+  href: string;
+  order: number;
+  isActive: boolean;
+  ownerOnly: boolean;
+  featureKey?: string | null;
+}
+export interface FeatureToggleItem {
+  id: number;
+  key: string;
+  label: string;
+  description?: string | null;
+  isEnabled: boolean;
+}
+export interface PanelAdminUser {
+  id: number;
+  firstName?: string | null;
+  lastName?: string | null;
+  username: string;
+  email?: string | null;
+  role: PanelAdminRole;
+  isActive: boolean;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
