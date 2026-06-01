@@ -27,8 +27,10 @@ import { broadcastRouter } from "./routes/broadcast.routes";
 import { createChannelRouter } from "./routes/channel.routes";
 import { createGroupRouter } from "./routes/group.routes";
 import { keywordReplyRouter } from "./routes/keyword-reply.routes";
+import { settingsRouter } from "./routes/settings.routes";
+import { adminUserRouter } from "./routes/admin-user.routes";
 
-import { authMiddleware } from "./middlewares/auth.middleware";
+import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
 export function startAdminApi(bot?: Telegraf) {
   if (bot) broadcastService.setBot(bot);
@@ -126,6 +128,7 @@ export function startAdminApi(bot?: Telegraf) {
   app.use(
     "/api/discounts",
     authMiddleware,
+    requireFeature("discount_codes"),
     discountRouter
   );
 
@@ -133,6 +136,7 @@ export function startAdminApi(bot?: Telegraf) {
   app.use(
     "/api/lotteries",
     authMiddleware,
+    requireFeature("lottery"),
     lotteryRouter
   );
 
@@ -147,35 +151,42 @@ export function startAdminApi(bot?: Telegraf) {
   app.use(
     "/api/referrals",
     authMiddleware,
+    requireFeature("referrals"),
     referralRouter
   );
 
   app.use(
     "/api/broadcasts",
     authMiddleware,
+    requireFeature("broadcasts"),
     broadcastRouter
   );
 
   app.use(
     "/api/required-channels",
     authMiddleware,
+    requireFeature("force_join"),
     createChannelRouter(bot)
   );
 
   app.use(
     "/api/groups",
     authMiddleware,
+    requireFeature("groups"),
     createGroupRouter(bot)
   );
 
   app.use(
     "/api/keyword-replies",
     authMiddleware,
+    requireFeature("auto_replies"),
     keywordReplyRouter
   );
 
   app.use("/api/bot-admins", authMiddleware, botAdminRouter);
-  app.use("/api/analytics", authMiddleware, analyticsRouter);
+  app.use("/api/analytics", authMiddleware, requireFeature("reports"), analyticsRouter);
+  app.use("/api/settings", authMiddleware, settingsRouter);
+  app.use("/api/admin-users", authMiddleware, requireOwner, adminUserRouter);
   app.use("/api/system-logs", authMiddleware, systemLogRouter);
 
   // ───────────────── 404 HANDLER ─────────────────

@@ -120,6 +120,9 @@ authRouter.post(
 
         admin: {
           id: admin.id,
+          firstName: admin.firstName,
+          lastName: admin.lastName,
+          email: admin.email,
           username: admin.username,
           role: admin.role,
           lastLoginAt: admin.lastLoginAt,
@@ -167,6 +170,9 @@ authRouter.get('/me', async (req: Request, res: Response) => {
       },
       select: {
         id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
         username: true,
         role: true,
         isActive: true,
@@ -179,6 +185,13 @@ authRouter.get('/me', async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         error: 'ادمین پیدا نشد',
+      });
+    }
+
+    if (!admin.isActive) {
+      return res.status(403).json({
+        success: false,
+        error: 'حساب ادمین غیرفعال است',
       });
     }
 

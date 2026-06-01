@@ -1,0 +1,93 @@
+import { AdminRole } from '@prisma/client';
+import { prisma } from '../prisma/client';
+
+export const DEFAULT_MENU_ITEMS = [
+  { key: 'dashboard', label: 'داشبورد', href: '/dashboard', order: 10, ownerOnly: false, featureKey: null },
+  { key: 'users', label: 'کاربران', href: '/dashboard/users', order: 20, ownerOnly: false, featureKey: null },
+  { key: 'lotteries', label: 'قرعه‌کشی‌ها', href: '/dashboard/lotteries', order: 30, ownerOnly: false, featureKey: 'lottery' },
+  { key: 'discounts', label: 'تخفیف‌ها', href: '/dashboard/discounts', order: 40, ownerOnly: false, featureKey: 'discount_codes' },
+  { key: 'prop-firms', label: 'پراپ فرم‌ها', href: '/dashboard/prop-firms', order: 50, ownerOnly: false, featureKey: 'prop_firms' },
+  { key: 'referrals', label: 'دعوت دوستان', href: '/dashboard/referrals', order: 60, ownerOnly: false, featureKey: 'referrals' },
+  { key: 'required-channels', label: 'عضویت اجباری', href: '/dashboard/required-channels', order: 70, ownerOnly: false, featureKey: 'force_join' },
+  { key: 'groups', label: 'مدیریت گروه‌ها', href: '/dashboard/groups', order: 80, ownerOnly: false, featureKey: 'groups' },
+  { key: 'keyword-replies', label: 'پاسخ‌های خودکار', href: '/dashboard/keyword-replies', order: 90, ownerOnly: false, featureKey: 'auto_replies' },
+  { key: 'broadcasts', label: 'پیام همگانی', href: '/dashboard/broadcasts', order: 100, ownerOnly: false, featureKey: 'broadcasts' },
+  { key: 'bot-admins', label: 'ادمین‌های ربات', href: '/dashboard/bot-admins', order: 110, ownerOnly: false, featureKey: null },
+  { key: 'admin-users', label: 'مدیریت ادمین‌ها', href: '/dashboard/admin-users', order: 115, ownerOnly: true, featureKey: null },
+  { key: 'analytics', label: 'گزارشات', href: '/dashboard/analytics', order: 120, ownerOnly: false, featureKey: 'reports' },
+  { key: 'system-logs', label: 'لاگ سیستم', href: '/dashboard/system-logs', order: 130, ownerOnly: false, featureKey: null },
+  { key: 'settings', label: '⚙️ تنظیمات', href: '/dashboard/settings', order: 140, ownerOnly: true, featureKey: null },
+];
+
+export const DEFAULT_FEATURES = [
+  { key: 'discount_codes', label: 'کدهای تخفیف' },
+  { key: 'lottery', label: 'قرعه کشی' },
+  { key: 'referrals', label: 'دعوت دوستان' },
+  { key: 'force_join', label: 'عضویت اجباری' },
+  { key: 'broadcasts', label: 'پیام همگانی' },
+  { key: 'auto_replies', label: 'پاسخ خودکار' },
+  { key: 'reports', label: 'گزارشات' },
+  { key: 'groups', label: 'مدیریت گروه‌ها' },
+  { key: 'leaderboard', label: 'لیدربورد' },
+  { key: 'points', label: 'امتیازدهی' },
+  { key: 'prop_firms', label: 'پراپ فرم‌ها' },
+];
+
+export function isOwnerRole(role?: string | null) {
+  return role === AdminRole.OWNER || role === 'SUPER_ADMIN';
+}
+
+class SettingsService {
+  private seeded = false;
+  private featureCache = new Map<string, { enabled: boolean; expires: number }>();
+
+  async ensureDefaults() {
+    if (this.seeded) return;
+    await prisma.$transaction([
+      ...DEFAULT_MENU_ITEMS.map((item) => prisma.menuOrder.upsert({ where: { key: item.key }, update: {}, create: item as any })),
+      ...DEFAULT_FEATURES.map((item) => prisma.featureToggle.upsert({ where: { key: item.key }, update: {}, create: { ...item, isEnabled: true } })),
+    ]);
+    this.seeded = true;
+  }
+
+  async getMenus(role?: string) {
+    await this.ensureDefaults();
+    const features = await this.getFeatureMap();
+    const menus = await prisma.menuOrder.findMany({ where: { isActive: true }, orderBy: [{ order: 'asc' }, { id: 'asc' }] });
+    return menus.filter((item) => (!item.ownerOnly || isOwnerRole(role)) && (!item.featureKey || features[item.featureKey] !== false));
+  }
+
+  async reorderMenus(keys: string[]) {
+    await this.ensureDefaults();
+    await prisma.$transaction(keys.map((key, index) => prisma.menuOrder.update({ where: { key }, data: { order: (index + 1) * 10 } })));
+    return prisma.menuOrder.findMany({ orderBy: [{ order: 'asc' }, { id: 'asc' }] });
+  }
+
+  async getFeatures() {
+    await this.ensureDefaults();
+    return prisma.featureToggle.findMany({ orderBy: [{ id: 'asc' }] });
+  }
+
+  async getFeatureMap() {
+    const rows = await this.getFeatures();
+    return Object.fromEntries(rows.map((row) => [row.key, row.isEnabled]));
+  }
+
+  async setFeature(key: string, isEnabled: boolean) {
+    await this.ensureDefaults();
+    this.featureCache.delete(key);
+    return prisma.featureToggle.update({ where: { key }, data: { isEnabled } });
+  }
+
+  async isFeatureEnabled(key: string) {
+    const cached = this.featureCache.get(key);
+    if (cached && cached.expires > Date.now()) return cached.enabled;
+    await this.ensureDefaults();
+    const feature = await prisma.featureToggle.findUnique({ where: { key } });
+    const enabled = feature?.isEnabled ?? true;
+    this.featureCache.set(key, { enabled, expires: Date.now() + 30_000 });
+    return enabled;
+  }
+}
+
+export const settingsService = new SettingsService();

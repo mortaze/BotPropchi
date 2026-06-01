@@ -545,12 +545,16 @@ enum SystemLogLevel {
 
 model Admin {
   id           Int       @id @default(autoincrement())
+  firstName    String?
+  lastName     String?
   username     String    @unique
+  email        String?   @unique
   passwordHash String
-  role         AdminRole @default(MODERATOR)
+  role         AdminRole @default(ADMIN)
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@map("admins")
 }
@@ -559,4 +563,43 @@ enum AdminRole {
   SUPER_ADMIN
   ADMIN
   MODERATOR
+  OWNER
+}
+
+model SystemSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model MenuOrder {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  label     String
+  href      String
+  order     Int
+  isActive  Boolean  @default(true)
+  ownerOnly Boolean  @default(false)
+  featureKey String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([order])
+  @@map("menu_orders")
+}
+
+model FeatureToggle {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  label       String
+  description String?
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("feature_toggles")
 }

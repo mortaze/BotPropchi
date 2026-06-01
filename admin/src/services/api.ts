@@ -336,3 +336,51 @@ export const systemLogsApi = {
     return data;
   },
 };
+
+export const settingsApi = {
+  async getMenus(): Promise<{ success: boolean; items: import("@/types").MenuOrderItem[] }> {
+    const { data } = await api.get("/api/settings/menus");
+    return data;
+  },
+  async reorderMenus(keys: string[]): Promise<{ success: boolean; items: import("@/types").MenuOrderItem[] }> {
+    const { data } = await api.put("/api/settings/menus/order", { keys });
+    return data;
+  },
+  async getFeatures(): Promise<{ success: boolean; items: import("@/types").FeatureToggleItem[] }> {
+    const { data } = await api.get("/api/settings/features");
+    return data;
+  },
+  async updateFeature(key: string, isEnabled: boolean): Promise<{ success: boolean; item: import("@/types").FeatureToggleItem }> {
+    const { data } = await api.patch(`/api/settings/features/${key}`, { isEnabled });
+    return data;
+  },
+};
+
+export interface PanelAdminPayload {
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string;
+  email?: string | null;
+  password?: string;
+  role?: "OWNER" | "ADMIN";
+  isActive?: boolean;
+}
+
+export const adminUsersApi = {
+  async getAll(): Promise<{ success: boolean; items: import("@/types").PanelAdminUser[] }> {
+    const { data } = await api.get("/api/admin-users");
+    return data;
+  },
+  async create(payload: PanelAdminPayload): Promise<{ success: boolean; item: import("@/types").PanelAdminUser }> {
+    const { data } = await api.post("/api/admin-users", payload);
+    return data;
+  },
+  async update(id: number, payload: PanelAdminPayload): Promise<{ success: boolean; item: import("@/types").PanelAdminUser }> {
+    const { data } = await api.patch(`/api/admin-users/${id}`, payload);
+    return data;
+  },
+  async delete(id: number): Promise<{ success: boolean }> {
+    const { data } = await api.delete(`/api/admin-users/${id}`);
+    return data;
+  },
+};

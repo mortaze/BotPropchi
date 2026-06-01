@@ -15,6 +15,13 @@ export function middleware(request: NextRequest) {
   // صفحات داشبورد — اگر لاگین نکرده بود، ریدایرکت به لاگین
   if (pathname.startsWith("/dashboard")) {
     if (!token) return NextResponse.redirect(new URL("/login", request.url));
+    const ownerOnly = pathname.startsWith("/dashboard/settings") || pathname.startsWith("/dashboard/admin-users");
+    if (ownerOnly) {
+      const rawAdmin = request.cookies.get("admin_user")?.value;
+      let role = "";
+      try { role = rawAdmin ? JSON.parse(rawAdmin).role : ""; } catch { role = ""; }
+      if (!["OWNER", "SUPER_ADMIN"].includes(role)) return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
   }
 
   return NextResponse.next();
