@@ -1,7 +1,7 @@
 // prisma/seed.ts
 // داده‌های اولیه دیتابیس
 
-import { PrismaClient, DiscountCategory } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -52,7 +52,6 @@ async function main() {
       title: 'تخفیف ۱۰ درصدی FTMO',
       code: 'FTMO10',
       discountPercent: 10,
-      category: DiscountCategory.MOST_POPULAR,
       isFeatured: true,
       propFirmId: ftmo.id,
     },
@@ -65,7 +64,6 @@ async function main() {
       title: 'تخفیف ۱۵ درصدی اولین خرید',
       code: 'MFF15',
       discountPercent: 15,
-      category: DiscountCategory.FIRST_PURCHASE,
       propFirmId: mff.id,
     },
   });

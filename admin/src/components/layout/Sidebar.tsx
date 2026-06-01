@@ -11,6 +11,7 @@ const navItems = [
   { href: "/dashboard/users", label: "کاربران", icon: Users },
   { href: "/dashboard/lotteries", label: "قرعه‌کشی‌ها", icon: Ticket },
   { href: "/dashboard/discounts", label: "تخفیف‌ها", icon: Gift },
+  { href: "/dashboard/prop-firms", label: "پراپ فرم‌ها", icon: Building2 },
   { href: "/dashboard/referrals", label: "دعوت دوستان", icon: Share2 },
   { href: "/dashboard/required-channels", label: "عضویت اجباری", icon: RadioTower },
   { href: "/dashboard/groups", label: "مدیریت گروه‌ها", icon: ShieldCheck },
@@ -19,7 +20,6 @@ const navItems = [
   { href: "/dashboard/bot-admins", label: "ادمین‌های ربات", icon: UserCog },
   { href: "/dashboard/analytics", label: "گزارشات", icon: BarChart3 },
   { href: "/dashboard/system-logs", label: "لاگ سیستم", icon: FileText },
-  { href: "/dashboard/prop-firms", label: "پراپ فرم‌ها", icon: Building2 },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

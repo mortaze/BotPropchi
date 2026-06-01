@@ -46,8 +46,37 @@ export const lotteryService = {
     return lotteryRepository.getEntriesCount(lotteryId);
   },
 
+
+  async getUserEntry(telegramId: bigint, lotteryId: number) {
+    const user = await userRepository.findByTelegramId(telegramId);
+    if (!user) return null;
+    return lotteryRepository.getUserEntry(user.id, lotteryId);
+  },
+
+  async getTicketsCount(lotteryId: number) {
+    return lotteryRepository.getTicketsCount(lotteryId);
+  },
+
+  async getTicketOptions(telegramId: bigint, lotteryId: number) {
+    const user = await userRepository.findByTelegramId(telegramId);
+    if (!user) return { success: false, message: 'کاربر یافت نشد', options: [] as number[] };
+    const lottery = await lotteryRepository.findById(lotteryId);
+    if (!lottery || !lottery.isActive || lottery.isCompleted) return { success: false, message: 'این قرعه کشی فعال نیست', options: [] as number[] };
+    const now = new Date();
+    if (now < lottery.startAt) return { success: false, message: 'قرعه کشی هنوز شروع نشده است', options: [] as number[] };
+    if (now > lottery.endAt) return { success: false, message: 'زمان ثبت نام به پایان رسیده است', options: [] as number[] };
+    if (user.points < lottery.minPoints) return { success: false, message: `برای شرکت حداقل ${lottery.minPoints} امتیاز لازم است`, options: [] as number[] };
+    const entryCost = lottery.entryCost || 0;
+    const maxTickets = entryCost > 0 ? Math.floor(user.points / entryCost) : 10;
+    if (maxTickets < 1) return { success: false, message: 'امتیاز شما برای خرید بلیت کافی نیست', options: [] as number[] };
+    const options = Array.from({ length: Math.min(maxTickets, 10) }, (_, index) => index + 1);
+    return { success: true, options, message: `🎟 تعداد بلیت را انتخاب کنید.
+⭐️ امتیاز شما: ${user.points}
+🎟 هزینه هر بلیت: ${entryCost}
+✅ حداکثر قابل خرید در این مرحله: ${maxTickets}` };
+  },
   /** ثبت نام در قرعه کشی */
-  async enterLottery(telegramId: bigint, lotteryId: number) {
+  async enterLottery(telegramId: bigint, lotteryId: number, ticketCount = 1) {
     const user = await userRepository.findByTelegramId(telegramId);
 
     if (!user) {
@@ -78,31 +107,34 @@ export const lotteryService = {
       return { success: false, message: 'زمان ثبت نام به پایان رسیده است' };
     }
 
-    const alreadyEntered = await lotteryRepository.hasEntered(user.id, lotteryId);
 
-    if (alreadyEntered) {
-      return { success: false, message: 'شما قبلاً ثبت نام کرده اید' };
-    }
 
     if (user.points < lottery.minPoints) {
       return { success: false, message: `برای شرکت حداقل ${lottery.minPoints} امتیاز لازم است` };
     }
 
+    const normalizedTicketCount = Math.max(1, Math.floor(Number(ticketCount) || 1));
     const entryCost = lottery.entryCost || 0;
+    const totalCost = entryCost * normalizedTicketCount;
 
-    if (user.points < entryCost) {
-      return { success: false, message: 'امتیاز شما برای شرکت کافی نیست' };
+    if (user.points < totalCost) {
+      return { success: false, message: 'امتیاز شما برای خرید این تعداد بلیت کافی نیست' };
     }
 
-    if (entryCost > 0) {
-      await userRepository.deductPoints(user.id, entryCost, `شرکت در قرعه کشی ${lottery.title}`);
+    if (totalCost > 0) {
+      await userRepository.deductPoints(user.id, totalCost, `خرید ${normalizedTicketCount} بلیت قرعه کشی ${lottery.title}`);
     }
 
-    await lotteryRepository.enter(user.id, lotteryId);
+    const entry = await lotteryRepository.enter(user.id, lotteryId, normalizedTicketCount, totalCost);
 
     return {
       success: true,
-      message: entryCost > 0 ? `✅ ثبت نام انجام شد و ${entryCost} امتیاز کسر شد` : '✅ ثبت نام انجام شد',
+      message: totalCost > 0
+        ? `✅ ${normalizedTicketCount} بلیت ثبت شد و ${totalCost} امتیاز کسر شد.
+🎟 بلیت‌های شما: ${entry.ticketCount}
+📊 شانس کل شما: ${entry.chanceWeight}`
+        : `✅ ${normalizedTicketCount} بلیت رایگان ثبت شد.
+🎟 بلیت‌های شما: ${entry.ticketCount}`,
     };
   },
 

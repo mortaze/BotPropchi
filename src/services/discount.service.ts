@@ -1,7 +1,7 @@
 // src/services/discount.service.ts
 // منطق تجاری کدهای تخفیف
 
-import { DiscountCategory, Prisma, PointLogType, SystemEventType } from '@prisma/client';
+import { Prisma, PointLogType, SystemEventType } from '@prisma/client';
 import { discountRepository } from '../repositories/discount.repository';
 import { userRepository } from '../repositories/user.repository';
 import { cache } from '../utils/cache';
@@ -9,7 +9,7 @@ import { systemLogService } from './system-log.service';
 
 const CACHE_KEY = {
   allCodes: (page: number) => `discounts:all:${page}`,
-  category: (cat: string, page: number) => `discounts:cat:${cat}:${page}`,
+  propFirm: (propFirmId: number, page: number) => `discounts:firm:${propFirmId}:${page}`,
   propFirms: 'prop_firms:all',
 };
 
@@ -29,12 +29,12 @@ export const discountService = {
     return result;
   },
 
-  async getByCategory(category: DiscountCategory, page = 1, limit = 5) {
-    const key = CACHE_KEY.category(category, page);
+  async getByPropFirm(propFirmId: number, page = 1, limit = 5) {
+    const key = CACHE_KEY.propFirm(propFirmId, page);
     const cached = cache.get(key);
     if (cached) return cached;
 
-    const result = await discountRepository.getByCategory(category, page, limit);
+    const result = await discountRepository.getByPropFirm(propFirmId, page, limit);
     cache.set(key, result);
     return result;
   },

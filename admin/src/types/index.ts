@@ -61,25 +61,6 @@ export interface UserDetails extends User {
   clickLogs: ClickLog[];
 }
 
-export type DiscountCategory =
-  | "HIGHEST_DISCOUNT"
-  | "NO_TIME_LIMIT"
-  | "FIRST_PURCHASE"
-  | "TWO_PHASE_ONLY"
-  | "NEWEST"
-  | "MOST_POPULAR"
-  | "OTHER";
-
-export const CATEGORY_LABELS: Record<DiscountCategory, string> = {
-  HIGHEST_DISCOUNT: "بیشترین تخفیف",
-  NO_TIME_LIMIT: "بدون محدودیت زمانی",
-  FIRST_PURCHASE: "خرید اول",
-  TWO_PHASE_ONLY: "دو مرحله‌ای",
-  NEWEST: "جدیدترین",
-  MOST_POPULAR: "محبوب‌ترین",
-  OTHER: "سایر",
-};
-
 export interface PropFirm {
   id: number;
   name: string;
@@ -102,7 +83,6 @@ export interface DiscountCode {
   expiresAt?: string | null;
   isFeatured: boolean;
   isActive: boolean;
-  category: DiscountCategory;
   usageCount: number;
   propFirmId: number;
   propFirm?: PropFirm;
@@ -131,6 +111,7 @@ export interface Lottery {
   createdAt: string;
   updatedAt: string;
   _count?: LotteryCount;
+  ticketStats?: LotteryTicketStats;
   entries?: LotteryEntry[];
   winners?: LotteryWinner[];
 }
@@ -141,6 +122,17 @@ export interface LotteryEntry {
   lotteryId: number;
   createdAt: string;
   user: User;
+  ticketCount: number;
+  pointsSpent: number;
+  chanceWeight: number;
+}
+
+export interface LotteryTicketStats {
+  participants: number;
+  totalTickets: number;
+  pointsSpent: number;
+  totalChance: number;
+  topBuyers: LotteryEntry[];
 }
 
 export interface LotteryWinner {
@@ -290,4 +282,4 @@ export interface KeywordReplyLog {
 export interface BotAdmin { id: number; telegramId: string; username?: string | null; firstName?: string | null; lastName?: string | null; role: BotAdminRole; status: BotAdminStatus; createdAt: string; updatedAt: string; }
 export type SystemEventType = "USER_LOGIN" | "FORCE_JOIN" | "REFERRAL" | "BROADCAST" | "LOTTERY" | "DISCOUNT_CLICK" | "ERROR" | "ADMIN_ACTION" | "GROUP_INTEGRATION";
 export interface SystemLog { id: number; eventType: SystemEventType; level: "INFO" | "WARN" | "ERROR"; message: string; userId?: number | null; telegramId?: string | null; metadata?: unknown; createdAt: string; user?: ReferralUserSummary | null; }
-export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: number; activeWeek: number; activeMonth: number; newUsers: number }; referrals: { totalInvites: number; successful: number; failed: number; conversionRate: number }; forceJoin: { approved: number; rejected: number; pending: number }; discounts: { topClicks: unknown[]; topUsage: DiscountCode[]; popularPropFirms: PropFirm[] }; lotteries: { participants: number; winners: number; pointsSpent: number }; broadcasts: { total: number; successRate: number; errorRate: number; success: number; failed: number }; charts: { dailyUsers: unknown[]; dailyBroadcasts: unknown[] } }
+export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: number; activeWeek: number; activeMonth: number; newUsers: number }; referrals: { totalInvites: number; successful: number; failed: number; conversionRate: number; topReferrers: Array<{ referrerId: number; _count: { _all: number }; _sum: { rewardPoints: number | null }; user?: User }> }; forceJoin: { channels: number; groups: number; verifiedUsers: number }; discounts: { topClicks: Array<{ discountCodeId: number; clicks: number; discountCode?: DiscountCode }>; topUsage: DiscountCode[]; topViewed: DiscountCode[] }; lotteries: { total: number; participants: number; ticketsSold: number; pointsSpent: number; totalChance: number; topLottery?: { lottery: Lottery; tickets: number; participants: number } | null }; broadcasts: { total: number; successRate: number; errorRate: number; success: number; failed: number }; groups: { approved: number; active: number }; charts: { dailyUsers: Array<{ date: string; count: number }>; dailyReferrals: Array<{ date: string; count: number }>; dailyDiscountClicks: Array<{ date: string; count: number }>; dailyLotteryEntries: Array<{ date: string; count: number }> } }

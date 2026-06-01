@@ -28,45 +28,13 @@ export const botAdminPanelKeyboard = Markup.keyboard([
   ['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی'],
 ]).resize().persistent();
 
-// ─── دسته‌بندی کدهای تخفیف ────────────────────────────────
-export const categoryKeyboard = Markup.inlineKeyboard([
-  [
-    Markup.button.callback(
-      '💸 بیشترین تخفیف',
-      'cat:HIGHEST_DISCOUNT'
-    ),
-    Markup.button.callback(
-      '♾ بدون محدودیت زمانی',
-      'cat:NO_TIME_LIMIT'
-    ),
-  ],
-  [
-    Markup.button.callback(
-      '🆕 اولین خرید',
-      'cat:FIRST_PURCHASE'
-    ),
-    Markup.button.callback(
-      '2⃣ دو مرحله‌ای',
-      'cat:TWO_PHASE_ONLY'
-    ),
-  ],
-  [
-    Markup.button.callback(
-      '🕐 جدیدترین',
-      'cat:NEWEST'
-    ),
-    Markup.button.callback(
-      '🔥 محبوب‌ترین',
-      'cat:MOST_POPULAR'
-    ),
-  ],
-  [
-    Markup.button.callback(
-      '📋 همه کدها',
-      'cat:ALL'
-    ),
-  ],
-]);
+// ─── انتخاب پراپ فرم برای کدهای تخفیف ─────────────────────
+export function propFirmDiscountKeyboard(firms: Array<PropFirm & { _count?: { discountCodes: number } }>) {
+  const rows = firms.map((firm) => [
+    Markup.button.callback(`🏢 ${firm.name} (${firm._count?.discountCodes ?? 0})`, `firm:${firm.id}`),
+  ]);
+  return Markup.inlineKeyboard(rows.length ? rows : [[Markup.button.callback('کدی موجود نیست', 'noop')]]);
+}
 
 // ─── نمایش کارت کد تخفیف ─────────────────────────────────
 export function discountCardKeyboard(
@@ -95,7 +63,7 @@ export function discountCardKeyboard(
   // دکمه برگشت
   buttons.push([
     Markup.button.callback(
-      '« برگشت',
+      '« برگشت به پراپ فرم‌ها',
       'back:discounts'
     ),
   ]);
@@ -167,7 +135,7 @@ export function joinChannelsKeyboard(
 }
 
 // ─── قرعه‌کشی ─────────────────────────────────────────────
-export function lotteryKeyboard(lotteryId: number, hasEntered: boolean) {
+export function lotteryKeyboard(lotteryId: number, currentTickets = 0) {
   const buttons = [
     [
       Markup.button.callback('🏆 برندگان', `lottery:winners:${lotteryId}`),
@@ -175,11 +143,7 @@ export function lotteryKeyboard(lotteryId: number, hasEntered: boolean) {
     ],
   ];
 
-  if (hasEntered) {
-    buttons.unshift([Markup.button.callback('✅ شما ثبت‌نام کرده‌اید', 'noop')]);
-  } else {
-    buttons.unshift([Markup.button.callback('🎰 شرکت در قرعه‌کشی', `lottery:enter:${lotteryId}`)]);
-  }
+  buttons.unshift([Markup.button.callback(currentTickets ? `🎟 خرید بلیت بیشتر (فعلی: ${currentTickets})` : '🎰 خرید بلیت', `lottery:enter:${lotteryId}`)]);
 
   return Markup.inlineKeyboard(buttons);
 }

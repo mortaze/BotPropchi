@@ -1,5 +1,5 @@
-import { BotAdminRole, BotAdminStatus, DiscountCategory, SystemEventType } from '@prisma/client';
-import { Context, Telegraf } from 'telegraf';
+import { BotAdminRole, BotAdminStatus, SystemEventType } from '@prisma/client';
+import { Context, Markup, Telegraf } from 'telegraf';
 import { channelService } from '../../services/channel.service';
 import { discountService } from '../../services/discount.service';
 import { lotteryService } from '../../services/lottery.service';
@@ -14,7 +14,7 @@ import { userService } from '../../services/user.service';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 import {
-  categoryKeyboard,
+  propFirmDiscountKeyboard,
   lotteryHistoryKeyboard,
   lotteryKeyboard,
   joinChannelsKeyboard,
@@ -39,10 +39,8 @@ function formatDiscount(d: any, index?: number): string {
   );
 }
 
-async function getDiscountPage(category: DiscountCategory | 'ALL', page: number) {
-  return (category === 'ALL'
-    ? await discountService.getAll(page)
-    : await discountService.getByCategory(category as DiscountCategory, page)) as PaginatedResult<any>;
+async function getDiscountPage(propFirmId: number, page: number) {
+  return (await discountService.getByPropFirm(propFirmId, page)) as PaginatedResult<any>;
 }
 
 
@@ -201,9 +199,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
       `📅 فعال هفته: ${report.users.activeWeek}`,
       `🆕 کاربران جدید ماه: ${report.users.newUsers}`,
       `👥 دعوت‌ها: ${report.referrals.totalInvites} | موفق: ${report.referrals.successful} | نرخ تبدیل: ${report.referrals.conversionRate}%`,
-      `📢 عضویت اجباری فعال: ${report.forceJoin.approved} | در انتظار: ${report.forceJoin.pending}`,
+      `📢 عضویت اجباری: ${report.forceJoin.channels} کانال | ${report.forceJoin.groups} گروه`,
       `📣 Broadcast: ${report.broadcasts.total} | موفقیت: ${report.broadcasts.successRate}% | خطا: ${report.broadcasts.errorRate}%`,
-      `🎰 قرعه‌کشی: ${report.lotteries.participants} شرکت‌کننده | ${report.lotteries.winners} برنده`,
+      `🎰 قرعه‌کشی: ${report.lotteries.participants} شرکت‌کننده | ${report.lotteries.ticketsSold} بلیت`,
     ].join('\n'));
   });
 
@@ -251,44 +249,58 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('🎯 کدهای تخفیف', async (ctx) => {
-    await ctx.reply('یک دسته‌بندی انتخاب کنید:', categoryKeyboard);
-  });
+    const firms = (await discountService.getPropFirms()) as any[];
 
-  bot.action(/^cat:(.+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-
-    const category = ctx.match[1] as DiscountCategory | 'ALL';
-    const page = 1;
-    const result = await getDiscountPage(category, page);
-
-    if (!result.items || result.items.length === 0) {
-      return ctx.editMessageText('❌ در این دسته‌بندی کدی یافت نشد.');
+    if (!firms.length) {
+      return ctx.reply('❌ هنوز کد تخفیف فعالی برای پراپ فرم‌ها ثبت نشده است.');
     }
 
-    const text = result.items.map((d: any, i: number) => formatDiscount(d, i)).join('\n\n─────────\n\n');
-    const callbackPrefix = `page:${category}`;
+    await ctx.reply('🏢 ابتدا پراپ فرم مورد نظر را انتخاب کنید:', propFirmDiscountKeyboard(firms));
+  });
 
-    await ctx.editMessageText(`📋 *کدهای تخفیف* (${result.total} کد)\n\n${text}`, {
+  bot.action('back:discounts', async (ctx) => {
+    await ctx.answerCbQuery();
+    const firms = (await discountService.getPropFirms()) as any[];
+    await ctx.editMessageText('🏢 ابتدا پراپ فرم مورد نظر را انتخاب کنید:', propFirmDiscountKeyboard(firms));
+  });
+
+  bot.action(/^firm:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+
+    const propFirmId = parseInt(ctx.match[1]);
+    const page = 1;
+    const result = await getDiscountPage(propFirmId, page);
+
+    if (!result.items || result.items.length === 0) {
+      return ctx.editMessageText('❌ برای این پراپ فرم کد تخفیف فعالی یافت نشد.');
+    }
+
+    const firmName = result.items[0]?.propFirm?.name || 'پراپ فرم';
+    const text = result.items.map((d: any, i: number) => formatDiscount(d, i)).join('\n\n─────────\n\n');
+    const callbackPrefix = `firmPage:${propFirmId}`;
+
+    await ctx.editMessageText(`📋 *کدهای تخفیف ${firmName}* (${result.total} کد)\n\n${text}`, {
       parse_mode: 'Markdown',
       ...(result.pages > 1 ? paginationKeyboard(page, result.pages, callbackPrefix) : {}),
     });
   });
 
-  bot.action(/^page:(.+):(\d+)$/, async (ctx: any) => {
+  bot.action(/^firmPage:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
 
-    const category = ctx.match[1] as DiscountCategory | 'ALL';
+    const propFirmId = parseInt(ctx.match[1]);
     const page = parseInt(ctx.match[2]);
-    const result = await getDiscountPage(category, page);
+    const result = await getDiscountPage(propFirmId, page);
 
     if (!result.items || result.items.length === 0) {
       return ctx.editMessageText('❌ صفحه‌ای یافت نشد.');
     }
 
+    const firmName = result.items[0]?.propFirm?.name || 'پراپ فرم';
     const text = result.items.map((d: any, i: number) => formatDiscount(d, i)).join('\n\n─────────\n\n');
-    const callbackPrefix = `page:${category}`;
+    const callbackPrefix = `firmPage:${propFirmId}`;
 
-    await ctx.editMessageText(`📋 *کدهای تخفیف* — صفحه ${page}\n\n${text}`, {
+    await ctx.editMessageText(`📋 *کدهای تخفیف ${firmName}* — صفحه ${page}\n\n${text}`, {
       parse_mode: 'Markdown',
       ...paginationKeyboard(page, result.pages, callbackPrefix),
     });
@@ -374,27 +386,39 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return ctx.reply(`❌ قرعه‌کشی فعالی وجود ندارد.\n\n🏆 آخرین برندگان: ${winners}`, lotteryHistoryKeyboard());
     }
 
-    const hasEntered = await lotteryService.hasEntered(BigInt(ctx.from.id), lottery.id);
+    const userEntry = await lotteryService.getUserEntry(BigInt(ctx.from.id), lottery.id);
     const entriesCount = await lotteryService.getEntriesCount(lottery.id);
+    const totalTickets = await lotteryService.getTicketsCount(lottery.id);
     const endDate = new Date(lottery.endAt).toLocaleString('fa-IR');
 
     await ctx.reply(
       `🎰 *${lottery.title}*\n\n` +
         `🏆 جایزه: ${lottery.prize}\n` +
         `👥 شرکت‌کنندگان: ${entriesCount} نفر\n` +
+        `🎟 کل بلیت‌ها: ${totalTickets}\n` +
+        `🎫 بلیت‌های شما: ${userEntry?.ticketCount ?? 0}\n` +
         `⭐️ حداقل امتیاز: ${lottery.minPoints}\n` +
-        `🎟 هزینه شرکت: ${lottery.entryCost}\n` +
+        `🎟 هزینه هر بلیت: ${lottery.entryCost} امتیاز\n` +
         `⏳ پایان: ${endDate}`,
-      { parse_mode: 'Markdown', ...lotteryKeyboard(lottery.id, hasEntered) }
+      { parse_mode: 'Markdown', ...lotteryKeyboard(lottery.id, userEntry?.ticketCount ?? 0) }
     );
   });
 
   bot.action(/^lottery:enter:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
-
     const lotteryId = parseInt(ctx.match[1]);
-    const result = await lotteryService.enterLottery(BigInt(ctx.from.id), lotteryId);
+    const options = await lotteryService.getTicketOptions(BigInt(ctx.from.id), lotteryId);
+    if (!options.success) return ctx.reply(options.message);
+    await ctx.reply(options.message, {
+      ...Markup.inlineKeyboard(options.options.map((count: number) => [Markup.button.callback(`🎟 ${count} بلیت`, `lottery:buy:${lotteryId}:${count}`)])),
+    });
+  });
 
+  bot.action(/^lottery:buy:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const lotteryId = parseInt(ctx.match[1]);
+    const tickets = parseInt(ctx.match[2]);
+    const result = await lotteryService.enterLottery(BigInt(ctx.from.id), lotteryId, tickets);
     await ctx.reply(result.message);
   });
 

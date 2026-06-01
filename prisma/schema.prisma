@@ -74,7 +74,6 @@ model DiscountCode {
   expiresAt       DateTime?
   isFeatured      Boolean          @default(false)
   isActive        Boolean          @default(true)
-  category        DiscountCategory @default(OTHER)
   usageCount      Int              @default(0)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -84,16 +83,6 @@ model DiscountCode {
   clickLogs ClickLog[]
 
   @@map("discount_codes")
-}
-
-enum DiscountCategory {
-  HIGHEST_DISCOUNT
-  NO_TIME_LIMIT
-  FIRST_PURCHASE
-  TWO_PHASE_ONLY
-  NEWEST
-  MOST_POPULAR
-  OTHER
 }
 
 ////////////////////////////////////////////////////////////
@@ -185,10 +174,14 @@ model Lottery {
 }
 
 model LotteryEntry {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  lotteryId Int
-  createdAt DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  lotteryId   Int
+  ticketCount Int      @default(1)
+  pointsSpent Int      @default(0)
+  chanceWeight Int     @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   lottery Lottery @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
@@ -196,6 +189,7 @@ model LotteryEntry {
   @@unique([userId, lotteryId])
   @@index([lotteryId])
   @@index([userId])
+  @@index([lotteryId, ticketCount])
   @@map("lottery_entries")
 }
 
