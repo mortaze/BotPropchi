@@ -12,7 +12,6 @@ export const DEFAULT_MENU_ITEMS = [
   { key: 'required-channels', label: 'عضویت اجباری', href: '/dashboard/required-channels', order: 70, ownerOnly: false, featureKey: 'force_join' },
   { key: 'groups', label: 'مدیریت گروه‌ها', href: '/dashboard/groups', order: 80, ownerOnly: false, featureKey: 'groups' },
   { key: 'keyword-replies', label: 'پاسخ‌های خودکار', href: '/dashboard/keyword-replies', order: 90, ownerOnly: false, featureKey: 'auto_replies' },
-  { key: 'broadcasts', label: 'پیام همگانی', href: '/dashboard/broadcasts', order: 100, ownerOnly: false, featureKey: 'broadcasts' },
   { key: 'bot-admins', label: 'ادمین‌های ربات', href: '/dashboard/bot-admins', order: 110, ownerOnly: false, featureKey: null },
   { key: 'admin-users', label: 'مدیریت ادمین‌ها', href: '/dashboard/admin-users', order: 115, ownerOnly: true, featureKey: null },
   { key: 'analytics', label: 'گزارشات', href: '/dashboard/analytics', order: 120, ownerOnly: false, featureKey: 'reports' },
@@ -25,7 +24,6 @@ export const DEFAULT_FEATURES = [
   { key: 'lottery', label: 'قرعه کشی' },
   { key: 'referrals', label: 'دعوت دوستان' },
   { key: 'force_join', label: 'عضویت اجباری' },
-  { key: 'broadcasts', label: 'پیام همگانی' },
   { key: 'auto_replies', label: 'پاسخ خودکار' },
   { key: 'reports', label: 'گزارشات' },
   { key: 'groups', label: 'مدیریت گروه‌ها' },
@@ -55,7 +53,7 @@ class SettingsService {
     await this.ensureDefaults();
     const features = await this.getFeatureMap();
     const menus = await prisma.menuOrder.findMany({ where: { isActive: true }, orderBy: [{ order: 'asc' }, { id: 'asc' }] });
-    return menus.filter((item) => (!item.ownerOnly || isOwnerRole(role)) && (!item.featureKey || features[item.featureKey] !== false));
+    return menus.filter((item) => item.key !== 'broadcasts' && (!item.ownerOnly || isOwnerRole(role)) && (!item.featureKey || features[item.featureKey] !== false));
   }
 
   async reorderMenus(keys: string[]) {

@@ -1,4 +1,4 @@
-import { BotAdminRole, BotAdminStatus, SystemEventType } from '@prisma/client';
+import { BotAdminRole, BotAdminStatus, BroadcastType, SystemEventType } from '@prisma/client';
 import { Context, Markup, Telegraf } from 'telegraf';
 import { channelService } from '../../services/channel.service';
 import { discountService } from '../../services/discount.service';
@@ -20,7 +20,7 @@ import {
   lotteryHistoryKeyboard,
   lotteryKeyboard,
   joinChannelsKeyboard,
-  botAdminPanelKeyboard,
+  buildBotAdminPanelKeyboard,
   buildMainMenuKeyboard,
   paginationKeyboard,
 } from '../keyboards';
@@ -58,15 +58,82 @@ async function adminReplyOptions(telegramId?: number) {
   return buildMainMenuKeyboard(Boolean(admin), await settingsService.getFeatureMap());
 }
 
+type PendingBroadcast = {
+  sourceChatId: number | string;
+  messageIds: number[];
+  messageType: BroadcastType;
+  deliveryMethod: 'copy' | 'forward';
+  createdBy: string;
+};
+
 const mediaGroupBuffers = new Map<string, { timer: NodeJS.Timeout; ctx: any; messageIds: number[] }>();
 
-async function finalizeBotBroadcast(ctx: any, messageIds: number[]) {
-  const startedAt = Date.now();
-  const broadcast = await broadcastService.createTelegramCopyBroadcast({
-    title: `Bot panel broadcast ${new Date().toISOString()}`,
+function canUseBroadcast(admin: { role: BotAdminRole }) {
+  return admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
+}
+
+function isForwardedMessage(message: any) {
+  return Boolean(message.forward_origin || message.forward_date || message.forward_from || message.forward_from_chat || message.forward_sender_name);
+}
+
+function detectBroadcastType(message: any): BroadcastType {
+  if (isForwardedMessage(message)) return BroadcastType.FORWARD_MESSAGE;
+  if (message.media_group_id) return BroadcastType.MEDIA_GROUP;
+  if (message.text) return BroadcastType.TEXT;
+  if (message.photo) return BroadcastType.PHOTO;
+  if (message.video) return BroadcastType.VIDEO;
+  if (message.audio) return BroadcastType.AUDIO;
+  if (message.voice) return BroadcastType.VOICE;
+  if (message.animation) return BroadcastType.ANIMATION;
+  if (message.document) return BroadcastType.DOCUMENT;
+  if (message.sticker) return BroadcastType.STICKER;
+  if (message.contact) return BroadcastType.CONTACT;
+  if (message.location) return BroadcastType.LOCATION;
+  if (message.poll) return BroadcastType.POLL;
+  return BroadcastType.COPY_MESSAGE;
+}
+
+function pendingBroadcastKey(telegramId: number) {
+  return `admin_broadcast_pending:${telegramId}`;
+}
+
+async function showBroadcastPreview(ctx: any, messageIds: number[]) {
+  const messageType = detectBroadcastType(ctx.message);
+  const deliveryMethod: 'copy' | 'forward' = messageType === BroadcastType.FORWARD_MESSAGE ? 'forward' : 'copy';
+  const pending: PendingBroadcast = {
     sourceChatId: ctx.chat.id,
     messageIds,
+    messageType,
+    deliveryMethod,
     createdBy: `telegram:${ctx.from.id}`,
+  };
+  cache.set(pendingBroadcastKey(ctx.from.id), pending, 600);
+  cache.del(`admin_broadcast:${ctx.from.id}`);
+
+  await ctx.reply('👁 پیش‌نمایش پیام همگانی:');
+  for (const messageId of messageIds) {
+    if (deliveryMethod === 'forward') {
+      await ctx.telegram.forwardMessage(ctx.chat.id, ctx.chat.id, messageId);
+    } else {
+      await ctx.telegram.copyMessage(ctx.chat.id, ctx.chat.id, messageId);
+    }
+  }
+
+  await ctx.reply('آیا این پیام برای همه کاربران ارسال شود؟', Markup.inlineKeyboard([
+    [Markup.button.callback('✅ ارسال همگانی', 'broadcast:confirm')],
+    [Markup.button.callback('❌ لغو', 'broadcast:cancel')],
+  ]));
+}
+
+async function finalizeBotBroadcast(ctx: any, pending: PendingBroadcast) {
+  const startedAt = Date.now();
+  const broadcast = await broadcastService.createTelegramMessageBroadcast({
+    title: `Bot panel broadcast ${new Date().toISOString()}`,
+    sourceChatId: pending.sourceChatId,
+    messageIds: pending.messageIds,
+    messageType: pending.messageType,
+    deliveryMethod: pending.deliveryMethod,
+    createdBy: pending.createdBy,
   });
   if (!broadcast) return ctx.reply('❌ خطا در ایجاد ارسال همگانی رخ داد.');
   const summary = await broadcastService.summarizeDelivery(broadcast.id);
@@ -74,14 +141,14 @@ async function finalizeBotBroadcast(ctx: any, messageIds: number[]) {
   const success = summary.broadcast?.successCount ?? 0;
   const failed = summary.broadcast?.failedCount ?? 0;
   await ctx.reply([
-    '✅ ارسال همگانی پایان یافت',
+    '📊 گزارش پیام همگانی',
     '',
-    `👥 کل کاربران: ${total}`,
-    `✅ موفق: ${success}`,
-    `❌ ناموفق: ${failed}`,
-    `⛔ بلاک کرده‌اند: ${summary.blocked}`,
-    `🚫 حذف شده: ${summary.deleted}`,
-    `⏱ مدت زمان ارسال: ${formatDuration(Date.now() - startedAt)}`,
+    `کل کاربران: ${total}`,
+    `ارسال موفق: ${success}`,
+    `ارسال ناموفق: ${failed}`,
+    `بلاک کرده‌اند: ${summary.blocked}`,
+    `اکانت حذف شده: ${summary.deleted}`,
+    `مدت زمان ارسال: ${formatDuration(Date.now() - startedAt)}`,
   ].join('\n'));
 }
 
@@ -133,10 +200,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
 
 
-  bot.hears('🔐 ادمین', async (ctx) => {
+  bot.hears('👨‍💼 پنل ادمین', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    await ctx.reply('⚙️ پنل مدیریت ربات', botAdminPanelKeyboard);
+    const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
 
   bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {
@@ -144,18 +212,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('📢 پیام همگانی', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('broadcasts'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
+    if (!admin || (admin.role !== BotAdminRole.OWNER && admin.role !== BotAdminRole.ADMIN)) return;
     cache.set(`admin_broadcast:${ctx.from.id}`, true, 600);
-    await ctx.reply('پیام مورد نظر را ارسال یا فوروارد کنید.');
-  });
-
-  bot.hears('📣 ارسال اعلان', async (ctx) => {
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    cache.set(`admin_broadcast:${ctx.from.id}`, true, 600);
-    await ctx.reply('متن یا رسانه اعلان را ارسال کنید.');
+    await ctx.reply([
+      'پیام مورد نظر خود را ارسال کنید.',
+      'می‌توانید متن، عکس، ویدیو، فایل، گیف، استیکر یا پیام فورواردی ارسال نمایید.',
+    ].join('\n'));
   });
 
   bot.hears('👥 مدیریت ادمین‌ها', async (ctx) => {
@@ -213,7 +276,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
       `🆕 کاربران جدید ماه: ${report.users.newUsers}`,
       `👥 دعوت‌ها: ${report.referrals.totalInvites} | موفق: ${report.referrals.successful} | نرخ تبدیل: ${report.referrals.conversionRate}%`,
       `📢 عضویت اجباری: ${report.forceJoin.channels} کانال | ${report.forceJoin.groups} گروه`,
-      `📣 Broadcast: ${report.broadcasts.total} | موفقیت: ${report.broadcasts.successRate}% | خطا: ${report.broadcasts.errorRate}%`,
       `🎰 قرعه‌کشی: ${report.lotteries.participants} شرکت‌کننده | ${report.lotteries.ticketsSold} بلیت`,
     ].join('\n'));
   });
@@ -224,10 +286,35 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply('⚙️ تنظیمات مدیریتی از پنل وب و دستورات ادمین قابل مدیریت است.');
   });
 
+  bot.action('broadcast:confirm', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !canUseBroadcast(admin)) return;
+    const pending = cache.get<PendingBroadcast>(pendingBroadcastKey(ctx.from.id));
+    if (!pending) return ctx.reply('❌ پیام همگانی در انتظار تایید یافت نشد. دوباره پیام را ارسال کنید.');
+    cache.del(pendingBroadcastKey(ctx.from.id));
+    await ctx.reply('⏳ ارسال همگانی شروع شد...');
+    await finalizeBotBroadcast(ctx, pending);
+  });
+
+  bot.action('broadcast:cancel', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const pending = cache.get<PendingBroadcast>(pendingBroadcastKey(ctx.from.id));
+    cache.del(pendingBroadcastKey(ctx.from.id));
+    cache.del(`admin_broadcast:${ctx.from.id}`);
+    await systemLogService.log({
+      eventType: SystemEventType.BROADCAST,
+      telegramId: ctx.from.id,
+      message: 'ADMIN_BROADCAST_CANCELLED',
+      metadata: pending ? { sourceChatId: pending.sourceChatId, messageIds: pending.messageIds, messageType: pending.messageType } : undefined,
+    });
+    await ctx.reply('❌ ارسال همگانی لغو شد.');
+  });
+
   bot.on('message', async (ctx: any, next) => {
     if (!ctx.from || !cache.get<boolean>(`admin_broadcast:${ctx.from.id}`)) return next();
     const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return next();
+    if (!admin || !canUseBroadcast(admin)) return next();
     const mediaGroupId = ctx.message.media_group_id;
     if (mediaGroupId) {
       const key = `admin_media_group:${ctx.chat.id}:${mediaGroupId}`;
@@ -239,8 +326,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
           const buffered = mediaGroupBuffers.get(key);
           if (buffered) {
             mediaGroupBuffers.delete(key);
-            cache.del(`admin_broadcast:${buffered.ctx.from.id}`);
-            finalizeBotBroadcast(buffered.ctx, buffered.messageIds).catch(logger.error);
+            showBroadcastPreview(buffered.ctx, buffered.messageIds).catch(logger.error);
           }
         }, 1200);
       } else {
@@ -248,17 +334,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
           const buffered = mediaGroupBuffers.get(key);
           if (buffered) {
             mediaGroupBuffers.delete(key);
-            cache.del(`admin_broadcast:${buffered.ctx.from.id}`);
-            finalizeBotBroadcast(buffered.ctx, buffered.messageIds).catch(logger.error);
+            showBroadcastPreview(buffered.ctx, buffered.messageIds).catch(logger.error);
           }
         }, 1200);
         mediaGroupBuffers.set(key, { timer, ctx, messageIds: [ctx.message.message_id] });
       }
-      return ctx.reply('📦 مدیا گروه دریافت شد؛ ارسال تا چند لحظه دیگر شروع می‌شود.');
+      return ctx.reply('📦 مدیا گروه دریافت شد؛ پیش‌نمایش تا چند لحظه دیگر نمایش داده می‌شود.');
     }
-    cache.del(`admin_broadcast:${ctx.from.id}`);
-    await ctx.reply('⏳ ارسال همگانی شروع شد...');
-    await finalizeBotBroadcast(ctx, [ctx.message.message_id]);
+    await showBroadcastPreview(ctx, [ctx.message.message_id]);
   });
 
   bot.hears('🎯 کدهای تخفیف', async (ctx) => {

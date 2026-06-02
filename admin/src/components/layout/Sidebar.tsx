@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Building2, FileText, Gift, LayoutDashboard, Megaphone, MessageSquareReply, RadioTower, Settings, ShieldCheck, Share2, Star, Ticket, UserCog, Users, X } from "lucide-react";
+import { BarChart3, Building2, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Settings, ShieldCheck, Share2, Star, Ticket, UserCog, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
 import { settingsApi } from "@/services/api";
 
-const iconMap = { dashboard: LayoutDashboard, users: Users, lotteries: Ticket, discounts: Gift, "prop-firms": Building2, referrals: Share2, scoring: Star, "required-channels": RadioTower, groups: ShieldCheck, "keyword-replies": MessageSquareReply, broadcasts: Megaphone, "bot-admins": UserCog, "admin-users": UserCog, analytics: BarChart3, "system-logs": FileText, settings: Settings } as const;
+const iconMap = { dashboard: LayoutDashboard, users: Users, lotteries: Ticket, discounts: Gift, "prop-firms": Building2, referrals: Share2, scoring: Star, "required-channels": RadioTower, groups: ShieldCheck, "keyword-replies": MessageSquareReply, "bot-admins": UserCog, "admin-users": UserCog, analytics: BarChart3, "system-logs": FileText, settings: Settings } as const;
 const fallback = [
   { key: "dashboard", href: "/dashboard", label: "داشبورد" },
   { key: "users", href: "/dashboard/users", label: "کاربران" },

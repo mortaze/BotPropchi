@@ -23,7 +23,6 @@ import { discountRouter } from "./routes/discount.routes";
 import lotteryRouter from "./routes/lottery.routes";
 import { userRouter } from "./routes/user.routes";
 import { referralRouter } from "./routes/referral.routes";
-import { broadcastRouter } from "./routes/broadcast.routes";
 import { createChannelRouter } from "./routes/channel.routes";
 import { createGroupRouter } from "./routes/group.routes";
 import { keywordReplyRouter } from "./routes/keyword-reply.routes";
@@ -158,12 +157,6 @@ export function startAdminApi(bot?: Telegraf) {
 
   app.use("/api/scoring", authMiddleware, requireFeature("points"), scoringRouter);
 
-  app.use(
-    "/api/broadcasts",
-    authMiddleware,
-    requireFeature("broadcasts"),
-    broadcastRouter
-  );
 
   app.use(
     "/api/required-channels",

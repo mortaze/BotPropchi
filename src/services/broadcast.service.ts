@@ -1,4 +1,4 @@
-import { Broadcast, BroadcastLogStatus, BroadcastParseMode, BroadcastStatus, BroadcastType, Prisma, SystemEventType, SystemLogLevel } from '@prisma/client';
+import { Broadcast, BroadcastParseMode, BroadcastStatus, BroadcastType, Prisma, SystemEventType, SystemLogLevel } from '@prisma/client';
 import { Telegraf } from 'telegraf';
 import { config } from '../config';
 import { broadcastRepository } from '../repositories/broadcast.repository';
@@ -18,6 +18,15 @@ type CreateBroadcastInput = {
   parseMode?: BroadcastParseMode | null;
   inlineKeyboard?: Prisma.InputJsonValue;
   scheduledAt?: Date | null;
+  createdBy?: string | null;
+};
+
+type TelegramMessageBroadcastInput = {
+  title: string;
+  sourceChatId: number | string;
+  messageIds: number[];
+  messageType: BroadcastType;
+  deliveryMethod: 'copy' | 'forward';
   createdBy?: string | null;
 };
 
@@ -100,17 +109,36 @@ class BroadcastService {
   }
 
   async createTelegramCopyBroadcast(input: { title: string; sourceChatId: number | string; messageIds: number[]; createdBy?: string | null }) {
+    return this.createTelegramMessageBroadcast({ ...input, messageType: BroadcastType.COPY_MESSAGE, deliveryMethod: 'copy' });
+  }
+
+  async createTelegramMessageBroadcast(input: TelegramMessageBroadcastInput) {
+    const startedAt = new Date();
     const broadcast = await broadcastRepository.create({
       title: input.title,
-      messageType: BroadcastType.COPY_MESSAGE,
-      mediaItems: { sourceChatId: String(input.sourceChatId), messageIds: input.messageIds },
+      messageType: input.messageType,
+      mediaItems: {
+        sourceChatId: String(input.sourceChatId),
+        messageIds: input.messageIds,
+        deliveryMethod: input.deliveryMethod,
+      },
       status: BroadcastStatus.QUEUED,
+      startedAt,
       createdBy: input.createdBy,
+    });
+    await systemLogService.log({
+      eventType: SystemEventType.BROADCAST,
+      message: 'ADMIN_BROADCAST_STARTED',
+      metadata: { broadcastId: broadcast.id, source: 'bot_panel', messageType: input.messageType, deliveryMethod: input.deliveryMethod },
     });
     await broadcastRepository.createPendingLogs(broadcast.id);
     await this.process(broadcast.id);
     const completed = await this.get(broadcast.id);
-    await systemLogService.log({ eventType: SystemEventType.BROADCAST, message: `Telegram broadcast completed: ${broadcast.title}`, metadata: { broadcastId: broadcast.id, source: 'bot_panel' } });
+    await systemLogService.log({
+      eventType: SystemEventType.BROADCAST,
+      message: 'ADMIN_BROADCAST_COMPLETED',
+      metadata: { broadcastId: broadcast.id, source: 'bot_panel', successCount: completed?.successCount ?? 0, failedCount: completed?.failedCount ?? 0, totalRecipients: completed?.totalRecipients ?? 0 },
+    });
     return completed;
   }
 
@@ -176,6 +204,19 @@ class BroadcastService {
     if (!this.bot) throw new Error('ربات برای ارسال پیام همگانی آماده نیست');
     const chatId = Number(telegramId);
     const options = { parse_mode: this.parseMode(broadcast), caption: broadcast.content || undefined, ...this.keyboardMarkup(broadcast) } as any;
+    const payload = (broadcast.mediaItems || {}) as any;
+    if (payload.sourceChatId && Array.isArray(payload.messageIds)) {
+      for (const messageId of payload.messageIds) {
+        if (payload.deliveryMethod === 'forward' || broadcast.messageType === BroadcastType.FORWARD_MESSAGE) {
+          await this.bot.telegram.forwardMessage(chatId, payload.sourceChatId, Number(messageId));
+        } else {
+          await this.bot.telegram.copyMessage(chatId, payload.sourceChatId, Number(messageId));
+        }
+        await sleep(15);
+      }
+      return;
+    }
+
     switch (broadcast.messageType) {
       case BroadcastType.TEXT:
         return this.bot.telegram.sendMessage(chatId, broadcast.content || '', { parse_mode: this.parseMode(broadcast), ...this.keyboardMarkup(broadcast) } as any);
@@ -195,16 +236,12 @@ class BroadcastService {
         return this.bot.telegram.sendAnimation(chatId, broadcast.mediaFileId || '', options);
       case BroadcastType.MEDIA_GROUP:
         return this.bot.telegram.sendMediaGroup(chatId, (broadcast.mediaItems as any[]) || []);
-      case BroadcastType.COPY_MESSAGE: {
-        const payload = (broadcast.mediaItems || {}) as any;
-        const sourceChatId = payload.sourceChatId;
-        const messageIds = Array.isArray(payload.messageIds) ? payload.messageIds : [];
-        for (const messageId of messageIds) {
-          await this.bot.telegram.copyMessage(chatId, sourceChatId, Number(messageId));
-          await sleep(15);
-        }
-        return;
-      }
+      case BroadcastType.CONTACT:
+      case BroadcastType.LOCATION:
+      case BroadcastType.POLL:
+      case BroadcastType.FORWARD_MESSAGE:
+      case BroadcastType.COPY_MESSAGE:
+        throw new Error('این نوع پیام فقط از طریق پیام ذخیره‌شده تلگرام قابل ارسال است');
       default:
         throw new Error('نوع پیام پشتیبانی نمی‌شود');
     }
