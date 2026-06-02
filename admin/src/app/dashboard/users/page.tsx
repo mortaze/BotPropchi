@@ -12,8 +12,13 @@ import { formatNumber, safeDateFormat } from "@/lib/utils";
 export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [profileStatus, setProfileStatus] = useState<"" | "completed" | "incomplete">("");
+  const [phoneStatus, setPhoneStatus] = useState<"" | "with_phone" | "without_phone">("");
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["users", page], queryFn: () => usersApi.getAll({ page, limit: 20 }) });
+  const query = useQuery({
+    queryKey: ["users", page, profileStatus, phoneStatus],
+    queryFn: () => usersApi.getAll({ page, limit: 20, profileStatus: profileStatus || undefined, phoneStatus: phoneStatus || undefined }),
+  });
   const blockMutation = useMutation({
     mutationFn: ({ id, blocked }: { id: number; blocked: boolean }) => usersApi.setBlocked(id, blocked),
     onSuccess: () => {
@@ -37,9 +42,21 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold">مدیریت کاربران</h1>
           <p className="text-sm text-muted-foreground">لیست، جستجو، وضعیت، رتبه، امتیاز و آمار واقعی دعوت کاربران</p>
         </div>
-        <div className="relative w-full md:w-80">
-          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input className="input pr-10" placeholder="جستجو در صفحه فعلی..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+          <select className="input md:w-44" value={profileStatus} onChange={(e) => { setPage(1); setProfileStatus(e.target.value as typeof profileStatus); }}>
+            <option value="">همه پروفایل‌ها</option>
+            <option value="completed">کاربران تکمیل شده</option>
+            <option value="incomplete">کاربران ناقص</option>
+          </select>
+          <select className="input md:w-44" value={phoneStatus} onChange={(e) => { setPage(1); setPhoneStatus(e.target.value as typeof phoneStatus); }}>
+            <option value="">همه شماره‌ها</option>
+            <option value="with_phone">دارای شماره موبایل</option>
+            <option value="without_phone">بدون شماره موبایل</option>
+          </select>
+          <div className="relative w-full md:w-80">
+            <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input className="input pr-10" placeholder="جستجو در صفحه فعلی..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
         </div>
       </div>
       <Card>
@@ -55,6 +72,9 @@ export default function UsersPage() {
               <tr>
                 <th>کاربر</th>
                 <th>تلگرام</th>
+                <th>شماره موبایل</th>
+                <th>پروفایل</th>
+                <th>تاریخ تکمیل</th>
                 <th>امتیاز</th>
                 <th>دعوت‌ها</th>
                 <th>امتیاز دعوت</th>
@@ -64,7 +84,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {query.isLoading && Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} cols={8} />)}
+              {query.isLoading && Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} cols={11} />)}
               {users.map((user) => (
                 <tr key={user.id}>
                   <td>
@@ -76,6 +96,9 @@ export default function UsersPage() {
                   <td>
                     @{user.username ?? "-"}<p className="text-xs text-muted-foreground">{user.telegramId}</p>
                   </td>
+                  <td dir="ltr" className="text-right">{user.phoneNumber ?? "-"}</td>
+                  <td><Badge variant={user.profileCompleted ? "success" : "warning"}>{user.profileCompleted ? "تکمیل شده" : "ناقص"}</Badge></td>
+                  <td>{user.profileCompletedAt ? safeDateFormat(user.profileCompletedAt, { dateStyle: "medium" }) : "-"}</td>
                   <td>{formatNumber(user.points)}</td>
                   <td>{formatNumber(user.referralCount ?? user.totalReferrals)}</td>
                   <td>{formatNumber(user.referralRewardPoints ?? 0)}</td>

@@ -17,6 +17,7 @@ const schema = z.object({
   dailyActivityPoints: z.coerce.number().int().min(0),
   linkClickPoints: z.coerce.number().int().min(0),
   referralRewardPoints: z.coerce.number().int().min(0),
+  profileCompletionPoints: z.coerce.number().int().min(0),
   welcomeMessageText: z.string().min(1),
   initialPointsMessageText: z.string().min(1),
   isWelcomeMessageEnabled: z.boolean(),
@@ -36,6 +37,7 @@ export default function ScoringPage() {
       dailyActivityPoints: 5,
       linkClickPoints: 2,
       referralRewardPoints: 20,
+      profileCompletionPoints: 50,
       welcomeMessageText: "",
       initialPointsMessageText: "",
       isWelcomeMessageEnabled: true,
@@ -74,6 +76,7 @@ export default function ScoringPage() {
             <Input type="number" label="امتیاز فعالیت روزانه" error={errors.dailyActivityPoints?.message} {...register("dailyActivityPoints")} />
             <Input type="number" label="امتیاز کلیک لینک خرید" error={errors.linkClickPoints?.message} {...register("linkClickPoints")} />
             <Input type="number" label="امتیاز دعوت موفق" error={errors.referralRewardPoints?.message} {...register("referralRewardPoints")} />
+            <Input type="number" label="امتیاز تکمیل پروفایل" error={errors.profileCompletionPoints?.message} {...register("profileCompletionPoints")} />
           </CardContent>
         </Card>
 

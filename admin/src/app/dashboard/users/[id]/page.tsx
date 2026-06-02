@@ -55,6 +55,17 @@ export default function UserDetailsPage() {
       </div>
 
       <Card>
+        <CardHeader><h2 className="font-semibold">اطلاعات تکمیلی پروفایل</h2></CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-4">
+          <Metric title="نام" value={user.firstName || "-"} />
+          <Metric title="نام خانوادگی" value={user.lastName || "-"} />
+          <Metric title="شماره موبایل" value={user.phoneNumber || "-"} />
+          <Metric title="وضعیت تکمیل" value={user.profileCompleted ? "✅ تکمیل شده" : "❌ ناقص"} />
+          <Metric title="تاریخ تکمیل" value={user.profileCompletedAt ? safeDateFormat(user.profileCompletedAt, { dateStyle: "medium" }) : "-"} />
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
           <h2 className="font-semibold">اعطای امتیاز دستی</h2>
           <p className="text-xs text-muted-foreground">ثبت امتیاز از مسیر مرکزی PointService انجام می‌شود و در لاگ امتیاز ذخیره می‌گردد.</p>

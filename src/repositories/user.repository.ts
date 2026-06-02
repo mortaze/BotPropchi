@@ -40,11 +40,22 @@ export const userRepository = {
     return prisma.user.findUnique({ where: { id } });
   },
 
-  async list(page = 1, limit = 20) {
+  async list(
+    page = 1,
+    limit = 20,
+    filters: { profileStatus?: 'completed' | 'incomplete'; phoneStatus?: 'with_phone' | 'without_phone' } = {}
+  ) {
     const skip = (page - 1) * limit;
+    const where = {
+      ...(filters.profileStatus === 'completed' ? { profileCompleted: true } : {}),
+      ...(filters.profileStatus === 'incomplete' ? { profileCompleted: false } : {}),
+      ...(filters.phoneStatus === 'with_phone' ? { phoneNumber: { not: null } } : {}),
+      ...(filters.phoneStatus === 'without_phone' ? { phoneNumber: null } : {}),
+    };
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
+        where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -54,6 +65,9 @@ export const userRepository = {
           firstName: true,
           lastName: true,
           username: true,
+          phoneNumber: true,
+          profileCompleted: true,
+          profileCompletedAt: true,
           points: true,
           totalReferrals: true,
           isBlocked: true,
@@ -63,7 +77,7 @@ export const userRepository = {
           referredById: true,
         },
       }),
-      prisma.user.count(),
+      prisma.user.count({ where }),
     ]);
 
     const userIds = users.map((user) => user.id);

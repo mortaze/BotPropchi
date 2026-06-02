@@ -3,6 +3,7 @@
 
 import { Markup } from 'telegraf';
 import { DiscountCode, PropFirm } from '@prisma/client';
+import { config } from '../../config';
 
 type DiscountWithFirm = DiscountCode & {
   propFirm: PropFirm;
@@ -24,6 +25,9 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
   if (enabled('leaderboard')) third.push('🏆 لیدربورد');
   if (enabled('referrals')) third.push('👥 دعوت دوستان');
   if (third.length) rows.push(third);
+  if (config.miniApp.url) {
+    rows.push([{ text: '🚀 پروفایل من', web_app: { url: config.miniApp.url } } as any]);
+  }
   if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
   if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
   return Markup.keyboard(rows.length ? rows : [['👨‍💼 پنل ادمین']]).resize().persistent();

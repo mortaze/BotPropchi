@@ -22,7 +22,9 @@ function serializeBigInts(value: any): any {
 userRouter.get('/', async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 20);
-  const result = await userRepository.list(page, limit);
+  const profileStatus = req.query.profileStatus === 'completed' || req.query.profileStatus === 'incomplete' ? req.query.profileStatus : undefined;
+  const phoneStatus = req.query.phoneStatus === 'with_phone' || req.query.phoneStatus === 'without_phone' ? req.query.phoneStatus : undefined;
+  const result = await userRepository.list(page, limit, { profileStatus, phoneStatus });
 
   res.json(serializeBigInts(result));
 });

@@ -29,6 +29,7 @@ import { keywordReplyRouter } from "./routes/keyword-reply.routes";
 import { settingsRouter } from "./routes/settings.routes";
 import { adminUserRouter } from "./routes/admin-user.routes";
 import { scoringRouter } from "./routes/scoring.routes";
+import { miniAppRouter } from "./routes/mini-app.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -123,6 +124,9 @@ export function startAdminApi(bot?: Telegraf) {
 
   // ───────────────── AUTH ROUTES ─────────────────
   app.use("/api/auth", authRouter);
+
+  // ───────────────── TELEGRAM MINI APP ROUTES ─────────────────
+  app.use("/api/mini-app", miniAppRouter);
 
   // ───────────────── DISCOUNT ROUTES ─────────────────
   app.use(

@@ -10,6 +10,12 @@ function required(key: string): string {
   return value;
 }
 
+function getMiniAppUrl() {
+  if (process.env.TELEGRAM_MINI_APP_URL) return process.env.TELEGRAM_MINI_APP_URL;
+  const frontendUrl = process.env.FRONTEND_URL;
+  return frontendUrl ? `${frontendUrl.replace(/\/$/, '')}/mini-app` : '';
+}
+
 export const config = {
   env: process.env.NODE_ENV || 'development',
   isDev: process.env.NODE_ENV !== 'production',
@@ -21,6 +27,10 @@ export const config = {
   notifications: {
   winnerContact: process.env.WINNER_CONTACT || "@MrKhodae",
 },
+
+  miniApp: {
+    url: getMiniAppUrl(),
+  },
 
   api: {
     port: parseInt(process.env.PORT || '3000'),
