@@ -227,7 +227,7 @@ export interface RequiredChannel {
   updatedAt?: string;
 }
 
-export type BroadcastType = "TEXT" | "PHOTO" | "VIDEO" | "DOCUMENT" | "VOICE" | "AUDIO" | "STICKER" | "ANIMATION" | "MEDIA_GROUP";
+export type BroadcastType = "TEXT" | "PHOTO" | "VIDEO" | "DOCUMENT" | "VOICE" | "AUDIO" | "STICKER" | "ANIMATION" | "CONTACT" | "LOCATION" | "POLL" | "MEDIA_GROUP" | "COPY_MESSAGE" | "FORWARD_MESSAGE";
 export type BroadcastStatus = "DRAFT" | "SCHEDULED" | "QUEUED" | "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED";
 export type BroadcastParseMode = "MARKDOWN" | "HTML";
 export type BroadcastLogStatus = "PENDING" | "SUCCESS" | "FAILED" | "SKIPPED";

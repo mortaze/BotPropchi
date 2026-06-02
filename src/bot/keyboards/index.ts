@@ -25,17 +25,20 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
   if (enabled('referrals')) third.push('👥 دعوت دوستان');
   if (third.length) rows.push(third);
   if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
-  if (isAdmin) rows.push(['🔐 ادمین']);
-  return Markup.keyboard(rows.length ? rows : [['🔐 ادمین']]).resize().persistent();
+  if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
+  return Markup.keyboard(rows.length ? rows : [['👨‍💼 پنل ادمین']]).resize().persistent();
 }
 
 export const mainMenuKeyboard = buildMainMenuKeyboard(false);
 
-export const botAdminPanelKeyboard = Markup.keyboard([
-  ['📢 پیام همگانی', '👥 مدیریت ادمین‌ها'],
-  ['📊 گزارشات', '📣 ارسال اعلان'],
-  ['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی'],
-]).resize().persistent();
+export function buildBotAdminPanelKeyboard(canBroadcast = false) {
+  const rows: string[][] = [];
+  if (canBroadcast) rows.push(['📢 پیام همگانی']);
+  rows.push(['👥 مدیریت ادمین‌ها']);
+  rows.push(['📊 گزارشات']);
+  rows.push(['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی']);
+  return Markup.keyboard(rows).resize().persistent();
+}
 
 // ─── انتخاب پراپ فرم برای کدهای تخفیف ─────────────────────
 export function propFirmDiscountKeyboard(firms: Array<PropFirm & { _count?: { discountCodes: number } }>) {

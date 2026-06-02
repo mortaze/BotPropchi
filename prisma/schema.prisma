@@ -343,8 +343,12 @@ enum BroadcastType {
   AUDIO
   STICKER
   ANIMATION
+  CONTACT
+  LOCATION
+  POLL
   MEDIA_GROUP
   COPY_MESSAGE
+  FORWARD_MESSAGE
 }
 
 enum BroadcastParseMode {
