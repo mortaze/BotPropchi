@@ -40,12 +40,21 @@ discountRouter.get('/prop-firms', async (req, res) => {
 });
 
 discountRouter.post('/prop-firms', async (req, res) => {
-  const schema = z.object({ name: z.string().min(2), slug: z.string().min(2), description: z.string().optional().nullable(), logoUrl: optionalUrl, websiteUrl: optionalUrl, isActive: z.boolean().default(true) });
+  const schema = z.object({ name: z.string().min(2), slug: z.string().min(2), description: z.string().optional().nullable(), logoUrl: optionalUrl, websiteUrl: optionalUrl, reviewLink: optionalUrl, isActive: z.boolean().default(true) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const firm = await prisma.propFirm.create({ data: parsed.data as any });
   cache.delByPrefix('discounts:');
   res.status(201).json(serializeBigInts(firm));
+});
+
+discountRouter.patch('/prop-firms/:id', async (req, res) => {
+  const schema = z.object({ name: z.string().min(2), slug: z.string().min(2), description: z.string().optional().nullable(), logoUrl: optionalUrl, websiteUrl: optionalUrl, reviewLink: optionalUrl, isActive: z.boolean().default(true) }).partial();
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const firm = await prisma.propFirm.update({ where: { id: Number(req.params.id) }, data: parsed.data as any, include: { _count: { select: { discountCodes: true } } } });
+  cache.delByPrefix('discounts:');
+  res.json(serializeBigInts(firm));
 });
 
 // لیست همه کدها یا کدهای یک پراپ فرم

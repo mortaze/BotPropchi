@@ -46,12 +46,11 @@ export default function UserDetailsPage() {
         <p className="text-sm text-muted-foreground">@{user.username ?? "-"} · Telegram ID: {user.telegramId}</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-4">
         <Metric title="امتیاز" value={formatNumber(user.points)} />
         <Metric title="دعوت‌ها" value={formatNumber(referralCount)} />
         <Metric title="امتیاز دعوت" value={formatNumber(referralRewardPoints)} />
         <Metric title="وضعیت" value={user.isBlocked ? "مسدود" : "فعال"} />
-        <Metric title="آخرین فعالیت" value={safeDateFormat(user.lastActiveAt, { dateStyle: "medium" })} />
       </div>
 
       <Card>
@@ -61,7 +60,6 @@ export default function UserDetailsPage() {
           <Metric title="نام خانوادگی" value={user.lastName || "-"} />
           <Metric title="شماره موبایل" value={user.phoneNumber || "-"} />
           <Metric title="وضعیت تکمیل" value={user.profileCompleted ? "✅ تکمیل شده" : "❌ ناقص"} />
-          <Metric title="تاریخ تکمیل" value={user.profileCompletedAt ? safeDateFormat(user.profileCompletedAt, { dateStyle: "medium" }) : "-"} />
         </CardContent>
       </Card>
 

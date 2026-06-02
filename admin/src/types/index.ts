@@ -25,13 +25,11 @@ export interface User {
   lastName?: string | null;
   phoneNumber?: string | null;
   profileCompleted: boolean;
-  profileCompletedAt?: string | null;
   points: number;
   totalReferrals: number;
   referralCount?: number;
   referralRewardPoints?: number;
   isBlocked: boolean;
-  lastActiveAt: string;
   createdAt: string;
   updatedAt: string;
   referredById?: number | null;
