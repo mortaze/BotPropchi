@@ -3,8 +3,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL } from "@/services/api";
 
+type TelegramWebAppUser = { id?: number; username?: string; first_name?: string; last_name?: string };
+
 type TelegramWebApp = {
   initData: string;
+  initDataUnsafe?: { user?: TelegramWebAppUser; auth_date?: number; hash?: string; query_id?: string };
+  version?: string;
+  platform?: string;
   ready: () => void;
   expand: () => void;
   close: () => void;
@@ -30,6 +35,27 @@ type ProfileResponse = {
   user: MiniAppUser;
   rewardPoints?: number;
   error?: string;
+  code?: string;
+  debug?: { validation?: boolean; hashValid?: boolean; userReceived?: boolean };
+};
+
+type MiniAppDiagnostics = {
+  href: string;
+  userAgent: string;
+  hasTelegramObject: boolean;
+  hasWebApp: boolean;
+  version?: string;
+  platform?: string;
+  initData: string;
+  initDataLength: number;
+  initDataUnsafe?: unknown;
+  hasInitData: boolean;
+  hashPresent: boolean;
+  userReceived: boolean;
+  validation: boolean | null;
+  hashValid: boolean | null;
+  authCode?: string;
+  authError?: string;
 };
 
 declare global {
@@ -45,6 +71,59 @@ function getWebApp() {
   return window.Telegram?.WebApp;
 }
 
+function getAdminIds() {
+  return (process.env.NEXT_PUBLIC_TELEGRAM_ADMIN_IDS || "")
+    .split(/[,.\s]+/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function safeJson(value: unknown) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function createDiagnostics(): MiniAppDiagnostics {
+  const telegramObject = typeof window !== "undefined" ? window.Telegram : undefined;
+  const webApp = telegramObject?.WebApp;
+  const initData = webApp?.initData || (process.env.NODE_ENV === "development" ? new URLSearchParams(window.location.search).get("initData") || "" : "");
+  const initDataUnsafe = webApp?.initDataUnsafe;
+  const urlHash = new URLSearchParams(initData).get("hash") || initDataUnsafe?.hash || "";
+
+  return {
+    href: typeof window !== "undefined" ? window.location.href : "",
+    userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+    hasTelegramObject: Boolean(telegramObject),
+    hasWebApp: Boolean(webApp),
+    version: webApp?.version,
+    platform: webApp?.platform,
+    initData,
+    initDataLength: initData.length,
+    initDataUnsafe: safeJson(initDataUnsafe),
+    hasInitData: Boolean(initData),
+    hashPresent: Boolean(urlHash),
+    userReceived: Boolean(initDataUnsafe?.user?.id),
+    validation: null,
+    hashValid: null,
+  };
+}
+
+async function sendDebugLog(eventType: string, message: string, payload: unknown, telegramId?: number | string | null) {
+  console.log(`[MiniAppDebug] ${eventType}: ${message}`, payload);
+  try {
+    await fetch(`${API_BASE_URL}/api/mini-app/debug-log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegramId, eventType, message, payload, userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "" }),
+    });
+  } catch (error) {
+    console.warn("[MiniAppDebug] ارسال لاگ به بک‌اند ناموفق بود", error);
+  }
+}
+
 async function requestProfile(initData: string) {
   const response = await fetch(`${API_BASE_URL}/api/mini-app/profile`, {
     method: "POST",
@@ -52,8 +131,12 @@ async function requestProfile(initData: string) {
     body: JSON.stringify({ initData }),
   });
   const data = (await response.json()) as ProfileResponse;
-  if (!response.ok || !data.success) throw new Error(data.error || "خطا در دریافت اطلاعات کاربری");
-  return data.user;
+  if (!response.ok || !data.success) {
+    const err = new Error(data.error || "خطا در دریافت اطلاعات کاربری") as Error & { code?: string };
+    err.code = data.code;
+    throw err;
+  }
+  return data;
 }
 
 async function saveProfile(initData: string, payload: { firstName: string; lastName: string; phoneNumber: string }) {
@@ -69,6 +152,7 @@ async function saveProfile(initData: string, payload: { firstName: string; lastN
 
 export default function TelegramMiniAppPage() {
   const [initData, setInitData] = useState("");
+  const [diagnostics, setDiagnostics] = useState<MiniAppDiagnostics | null>(null);
   const [user, setUser] = useState<MiniAppUser | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -79,30 +163,62 @@ export default function TelegramMiniAppPage() {
   const [success, setSuccess] = useState<{ text: string; reward: number } | null>(null);
 
   const isComplete = useMemo(() => Boolean(user?.profileCompleted), [user]);
+  const isAdmin = useMemo(() => {
+    const ids = getAdminIds();
+    const unsafe = diagnostics?.initDataUnsafe;
+    const unsafeUserId = unsafe && typeof unsafe === "object" && "user" in unsafe ? String((unsafe as { user?: TelegramWebAppUser }).user?.id || "") : "";
+    const telegramUserId = user?.telegramId || unsafeUserId;
+    return ids.length > 0 && Boolean(telegramUserId) && ids.includes(telegramUserId);
+  }, [user?.telegramId, diagnostics?.initDataUnsafe]);
 
   useEffect(() => {
-    const webApp = getWebApp();
-    webApp?.ready();
-    webApp?.expand();
+    const timer = window.setTimeout(() => {
+      const webApp = getWebApp();
+      webApp?.ready();
+      webApp?.expand();
 
-    const telegramInitData = webApp?.initData || (process.env.NODE_ENV === "development" ? new URLSearchParams(window.location.search).get("initData") || "" : "");
-    setInitData(telegramInitData);
+      const snapshot = createDiagnostics();
+      setDiagnostics(snapshot);
+      setInitData(snapshot.initData);
 
-    if (!telegramInitData) {
-      setError("برای استفاده امن، این صفحه را از داخل ربات تلگرام باز کنید.");
-      setLoading(false);
-      return;
-    }
+      void sendDebugLog("MINI_APP_CLIENT_BOOT", "Mini App diagnostics before validation", {
+        windowLocationHref: snapshot.href,
+        navigatorUserAgent: snapshot.userAgent,
+        telegramObjectStatus: snapshot.hasTelegramObject,
+        webAppStatus: snapshot.hasWebApp,
+        webAppVersion: snapshot.version,
+        webAppPlatform: snapshot.platform,
+        initData: snapshot.initData,
+        initDataUnsafe: snapshot.initDataUnsafe,
+        initDataLength: snapshot.initDataLength,
+        missingTelegramObject: !snapshot.hasTelegramObject,
+        missingWebApp: !snapshot.hasWebApp,
+        emptyInitData: !snapshot.hasInitData,
+      }, snapshot.initDataUnsafe && typeof snapshot.initDataUnsafe === "object" && "user" in snapshot.initDataUnsafe ? (snapshot.initDataUnsafe as { user?: TelegramWebAppUser }).user?.id : null);
 
-    requestProfile(telegramInitData)
-      .then((profile) => {
-        setUser(profile);
-        setFirstName(profile.firstName || "");
-        setLastName(profile.lastName || "");
-        setPhoneNumber(profile.phoneNumber || "");
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "خطا در دریافت اطلاعات"))
-      .finally(() => setLoading(false));
+      if (!snapshot.initData) {
+        void sendDebugLog("MINI_APP_CLIENT_NO_INIT_DATA", "Telegram initData is empty in Mini App frontend", snapshot, null);
+        setError("initData تلگرام دریافت نشد. اطلاعات تشخیصی زیر را بررسی کنید.");
+        setLoading(false);
+        return;
+      }
+
+      requestProfile(snapshot.initData)
+        .then((response) => {
+          setUser(response.user);
+          setFirstName(response.user.firstName || "");
+          setLastName(response.user.lastName || "");
+          setPhoneNumber(response.user.phoneNumber || "");
+          setDiagnostics((prev) => prev ? { ...prev, validation: Boolean(response.debug?.validation ?? true), hashValid: Boolean(response.debug?.hashValid ?? true), userReceived: Boolean(response.debug?.userReceived ?? true) } : prev);
+        })
+        .catch((err: Error & { code?: string }) => {
+          setDiagnostics((prev) => prev ? { ...prev, validation: false, hashValid: err.code === "MINI_APP_INVALID_HASH" ? false : prev.hashValid, authCode: err.code, authError: err.message } : prev);
+          setError(err.message || "خطا در دریافت اطلاعات");
+        })
+        .finally(() => setLoading(false));
+    }, 350);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   const submit = async (event?: FormEvent) => {
@@ -155,13 +271,15 @@ export default function TelegramMiniAppPage() {
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-500 text-2xl shadow-lg">👤</div>
           </div>
 
+          {isAdmin && diagnostics && <DebugCard diagnostics={diagnostics} />}
+
           {loading ? (
             <div className="space-y-3">
               <div className="h-20 animate-pulse rounded-2xl bg-white/10" />
               <div className="h-48 animate-pulse rounded-2xl bg-white/10" />
             </div>
           ) : error && !user ? (
-            <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">{error}</div>
+            <FallbackDiagnostics error={error} diagnostics={diagnostics} />
           ) : user ? (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -212,6 +330,48 @@ export default function TelegramMiniAppPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function StatusLine({ label, ok, unknown = false, trueLabel = "موجود", falseLabel = "موجود نیست" }: { label: string; ok?: boolean | null; unknown?: boolean; trueLabel?: string; falseLabel?: string }) {
+  return <div className="flex items-center justify-between gap-3 rounded-xl bg-white/5 px-3 py-2 text-xs"><span>{label}</span><span>{unknown || ok === null ? "⏳ در انتظار" : ok ? `✅ ${trueLabel}` : `❌ ${falseLabel}`}</span></div>;
+}
+
+function DebugCard({ diagnostics }: { diagnostics: MiniAppDiagnostics }) {
+  return (
+    <div className="mb-4 space-y-2 rounded-2xl border border-amber-300/30 bg-amber-400/10 p-4 text-amber-50">
+      <p className="font-bold">🛠 Debug Admin</p>
+      <StatusLine label="Telegram Object" ok={diagnostics.hasTelegramObject} />
+      <StatusLine label="WebApp" ok={diagnostics.hasWebApp} />
+      <StatusLine label="initData" ok={diagnostics.hasInitData} trueLabel="دریافت شده" falseLabel="دریافت نشده" />
+      <StatusLine label="Hash" ok={diagnostics.hashValid ?? diagnostics.hashPresent} trueLabel="معتبر" falseLabel="نامعتبر" />
+      <StatusLine label="User" ok={diagnostics.userReceived} trueLabel="دریافت شد" falseLabel="دریافت نشد" />
+      <StatusLine label="Validation" ok={diagnostics.validation} trueLabel="موفق" falseLabel="ناموفق" />
+    </div>
+  );
+}
+
+function FallbackDiagnostics({ error, diagnostics }: { error: string; diagnostics: MiniAppDiagnostics | null }) {
+  return (
+    <div className="space-y-3 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">
+      <p className="font-bold">{error}</p>
+      <div className="space-y-2 text-xs">
+        <StatusLine label="Telegram Object Status" ok={diagnostics?.hasTelegramObject ?? false} />
+        <StatusLine label="WebApp Status" ok={diagnostics?.hasWebApp ?? false} />
+        <StatusLine label="InitData Status" ok={diagnostics?.hasInitData ?? false} trueLabel="دریافت شده" falseLabel="دریافت نشده" />
+        <StatusLine label="Hash Status" ok={diagnostics?.hashValid ?? diagnostics?.hashPresent ?? false} trueLabel="معتبر" falseLabel="نامعتبر" />
+        <StatusLine label="User Status" ok={diagnostics?.userReceived ?? false} trueLabel="دریافت شد" falseLabel="دریافت نشد" />
+        <StatusLine label="Validation Status" ok={diagnostics?.validation ?? false} trueLabel="موفق" falseLabel="ناموفق" />
+      </div>
+      <div className="rounded-xl bg-black/20 p-3 text-xs leading-6">
+        <p><b>URL فعلی:</b></p>
+        <p dir="ltr" className="break-all text-left">{diagnostics?.href || "-"}</p>
+        <p className="mt-2"><b>UserAgent:</b></p>
+        <p dir="ltr" className="break-all text-left">{diagnostics?.userAgent || "-"}</p>
+        {diagnostics?.authCode && <p className="mt-2"><b>Code:</b> {diagnostics.authCode}</p>}
+        {diagnostics?.authError && <p className="mt-1"><b>Failure:</b> {diagnostics.authError}</p>}
+      </div>
+    </div>
   );
 }
 

@@ -26,7 +26,7 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
   if (enabled('referrals')) third.push('👥 دعوت دوستان');
   if (third.length) rows.push(third);
   if (config.miniApp.url) {
-    rows.push([{ text: '🚀 پروفایل من', web_app: { url: config.miniApp.url } } as any]);
+    rows.push([Markup.button.webApp('🚀 پروفایل من', config.miniApp.url) as any]);
   }
   if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
   if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
