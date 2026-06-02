@@ -10,6 +10,7 @@ export const DEFAULT_SCORING_SETTINGS = {
   dailyActivityPoints: 5,
   linkClickPoints: 2,
   referralRewardPoints: 20,
+  profileCompletionPoints: 50,
   welcomeMessageText: 'سلام {name} عزیز! 👋\n\n🎯 به ربات کدهای تخفیف پراپ فرم خوش آمدید\n\nاز منوی زیر انتخاب کنید:',
   initialPointsMessageText: '🎁 {points} امتیاز اولیه به حساب شما اضافه شد.',
   isWelcomeMessageEnabled: true,

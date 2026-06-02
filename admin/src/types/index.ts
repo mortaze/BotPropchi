@@ -23,6 +23,9 @@ export interface User {
   username?: string | null;
   firstName: string;
   lastName?: string | null;
+  phoneNumber?: string | null;
+  profileCompleted: boolean;
+  profileCompletedAt?: string | null;
   points: number;
   totalReferrals: number;
   referralCount?: number;
@@ -281,7 +284,7 @@ export interface KeywordReplyLog {
 
 
 export interface BotAdmin { id: number; telegramId: string; username?: string | null; firstName?: string | null; lastName?: string | null; role: BotAdminRole; status: BotAdminStatus; createdAt: string; updatedAt: string; }
-export type SystemEventType = "USER_LOGIN" | "FORCE_JOIN" | "REFERRAL" | "BROADCAST" | "LOTTERY" | "DISCOUNT_CLICK" | "ERROR" | "ADMIN_ACTION" | "GROUP_INTEGRATION";
+export type SystemEventType = "USER_LOGIN" | "FORCE_JOIN" | "REFERRAL" | "BROADCAST" | "LOTTERY" | "DISCOUNT_CLICK" | "ERROR" | "ADMIN_ACTION" | "GROUP_INTEGRATION" | "USER_PROFILE_COMPLETED" | "USER_PROFILE_UPDATED";
 export interface SystemLog { id: number; eventType: SystemEventType; level: "INFO" | "WARN" | "ERROR"; message: string; userId?: number | null; telegramId?: string | null; metadata?: unknown; createdAt: string; user?: ReferralUserSummary | null; }
 export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: number; activeWeek: number; activeMonth: number; newUsers: number }; referrals: { totalInvites: number; successful: number; failed: number; conversionRate: number; topReferrers: Array<{ referrerId: number; _count: { _all: number }; _sum: { rewardPoints: number | null }; user?: User }> }; forceJoin: { channels: number; groups: number; verifiedUsers: number }; discounts: { topClicks: Array<{ discountCodeId: number; clicks: number; discountCode?: DiscountCode }>; topUsage: DiscountCode[]; topViewed: DiscountCode[] }; lotteries: { total: number; participants: number; ticketsSold: number; pointsSpent: number; totalChance: number; topLottery?: { lottery: Lottery; tickets: number; participants: number } | null }; broadcasts: { total: number; successRate: number; errorRate: number; success: number; failed: number }; groups: { approved: number; active: number }; charts: { dailyUsers: Array<{ date: string; count: number }>; dailyReferrals: Array<{ date: string; count: number }>; dailyDiscountClicks: Array<{ date: string; count: number }>; dailyLotteryEntries: Array<{ date: string; count: number }> } }
 
@@ -324,6 +327,7 @@ export interface ScoringSettings {
   dailyActivityPoints: number;
   linkClickPoints: number;
   referralRewardPoints: number;
+  profileCompletionPoints: number;
   welcomeMessageText: string;
   initialPointsMessageText: string;
   isWelcomeMessageEnabled: boolean;

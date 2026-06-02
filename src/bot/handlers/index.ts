@@ -585,11 +585,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return ctx.reply('❌ خطا در دریافت اطلاعات');
     }
 
+    const profileStatus = profile.profileCompleted ? '✅ پروفایل تکمیل شده' : '❌ پروفایل ناقص است';
+
     await ctx.reply(
       `👤 *پروفایل شما*\n\n` +
         `🏅 امتیاز: *${profile.points}*\n` +
         `🏆 رتبه: *${profile.rank}*\n` +
-        `👥 دعوت‌شدگان: *${profile.totalReferrals}* نفر`,
+        `👥 دعوت‌شدگان: *${profile.totalReferrals}* نفر\n` +
+        `${profileStatus}`,
       { parse_mode: 'Markdown' }
     );
   });

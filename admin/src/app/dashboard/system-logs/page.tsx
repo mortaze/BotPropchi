@@ -6,7 +6,7 @@ import { Badge, Card, CardContent, CardHeader, EmptyState, Input, Select } from 
 import { systemLogsApi } from "@/services/api";
 import type { SystemEventType } from "@/types";
 
-const events: SystemEventType[] = ["USER_LOGIN", "FORCE_JOIN", "REFERRAL", "BROADCAST", "LOTTERY", "DISCOUNT_CLICK", "ERROR", "ADMIN_ACTION", "GROUP_INTEGRATION"];
+const events: SystemEventType[] = ["USER_LOGIN", "FORCE_JOIN", "REFERRAL", "BROADCAST", "LOTTERY", "DISCOUNT_CLICK", "ERROR", "ADMIN_ACTION", "GROUP_INTEGRATION", "USER_PROFILE_COMPLETED", "USER_PROFILE_UPDATED"];
 export default function SystemLogsPage() {
   const [eventType, setEventType] = useState<SystemEventType | "">("");
   const [telegramId, setTelegramId] = useState("");

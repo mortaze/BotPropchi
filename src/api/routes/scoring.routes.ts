@@ -11,6 +11,7 @@ const schema = z.object({
   dailyActivityPoints: z.coerce.number().int().min(0).optional(),
   linkClickPoints: z.coerce.number().int().min(0).optional(),
   referralRewardPoints: z.coerce.number().int().min(0).optional(),
+  profileCompletionPoints: z.coerce.number().int().min(0).optional(),
   welcomeMessageText: z.string().min(1).optional(),
   initialPointsMessageText: z.string().min(1).optional(),
   isWelcomeMessageEnabled: z.boolean().optional(),

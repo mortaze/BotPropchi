@@ -54,8 +54,8 @@ export const authApi = {
 };
 
 export const usersApi = {
-  async getAll(params: { page?: number; limit?: number } = {}): Promise<{ users: User[]; total: number; pages: number }> {
-    const { data } = await api.get("/api/users", { params: { page: params.page ?? 1, limit: params.limit ?? 20 } });
+  async getAll(params: { page?: number; limit?: number; profileStatus?: "completed" | "incomplete"; phoneStatus?: "with_phone" | "without_phone" } = {}): Promise<{ users: User[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/users", { params: { page: params.page ?? 1, limit: params.limit ?? 20, profileStatus: params.profileStatus, phoneStatus: params.phoneStatus } });
     return data;
   },
   async getStats(): Promise<{ total: number; today: number; totalPoints: number }> {
