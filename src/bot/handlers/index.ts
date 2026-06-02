@@ -13,6 +13,7 @@ import { systemLogService } from '../../services/system-log.service';
 import { settingsService } from '../../services/settings.service';
 import { scoringService } from '../../services/scoring.service';
 import { userService } from '../../services/user.service';
+import { config } from '../../config';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 import {
@@ -22,6 +23,7 @@ import {
   joinChannelsKeyboard,
   buildBotAdminPanelKeyboard,
   buildMainMenuKeyboard,
+  buildMiniAppProfileKeyboard,
   paginationKeyboard,
 } from '../keyboards';
 
@@ -209,6 +211,22 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {
     await ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));
+  });
+
+  bot.hears('🚀 پروفایل من', async (ctx) => {
+    if (!config.miniApp.url) {
+      logger.warn('[MiniApp] Mini App URL is not configured', { telegramId: ctx.from?.id });
+      await ctx.reply('آدرس Mini App هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید.');
+      return;
+    }
+    if (ctx.chat?.type !== 'private') {
+      await ctx.reply('برای احراز هویت امن Mini App، لطفاً پروفایل را از چت خصوصی ربات باز کنید.');
+      return;
+    }
+    await ctx.reply(
+      'برای بارگذاری امن پروفایل، دکمه زیر را باز کنید.',
+      buildMiniAppProfileKeyboard(),
+    );
   });
 
   bot.hears('📢 پیام همگانی', async (ctx) => {
