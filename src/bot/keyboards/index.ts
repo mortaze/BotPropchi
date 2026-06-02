@@ -26,7 +26,7 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
   if (enabled('referrals')) third.push('👥 دعوت دوستان');
   if (third.length) rows.push(third);
   if (config.miniApp.url) {
-    rows.push([Markup.button.webApp('🚀 پروفایل من', config.miniApp.url) as any]);
+    rows.push(['🚀 پروفایل من']);
   }
   if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
   if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
@@ -34,6 +34,10 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
 }
 
 export const mainMenuKeyboard = buildMainMenuKeyboard(false);
+
+export function buildMiniAppProfileKeyboard() {
+  return Markup.inlineKeyboard([[Markup.button.webApp('🚀 باز کردن پروفایل من', config.miniApp.url)]]);
+}
 
 export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   const rows: string[][] = [];

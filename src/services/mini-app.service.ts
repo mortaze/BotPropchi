@@ -6,6 +6,7 @@ import { scoringService } from './scoring.service';
 import { pointService } from './point.service';
 import { systemLogService } from './system-log.service';
 import { MiniAppFailureEvent, miniAppLogService } from './mini-app-log.service';
+import { logger } from '../utils/logger';
 
 const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
 
@@ -64,9 +65,17 @@ function serializeBigInts(value: any): any {
   return value;
 }
 
+function miniAppLog(message: string, payload: Record<string, unknown> = {}) {
+  logger.info(`[MiniApp] ${message}`, payload);
+}
+
+function miniAppErrorLog(message: string, payload: Record<string, unknown> = {}) {
+  logger.error(`[MiniApp Error] ${message}`, payload);
+}
+
 function getValidationSnapshot(initData: string): ValidationSnapshot {
   const snapshot: ValidationSnapshot = {
-    rawInitData: initData,
+    rawInitData: config.miniApp.debug ? initData : '[redacted]',
     initDataLength: initData.length,
     hash: null,
     authDate: null,
@@ -125,11 +134,14 @@ class MiniAppService {
 
       const secretKey = crypto.createHmac('sha256', 'WebAppData').update(config.bot.token).digest();
       const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+      if (!/^[a-f0-9]{64}$/i.test(hash)) {
+        throw new MiniAppValidationError('MINI_APP_INVALID_HASH', 'فرمت Hash احراز هویت تلگرام معتبر نیست', { ...basePayload, reason: 'malformed_hash' });
+      }
       const hashBuffer = Buffer.from(hash, 'hex');
       const calculatedBuffer = Buffer.from(calculatedHash, 'hex');
 
       if (hashBuffer.length !== calculatedBuffer.length || !crypto.timingSafeEqual(hashBuffer, calculatedBuffer)) {
-        throw new MiniAppValidationError('MINI_APP_INVALID_HASH', 'امضای Mini App معتبر نیست', { ...basePayload, reason: 'hash_mismatch', receivedHash: hash, calculatedHash });
+        throw new MiniAppValidationError('MINI_APP_INVALID_HASH', 'امضای Mini App معتبر نیست', { ...basePayload, reason: 'hash_mismatch', receivedHash: config.miniApp.debug ? hash : '[redacted]', calculatedHash: config.miniApp.debug ? calculatedHash : '[redacted]' });
       }
 
       const authDate = Number(params.get('auth_date'));
@@ -148,6 +160,8 @@ class MiniAppService {
         throw new MiniAppValidationError('MINI_APP_INVALID_USER', 'آیدی تلگرام معتبر نیست', { ...basePayload, reason: 'missing_user_id' });
       }
 
+      miniAppLog('Validation Result', { telegramId: user.id, validationResult: true, initDataLength: initData.length });
+
       await miniAppLogService.log({
         telegramId: user.id,
         eventType: 'MINI_APP_AUTH_SUCCESS',
@@ -161,6 +175,13 @@ class MiniAppService {
       const validationError = error instanceof MiniAppValidationError
         ? error
         : new MiniAppValidationError('MINI_APP_SERVER_ERROR', error instanceof Error ? error.message : 'خطای داخلی در اعتبارسنجی Mini App', { ...basePayload, reason: 'unexpected_error' });
+
+      miniAppErrorLog('Validation Failure', {
+        reason: validationError.message,
+        telegramId: snapshot.userId,
+        initDataLength: snapshot.initDataLength,
+        validationFailure: validationError.code,
+      });
 
       await miniAppLogService.log({
         telegramId: snapshot.userId,
@@ -177,26 +198,39 @@ class MiniAppService {
   async getOrCreateProfile(initData: string, context: ValidationContext = {}) {
     const telegramUser = await this.verifyInitData(initData, context);
     const telegramId = BigInt(telegramUser.id);
-    const user = await prisma.user.upsert({
-      where: { telegramId },
-      update: {
-        username: telegramUser.username,
-        lastActiveAt: new Date(),
-      },
-      create: {
-        telegramId,
-        username: telegramUser.username,
-        firstName: telegramUser.first_name || 'کاربر تلگرام',
-        lastName: telegramUser.last_name,
-      },
-    });
+    miniAppLog('Telegram ID', { telegramId: telegramId.toString() });
+
+    const existing = await prisma.user.findUnique({ where: { telegramId } });
+    miniAppLog('User Found', { telegramId: telegramId.toString(), userFound: Boolean(existing) });
+
+    const user = existing
+      ? await prisma.user.update({
+          where: { telegramId },
+          data: {
+            username: telegramUser.username,
+            firstName: existing.firstName || telegramUser.first_name || 'کاربر تلگرام',
+            lastName: existing.lastName || telegramUser.last_name,
+            lastActiveAt: new Date(),
+          },
+        })
+      : await prisma.user.create({
+          data: {
+            telegramId,
+            username: telegramUser.username,
+            firstName: telegramUser.first_name || 'کاربر تلگرام',
+            lastName: telegramUser.last_name,
+          },
+        });
+
+    if (!existing) miniAppLog('User Created', { telegramId: telegramId.toString(), userId: user.id });
+    miniAppLog('Profile Loaded', { telegramId: telegramId.toString(), userId: user.id, profileCompleted: user.profileCompleted });
 
     await miniAppLogService.log({
       telegramId,
       userId: user.id,
       eventType: 'MINI_APP_PROFILE_LOADED',
       message: 'Mini App user profile loaded',
-      payload: { profileCompleted: user.profileCompleted } as Prisma.InputJsonObject,
+      payload: { profileCompleted: user.profileCompleted, userFound: Boolean(existing), userCreated: !existing } as Prisma.InputJsonObject,
       userAgent: context.userAgent,
     });
 
@@ -213,36 +247,39 @@ class MiniAppService {
     const scoring = await scoringService.getSettings();
 
     const result = await prisma.$transaction(async (tx) => {
-      const existing = await tx.user.upsert({
-        where: { telegramId },
-        update: {
-          username: telegramUser.username,
-          lastActiveAt: new Date(),
-        },
-        create: {
-          telegramId,
-          username: telegramUser.username,
-          firstName: telegramUser.first_name || firstName,
-          lastName: telegramUser.last_name || lastName,
-        },
-      });
+      const existing = await tx.user.findUnique({ where: { telegramId } });
+      const userRecord = existing
+        ? await tx.user.update({
+            where: { telegramId },
+            data: { username: telegramUser.username, lastActiveAt: new Date() },
+          })
+        : await tx.user.create({
+            data: {
+              telegramId,
+              username: telegramUser.username,
+              firstName: telegramUser.first_name || firstName,
+              lastName: telegramUser.last_name || lastName,
+            },
+          });
+
+      if (!existing) miniAppLog('User Created', { telegramId: telegramId.toString(), userId: userRecord.id });
 
       const rewardClaim = completedNow
         ? await tx.user.updateMany({
-            where: { id: existing.id, profileCompleted: false },
-            data: { profileCompleted: true, profileCompletedAt: existing.profileCompletedAt || new Date() },
+            where: { id: userRecord.id, profileCompleted: false },
+            data: { profileCompleted: true, profileCompletedAt: userRecord.profileCompletedAt || new Date() },
           })
         : { count: 0 };
       const shouldGrantReward = rewardClaim.count === 1 && scoring.profileCompletionPoints > 0;
 
       const updated = await tx.user.update({
-        where: { id: existing.id },
+        where: { id: userRecord.id },
         data: {
           firstName,
           lastName,
           phoneNumber,
           profileCompleted: completedNow,
-          profileCompletedAt: completedNow ? existing.profileCompletedAt || new Date() : existing.profileCompletedAt,
+          profileCompletedAt: completedNow ? userRecord.profileCompletedAt || new Date() : userRecord.profileCompletedAt,
           username: telegramUser.username,
           lastActiveAt: new Date(),
         },
@@ -258,8 +295,10 @@ class MiniAppService {
         );
       }
 
-      return { user: updated, rewardPoints: shouldGrantReward ? scoring.profileCompletionPoints : 0, wasComplete: Boolean(existing.profileCompleted), completedNow };
+      return { user: updated, rewardPoints: shouldGrantReward ? scoring.profileCompletionPoints : 0, wasComplete: Boolean(userRecord.profileCompleted), completedNow };
     });
+
+    miniAppLog('Profile Updated', { telegramId: telegramId.toString(), userId: result.user.id, profileCompleted: result.completedNow, rewardPoints: result.rewardPoints });
 
     await Promise.all([
       systemLogService.log({

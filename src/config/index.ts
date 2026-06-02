@@ -30,6 +30,7 @@ export const config = {
 
   miniApp: {
     url: getMiniAppUrl(),
+    debug: String(process.env.DEBUG_MINI_APP || process.env.NEXT_PUBLIC_DEBUG_MINI_APP || 'false').toLowerCase() === 'true',
   },
 
   api: {
