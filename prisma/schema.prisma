@@ -39,6 +39,7 @@ model User {
   lotteryWins    LotteryWinner[]
   clickLogs      ClickLog[]
   systemLogs     SystemLog[]
+  miniAppDebugLogs MiniAppDebugLog[]
   requiredChannelMemberships UserRequiredChannelMembership[]
 
   @@index([referredById])
@@ -511,6 +512,25 @@ enum BotAdminStatus {
 ////////////////////////////////////////////////////////////
 // SYSTEM LOGS
 ////////////////////////////////////////////////////////////
+
+model MiniAppDebugLog {
+  id         Int      @id @default(autoincrement())
+  telegramId BigInt?
+  eventType  String
+  message    String
+  payload    Json?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  userId     Int?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([telegramId])
+  @@index([eventType])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("mini_app_debug_logs")
+}
 
 model SystemLog {
   id             Int            @id @default(autoincrement())

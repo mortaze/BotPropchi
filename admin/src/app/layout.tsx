@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Providers from "@/components/shared/Providers";
 import { Toaster } from "sonner";
+import Script from "next/script";
 import "./globals.css";
 
 const vazirFont = localFont({
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fa" dir="rtl" className="dark" suppressHydrationWarning>
       <body className={`${vazirFont.variable} font-sans antialiased bg-background text-foreground`}>
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
         <Providers>
           {children}
           <Toaster position="top-center" richColors theme="dark" dir="rtl" />

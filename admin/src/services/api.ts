@@ -307,6 +307,17 @@ export const systemLogsApi = {
   },
 };
 
+export const miniAppLogsApi = {
+  async getAll(params: { page?: number; limit?: number; eventType?: string; telegramId?: string; from?: string; to?: string } = {}): Promise<{ success: boolean; items: import("@/types").MiniAppDebugLog[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/mini-app-logs", { params: { page: params.page ?? 1, limit: params.limit ?? 50, ...params } });
+    return data;
+  },
+  async getReport(): Promise<{ success: boolean; data: import("@/types").MiniAppLogsReport }> {
+    const { data } = await api.get("/api/mini-app-logs/report");
+    return data;
+  },
+};
+
 export const scoringApi = {
   async getSettings(): Promise<{ success: boolean; item: import("@/types").ScoringSettings }> {
     const { data } = await api.get("/api/scoring/settings");
