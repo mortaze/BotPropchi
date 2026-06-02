@@ -30,9 +30,9 @@ export const analyticsService = {
       dailyUsers, dailyReferrals, dailyDiscountClicks, dailyLotteryEntries,
     ] = await Promise.all([
       prisma.user.count(),
-      prisma.user.count({ where: { lastActiveAt: { gte: today } } }),
-      prisma.user.count({ where: { lastActiveAt: { gte: week } } }),
-      prisma.user.count({ where: { lastActiveAt: { gte: month } } }),
+      prisma.pointLog.count({ where: { createdAt: { gte: today } } }),
+      prisma.pointLog.count({ where: { createdAt: { gte: week } } }),
+      prisma.pointLog.count({ where: { createdAt: { gte: month } } }),
       prisma.user.count({ where: { createdAt: { gte: month } } }),
       prisma.referral.count(),
       prisma.referral.count({ where: { membershipVerificationStatus: 'VERIFIED' } }),

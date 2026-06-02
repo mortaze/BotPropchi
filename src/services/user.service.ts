@@ -37,7 +37,6 @@ export const userService = {
     referralCode?: string;
   }) {
     const existingUser = await userRepository.findByTelegramId(params.telegramId);
-    const previousLastActiveAt = existingUser?.lastActiveAt;
     let referredById: number | undefined = existingUser?.referredById ?? undefined;
     let shouldRegisterReferral = false;
 
@@ -62,11 +61,16 @@ export const userService = {
     }
 
     const isNewUser = !existingUser;
+    const displayFirstName = existingUser?.profileCompleted ? existingUser.firstName : params.firstName;
+    const displayLastName = existingUser?.profileCompleted ? existingUser.lastName ?? undefined : params.lastName;
     const user = await userRepository.upsert({
       telegramId: params.telegramId,
       username: params.username,
-      firstName: params.firstName,
-      lastName: params.lastName,
+      firstName: displayFirstName,
+      lastName: displayLastName,
+      telegramFirstName: params.firstName,
+      telegramLastName: params.lastName,
+      profileCompletedName: Boolean(existingUser?.profileCompleted),
       referredById,
     });
 
@@ -82,23 +86,23 @@ export const userService = {
       logger.info(`Referral pending membership verification referrerId=${referredById}, referredUserId=${user.id}`);
     }
 
-    // امتیاز فعالیت روزانه باید با lastActiveAt قبلی سنجیده شود، نه مقدار به‌روزشده upsert.
-    if (previousLastActiveAt) {
-      await this.checkDailyBonus(user.id, previousLastActiveAt);
-    }
+    await this.checkDailyBonus(user.id);
 
     return user;
   },
 
-  // امتیاز روزانه (اگر آخرین فعالیت دیروز یا قبل‌تر بوده)
-  async checkDailyBonus(userId: number, lastActiveAt: Date) {
+  // امتیاز روزانه از روی لاگ امتیاز سنجیده می‌شود تا نیازی به ذخیره آخرین فعالیت کاربر نباشد.
+  async checkDailyBonus(userId: number) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    if (lastActiveAt < today) {
-      const scoring = await scoringService.getSettings();
-      if (scoring.dailyActivityPoints > 0) {
-        await userRepository.addPoints(userId, scoring.dailyActivityPoints, PointLogType.DAILY_ACTIVITY, 'فعالیت روزانه');
-      }
+    const alreadyGrantedToday = await prisma.pointLog.findFirst({
+      where: { userId, type: PointLogType.DAILY_ACTIVITY, createdAt: { gte: today } },
+      select: { id: true },
+    });
+    if (alreadyGrantedToday) return;
+    const scoring = await scoringService.getSettings();
+    if (scoring.dailyActivityPoints > 0) {
+      await userRepository.addPoints(userId, scoring.dailyActivityPoints, PointLogType.DAILY_ACTIVITY, 'فعالیت روزانه');
     }
   },
 

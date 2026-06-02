@@ -7,7 +7,7 @@ import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Pagination, TableRowSkeleton } from "@/components/ui";
 import { getApiError, usersApi } from "@/services/api";
-import { formatNumber, safeDateFormat } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 
 export default function UsersPage() {
   const [page, setPage] = useState(1);
@@ -74,17 +74,15 @@ export default function UsersPage() {
                 <th>تلگرام</th>
                 <th>شماره موبایل</th>
                 <th>پروفایل</th>
-                <th>تاریخ تکمیل</th>
                 <th>امتیاز</th>
                 <th>دعوت‌ها</th>
                 <th>امتیاز دعوت</th>
                 <th>وضعیت</th>
-                <th>آخرین فعالیت</th>
                 <th>عملیات</th>
               </tr>
             </thead>
             <tbody>
-              {query.isLoading && Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} cols={11} />)}
+              {query.isLoading && Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} cols={9} />)}
               {users.map((user) => (
                 <tr key={user.id}>
                   <td>
@@ -98,12 +96,10 @@ export default function UsersPage() {
                   </td>
                   <td dir="ltr" className="text-right">{user.phoneNumber ?? "-"}</td>
                   <td><Badge variant={user.profileCompleted ? "success" : "warning"}>{user.profileCompleted ? "تکمیل شده" : "ناقص"}</Badge></td>
-                  <td>{user.profileCompletedAt ? safeDateFormat(user.profileCompletedAt, { dateStyle: "medium" }) : "-"}</td>
                   <td>{formatNumber(user.points)}</td>
                   <td>{formatNumber(user.referralCount ?? user.totalReferrals)}</td>
                   <td>{formatNumber(user.referralRewardPoints ?? 0)}</td>
                   <td><Badge variant={user.isBlocked ? "danger" : "success"}>{user.isBlocked ? "مسدود" : "فعال"}</Badge></td>
-                  <td>{safeDateFormat(user.lastActiveAt, { dateStyle: "medium" })}</td>
                   <td className="flex gap-2">
                     <Link href={`/dashboard/users/${user.id}`}><Button size="sm" variant="outline">جزئیات</Button></Link>
                     <Button size="sm" variant={user.isBlocked ? "secondary" : "danger"} loading={blockMutation.isPending} onClick={() => blockMutation.mutate({ id: user.id, blocked: !user.isBlocked })}>{user.isBlocked ? "آنبلاک" : "بلاک"}</Button>

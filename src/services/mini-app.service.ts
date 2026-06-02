@@ -5,6 +5,7 @@ import { prisma } from '../prisma/client';
 import { scoringService } from './scoring.service';
 import { discountService } from './discount.service';
 import { pointService } from './point.service';
+import { referralService } from './referral.service';
 import { systemLogService } from './system-log.service';
 import { MiniAppFailureEvent, miniAppLogService } from './mini-app-log.service';
 import { logger } from '../utils/logger';
@@ -79,6 +80,13 @@ function miniAppLog(message: string, payload: Record<string, unknown> = {}) {
 
 function miniAppErrorLog(message: string, payload: Record<string, unknown> = {}) {
   logger.error(`[MiniApp Error] ${message}`, payload);
+}
+
+
+async function userRepositoryLikeRank(userId: number) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { points: true } });
+  if (!user) return 0;
+  return (await prisma.user.count({ where: { points: { gt: user.points }, isBlocked: false } })) + 1;
 }
 
 function getValidationSnapshot(initData: string): ValidationSnapshot {
@@ -218,9 +226,8 @@ class MiniAppService {
             username: telegramUser.username,
             telegramFirstName: telegramUser.first_name,
             telegramLastName: telegramUser.last_name,
-            firstName: existing.firstName || telegramUser.first_name || 'کاربر تلگرام',
-            lastName: existing.lastName || telegramUser.last_name,
-            lastActiveAt: new Date(),
+            firstName: existing.profileCompleted ? existing.firstName : (existing.firstName || telegramUser.first_name || 'کاربر تلگرام'),
+            lastName: existing.profileCompleted ? existing.lastName : (existing.lastName || telegramUser.last_name),
           },
         })
       : await prisma.user.create({
@@ -246,7 +253,8 @@ class MiniAppService {
       userAgent: context.userAgent,
     });
 
-    return serializeBigInts({ user: this.toMiniAppUser(user), isComplete: this.isProfileComplete(user), telegramUser, debug: { validation: true, hashValid: true, userReceived: true } });
+    const referralStats = await this.getReferralStats(user.id);
+    return serializeBigInts({ user: this.toMiniAppUser(user), referralStats, isComplete: this.isProfileComplete(user), telegramUser, debug: { validation: true, hashValid: true, userReceived: true } });
   }
 
   async updateProfile(initData: string, input: MiniAppProfileInput, context: ValidationContext = {}) {
@@ -263,7 +271,7 @@ class MiniAppService {
       const userRecord = existing
         ? await tx.user.update({
             where: { telegramId },
-            data: { username: telegramUser.username, telegramFirstName: telegramUser.first_name, telegramLastName: telegramUser.last_name, lastActiveAt: new Date() },
+            data: { username: telegramUser.username, telegramFirstName: telegramUser.first_name, telegramLastName: telegramUser.last_name },
           })
         : await tx.user.create({
             data: {
@@ -280,8 +288,8 @@ class MiniAppService {
 
       const rewardClaim = completedNow
         ? await tx.user.updateMany({
-            where: { id: userRecord.id, profileCompleted: false, profileCompletedAt: null },
-            data: { profileCompleted: true, profileCompletedAt: new Date() },
+            where: { id: userRecord.id, profileCompleted: false },
+            data: { profileCompleted: true },
           })
         : { count: 0 };
       const shouldGrantReward = rewardClaim.count === 1 && scoring.profileCompletionPoints > 0;
@@ -289,15 +297,13 @@ class MiniAppService {
       const updated = await tx.user.update({
         where: { id: userRecord.id },
         data: {
-          firstName: telegramUser.first_name || userRecord.firstName || 'کاربر تلگرام',
-          lastName: telegramUser.last_name || userRecord.lastName,
+          firstName,
+          lastName,
           realFirstName: firstName,
           realLastName: lastName,
           phoneNumber,
           profileCompleted: completedNow || userRecord.profileCompleted,
-          profileCompletedAt: completedNow ? userRecord.profileCompletedAt || new Date() : userRecord.profileCompletedAt,
           username: telegramUser.username,
-          lastActiveAt: new Date(),
         },
       });
 
@@ -334,19 +340,29 @@ class MiniAppService {
       }),
     ]);
 
-    return serializeBigInts({ ...result, user: this.toMiniAppUser(result.user), debug: { validation: true, hashValid: true, userReceived: true } });
+    const referralStats = await this.getReferralStats(result.user.id);
+    return serializeBigInts({ ...result, user: this.toMiniAppUser(result.user), referralStats, debug: { validation: true, hashValid: true, userReceived: true } });
   }
 
   async getAppData() {
-    const [settings, propFirms] = await Promise.all([
+    const [settings, scoring, propFirms] = await Promise.all([
       this.getMiniAppSettings(),
+      scoringService.getSettings(),
       prisma.propFirm.findMany({
         where: { isActive: true },
-        select: { id: true, name: true, slug: true, description: true, logoUrl: true, websiteUrl: true, reviewLink: true, isActive: true },
+        select: {
+          id: true, name: true, slug: true, description: true, logoUrl: true, websiteUrl: true, reviewLink: true, isActive: true,
+          discountCodes: {
+            where: { isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+            orderBy: [{ isFeatured: 'desc' }, { usageCount: 'desc' }, { createdAt: 'desc' }],
+            take: 1,
+            select: { id: true, title: true, code: true, discountPercent: true, affiliateLink: true, expiresAt: true, isFeatured: true },
+          },
+        },
         orderBy: { name: 'asc' },
       }),
     ]);
-    return serializeBigInts({ settings, propFirms });
+    return serializeBigInts({ settings: { ...settings, profileCompletionPoints: scoring.profileCompletionPoints }, propFirms });
   }
 
   async getDiscountsForPropFirm(propFirmId: number) {
@@ -370,12 +386,20 @@ class MiniAppService {
     const map = Object.fromEntries(rows.map((row) => [row.key, typeof row.value === 'string' ? row.value : String(row.value ?? '')]));
     return {
       siteUrl: map.mini_app_site_url || '',
-      aboutText: map.mini_app_about_text || 'پراپچی همراه هوشمند معامله‌گران برای دریافت کد تخفیف، بررسی پراپ فرم‌ها و مدیریت امتیازهاست.',
+      aboutText: map.mini_app_about_text || '',
     };
   }
 
+  private async getReferralStats(userId: number) {
+    const [stats, rank] = await Promise.all([
+      referralService.getMe(userId, process.env.BOT_USERNAME || 'BotPropchiBot'),
+      userRepositoryLikeRank(userId),
+    ]);
+    return stats ? { referralLink: stats.referralLink, inviteCount: stats.inviteCount, totalRewardPoints: stats.totalRewardPoints, successfulInvites: stats.inviteCount, rank } : null;
+  }
+
   private toMiniAppUser(user: { [key: string]: any }) {
-    return { ...user, firstName: user.realFirstName || '', lastName: user.realLastName || '' };
+    return { ...user, firstName: user.realFirstName || (user.profileCompleted ? user.firstName : ''), lastName: user.realLastName || (user.profileCompleted ? user.lastName : '') };
   }
 
   private isProfileComplete(user: { realFirstName?: string | null; realLastName?: string | null; phoneNumber?: string | null; profileCompleted?: boolean }) {

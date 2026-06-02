@@ -12,21 +12,29 @@ export const userRepository = {
     username?: string;
     firstName: string;
     lastName?: string;
+    telegramFirstName?: string;
+    telegramLastName?: string;
+    profileCompletedName?: boolean;
     referredById?: number;
   }) {
     return prisma.user.upsert({
       where: { telegramId: data.telegramId },
       update: {
         username: data.username,
+        telegramFirstName: data.telegramFirstName ?? data.firstName,
+        telegramLastName: data.telegramLastName ?? data.lastName,
         firstName: data.firstName,
         lastName: data.lastName,
-        lastActiveAt: new Date(),
+        realFirstName: data.profileCompletedName ? data.firstName : undefined,
+        realLastName: data.profileCompletedName ? data.lastName : undefined,
       },
       create: {
         telegramId: data.telegramId,
         username: data.username,
         firstName: data.firstName,
         lastName: data.lastName,
+        telegramFirstName: data.telegramFirstName ?? data.firstName,
+        telegramLastName: data.telegramLastName ?? data.lastName,
         referredById: data.referredById,
       },
     });
@@ -67,11 +75,9 @@ export const userRepository = {
           username: true,
           phoneNumber: true,
           profileCompleted: true,
-          profileCompletedAt: true,
           points: true,
           totalReferrals: true,
           isBlocked: true,
-          lastActiveAt: true,
           createdAt: true,
           updatedAt: true,
           referredById: true,
