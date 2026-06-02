@@ -336,3 +336,9 @@ export interface ScoringSettings {
   createdAt: string;
   updatedAt: string;
 }
+
+
+export interface MiniAppContentSettings {
+  siteUrl: string;
+  aboutText: string;
+}
