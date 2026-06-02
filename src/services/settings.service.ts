@@ -79,6 +79,32 @@ class SettingsService {
     return prisma.featureToggle.update({ where: { key }, data: { isEnabled } });
   }
 
+  async getMiniAppContentSettings() {
+    const defaults = {
+      siteUrl: '',
+      aboutText: 'پراپچی همراه هوشمند معامله‌گران برای دریافت کد تخفیف، بررسی پراپ فرم‌ها و مدیریت امتیازهاست.',
+    };
+    const rows = await prisma.systemSetting.findMany({ where: { key: { in: ['mini_app_site_url', 'mini_app_about_text'] } } });
+    const valueOf = (key: string) => {
+      const value = rows.find((row) => row.key === key)?.value;
+      return typeof value === 'string' ? value : '';
+    };
+    return { siteUrl: valueOf('mini_app_site_url') || defaults.siteUrl, aboutText: valueOf('mini_app_about_text') || defaults.aboutText };
+  }
+
+  async updateMiniAppContentSettings(data: { siteUrl?: string; aboutText?: string }) {
+    const entries = [
+      ['mini_app_site_url', data.siteUrl ?? ''],
+      ['mini_app_about_text', data.aboutText ?? ''],
+    ] as const;
+    await prisma.$transaction(entries.map(([key, value]) => prisma.systemSetting.upsert({
+      where: { key },
+      update: { value },
+      create: { key, value },
+    })));
+    return this.getMiniAppContentSettings();
+  }
+
   async isFeatureEnabled(key: string) {
     const cached = this.featureCache.get(key);
     if (cached && cached.expires > Date.now()) return cached.enabled;

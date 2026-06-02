@@ -17,6 +17,10 @@ model User {
   username       String?
   firstName      String
   lastName       String?
+  telegramFirstName String?
+  telegramLastName  String?
+  realFirstName     String?
+  realLastName      String?
   phoneNumber    String?
   profileCompleted Boolean @default(false)
   profileCompletedAt DateTime?

@@ -7,6 +7,8 @@ import { serializeBigInts } from '../../utils/serialize';
 export const miniAppRouter = Router();
 
 const initDataSchema = z.object({ initData: z.string().optional().default('') });
+const propFirmParamSchema = z.object({ id: z.coerce.number().int().positive() });
+const discountClickSchema = initDataSchema.extend({ discountCodeId: z.coerce.number().int().positive() });
 const profileSchema = initDataSchema.extend({
   firstName: z.string().trim().min(2).max(80),
   lastName: z.string().trim().min(2).max(80),
@@ -26,7 +28,7 @@ function getRequestContext(req: { get: (name: string) => string | undefined; ori
 
 function authErrorResponse(error: unknown) {
   if (error instanceof MiniAppValidationError) {
-    return { status: error.code === 'MINI_APP_SERVER_ERROR' ? 500 : 401, body: { success: false, error: error.message, code: error.code } };
+    return { status: error.code === 'MINI_APP_SERVER_ERROR' ? 500 : error.code === 'MINI_APP_INVALID_PROFILE' ? 400 : 401, body: { success: false, error: error.message, code: error.code } };
   }
   return { status: 500, body: { success: false, error: error instanceof Error ? error.message : 'خطا در احراز هویت Mini App', code: 'MINI_APP_SERVER_ERROR' } };
 }
@@ -44,6 +46,27 @@ miniAppRouter.post('/debug-log', async (req, res) => {
   });
 
   res.json({ success: true, item: item ? serializeBigInts(item) : null });
+});
+
+miniAppRouter.get('/app-data', async (_req, res) => {
+  res.json({ success: true, ...(await miniAppService.getAppData()) });
+});
+
+miniAppRouter.get('/prop-firms/:id/discounts', async (req, res) => {
+  const parsed = propFirmParamSchema.safeParse(req.params);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+  res.json({ success: true, ...(await miniAppService.getDiscountsForPropFirm(parsed.data.id)) });
+});
+
+miniAppRouter.post('/discount-click', async (req, res) => {
+  const parsed = discountClickSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+  try {
+    res.json({ success: true, ...(await miniAppService.registerDiscountClick(parsed.data.initData, parsed.data.discountCodeId, getRequestContext(req))) });
+  } catch (error) {
+    const response = authErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
 });
 
 miniAppRouter.post('/profile', async (req, res) => {

@@ -346,6 +346,14 @@ export const settingsApi = {
     const { data } = await api.patch(`/api/settings/features/${key}`, { isEnabled });
     return data;
   },
+  async getMiniAppSettings(): Promise<{ success: boolean; settings: import("@/types").MiniAppContentSettings }> {
+    const { data } = await api.get("/api/settings/mini-app");
+    return data;
+  },
+  async updateMiniAppSettings(payload: Partial<import("@/types").MiniAppContentSettings>): Promise<{ success: boolean; settings: import("@/types").MiniAppContentSettings }> {
+    const { data } = await api.patch("/api/settings/mini-app", payload);
+    return data;
+  },
 };
 
 export interface PanelAdminPayload {

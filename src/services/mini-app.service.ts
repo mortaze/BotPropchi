@@ -3,6 +3,7 @@ import { PointLogType, Prisma, SystemEventType } from '@prisma/client';
 import { config } from '../config';
 import { prisma } from '../prisma/client';
 import { scoringService } from './scoring.service';
+import { discountService } from './discount.service';
 import { pointService } from './point.service';
 import { systemLogService } from './system-log.service';
 import { MiniAppFailureEvent, miniAppLogService } from './mini-app-log.service';
@@ -49,9 +50,16 @@ type ValidationContext = {
 
 function normalizePhoneNumber(value?: string | null) {
   if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  return trimmed.replace(/[\s\-()]/g, '');
+  const compact = value.trim().replace(/[\s\-()]/g, '');
+  if (!compact) return null;
+  let normalized = compact;
+  if (normalized.startsWith('+98')) normalized = `0${normalized.slice(3)}`;
+  else if (normalized.startsWith('0098')) normalized = `0${normalized.slice(4)}`;
+  else if (normalized.startsWith('98')) normalized = `0${normalized.slice(2)}`;
+  if (!/^09\d{9}$/.test(normalized)) {
+    throw new MiniAppValidationError('MINI_APP_INVALID_PROFILE', 'شماره موبایل معتبر ایران وارد کنید. نمونه: 09123456789', { reason: 'invalid_iran_mobile', receivedLength: normalized.length });
+  }
+  return normalized;
 }
 
 function sanitizeName(value: string) {
@@ -208,6 +216,8 @@ class MiniAppService {
           where: { telegramId },
           data: {
             username: telegramUser.username,
+            telegramFirstName: telegramUser.first_name,
+            telegramLastName: telegramUser.last_name,
             firstName: existing.firstName || telegramUser.first_name || 'کاربر تلگرام',
             lastName: existing.lastName || telegramUser.last_name,
             lastActiveAt: new Date(),
@@ -219,6 +229,8 @@ class MiniAppService {
             username: telegramUser.username,
             firstName: telegramUser.first_name || 'کاربر تلگرام',
             lastName: telegramUser.last_name,
+            telegramFirstName: telegramUser.first_name,
+            telegramLastName: telegramUser.last_name,
           },
         });
 
@@ -234,7 +246,7 @@ class MiniAppService {
       userAgent: context.userAgent,
     });
 
-    return serializeBigInts({ user, isComplete: this.isProfileComplete(user), telegramUser, debug: { validation: true, hashValid: true, userReceived: true } });
+    return serializeBigInts({ user: this.toMiniAppUser(user), isComplete: this.isProfileComplete(user), telegramUser, debug: { validation: true, hashValid: true, userReceived: true } });
   }
 
   async updateProfile(initData: string, input: MiniAppProfileInput, context: ValidationContext = {}) {
@@ -251,14 +263,16 @@ class MiniAppService {
       const userRecord = existing
         ? await tx.user.update({
             where: { telegramId },
-            data: { username: telegramUser.username, lastActiveAt: new Date() },
+            data: { username: telegramUser.username, telegramFirstName: telegramUser.first_name, telegramLastName: telegramUser.last_name, lastActiveAt: new Date() },
           })
         : await tx.user.create({
             data: {
               telegramId,
               username: telegramUser.username,
-              firstName: telegramUser.first_name || firstName,
+              firstName: telegramUser.first_name || firstName || 'کاربر تلگرام',
               lastName: telegramUser.last_name || lastName,
+              telegramFirstName: telegramUser.first_name,
+              telegramLastName: telegramUser.last_name,
             },
           });
 
@@ -266,8 +280,8 @@ class MiniAppService {
 
       const rewardClaim = completedNow
         ? await tx.user.updateMany({
-            where: { id: userRecord.id, profileCompleted: false },
-            data: { profileCompleted: true, profileCompletedAt: userRecord.profileCompletedAt || new Date() },
+            where: { id: userRecord.id, profileCompleted: false, profileCompletedAt: null },
+            data: { profileCompleted: true, profileCompletedAt: new Date() },
           })
         : { count: 0 };
       const shouldGrantReward = rewardClaim.count === 1 && scoring.profileCompletionPoints > 0;
@@ -275,10 +289,12 @@ class MiniAppService {
       const updated = await tx.user.update({
         where: { id: userRecord.id },
         data: {
-          firstName,
-          lastName,
+          firstName: telegramUser.first_name || userRecord.firstName || 'کاربر تلگرام',
+          lastName: telegramUser.last_name || userRecord.lastName,
+          realFirstName: firstName,
+          realLastName: lastName,
           phoneNumber,
-          profileCompleted: completedNow,
+          profileCompleted: completedNow || userRecord.profileCompleted,
           profileCompletedAt: completedNow ? userRecord.profileCompletedAt || new Date() : userRecord.profileCompletedAt,
           username: telegramUser.username,
           lastActiveAt: new Date(),
@@ -318,11 +334,52 @@ class MiniAppService {
       }),
     ]);
 
-    return serializeBigInts({ ...result, debug: { validation: true, hashValid: true, userReceived: true } });
+    return serializeBigInts({ ...result, user: this.toMiniAppUser(result.user), debug: { validation: true, hashValid: true, userReceived: true } });
   }
 
-  private isProfileComplete(user: { firstName?: string | null; lastName?: string | null; phoneNumber?: string | null; profileCompleted?: boolean }) {
-    return Boolean(user.profileCompleted || (user.firstName && user.lastName && user.phoneNumber));
+  async getAppData() {
+    const [settings, propFirms] = await Promise.all([
+      this.getMiniAppSettings(),
+      prisma.propFirm.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, slug: true, description: true, logoUrl: true, websiteUrl: true, reviewLink: true, isActive: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+    return serializeBigInts({ settings, propFirms });
+  }
+
+  async getDiscountsForPropFirm(propFirmId: number) {
+    return serializeBigInts(await discountService.getByPropFirm(propFirmId, 1, 50));
+  }
+
+  async registerDiscountClick(initData: string, discountCodeId: number, context: ValidationContext = {}) {
+    const telegramUser = await this.verifyInitData(initData, context);
+    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(telegramUser.id) } });
+    const discount = await prisma.discountCode.findUnique({ where: { id: discountCodeId }, include: { propFirm: true } });
+    if (!discount || !discount.isActive || (discount.expiresAt && discount.expiresAt <= new Date())) {
+      throw new MiniAppValidationError('MINI_APP_INVALID_PROFILE', 'کد تخفیف فعال یافت نشد', { reason: 'inactive_discount', discountCodeId });
+    }
+    if (user) await discountService.handleClick(discountCodeId, user.id);
+    else await discountService.incrementUsage(discountCodeId);
+    return serializeBigInts({ discount });
+  }
+
+  private async getMiniAppSettings() {
+    const rows = await prisma.systemSetting.findMany({ where: { key: { in: ['mini_app_site_url', 'mini_app_about_text'] } } });
+    const map = Object.fromEntries(rows.map((row) => [row.key, typeof row.value === 'string' ? row.value : String(row.value ?? '')]));
+    return {
+      siteUrl: map.mini_app_site_url || '',
+      aboutText: map.mini_app_about_text || 'پراپچی همراه هوشمند معامله‌گران برای دریافت کد تخفیف، بررسی پراپ فرم‌ها و مدیریت امتیازهاست.',
+    };
+  }
+
+  private toMiniAppUser(user: { [key: string]: any }) {
+    return { ...user, firstName: user.realFirstName || '', lastName: user.realLastName || '' };
+  }
+
+  private isProfileComplete(user: { realFirstName?: string | null; realLastName?: string | null; phoneNumber?: string | null; profileCompleted?: boolean }) {
+    return Boolean(user.profileCompleted || (user.realFirstName && user.realLastName && user.phoneNumber));
   }
 }
 
