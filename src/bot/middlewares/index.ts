@@ -7,9 +7,10 @@ import { channelService } from '../../services/channel.service';
 import { joinChannelsKeyboard } from '../keyboards';
 import { logger } from '../../utils/logger';
 import { groupService } from '../../services/group.service';
-import { botAdminService } from '../../services/bot-admin.service';
 import { systemLogService } from '../../services/system-log.service';
 import { SystemEventType } from '@prisma/client';
+import { settingsService } from '../../services/settings.service';
+import { BOT_TEXT_FEATURES, featureForCallback } from '../service-toggle';
 
 // ─── ثبت / به‌روزرسانی کاربر ──────────────────────────────
 export function userMiddleware() {
@@ -45,9 +46,6 @@ export function membershipMiddleware(bot: Telegraf) {
     if (!ctx.from) return next();
     if (ctx.chat && ctx.chat.type !== 'private') return next();
 
-    const activeAdmin = await botAdminService.getActive(ctx.from.id).catch(() => null);
-    if (activeAdmin) return next();
-
     const callbackData = (ctx.callbackQuery as any)?.data as string | undefined;
     if (callbackData === 'check:membership') {
       return next();
@@ -64,12 +62,29 @@ export function membershipMiddleware(bot: Telegraf) {
     await userService.markMembershipUnverified(BigInt(ctx.from.id), 'required_channel_missing').catch((err) => logger.error('خطا در ثبت خروج از کانال:', err));
     await systemLogService.log({ eventType: SystemEventType.FORCE_JOIN, telegramId: ctx.from.id, message: 'Force join blocked user', metadata: { notJoined } as any });
     await ctx.reply(
-      'شما از کانال اجباری خارج شده‌اید.\nبرای ادامه استفاده از ربات مجدداً عضو شوید.',
+      '⚠️ برای استفاده از ربات باید عضو کانال شوید',
       joinChannelsKeyboard(notJoined)
     );
   };
 }
 
+// ─── بررسی فعال بودن سرویس قبل از اجرای هندلرها ─────────────
+export function featureToggleMiddleware() {
+  return async (ctx: Context, next: () => Promise<void>) => {
+    const text = (ctx.message as any)?.text as string | undefined;
+    const callbackData = (ctx.callbackQuery as any)?.data as string | undefined;
+    const featureKey = callbackData ? featureForCallback(callbackData) : text ? BOT_TEXT_FEATURES[text] : null;
+
+    if (featureKey && !(await settingsService.isFeatureEnabled(featureKey))) {
+      const message = '⛔ این سرویس در حال حاضر غیرفعال است.';
+      if (callbackData) await ctx.answerCbQuery(message, { show_alert: true }).catch(() => undefined);
+      else await ctx.reply(message);
+      return;
+    }
+
+    return next();
+  };
+}
 
 // ─── محدودیت فعالیت گروهی ─────────────────────────────────
 export function groupAccessMiddleware(bot: Telegraf) {

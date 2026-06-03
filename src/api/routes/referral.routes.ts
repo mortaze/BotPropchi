@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../prisma/client';
 import { referralService } from '../../services/referral.service';
+import { DEFAULT_BOT_USERNAME } from '../../constants';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
 import { serializeBigInts } from '../../utils/serialize';
@@ -39,7 +40,7 @@ referralRouter.get('/me', async (req, res) => {
 
     if (!user) return res.status(404).json({ success: false, error: 'کاربر یافت نشد' });
 
-    const result = await referralService.getMe(user.id, parsed.data.botUsername || process.env.BOT_USERNAME || 'BotPropchiBot');
+    const result = await referralService.getMe(user.id, parsed.data.botUsername || process.env.BOT_USERNAME || DEFAULT_BOT_USERNAME);
     logger.info(`Referral me requested for userId=${user.id}`);
     return res.json({ success: true, data: serializeBigInts(result) });
   } catch (error: any) {

@@ -86,7 +86,7 @@ async function main() {
     where: { id: 1 },
     update: {},
     create: {
-      title: 'قرعه‌کشی تستی BotPropchi',
+      title: 'قرعه‌کشی تستی Prop Hub',
       description: 'نمونه اولیه برای تست ثبت‌نام، نمایش شرکت‌کنندگان و draw دستی',
       prize: 'اعتبار تستی پراپ فرم',
       startAt: now,

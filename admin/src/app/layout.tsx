@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import Providers from "@/components/shared/Providers";
 import { Toaster } from "sonner";
 import Script from "next/script";
+import { BRAND_NAME, BRAND_TITLE } from "@/config/brand";
 import "./globals.css";
 
 const vazirFont = localFont({
@@ -14,8 +15,8 @@ const vazirFont = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "BotPropchi | پنل مدیریت",
-  description: "پنل مدیریت ربات تلگرام پراپچی",
+  title: BRAND_TITLE,
+  description: `پنل مدیریت ربات تلگرام ${BRAND_NAME}`,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

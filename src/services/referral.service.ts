@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { pointService } from './point.service';
 import { systemLogService } from './system-log.service';
 import { scoringService } from './scoring.service';
+import { DEFAULT_BOT_USERNAME } from '../constants';
 
 const SETTINGS_ID = 1;
 const DEFAULT_REWARD_POINTS = 20;
@@ -153,7 +154,7 @@ export const referralService = {
     return result;
   },
 
-  async getMe(userId: number, botUsername = 'BotPropchiBot') {
+  async getMe(userId: number, botUsername = DEFAULT_BOT_USERNAME) {
     const [user, totalReward] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },

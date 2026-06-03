@@ -1,5 +1,6 @@
 "use client";
 
+import { BRAND_NAME } from "@/config/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -27,7 +28,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mb-8 flex items-center justify-between gap-3 px-2">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary"><BarChart3 className="h-5 w-5" /></div>
-          <div><p className="font-bold text-foreground">BotPropchi</p><p className="text-xs text-sidebar-foreground">Admin Panel</p></div>
+          <div><p className="font-bold text-foreground">{BRAND_NAME}</p><p className="text-xs text-sidebar-foreground">Admin Panel</p></div>
         </div>
         <button className="rounded-lg p-2 text-muted-foreground hover:bg-muted md:hidden" onClick={onNavigate} aria-label="بستن منو"><X className="h-5 w-5" /></button>
       </div>

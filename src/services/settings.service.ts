@@ -1,5 +1,6 @@
 import { AdminRole } from '@prisma/client';
 import { prisma } from '../prisma/client';
+import { BRAND_NAME } from '../constants';
 
 export const DEFAULT_MENU_ITEMS = [
   { key: 'dashboard', label: 'داشبورد', href: '/dashboard', order: 10, ownerOnly: false, featureKey: null },
@@ -31,6 +32,7 @@ export const DEFAULT_FEATURES = [
   { key: 'leaderboard', label: 'لیدربورد' },
   { key: 'points', label: 'امتیازدهی' },
   { key: 'prop_firms', label: 'پراپ فرم‌ها' },
+  { key: 'prop_firm_check', label: 'Prop Firm Check' },
 ];
 
 export function isOwnerRole(role?: string | null) {
@@ -63,6 +65,10 @@ class SettingsService {
     return prisma.menuOrder.findMany({ orderBy: [{ order: 'asc' }, { id: 'asc' }] });
   }
 
+  async getServices() {
+    return this.getFeatures();
+  }
+
   async getFeatures() {
     await this.ensureDefaults();
     return prisma.featureToggle.findMany({ orderBy: [{ id: 'asc' }] });
@@ -82,7 +88,7 @@ class SettingsService {
   async getMiniAppContentSettings() {
     const defaults = {
       siteUrl: '',
-      aboutText: 'پراپچی همراه هوشمند معامله‌گران برای دریافت کد تخفیف، بررسی پراپ فرم‌ها و مدیریت امتیازهاست.',
+      aboutText: `${BRAND_NAME} همراه هوشمند معامله‌گران برای دریافت کد تخفیف، بررسی پراپ فرم‌ها و مدیریت امتیازهاست.`,
     };
     const rows = await prisma.systemSetting.findMany({ where: { key: { in: ['mini_app_site_url', 'mini_app_about_text'] } } });
     const valueOf = (key: string) => {
@@ -109,7 +115,8 @@ class SettingsService {
     const cached = this.featureCache.get(key);
     if (cached && cached.expires > Date.now()) return cached.enabled;
     await this.ensureDefaults();
-    const feature = await prisma.featureToggle.findUnique({ where: { key } });
+    const normalizedKey = key === 'prop_firm_check' ? 'prop_firm_check' : key;
+    const feature = await prisma.featureToggle.findUnique({ where: { key: normalizedKey } });
     const enabled = feature?.isEnabled ?? true;
     this.featureCache.set(key, { enabled, expires: Date.now() + 30_000 });
     return enabled;

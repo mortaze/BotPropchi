@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import HomeLandingPage from "@/components/landing/HomeLandingPage";
+import { BRAND_LANDING_TITLE, BRAND_NAME } from "@/config/brand";
 
 export const metadata: Metadata = {
-  title: "پراپچی | هوش مصنوعی مخصوص معامله‌گران پراپ",
+  title: BRAND_LANDING_TITLE,
   description:
-    "با پراپچی قوانین پراپ فرم‌ها، فایل‌های PDF و وب‌سایت‌ها را در چند ثانیه تحلیل کنید و پاسخ‌های دقیق فارسی از هوش مصنوعی دریافت کنید.",
+    `با ${BRAND_NAME} قوانین پراپ فرم‌ها، فایل‌های PDF و وب‌سایت‌ها را در چند ثانیه تحلیل کنید و پاسخ‌های دقیق فارسی از هوش مصنوعی دریافت کنید.`,
   keywords: [
-    "پراپچی",
+    BRAND_NAME,
     "هوش مصنوعی پراپ",
     "تحلیل قوانین پراپ فرم",
     "مقایسه پراپ فرم",
@@ -14,16 +15,16 @@ export const metadata: Metadata = {
     "تحلیل PDF پراپ",
   ],
   openGraph: {
-    title: "پراپچی | هوش مصنوعی مخصوص معامله‌گران پراپ",
+    title: BRAND_LANDING_TITLE,
     description:
       "قوانین پراپ فرم‌ها را در چند ثانیه تحلیل کنید، مقایسه کنید و پاسخ سوالات خود را از هوش مصنوعی دریافت کنید.",
     type: "website",
     locale: "fa_IR",
-    siteName: "پراپچی",
+    siteName: BRAND_NAME,
   },
   twitter: {
     card: "summary_large_image",
-    title: "پراپچی | هوش مصنوعی مخصوص معامله‌گران پراپ",
+    title: BRAND_LANDING_TITLE,
     description:
       "دستیار هوشمند فارسی برای تحلیل قوانین، مقایسه پراپ فرم‌ها و تحقیق سریع‌تر معامله‌گران.",
   },

@@ -13,6 +13,7 @@ import { systemLogService } from '../../services/system-log.service';
 import { settingsService } from '../../services/settings.service';
 import { scoringService } from '../../services/scoring.service';
 import { userService } from '../../services/user.service';
+import { DEFAULT_BOT_USERNAME } from '../../constants';
 import { config } from '../../config';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
@@ -448,11 +449,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     await ctx.reply('📋 *پراپ فرم‌های موجود:*', { parse_mode: 'Markdown' });
 
+    const propFirmCheckEnabled = await settingsService.isFeatureEnabled('prop_firm_check');
     for (const firm of firms) {
       const buttons: any[][] = [];
       if (firm.websiteUrl) buttons.push([Markup.button.url('🛒 خرید', firm.websiteUrl)]);
       buttons.push([Markup.button.callback('🎯 کد تخفیف', `firm:${firm.id}`)]);
-      if (firm.reviewLink) buttons.push([Markup.button.callback('🔎 بررسی پراپ', `propReview:${firm.id}`)]);
+      if (propFirmCheckEnabled && firm.reviewLink) buttons.push([Markup.button.callback('🔎 بررسی پراپ', `propReview:${firm.id}`)]);
 
       await ctx.reply(`🏢 *${firm.name}* — ${firm._count?.discountCodes || 0} کد تخفیف`, {
         parse_mode: 'Markdown',
@@ -462,6 +464,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.action(/^propReview:(\d+)$/, async (ctx: any) => {
+    if (!(await settingsService.isFeatureEnabled('prop_firm_check'))) return ctx.answerCbQuery('⛔ این سرویس در حال حاضر غیرفعال است.', { show_alert: true });
     const firmId = Number(ctx.match[1]);
     const firms = (await discountService.getPropFirms(false)) as any[];
     const firm = firms.find((item) => item.id === firmId);
@@ -642,14 +645,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const referralStats =
       await userService.getReferralStats(
         profile.id,
-        botInfo.username || 'BotPropchiBot'
+        botInfo.username || DEFAULT_BOT_USERNAME
       );
 
     const link =
       referralStats?.referralLink ||
       (await userService.getReferralLink(
         profile.id,
-        botInfo.username || 'BotPropchiBot'
+        botInfo.username || DEFAULT_BOT_USERNAME
       ));
 
     const referralSettings =

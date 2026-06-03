@@ -138,7 +138,7 @@ export function joinChannelsKeyboard(
 ) {
   const buttons: any[] = channels.map((ch) => [
     Markup.button.url(
-      ch.buttonText || `📢 عضویت در ${ch.title}`,
+      ch.buttonText || 'Join Channel',
       ch.inviteLink ||
         `https://t.me/${ch.channelId.replace('@', '')}`
     ),
