@@ -12,6 +12,7 @@ import rateLimit from 'express-rate-limit';
 
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { BRAND_NAME } from '../config/brand';
 
 import { authRouter } from './routes/auth.routes';
 import { discountRouter } from './routes/discount.routes';
@@ -56,7 +57,7 @@ export function startAdminApi() {
   app.get('/', (_req: Request, res: Response) => {
     res.status(200).json({
       success: true,
-      message: 'BotPropchi API is running 🚀',
+      message: `${BRAND_NAME} API is running 🚀`,
       environment: config.isDev ? 'development' : 'production',
       uptime: process.uptime(),
       timestamp: new Date(),

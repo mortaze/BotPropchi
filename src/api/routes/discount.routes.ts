@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../prisma/client';
 import { discountService } from '../../services/discount.service';
+import { settingsService } from '../../services/settings.service';
 
 export const discountRouter = Router();
 
@@ -21,6 +22,16 @@ const codeSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+
+function requireService(featureKey: string) {
+  return async (_req: any, res: any, next: any) => {
+    if (!(await settingsService.isFeatureEnabled(featureKey))) {
+      return res.status(503).json({ success: false, disabled: true, error: 'این سرویس غیرفعال است' });
+    }
+    next();
+  };
+}
+
 function serializeBigInts(value: any): any {
   if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return value.map(serializeBigInts);
@@ -31,7 +42,7 @@ function serializeBigInts(value: any): any {
 }
 
 // GET /api/discounts?propFirmId=1&q=ftmo&page=1&limit=10
-discountRouter.get('/', async (req, res) => {
+discountRouter.get('/', requireService('discount_codes'), async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 10);
   const propFirmId = req.query.propFirmId ? Number(req.query.propFirmId) : undefined;
@@ -43,13 +54,13 @@ discountRouter.get('/', async (req, res) => {
   return res.json(serializeBigInts(await discountService.getAll(page, limit)));
 });
 
-discountRouter.get('/prop-firms', async (req, res) => {
+discountRouter.get('/prop-firms', requireService('prop_firms'), async (req, res) => {
   const activeOnly = req.query.activeOnly !== 'false';
   const firms = await discountService.getPropFirms(activeOnly);
   res.json(serializeBigInts(firms));
 });
 
-discountRouter.post('/prop-firms', async (req, res) => {
+discountRouter.post('/prop-firms', requireService('prop_firms'), async (req, res) => {
   const schema = z.object({
     name: z.string().min(2),
     slug: z.string().min(2),
@@ -69,7 +80,7 @@ discountRouter.post('/prop-firms', async (req, res) => {
 
 
 
-discountRouter.patch('/prop-firms/:id', async (req, res) => {
+discountRouter.patch('/prop-firms/:id', requireService('prop_firms'), async (req, res) => {
   const schema = z.object({
     name: z.string().min(2).optional(),
     slug: z.string().min(2).optional(),
@@ -87,13 +98,13 @@ discountRouter.patch('/prop-firms/:id', async (req, res) => {
   res.json(serializeBigInts(firm));
 });
 
-discountRouter.get('/:id', async (req, res) => {
+discountRouter.get('/:id', requireService('discount_codes'), async (req, res) => {
   const discount = await discountService.getDetails(Number(req.params.id));
   if (!discount) return res.status(404).json({ success: false, error: 'کد تخفیف یافت نشد' });
   res.json(serializeBigInts(discount));
 });
 
-discountRouter.post('/', async (req, res) => {
+discountRouter.post('/', requireService('discount_codes'), async (req, res) => {
   const parsed = codeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
 
@@ -106,7 +117,7 @@ discountRouter.post('/', async (req, res) => {
   }
 });
 
-discountRouter.put('/:id', async (req, res) => {
+discountRouter.put('/:id', requireService('discount_codes'), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = codeSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -115,7 +126,7 @@ discountRouter.put('/:id', async (req, res) => {
   res.json(serializeBigInts(updated));
 });
 
-discountRouter.delete('/:id', async (req, res) => {
+discountRouter.delete('/:id', requireService('discount_codes'), async (req, res) => {
   const id = Number(req.params.id);
   await discountService.delete(id);
   res.json({ success: true, message: 'کد حذف شد' });

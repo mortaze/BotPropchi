@@ -1,5 +1,6 @@
 "use client";
 
+import { BRAND_NAME } from "@/config/brand";
 import Link from "next/link";
 import { motion, useInView, useMotionValue, useSpring, useTransform, animate } from "framer-motion";
 import {
@@ -79,7 +80,7 @@ const advanced = [
 
 const testimonials = [
   { name: "آرمان رضایی", role: "معامله‌گر چالش دو مرحله‌ای", quote: "قبل از خرید چالش، قوانین خبر و دراودان را در چند دقیقه فهمیدم و از یک انتخاب اشتباه جلوگیری شد." },
-  { name: "نگار احمدی", role: "تریدر روزانه", quote: "پراپچی بندهایی را پیدا کرد که در صفحه قوانین پنهان مانده بود. خروجی فارسی و ساختاریافته دقیقاً همان چیزی بود که نیاز داشتم." },
+  { name: "نگار احمدی", role: "تریدر روزانه", quote: `${BRAND_NAME} بندهایی را پیدا کرد که در صفحه قوانین پنهان مانده بود. خروجی فارسی و ساختاریافته دقیقاً همان چیزی بود که نیاز داشتم.` },
   { name: "سامان کاظمی", role: "تحلیل‌گر بازار", quote: "برای مقایسه چند پراپ فرم دیگر لازم نیست ده‌ها تب مرورگر باز کنم. نتیجه سریع، واضح و قابل ارائه است." },
 ];
 
@@ -131,7 +132,7 @@ export default function HomeLandingPage() {
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "پراپچی",
+    name: BRAND_NAME,
     applicationCategory: "BusinessApplication",
     operatingSystem: "وب",
     inLanguage: "fa-IR",
@@ -235,11 +236,11 @@ export default function HomeLandingPage() {
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }} variants={stagger}>
           <motion.p variants={fadeUp} className="text-sm font-bold text-cyan-300">دموی هوش مصنوعی</motion.p>
           <motion.h2 variants={fadeUp} className="mt-3 text-4xl font-black leading-tight sm:text-5xl">سوال بپرسید؛ پاسخ قابل اقدام دریافت کنید</motion.h2>
-          <motion.p variants={fadeUp} className="mt-5 text-lg leading-9 text-slate-300">پراپچی پاسخ‌ها را فقط خلاصه نمی‌کند؛ آن‌ها را دسته‌بندی، ریسک‌سنجی و برای تصمیم‌گیری معامله‌گر آماده می‌کند.</motion.p>
+          <motion.p variants={fadeUp} className="mt-5 text-lg leading-9 text-slate-300">{BRAND_NAME} پاسخ‌ها را فقط خلاصه نمی‌کند؛ آن‌ها را دسته‌بندی، ریسک‌سنجی و برای تصمیم‌گیری معامله‌گر آماده می‌کند.</motion.p>
         </motion.div>
         <motion.div initial={{ opacity: 0, x: -40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }} className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl">
           <div className="rounded-[1.5rem] bg-slate-950/80 p-5">
-            <div className="mb-6 flex items-center gap-3 border-b border-white/10 pb-4"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-cyan-300/10"><Bot className="h-5 w-5 text-cyan-200" /></span><div><p className="font-bold">دستیار پراپچی</p><p className="text-xs text-slate-400">در حال تحلیل قوانین معاملاتی</p></div></div>
+            <div className="mb-6 flex items-center gap-3 border-b border-white/10 pb-4"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-cyan-300/10"><Bot className="h-5 w-5 text-cyan-200" /></span><div><p className="font-bold">دستیار {BRAND_NAME}</p><p className="text-xs text-slate-400">در حال تحلیل قوانین معاملاتی</p></div></div>
             <div className="space-y-4 text-sm leading-7">
               <div className="mr-auto w-fit max-w-[85%] rounded-2xl bg-white px-4 py-3 text-slate-950">قوانین زورا اف‌ایکس را بررسی کن</div>
               <div className="space-y-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.06] p-4 text-slate-200">
@@ -299,8 +300,8 @@ export default function HomeLandingPage() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.18),transparent_32%)]" />
           <div className="relative">
             <h2 className="text-4xl font-black leading-tight sm:text-6xl">تحقیق چند ساعته را به چند ثانیه تبدیل کن</h2>
-            <p className="mx-auto mt-5 max-w-2xl text-lg leading-9 text-slate-300">همین حالا با دستیار هوشمند پراپچی، قوانین را دقیق‌تر بخوانید و با اطمینان بیشتری تصمیم بگیرید.</p>
-            <Link href="/login" className="mt-9 inline-flex min-h-12 items-center justify-center gap-3 rounded-2xl bg-white px-8 py-4 text-base font-black text-slate-950 shadow-2xl shadow-cyan-500/20 transition hover:-translate-y-1 hover:bg-cyan-100">شروع استفاده از پراپچی <ArrowLeft className="h-5 w-5" /></Link>
+            <p className="mx-auto mt-5 max-w-2xl text-lg leading-9 text-slate-300">همین حالا با دستیار هوشمند {BRAND_NAME}، قوانین را دقیق‌تر بخوانید و با اطمینان بیشتری تصمیم بگیرید.</p>
+            <Link href="/login" className="mt-9 inline-flex min-h-12 items-center justify-center gap-3 rounded-2xl bg-white px-8 py-4 text-base font-black text-slate-950 shadow-2xl shadow-cyan-500/20 transition hover:-translate-y-1 hover:bg-cyan-100">شروع استفاده از {BRAND_NAME} <ArrowLeft className="h-5 w-5" /></Link>
           </div>
         </div>
       </section>

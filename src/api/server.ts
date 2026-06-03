@@ -14,6 +14,7 @@ import { config } from "../config";
 import { Telegraf } from "telegraf";
 import { broadcastService } from "../services/broadcast.service";
 import { logger } from "../utils/logger";
+import { BRAND_NAME } from "../constants";
 
 import { authRouter } from "./routes/auth.routes";
 import { analyticsRouter } from "./routes/analytics.routes";
@@ -29,7 +30,7 @@ import { keywordReplyRouter } from "./routes/keyword-reply.routes";
 import { settingsRouter } from "./routes/settings.routes";
 import { adminUserRouter } from "./routes/admin-user.routes";
 import { scoringRouter } from "./routes/scoring.routes";
-import { miniAppRouter } from "./routes/mini-app.routes";
+import { createMiniAppRouter } from "./routes/mini-app.routes";
 import { miniAppLogRouter } from "./routes/mini-app-log.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
@@ -103,7 +104,7 @@ export function startAdminApi(bot?: Telegraf) {
   app.get("/", (_req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
-      message: "BotPropchi API is running 🚀",
+      message: `${BRAND_NAME} API is running 🚀`,
       environment:
         process.env.NODE_ENV || "development",
       uptime: process.uptime(),
@@ -127,13 +128,12 @@ export function startAdminApi(bot?: Telegraf) {
   app.use("/api/auth", authRouter);
 
   // ───────────────── TELEGRAM MINI APP ROUTES ─────────────────
-  app.use("/api/mini-app", miniAppRouter);
+  app.use("/api/mini-app", createMiniAppRouter(bot));
 
   // ───────────────── DISCOUNT ROUTES ─────────────────
   app.use(
     "/api/discounts",
     authMiddleware,
-    requireFeature("discount_codes"),
     discountRouter
   );
 

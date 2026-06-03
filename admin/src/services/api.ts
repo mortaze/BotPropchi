@@ -2,7 +2,7 @@ import axios, { AxiosError } from "axios";
 import Cookies from "js-cookie";
 import type { AdminUser, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails } from "@/types";
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://botpropchi-production.up.railway.app";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://botprophub-production.up.railway.app";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -339,11 +339,11 @@ export const settingsApi = {
     return data;
   },
   async getFeatures(): Promise<{ success: boolean; items: import("@/types").FeatureToggleItem[] }> {
-    const { data } = await api.get("/api/settings/features");
+    const { data } = await api.get("/api/settings/services");
     return data;
   },
   async updateFeature(key: string, isEnabled: boolean): Promise<{ success: boolean; item: import("@/types").FeatureToggleItem }> {
-    const { data } = await api.patch(`/api/settings/features/${key}`, { isEnabled });
+    const { data } = await api.patch(`/api/settings/services/${key}`, { isEnabled });
     return data;
   },
   async getMiniAppSettings(): Promise<{ success: boolean; settings: import("@/types").MiniAppContentSettings }> {

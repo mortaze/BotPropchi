@@ -13,5 +13,5 @@ WHERE "profileCompleted" = true;
 INSERT INTO "system_settings" ("key", "value", "createdAt", "updatedAt")
 VALUES
   ('mini_app_site_url', '""'::jsonb, NOW(), NOW()),
-  ('mini_app_about_text', '"پراپچی همراه هوشمند معامله‌گران برای دریافت کد تخفیف، بررسی پراپ فرم‌ها و مدیریت امتیازهاست."'::jsonb, NOW(), NOW())
+  ('mini_app_about_text', '"Prop Hub همراه هوشمند معامله‌گران برای دریافت کد تخفیف، بررسی پراپ فرم‌ها و مدیریت امتیازهاست."'::jsonb, NOW(), NOW())
 ON CONFLICT ("key") DO NOTHING;

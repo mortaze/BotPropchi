@@ -1,5 +1,6 @@
 "use client";
 
+import { BRAND_NAME } from "@/config/brand";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Bot, Eye, EyeOff, Lock, User } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -25,7 +26,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-2xl">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Bot className="h-8 w-8" /></div>
-          <h1 className="text-2xl font-bold">BotPropchi</h1>
+          <h1 className="text-2xl font-bold">{BRAND_NAME}</h1>
           <p className="mt-1 text-sm text-muted-foreground">ورود به پنل مدیریت</p>
         </div>
         <form className="space-y-4" onSubmit={handleSubmit(async (values) => {

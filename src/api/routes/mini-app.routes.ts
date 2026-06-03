@@ -1,10 +1,13 @@
 import { Router } from 'express';
+import { Telegraf } from 'telegraf';
 import { z } from 'zod';
 import { miniAppService, MiniAppValidationError } from '../../services/mini-app.service';
 import { miniAppLogService } from '../../services/mini-app-log.service';
 import { serializeBigInts } from '../../utils/serialize';
+import { channelService } from '../../services/channel.service';
+import { settingsService } from '../../services/settings.service';
 
-export const miniAppRouter = Router();
+
 
 const initDataSchema = z.object({ initData: z.string().optional().default('') });
 const propFirmParamSchema = z.object({ id: z.coerce.number().int().positive() });
@@ -33,7 +36,32 @@ function authErrorResponse(error: unknown) {
   return { status: 500, body: { success: false, error: error instanceof Error ? error.message : 'خطا در احراز هویت Mini App', code: 'MINI_APP_SERVER_ERROR' } };
 }
 
-miniAppRouter.post('/debug-log', async (req, res) => {
+export function createMiniAppRouter(bot?: Telegraf) {
+  const miniAppRouter = Router();
+
+  const requireFeature = (featureKey: string) => async (_req: any, res: any, next: any) => {
+    if (!(await settingsService.isFeatureEnabled(featureKey))) {
+      return res.status(503).json({ success: false, disabled: true, error: 'این سرویس غیرفعال است' });
+    }
+    next();
+  };
+
+  const requireMembership = async (req: any, res: any, next: any) => {
+    if (!bot) return next();
+    if (!(await settingsService.isFeatureEnabled('force_join'))) return next();
+    try {
+      const initData = typeof req.body?.initData === 'string' ? req.body.initData : '';
+      const telegramUser = await miniAppService.verifyInitData(initData, getRequestContext(req));
+      const result = await channelService.checkMembership(bot, BigInt(telegramUser.id));
+      if (result.isMember) return next();
+      return res.status(403).json({ success: false, forceJoinRequired: true, error: '⚠️ برای استفاده از ربات باید عضو کانال شوید', joinButtonText: 'Join Channel', channels: result.notJoined });
+    } catch (error) {
+      const response = authErrorResponse(error);
+      return res.status(response.status).json(response.body);
+    }
+  };
+
+  miniAppRouter.post('/debug-log', async (req, res) => {
   const parsed = debugLogSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
 
@@ -48,17 +76,21 @@ miniAppRouter.post('/debug-log', async (req, res) => {
   res.json({ success: true, item: item ? serializeBigInts(item) : null });
 });
 
-miniAppRouter.get('/app-data', async (_req, res) => {
-  res.json({ success: true, ...(await miniAppService.getAppData()) });
-});
+  miniAppRouter.post('/app-data', requireMembership, async (_req, res) => {
+    res.json({ success: true, ...(await miniAppService.getAppData()) });
+  });
 
-miniAppRouter.get('/prop-firms/:id/discounts', async (req, res) => {
+  miniAppRouter.get('/app-data', async (_req, res) => {
+    res.status(401).json({ success: false, error: 'InitData تلگرام دریافت نشد' });
+  });
+
+  miniAppRouter.post('/prop-firms/:id/discounts', requireMembership, requireFeature('discount_codes'), async (req, res) => {
   const parsed = propFirmParamSchema.safeParse(req.params);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
   res.json({ success: true, ...(await miniAppService.getDiscountsForPropFirm(parsed.data.id)) });
 });
 
-miniAppRouter.post('/discount-click', async (req, res) => {
+  miniAppRouter.post('/discount-click', requireMembership, requireFeature('discount_codes'), async (req, res) => {
   const parsed = discountClickSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
   try {
@@ -69,7 +101,7 @@ miniAppRouter.post('/discount-click', async (req, res) => {
   }
 });
 
-miniAppRouter.post('/profile', async (req, res) => {
+  miniAppRouter.post('/profile', requireMembership, async (req, res) => {
   try {
     const { initData } = initDataSchema.parse(req.body);
     res.json({ success: true, ...(await miniAppService.getOrCreateProfile(initData, getRequestContext(req))) });
@@ -79,7 +111,7 @@ miniAppRouter.post('/profile', async (req, res) => {
   }
 });
 
-miniAppRouter.patch('/profile', async (req, res) => {
+  miniAppRouter.patch('/profile', requireMembership, async (req, res) => {
   const parsed = profileSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
 
@@ -91,3 +123,8 @@ miniAppRouter.patch('/profile', async (req, res) => {
     res.status(response.status).json(response.body);
   }
 });
+
+  return miniAppRouter;
+}
+
+export const miniAppRouter = createMiniAppRouter();

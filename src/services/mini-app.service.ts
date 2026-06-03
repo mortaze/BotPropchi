@@ -9,6 +9,8 @@ import { referralService } from './referral.service';
 import { systemLogService } from './system-log.service';
 import { MiniAppFailureEvent, miniAppLogService } from './mini-app-log.service';
 import { logger } from '../utils/logger';
+import { settingsService } from './settings.service';
+import { DEFAULT_BOT_USERNAME } from '../constants';
 
 const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
 
@@ -345,10 +347,14 @@ class MiniAppService {
   }
 
   async getAppData() {
+    const featureMap = await settingsService.getFeatureMap();
+    const propFirmsEnabled = featureMap.prop_firms !== false;
+    const discountsEnabled = featureMap.discount_codes !== false;
+    const propFirmCheckEnabled = featureMap.prop_firm_check !== false;
     const [settings, scoring, propFirms] = await Promise.all([
       this.getMiniAppSettings(),
       scoringService.getSettings(),
-      prisma.propFirm.findMany({
+      propFirmsEnabled ? prisma.propFirm.findMany({
         where: { isActive: true },
         select: {
           id: true, name: true, slug: true, description: true, logoUrl: true, websiteUrl: true, reviewLink: true, isActive: true,
@@ -360,9 +366,14 @@ class MiniAppService {
           },
         },
         orderBy: { name: 'asc' },
-      }),
+      }) : Promise.resolve([]),
     ]);
-    return serializeBigInts({ settings: { ...settings, profileCompletionPoints: scoring.profileCompletionPoints }, propFirms });
+    const visiblePropFirms = (propFirms as any[]).map((firm) => ({
+      ...firm,
+      reviewLink: propFirmCheckEnabled ? firm.reviewLink : null,
+      discountCodes: discountsEnabled ? firm.discountCodes : [],
+    }));
+    return serializeBigInts({ settings: { ...settings, profileCompletionPoints: scoring.profileCompletionPoints }, features: featureMap, propFirms: visiblePropFirms });
   }
 
   async getDiscountsForPropFirm(propFirmId: number) {
@@ -392,7 +403,7 @@ class MiniAppService {
 
   private async getReferralStats(userId: number) {
     const [stats, rank] = await Promise.all([
-      referralService.getMe(userId, process.env.BOT_USERNAME || 'BotPropchiBot'),
+      referralService.getMe(userId, process.env.BOT_USERNAME || DEFAULT_BOT_USERNAME),
       userRepositoryLikeRank(userId),
     ]);
     return stats ? { referralLink: stats.referralLink, inviteCount: stats.inviteCount, totalRewardPoints: stats.totalRewardPoints, successfulInvites: stats.inviteCount, rank } : null;

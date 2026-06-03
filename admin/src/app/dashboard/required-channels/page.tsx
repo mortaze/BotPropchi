@@ -1,5 +1,6 @@
 "use client";
 
+import { BRAND_NAME } from "@/config/brand";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, RadioTower, RefreshCw, Trash2 } from "lucide-react";
@@ -36,7 +37,7 @@ export default function RequiredChannelsPage() {
       <CardContent>
         <div className="grid gap-4 md:grid-cols-3">
           <Input label="نام واقعی" value={form.title} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, title: e.target.value })} />
-          <Input label="عنوان نمایشی در ربات" value={form.displayTitle ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, displayTitle: e.target.value })} placeholder="مثلاً کانال اطلاع‌رسانی پراپچی" />
+          <Input label="عنوان نمایشی در ربات" value={form.displayTitle ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, displayTitle: e.target.value })} placeholder={`مثلاً کانال اطلاع‌رسانی ${BRAND_NAME}`} />
           <Input label="Chat ID عددی" dir="ltr" value={form.chatId} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, chatId: e.target.value })} placeholder="-1001234567890" />
           <Input label="Username" dir="ltr" value={form.username ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, username: e.target.value })} />
           <Select label="نوع" value={form.type} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setForm({ ...form, type: e.target.value as RequiredChannelPayload["type"] })}><option value="CHANNEL">کانال</option><option value="GROUP">گروه</option></Select>
