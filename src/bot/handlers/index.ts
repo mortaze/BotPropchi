@@ -13,7 +13,7 @@ import { systemLogService } from '../../services/system-log.service';
 import { settingsService } from '../../services/settings.service';
 import { scoringService } from '../../services/scoring.service';
 import { userService } from '../../services/user.service';
-import { aiService, AiServiceError } from '../../services/ai.service';
+import { wordpressApiClient, WordPressApiClientError } from '../../services/wordpress-api.client';
 import { DEFAULT_BOT_USERNAME } from '../../constants';
 import { config } from '../../config';
 import { cache } from '../../utils/cache';
@@ -506,12 +506,21 @@ export function registerHandlers(bot: Telegraf<Context>) {
       }
       await ctx.reply('⏳ در حال بررسی سوال شما...');
       try {
-        const profile = await userService.getProfile(BigInt(ctx.from.id)).catch(() => null);
-        const result = await aiService.chat({ message: text, telegramId: BigInt(ctx.from.id), userId: profile?.id, source: 'BOT' });
+        const result = await wordpressApiClient.sendMessage({
+          telegramId: BigInt(ctx.from.id),
+          message: text,
+          userData: {
+            username: ctx.from.username,
+            firstName: ctx.from.first_name,
+            lastName: ctx.from.last_name,
+            languageCode: ctx.from.language_code,
+            chatId: ctx.chat?.id,
+          },
+        });
         cache.set(`ai_mode:${ctx.from.id}`, true, 600);
         return ctx.reply(result.response);
       } catch (error) {
-        const message = error instanceof AiServiceError ? error.message : 'این سوال خارج از محدوده سیستم است.';
+        const message = error instanceof WordPressApiClientError ? error.message : 'این سوال خارج از محدوده سیستم است.';
         return ctx.reply(message);
       }
     }

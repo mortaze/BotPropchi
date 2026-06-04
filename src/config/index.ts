@@ -46,4 +46,11 @@ export const config = {
   cache: {
     ttl: parseInt(process.env.CACHE_TTL_SECONDS || '300'),
   },
+
+  wordpress: {
+    apiUrl: process.env.WORDPRESS_API_URL || '',
+    botApiKey: process.env.WORDPRESS_BOT_API_KEY || '',
+    signatureSecret: process.env.WORDPRESS_SIGNATURE_SECRET || '',
+    timeoutMs: parseInt(process.env.WORDPRESS_API_TIMEOUT_MS || '25000'),
+  },
 } as const;
