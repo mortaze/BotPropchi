@@ -18,6 +18,7 @@ export const DEFAULT_MENU_ITEMS = [
   { key: 'analytics', label: 'گزارشات', href: '/dashboard/analytics', order: 120, ownerOnly: false, featureKey: 'reports' },
   { key: 'system-logs', label: 'لاگ سیستم', href: '/dashboard/system-logs', order: 130, ownerOnly: false, featureKey: null },
   { key: 'mini-app-logs', label: 'Mini App Logs', href: '/dashboard/mini-app-logs', order: 135, ownerOnly: false, featureKey: null },
+  { key: 'ai-assistant', label: '🤖 AI Assistant', href: '/dashboard/ai-assistant', order: 136, ownerOnly: true, featureKey: 'ai_assistant' },
   { key: 'settings', label: '⚙️ تنظیمات', href: '/dashboard/settings', order: 140, ownerOnly: true, featureKey: null },
 ];
 
@@ -33,6 +34,7 @@ export const DEFAULT_FEATURES = [
   { key: 'points', label: 'امتیازدهی' },
   { key: 'prop_firms', label: 'پراپ فرم‌ها' },
   { key: 'prop_firm_check', label: 'Prop Firm Check' },
+  { key: 'ai_assistant', label: 'AI Assistant' },
 ];
 
 export function isOwnerRole(role?: string | null) {

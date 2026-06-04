@@ -42,6 +42,7 @@ model User {
   clickLogs      ClickLog[]
   systemLogs     SystemLog[]
   miniAppDebugLogs MiniAppDebugLog[]
+  aiChatLogs     AiChatLog[]
   requiredChannelMemberships UserRequiredChannelMembership[]
 
   @@index([referredById])
@@ -566,6 +567,7 @@ enum SystemEventType {
   GROUP_INTEGRATION
   USER_PROFILE_COMPLETED
   USER_PROFILE_UPDATED
+  AI_CHAT
 }
 
 enum SystemLogLevel {
@@ -618,6 +620,67 @@ model ScoringSettings {
   updatedAt               DateTime @updatedAt
 
   @@map("scoring_settings")
+}
+
+model AiSettings {
+  id                   Int      @id @default(1)
+  systemPrompt         String   @default("تو یک دستیار تخصصی فارسی‌زبان در حوزه پراپ فرم‌ها هستی. فقط درباره پراپ فرم‌ها، قوانین حساب‌ها، قوانین تریدینگ و کدهای تخفیف پاسخ بده.")
+  allowedSourceUrls    Json     @default("[]")
+  fallbackMessage      String   @default("این سوال خارج از محدوده سیستم است.")
+  topicFallbackMessage String   @default("⚠️ این دستیار فقط برای سوالات مربوط به پراپ فرم‌ها و کدهای تخفیف فعال است.")
+  sourceFallbackMessage String  @default("اطلاعات این موضوع در منابع معتبر پراپ هاب موجود نیست.")
+  model                String   @default("gemini-2.5-flash")
+  rateLimitPerHour     Int      @default(20)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("ai_settings")
+}
+
+model AiApiKey {
+  id         Int      @id @default(autoincrement())
+  name       String?
+  apiKey     String
+  keyPreview String
+  isActive   Boolean  @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  chatLogs AiChatLog[]
+
+  @@index([isActive])
+  @@map("ai_api_keys")
+}
+
+model AiChatLog {
+  id         Int          @id @default(autoincrement())
+  userId     Int?
+  telegramId BigInt?
+  message    String
+  response   String?
+  status     AiChatStatus @default(SUCCESS)
+  source     String       @default("API")
+  error      String?
+  aiApiKeyId Int?
+  createdAt  DateTime     @default(now())
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  aiApiKey AiApiKey? @relation(fields: [aiApiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([telegramId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("ai_chat_logs")
+}
+
+enum AiChatStatus {
+  SUCCESS
+  REJECTED_TOPIC
+  BLOCKED_INJECTION
+  RATE_LIMITED
+  ERROR
 }
 
 model SystemSetting {

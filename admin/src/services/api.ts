@@ -356,6 +356,34 @@ export const settingsApi = {
   },
 };
 
+
+export const aiApi = {
+  async getSettings(): Promise<{ success: boolean; settings: import("@/types").AiAssistantSettings }> {
+    const { data } = await api.get("/api/ai/settings");
+    return data;
+  },
+  async updateSettings(payload: Partial<import("@/types").AiAssistantSettings>): Promise<{ success: boolean; settings: import("@/types").AiAssistantSettings }> {
+    const { data } = await api.patch("/api/ai/settings", payload);
+    return data;
+  },
+  async getKeys(): Promise<{ success: boolean; items: import("@/types").AiApiKeyItem[] }> {
+    const { data } = await api.get("/api/ai/keys");
+    return data;
+  },
+  async createKey(payload: { name?: string | null; apiKey: string; isActive?: boolean }): Promise<{ success: boolean; item: import("@/types").AiApiKeyItem }> {
+    const { data } = await api.post("/api/ai/keys", payload);
+    return data;
+  },
+  async updateKey(id: number, payload: { name?: string | null; apiKey?: string; isActive?: boolean }): Promise<{ success: boolean; item: import("@/types").AiApiKeyItem }> {
+    const { data } = await api.patch(`/api/ai/keys/${id}`, payload);
+    return data;
+  },
+  async deleteKey(id: number): Promise<{ success: boolean }> {
+    const { data } = await api.delete(`/api/ai/keys/${id}`);
+    return data;
+  },
+};
+
 export interface PanelAdminPayload {
   firstName?: string | null;
   lastName?: string | null;

@@ -25,6 +25,7 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
   if (enabled('leaderboard')) third.push('🏆 لیدربورد');
   if (enabled('referrals')) third.push('👥 دعوت دوستان');
   if (third.length) rows.push(third);
+  if (enabled('ai_assistant')) rows.push(['🤖 هوش مصنوعی پراپ هاب']);
   if (config.miniApp.url) {
     rows.push(['🚀 پروفایل من']);
   }
