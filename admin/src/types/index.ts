@@ -340,3 +340,24 @@ export interface MiniAppContentSettings {
   siteUrl: string;
   aboutText: string;
 }
+
+
+export interface AiAssistantSettings {
+  systemPrompt: string;
+  allowedSourceUrls: string[];
+  fallbackMessage: string;
+  topicFallbackMessage: string;
+  sourceFallbackMessage: string;
+  model: string;
+  rateLimitPerHour: number;
+}
+
+export interface AiApiKeyItem {
+  id: number;
+  name?: string | null;
+  keyPreview: string;
+  isActive: boolean;
+  lastUsedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

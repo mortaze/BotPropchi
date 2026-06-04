@@ -7,6 +7,7 @@ export const BOT_TEXT_FEATURES: Record<string, string> = {
   '🏆 لیدربورد': 'leaderboard',
   '👥 دعوت دوستان': 'referrals',
   '📊 گزارشات': 'reports',
+  '🤖 هوش مصنوعی پراپ هاب': 'ai_assistant',
 };
 
 export function featureForCallback(data?: string) {

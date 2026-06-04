@@ -13,6 +13,7 @@ import { systemLogService } from '../../services/system-log.service';
 import { settingsService } from '../../services/settings.service';
 import { scoringService } from '../../services/scoring.service';
 import { userService } from '../../services/user.service';
+import { aiService, AiServiceError } from '../../services/ai.service';
 import { DEFAULT_BOT_USERNAME } from '../../constants';
 import { config } from '../../config';
 import { cache } from '../../utils/cache';
@@ -211,6 +212,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {
+    cache.del(`ai_mode:${ctx.from.id}`);
     await ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));
   });
 
@@ -479,6 +481,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     cache.set(`search_mode:${ctx.from?.id}`, true, 60);
   });
 
+  bot.hears('🤖 هوش مصنوعی پراپ هاب', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('ai_assistant'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
+    cache.set(`ai_mode:${ctx.from?.id}`, true, 600);
+    await ctx.reply('🤖 سوال خود را درباره پراپ فرم‌ها، قوانین حساب، قوانین تریدینگ یا کدهای تخفیف بنویسید.\nبرای خروج «↩️ بازگشت به منوی اصلی» را بزنید.');
+  });
+
   bot.on('text', async (ctx: any, next) => {
     if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
       const group = (ctx.state as any).telegramGroup;
@@ -487,6 +495,25 @@ export function registerHandlers(bot: Telegraf<Context>) {
         if (handled) return;
       }
       return next();
+    }
+
+    const isAiMode = cache.get<boolean>(`ai_mode:${ctx.from.id}`);
+    if (isAiMode) {
+      const text = ctx.message.text;
+      if (text === '↩️ بازگشت به منوی اصلی') {
+        cache.del(`ai_mode:${ctx.from.id}`);
+        return ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));
+      }
+      await ctx.reply('⏳ در حال بررسی سوال شما...');
+      try {
+        const profile = await userService.getProfile(BigInt(ctx.from.id)).catch(() => null);
+        const result = await aiService.chat({ message: text, telegramId: BigInt(ctx.from.id), userId: profile?.id, source: 'BOT' });
+        cache.set(`ai_mode:${ctx.from.id}`, true, 600);
+        return ctx.reply(result.response);
+      } catch (error) {
+        const message = error instanceof AiServiceError ? error.message : 'این سوال خارج از محدوده سیستم است.';
+        return ctx.reply(message);
+      }
     }
 
     const isSearchMode = cache.get<boolean>(`search_mode:${ctx.from.id}`);
