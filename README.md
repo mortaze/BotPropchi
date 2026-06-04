@@ -60,6 +60,10 @@ BOT_TOKEN="توکن_از_BotFather"
 ADMIN_TELEGRAM_ID="آیدی_عددی_شما"
 JWT_SECRET="یک_رشته_تصادفی_بلند"
 PORT=3000
+WORDPRESS_API_URL="https://example.com/wp-json/propchi/v1/message"
+WORDPRESS_BOT_API_KEY="کلید_ربات_در_پنل_وردپرس"
+WORDPRESS_SIGNATURE_SECRET="کلید_HMAC_در_پنل_وردپرس"
+WORDPRESS_API_TIMEOUT_MS=25000
 ```
 
 ### ۳. دیتابیس
@@ -74,6 +78,42 @@ npm run db:studio    # مشاهده دیتابیس در مرورگر
 npm run dev    # حالت توسعه (با hot reload)
 npm run build  # ساخت
 npm start      # اجرای نهایی
+```
+
+
+---
+
+## 🧠 معماری WordPress + AI
+
+مسیر پاسخ‌دهی هوشمند به این شکل است:
+
+```text
+Telegram Bot → WordPress REST API → WordPress Database + Gemini AI → Telegram Bot
+```
+
+- ربات تلگرام در حالت «🤖 هوش مصنوعی پراپ هاب» دیگر مستقیماً Gemini را صدا نمی‌زند و پیام را به endpoint وردپرس ارسال می‌کند.
+- افزونه آماده نصب در مسیر `wordpress-plugin/` قرار دارد.
+- endpoint افزونه: `POST /wp-json/propchi/v1/message`
+- امنیت ارتباط با `x-propchi-bot-key` و/یا HMAC signature انجام می‌شود.
+- مدیریت چند Gemini API Key، Load Balancing، فعال/غیرفعال کردن AI Engine، جدول‌های مجاز دیتابیس و مشاهده لاگ‌ها از پنل **Propchi AI** در وردپرس انجام می‌شود.
+
+نمونه بدنه درخواست:
+
+```json
+{
+  "telegram_id": 123456,
+  "message": "قوانین چالش پراپ فرم چیست؟",
+  "user_data": { "username": "trader" }
+}
+```
+
+نمونه پاسخ:
+
+```json
+{
+  "response": "...",
+  "source": "database"
+}
 ```
 
 ---

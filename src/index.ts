@@ -4,7 +4,6 @@
 import { Telegraf } from 'telegraf';
 import { config } from './config';
 import { logger } from './utils/logger';
-import { prisma } from './prisma/client';
 
 import {
   userMiddleware,
@@ -23,10 +22,10 @@ import { botAdminService } from './services/bot-admin.service';
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
 
-  // اتصال دیتابیس
-  await prisma.$connect();
+  if (!config.wordpress.apiUrl) {
+    logger.warn('⚠️ WORDPRESS_API_URL تنظیم نشده است؛ پاسخ‌های AI از وردپرس دریافت نخواهند شد.');
+  }
 
-  logger.info('✅ اتصال به دیتابیس برقرار شد');
   await botAdminService.ensureOwner();
 
   // ساخت ربات
@@ -70,12 +69,10 @@ async function bootstrap() {
   // خاموش شدن صحیح
   process.once('SIGINT', async () => {
     bot.stop('SIGINT');
-    await prisma.$disconnect();
   });
 
   process.once('SIGTERM', async () => {
     bot.stop('SIGTERM');
-    await prisma.$disconnect();
   });
 }
 
