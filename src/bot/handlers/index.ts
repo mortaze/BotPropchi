@@ -15,6 +15,7 @@ import { scoringService } from '../../services/scoring.service';
 import { userService } from '../../services/user.service';
 import { wordpressApiClient, WordPressApiClientError } from '../../services/wordpress-api.client';
 import { DEFAULT_BOT_USERNAME } from '../../constants';
+import { postService } from '../../services/post.service';
 import { config } from '../../config';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
@@ -59,7 +60,82 @@ function formatDuration(ms: number) {
 
 async function adminReplyOptions(telegramId?: number) {
   const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
-  return buildMainMenuKeyboard(Boolean(admin), await settingsService.getFeatureMap());
+  const features = await settingsService.getFeatureMap();
+  let hasPublishedPosts = false;
+  try {
+    const published = await postService.getPublished();
+    hasPublishedPosts = published.length > 0;
+  } catch {}
+  return buildMainMenuKeyboard(Boolean(admin), features, hasPublishedPosts);
+}
+
+async function sendPostToUser(ctx: any, post: any) {
+  await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+  const inlineButtons = buildPostInlineKeyboard((post as any).buttons || []);
+  const parseMode = post.parseMode || 'Markdown';
+  const hasText = post.content || post.caption;
+
+  if (post.mediaFileId && post.mediaType) {
+    const mediaConfig: any = {
+      caption: post.caption || post.content,
+      parse_mode: parseMode,
+      ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
+    };
+    switch (post.mediaType) {
+      case 'photo': await ctx.replyWithPhoto(post.mediaFileId, mediaConfig); break;
+      case 'video': await ctx.replyWithVideo(post.mediaFileId, mediaConfig); break;
+      case 'animation': await ctx.replyWithAnimation(post.mediaFileId, mediaConfig); break;
+      case 'document': await ctx.replyWithDocument(post.mediaFileId, mediaConfig); break;
+      case 'audio': await ctx.replyWithAudio(post.mediaFileId, mediaConfig); break;
+      case 'voice': await ctx.replyWithVoice(post.mediaFileId, mediaConfig); break;
+      default: await ctx.replyWithPhoto(post.mediaFileId, mediaConfig); break;
+    }
+  } else if (post.albumMediaIds && Array.isArray(post.albumMediaIds) && post.albumMediaIds.length > 0) {
+    const media = post.albumMediaIds.map((id: string, i: number) => ({
+      type: 'photo' as const,
+      media: id,
+      caption: i === 0 ? (post.caption || post.content) : undefined,
+      parse_mode: parseMode,
+    }));
+    await ctx.replyWithMediaGroup(media);
+    if (inlineButtons.length > 0) {
+      await ctx.reply(':', Markup.inlineKeyboard(inlineButtons));
+    }
+  } else if (hasText) {
+    const text = post.content || post.caption;
+    try {
+      await ctx.reply(text, {
+        parse_mode: parseMode,
+        ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
+      });
+    } catch {
+      await ctx.reply(text, {
+        ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
+      });
+    }
+  } else {
+    await ctx.reply(post.title, {
+      ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
+    });
+  }
+}
+
+function buildPostInlineKeyboard(buttons: any[]): any[][] {
+  if (!buttons || buttons.length === 0) return [];
+  return buttons.map((row: any[]) =>
+    row.map((btn: any) => {
+      if (!btn) return null;
+      switch (btn.type) {
+        case 'URL': return Markup.button.url(btn.text || 'Link', btn.value || '');
+        case 'CALLBACK': return Markup.button.callback(btn.text || 'Button', btn.value || 'noop');
+        case 'OPEN_MINI_APP': return Markup.button.webApp(btn.text || 'Open', btn.value || '');
+        case 'COPY_TEXT': return Markup.button.callback(btn.text || 'Copy', `post:user:copy:${btn.value || ''}`);
+        case 'SEND_COMMAND': return Markup.button.switchToChat(btn.text || 'Send', btn.value || '');
+        case 'INTERNAL_NAV': return Markup.button.callback(btn.text || 'Nav', btn.value || 'noop');
+        default: return Markup.button.url(btn.text || 'Link', btn.value || '');
+      }
+    }).filter(Boolean)
+  );
 }
 
 type PendingBroadcast = {
@@ -305,6 +381,32 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     await ctx.reply('⚙️ تنظیمات مدیریتی از پنل وب و دستورات ادمین قابل مدیریت است.');
+  });
+
+  // ─── Posts (User-facing) ─────────────────────────────────
+  bot.hears('📋 Posts', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('posts'))) return ctx.reply('⛔ This service is currently disabled.');
+    const posts = await postService.getPublished();
+    if (!posts.length) return ctx.reply('📋 No posts available.');
+    const keyboard = Markup.inlineKeyboard(
+      posts.map((p: any) => [Markup.button.callback(p.title, `post:user:view:${p.id}`)])
+    );
+    await ctx.reply('📋 Published Posts:', keyboard);
+  });
+
+  bot.action(/^post:user:view:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    if (!(await settingsService.isFeatureEnabled('posts'))) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
+      return ctx.reply('❌ Post not found.');
+    }
+    await sendPostToUser(ctx, post);
+  });
+
+  bot.action(/^post:user:copy:(.+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery(`📋 Copied: ${ctx.match[1]}`, { show_alert: true });
   });
 
   bot.action('broadcast:confirm', async (ctx: any) => {
@@ -745,6 +847,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.action('noop', async (ctx) => {
     await ctx.answerCbQuery();
   });
+
+  // ─── Register Post Management Handlers ─────────────────
+  const { registerPostHandlers } = require('./post-handlers');
+  registerPostHandlers(bot);
 
   logger.info('✅ تمام هندلرهای ربات ثبت شدند');
 }

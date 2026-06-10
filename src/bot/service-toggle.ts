@@ -8,6 +8,7 @@ export const BOT_TEXT_FEATURES: Record<string, string> = {
   '👥 دعوت دوستان': 'referrals',
   '📊 گزارشات': 'reports',
   '🤖 هوش مصنوعی پراپ هاب': 'ai_assistant',
+  '📋 Posts': 'posts',
 };
 
 export function featureForCallback(data?: string) {

@@ -720,3 +720,125 @@ model FeatureToggle {
 
   @@map("feature_toggles")
 }
+
+////////////////////////////////////////////////////////////
+// POSTS / CMS
+////////////////////////////////////////////////////////////
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+  ARCHIVED
+  HIDDEN
+}
+
+enum PostButtonType {
+  URL
+  CALLBACK
+  OPEN_MINI_APP
+  OPEN_WEB
+  COPY_TEXT
+  SEND_COMMAND
+  INTERNAL_NAV
+}
+
+model Post {
+  id            Int        @id @default(autoincrement())
+  title         String
+  slug          String     @unique
+  content       String?
+  caption       String?
+  mediaFileId   String?
+  mediaType     String?
+  albumMediaIds Json?
+  parseMode     String?    @default("Markdown")
+  buttons       Json?
+  command       String?
+  isPublished   Boolean    @default(false)
+  publishedAt   DateTime?
+  scheduledAt   DateTime?
+  unpublishAt   DateTime?
+  sortOrder     Int        @default(0)
+  isPinned      Boolean    @default(false)
+  status        PostStatus @default(DRAFT)
+  createdBy     BigInt?
+  updatedBy     BigInt?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  views      PostView[]
+  commands   PostCommand[]
+  clickLogs  PostClickLog[]
+  postButtons PostButton[]
+
+  @@index([status])
+  @@index([isPublished])
+  @@index([slug])
+  @@index([sortOrder])
+  @@map("posts")
+}
+
+model PostButton {
+  id        Int            @id @default(autoincrement())
+  postId    Int
+  row       Int            @default(0)
+  col       Int            @default(0)
+  text      String
+  type      PostButtonType @default(URL)
+  value     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_buttons")
+}
+
+model PostCommand {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  command   String   @unique
+  aliases   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([command])
+  @@map("post_commands")
+}
+
+model PostView {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  userId    Int?
+  telegramId BigInt?
+  action    String   @default("view")
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("post_views")
+}
+
+model PostClickLog {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  userId    Int?
+  telegramId BigInt?
+  buttonText String?
+  buttonType String?
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_click_logs")
+}

@@ -35,6 +35,7 @@ export const DEFAULT_FEATURES = [
   { key: 'prop_firms', label: 'پراپ فرم‌ها' },
   { key: 'prop_firm_check', label: 'Prop Firm Check' },
   { key: 'ai_assistant', label: 'AI Assistant' },
+  { key: 'posts', label: 'Posts / CMS' },
 ];
 
 export function isOwnerRole(role?: string | null) {

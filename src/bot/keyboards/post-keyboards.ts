@@ -1,0 +1,167 @@
+import { Markup } from 'telegraf';
+
+export const postMainMenuKeyboard = () =>
+  Markup.keyboard([
+    ['➕ Create Post'],
+    ['📋 Manage Posts', '📦 Drafts'],
+    ['👁 Preview Post', '📤 Publish'],
+    ['📌 Pinned Posts', '🔎 Search Posts'],
+    ['📊 Post Analytics', '⚙ Post Settings'],
+    ['↩️ Back to Admin Panel'],
+  ]).resize().persistent();
+
+export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
+  const rows: any[][] = [
+    [
+      Markup.button.callback('✏ Edit Title', `post:edit:${postId}:title`),
+      Markup.button.callback('📝 Edit Content', `post:edit:${postId}:content`),
+    ],
+    [
+      Markup.button.callback('🖼 Change Media', `post:edit:${postId}:media`),
+      Markup.button.callback('⌨ Edit Buttons', `post:edit:${postId}:buttons`),
+    ],
+    [
+      Markup.button.callback('📍 Pin Post', `post:pin:${postId}`),
+      Markup.button.callback('🗂 Change Position', `post:reorder:${postId}`),
+    ],
+    [
+      Markup.button.callback('🧪 Preview', `post:preview:${postId}`),
+      Markup.button.callback('📤 Publish', `post:publish:${postId}`),
+    ],
+    [
+      Markup.button.callback('🔗 Add Command', `post:cmd:add:${postId}`),
+      Markup.button.callback('📋 Duplicate', `post:duplicate:${postId}`),
+    ],
+    [
+      Markup.button.callback('🗑 Delete', `post:delete:${postId}`),
+      Markup.button.callback('« Back', `post:list:1`),
+    ],
+  ];
+  if (!hasContent) {
+    rows.splice(0, 1, [
+      Markup.button.callback('✏ Edit Title', `post:edit:${postId}:title`),
+      Markup.button.callback('📝 Edit Content', `post:edit:${postId}:content`),
+    ]);
+  }
+  return Markup.inlineKeyboard(rows);
+};
+
+export const postListKeyboard = (posts: any[], page: number, totalPages: number) => {
+  const rows: any[][] = posts.map((p: any) => [
+    Markup.button.callback(
+      `${p.isPinned ? '📌' : ''} ${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : '📦'} ${p.title.substring(0, 30)}`,
+      `post:view:${p.id}`
+    ),
+  ]);
+  const nav: any[] = [];
+  if (page > 1) nav.push(Markup.button.callback('◀️ Previous', `post:list:${page - 1}`));
+  nav.push(Markup.button.callback(`${page}/${totalPages}`, 'noop'));
+  if (page < totalPages) nav.push(Markup.button.callback('Next ▶️', `post:list:${page + 1}`));
+  if (nav.length > 1) rows.push(nav);
+  rows.push([Markup.button.callback('« Back to Posts Menu', 'post:menu')]);
+  return Markup.inlineKeyboard(rows);
+};
+
+export const postViewKeyboard = (post: any) => {
+  const rows: any[][] = [
+    [Markup.button.callback('✏ Edit', `post:edit:${post.id}:full`)],
+    [
+      Markup.button.callback(post.isPublished ? '📥 Unpublish' : '📤 Publish', `post:publish:${post.id}`),
+      Markup.button.callback(post.isPinned ? '📌 Unpin' : '📍 Pin', `post:pin:${post.id}`),
+    ],
+    [
+      Markup.button.callback('📋 Duplicate', `post:duplicate:${post.id}`),
+      Markup.button.callback('📊 Analytics', `post:analytics:${post.id}`),
+    ],
+    [
+      Markup.button.callback('🗑 Delete', `post:delete:${post.id}`),
+      Markup.button.callback('« Back', `post:list:1`),
+    ],
+  ];
+  return Markup.inlineKeyboard(rows);
+};
+
+export const postButtonsEditorKeyboard = (postId: number, buttons: any[], editingRow?: number, editingCol?: number) => {
+  const rows: any[][] = [];
+  if (buttons && buttons.length > 0) {
+    for (let r = 0; r < buttons.length; r++) {
+      const row = buttons[r];
+      const rowButtons: any[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const btn = row[c];
+        rowButtons.push(
+          Markup.button.callback(
+            `${btn.text?.substring(0, 15) || '???'}`,
+            `post:btn:edit:${postId}:${r}:${c}`
+          )
+        );
+      }
+      rowButtons.push(Markup.button.callback('✏️', `post:btn:edit:${postId}:${r}:${row.length}`));
+      rows.push(rowButtons);
+    }
+  }
+  rows.push([
+    Markup.button.callback('➕ Add Button Row', `post:btn:addrow:${postId}`),
+  ]);
+  rows.push([
+    Markup.button.callback('🔙 Back to Editor', `post:edit:${postId}:full`),
+  ]);
+  return Markup.inlineKeyboard(rows);
+};
+
+export const postButtonEditKeyboard = (postId: number, row: number, col: number, button: any) => {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('🎨 Change Text', `post:btn:text:${postId}:${row}:${col}`),
+      Markup.button.callback('🔗 Change URL/Value', `post:btn:value:${postId}:${row}:${col}`),
+    ],
+    [
+      Markup.button.callback('🧭 Move Up', `post:btn:up:${postId}:${row}:${col}`),
+      Markup.button.callback('🧭 Move Down', `post:btn:down:${postId}:${row}:${col}`),
+    ],
+    [
+      Markup.button.callback('📐 Resize Row', `post:btn:resize:${postId}:${row}`),
+      Markup.button.callback('➖ Delete Button', `post:btn:del:${postId}:${row}:${col}`),
+    ],
+    [Markup.button.callback('« Back to Buttons', `post:edit:${postId}:buttons`)],
+  ]);
+};
+
+export const postButtonTypeKeyboard = (postId: number, row: number, col: number) => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔗 URL', `post:btn:settype:${postId}:${row}:${col}:URL`)],
+    [Markup.button.callback('📞 Callback', `post:btn:settype:${postId}:${row}:${col}:CALLBACK`)],
+    [Markup.button.callback('📱 Open Mini App', `post:btn:settype:${postId}:${row}:${col}:OPEN_MINI_APP`)],
+    [Markup.button.callback('🌐 Open Web', `post:btn:settype:${postId}:${row}:${col}:OPEN_WEB`)],
+    [Markup.button.callback('📋 Copy Text', `post:btn:settype:${postId}:${row}:${col}:COPY_TEXT`)],
+    [Markup.button.callback('📤 Send Command', `post:btn:settype:${postId}:${row}:${col}:SEND_COMMAND`)],
+    [Markup.button.callback('🧭 Internal Nav', `post:btn:settype:${postId}:${row}:${col}:INTERNAL_NAV`)],
+    [Markup.button.callback('« Back', `post:edit:${postId}:buttons`)],
+  ]);
+};
+
+export const postRowResizeKeyboard = (postId: number, row: number) => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('1 Button per Row', `post:btn:rowsize:${postId}:${row}:1`)],
+    [Markup.button.callback('2 Buttons per Row', `post:btn:rowsize:${postId}:${row}:2`)],
+    [Markup.button.callback('3 Buttons per Row', `post:btn:rowsize:${postId}:${row}:3`)],
+    [Markup.button.callback('« Back', `post:edit:${postId}:buttons`)],
+  ]);
+};
+
+export const postPublishOptionsKeyboard = (postId: number) => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('📤 Publish Now', `post:publish:now:${postId}`)],
+    [Markup.button.callback('📅 Schedule Publish', `post:publish:schedule:${postId}`)],
+    [Markup.button.callback('⏰ Schedule Unpublish', `post:unpublish:schedule:${postId}`)],
+    [Markup.button.callback('📝 Save as Draft', `post:draft:${postId}`)],
+    [Markup.button.callback('« Back', `post:view:${postId}`)],
+  ]);
+};
+
+export const postAnalyticsKeyboard = (postId: number) => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔄 Refresh', `post:analytics:${postId}`)],
+    [Markup.button.callback('« Back to Post', `post:view:${postId}`)],
+  ]);
+};
