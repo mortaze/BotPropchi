@@ -19,6 +19,12 @@ import {
   postParseModeKeyboard,
   postCommandListKeyboard,
   postCommandEditKeyboard,
+  postCategoryKeyboard,
+  postVersionHistoryKeyboard,
+  postIntegrityKeyboard,
+  postGlobalAnalyticsKeyboard,
+  postBuilderViewKeyboard,
+  postSwapTargetKeyboard,
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
@@ -1054,6 +1060,298 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.action('post:menu', async (ctx: any) => {
     await ctx.answerCbQuery();
     await ctx.reply('📝 Post Management System', postMainMenuKeyboard());
+  });
+
+  // ─── Category ───────────────────────────────────────────
+  bot.action(/^post:category:edit:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    cache.set(pendingKey(ctx.from.id, 'category_post'), postId, 300);
+    const categories = await postService.getCategories();
+    await ctx.reply(
+      `📁 Category for: *${post.title}*\nCurrent: ${(post as any).category || '(none)'}`,
+      { parse_mode: 'Markdown', ...postCategoryKeyboard(categories, (post as any).category) }
+    );
+  });
+
+  bot.action(/^post:category:set:(.*)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const category = ctx.match[1] || null;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'category_post'));
+    if (!postId) return ctx.reply('❌ No post selected. Use editor to set category.');
+    await postService.setCategory(postId, category);
+    await ctx.reply(`✅ Category set to "${category || 'none'}".`);
+    await showPostEditor(ctx, postId);
+  });
+
+  bot.action('post:category:new', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    cache.set(pendingKey(ctx.from.id, 'category_new'), true, 300);
+    await ctx.reply('📁 Enter new category name:');
+  });
+
+  bot.action(/^post:category:posts:(.+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const category = ctx.match[1];
+    const posts = await postService.findByCategory(category);
+    if (posts.length === 0) return ctx.reply(`📁 No posts in "${category}".`);
+    const text = `📁 Category: *${category}*\n${posts.map((p: any) => `• ${p.title}`).join('\n')}`;
+    await ctx.reply(text, { parse_mode: 'Markdown', ...postListKeyboard(posts, 1, 1) });
+  });
+
+  bot.action('post:category:back', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    await ctx.reply('📝 Post Management System', postMainMenuKeyboard());
+  });
+
+  bot.on('text', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const creatingCategory = cache.get<boolean>(pendingKey(ctx.from.id, 'category_new'));
+    if (!creatingCategory) return next();
+    cache.del(pendingKey(ctx.from.id, 'category_new'));
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return next();
+    const catName = ctx.message.text.trim();
+    if (!catName) return ctx.reply('❌ Category name cannot be empty.');
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'category_post'));
+    if (postId) {
+      await postService.setCategory(postId, catName);
+      await ctx.reply(`✅ Category "${catName}" set.`);
+      await showPostEditor(ctx, postId);
+    } else {
+      await ctx.reply(`✅ Category "${catName}" created. Set it on a post via the editor.`);
+    }
+  });
+
+  // ─── Version History ────────────────────────────────────
+  bot.action(/^post:version:list:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const versions = await postService.getVersions(postId);
+    if (versions.length === 0) return ctx.reply('📜 No versions saved.');
+    await ctx.reply(
+      `📜 Version History (${versions.length}):\nTap a version to restore.`,
+      postVersionHistoryKeyboard(versions, postId)
+    );
+  });
+
+  bot.action(/^post:version:restore:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const versionId = parseInt(ctx.match[1]);
+    try {
+      const restored = await postService.restoreVersion(versionId);
+      if (!restored) return ctx.reply('❌ Version not found.');
+      await ctx.reply(`✅ Version restored: "${restored.title}"`);
+      await showPostEditor(ctx, restored.id);
+    } catch (err: any) {
+      await ctx.reply(`❌ ${err.message}`);
+    }
+  });
+
+  // ─── Integrity Check ────────────────────────────────────
+  bot.hears('🔍 Integrity Check', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    await ctx.reply('🔍 Integrity Check', postIntegrityKeyboard());
+  });
+
+  bot.action('post:integrity:run', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    await ctx.reply('🔍 Running integrity check...');
+    const issues = await postService.integrityCheck();
+    if (issues.length === 0) {
+      await ctx.reply('✅ All posts pass integrity check.');
+    } else {
+      await ctx.reply(`⚠ Integrity issues found:\n\n${issues.join('\n')}`);
+    }
+  });
+
+  // ─── Global Analytics ───────────────────────────────────
+  bot.hears('📊 Global Analytics', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const analytics = await postService.getGlobalAnalytics();
+    const text = [
+      '📊 *Global Analytics*',
+      '',
+      `📝 Total Posts: ${analytics.totalPosts}`,
+      `✅ Published: ${analytics.published}`,
+      `📝 Drafts: ${analytics.drafts}`,
+      `📦 Archived: ${analytics.archived}`,
+      `👻 Hidden: ${analytics.hidden}`,
+      `⏰ Scheduled: ${analytics.scheduled}`,
+      `👁 Total Views: ${analytics.totalViews}`,
+      `👆 Total Clicks: ${analytics.totalClicks}`,
+      `👤 Unique Users: ${analytics.uniqueUsers}`,
+    ].join('\n');
+    await ctx.reply(text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
+  });
+
+  bot.action('post:analytics:global', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const analytics = await postService.getGlobalAnalytics();
+    const text = [
+      '📊 *Global Analytics*',
+      '',
+      `📝 Total Posts: ${analytics.totalPosts}`,
+      `✅ Published: ${analytics.published}`,
+      `📝 Drafts: ${analytics.drafts}`,
+      `📦 Archived: ${analytics.archived}`,
+      `👻 Hidden: ${analytics.hidden}`,
+      `⏰ Scheduled: ${analytics.scheduled}`,
+      `👁 Total Views: ${analytics.totalViews}`,
+      `👆 Total Clicks: ${analytics.totalClicks}`,
+      `👤 Unique Users: ${analytics.uniqueUsers}`,
+    ].join('\n');
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() }).catch(() => {});
+  });
+
+  bot.action('post:analytics:top', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const topPosts = await postService.getTopPosts(10);
+    if (topPosts.length === 0) return ctx.reply('🏆 No posts yet.');
+    const text = '🏆 *Top Posts by Views*\n\n' +
+      topPosts.map((p: any, i: number) => `${i + 1}. ${p.title} — ${(p as any).views || 0} views`).join('\n');
+    await ctx.reply(text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
+  });
+
+  // ─── Builder View ───────────────────────────────────────
+  bot.action(/^post:builder:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    const preview = formatPostPreview(post);
+    await ctx.reply(`🏗 *Live Preview*\n\n${preview}`, { parse_mode: 'Markdown', ...postBuilderViewKeyboard(postId) });
+  });
+
+  bot.action(/^post:builder:refresh:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    const preview = formatPostPreview(post);
+    await ctx.editMessageText(`🏗 *Live Preview*\n\n${preview}`, { parse_mode: 'Markdown', ...postBuilderViewKeyboard(postId) }).catch(() => {});
+  });
+
+  // ─── Button Row Management ──────────────────────────────
+  bot.action(/^post:btn:rowup:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    if (row === 0) return ctx.reply('Already at top.');
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    const buttons = (post as any).buttons || [];
+    [buttons[row - 1], buttons[row]] = [buttons[row], buttons[row - 1]];
+    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
+    await ctx.reply('✅ Row moved up.');
+    await ctx.reply('⌨ Button Editor:', postButtonsEditorKeyboard(postId, buttons));
+  });
+
+  bot.action(/^post:btn:rowdown:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    const buttons = (post as any).buttons || [];
+    if (row >= buttons.length - 1) return ctx.reply('Already at bottom.');
+    [buttons[row], buttons[row + 1]] = [buttons[row + 1], buttons[row]];
+    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
+    await ctx.reply('✅ Row moved down.');
+    await ctx.reply('⌨ Button Editor:', postButtonsEditorKeyboard(postId, buttons));
+  });
+
+  bot.action(/^post:btn:swap:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    const buttons = (post as any).buttons || [];
+    await ctx.reply('🔄 Select row to swap with:', postSwapTargetKeyboard(postId, row, buttons.length));
+  });
+
+  bot.action(/^post:btn:swap:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const rowA = parseInt(ctx.match[2]);
+    const rowB = parseInt(ctx.match[3]);
+    if (rowA === rowB) return;
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    const buttons = (post as any).buttons || [];
+    [buttons[rowA], buttons[rowB]] = [buttons[rowB], buttons[rowA]];
+    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
+    await ctx.reply('🔄 Rows swapped.');
+    await ctx.reply('⌨ Button Editor:', postButtonsEditorKeyboard(postId, buttons));
+  });
+
+  bot.action(/^post:btn:duprow:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    const buttons = (post as any).buttons || [];
+    if (!buttons[row]) return ctx.reply('❌ Row not found.');
+    const duplicated = buttons[row].map((b: any) => ({ ...b }));
+    buttons.splice(row + 1, 0, duplicated);
+    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
+    await ctx.reply('📋 Row duplicated.');
+    await ctx.reply('⌨ Button Editor:', postButtonsEditorKeyboard(postId, buttons));
+  });
+
+  bot.action(/^post:btn:delrow:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    const buttons = (post as any).buttons || [];
+    buttons.splice(row, 1);
+    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
+    await ctx.reply('➖ Row deleted.');
+    await ctx.reply('⌨ Button Editor:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   // ─── Back to Admin Panel ───────────────────────────────

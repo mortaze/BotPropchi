@@ -30,12 +30,15 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
     rows.push(['🚀 پروفایل من']);
   }
   if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
-  if (hasPublishedPosts) {
-    const recentPosts = publishedPosts.slice(0, 3);
-    for (const post of recentPosts) {
+  if (hasPublishedPosts && publishedPosts.length > 0) {
+    for (const post of publishedPosts.slice(0, 5)) {
       rows.push([`📌 ${post.title?.substring(0, 30)}`]);
     }
-    rows.push(['📋 All Posts']);
+    if (publishedPosts.length > 5) {
+      rows.push(['📋 All Posts', '🔽 More']);
+    } else {
+      rows.push(['📋 All Posts']);
+    }
   }
   if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
   return Markup.keyboard(rows.length ? rows : [['👨‍💼 پنل ادمین']]).resize().persistent();

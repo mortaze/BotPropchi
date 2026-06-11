@@ -762,6 +762,9 @@ model Post {
   sortOrder     Int        @default(0)
   isPinned      Boolean    @default(false)
   status        PostStatus @default(DRAFT)
+  category      String?
+  categoryIcon  String?
+  categoryOrder Int        @default(0)
   createdBy     BigInt?
   updatedBy     BigInt?
   createdAt     DateTime   @default(now())
@@ -771,11 +774,13 @@ model Post {
   commands   PostCommand[]
   clickLogs  PostClickLog[]
   postButtons PostButton[]
+  versions   PostVersion[]
 
   @@index([status])
   @@index([isPublished])
   @@index([slug])
   @@index([sortOrder])
+  @@index([category])
   @@map("posts")
 }
 
@@ -841,4 +846,17 @@ model PostClickLog {
 
   @@index([postId])
   @@map("post_click_logs")
+}
+
+model PostVersion {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  snapshot  Json
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([createdAt])
+  @@map("post_versions")
 }

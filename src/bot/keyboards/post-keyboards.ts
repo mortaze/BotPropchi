@@ -7,6 +7,7 @@ export const postMainMenuKeyboard = () =>
     ['📌 Pinned Posts', '👻 Hidden Posts'],
     ['👁 Preview Post', '📤 Publish'],
     ['🔎 Search Posts', '📊 Post Analytics'],
+    ['📊 Global Analytics', '🔍 Integrity Check'],
     ['⚙ Post Settings'],
     ['↩️ Back to Admin Panel'],
   ]).resize().persistent();
@@ -36,6 +37,14 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
     [
       Markup.button.callback('🔗 Add Command', `post:cmd:add:${postId}`),
       Markup.button.callback('📋 Duplicate', `post:duplicate:${postId}`),
+    ],
+    [
+      Markup.button.callback('🏗 Builder View', `post:builder:${postId}`),
+      Markup.button.callback('📁 Category', `post:category:edit:${postId}`),
+    ],
+    [
+      Markup.button.callback('📜 Versions', `post:version:list:${postId}`),
+      Markup.button.callback('📊 Analytics', `post:analytics:${postId}`),
     ],
     [
       Markup.button.callback('📦 Archive', `post:archive:${postId}`),
@@ -105,6 +114,13 @@ export const postButtonsEditorKeyboard = (postId: number, buttons: any[], editin
       }
       rowButtons.push(Markup.button.callback('✏️', `post:btn:edit:${postId}:${r}:${row.length}`));
       rows.push(rowButtons);
+      rows.push([
+        Markup.button.callback('⬆', `post:btn:rowup:${postId}:${r}`),
+        Markup.button.callback('⬇', `post:btn:rowdown:${postId}:${r}`),
+        Markup.button.callback('🔄 Swap', `post:btn:swap:${postId}:${r}`),
+        Markup.button.callback('📋 Dup Row', `post:btn:duprow:${postId}:${r}`),
+        Markup.button.callback('➖ Del Row', `post:btn:delrow:${postId}:${r}`),
+      ]);
     }
   }
   rows.push([
@@ -203,5 +219,73 @@ export const postCommandEditKeyboard = (postId: number, commandId: number) => {
     [Markup.button.callback('➕ Add Alias', `post:cmd:alias:add:${postId}:${commandId}`)],
     [Markup.button.callback('🗑 Remove Command', `post:cmd:del:${postId}:${commandId}`)],
     [Markup.button.callback('« Back to Commands', `post:cmd:list:${postId}`)],
+  ]);
+};
+
+export const postCategoryKeyboard = (categories: string[], current?: string | null) => {
+  const rows: any[][] = categories.map((cat) => [
+    Markup.button.callback(
+      `${current === cat ? '✅ ' : ''}${cat}`,
+      `post:category:set:${cat}`
+    ),
+  ]);
+  rows.push([Markup.button.callback('🚫 No Category', `post:category:set:`), Markup.button.callback('➕ New Category', 'post:category:new')]);
+  rows.push([Markup.button.callback('« Back', `post:category:back`)]);
+  return Markup.inlineKeyboard(rows);
+};
+
+export const postCategoriesListKeyboard = (categories: string[]) => {
+  const rows: any[][] = categories.map((cat) => [
+    Markup.button.callback(cat, `post:category:posts:${cat}`),
+  ]);
+  rows.push([Markup.button.callback('« Back to Posts Menu', 'post:menu')]);
+  return Markup.inlineKeyboard(rows);
+};
+
+export const postVersionHistoryKeyboard = (versions: any[], postId: number, page?: number) => {
+  const rows: any[][] = versions.slice(0, 10).map((v: any) => [
+    Markup.button.callback(
+      `v${v.id} - ${new Date(v.createdAt).toLocaleDateString('fa-IR')}`,
+      `post:version:restore:${v.id}`
+    ),
+  ]);
+  rows.push([Markup.button.callback('« Back to Post Editor', `post:edit:${postId}:full`)]);
+  return Markup.inlineKeyboard(rows);
+};
+
+export const postIntegrityKeyboard = () => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔍 Run Integrity Check', 'post:integrity:run')],
+    [Markup.button.callback('« Back to Posts Menu', 'post:menu')],
+  ]);
+};
+
+export const postGlobalAnalyticsKeyboard = () => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔄 Refresh', 'post:analytics:global')],
+    [Markup.button.callback('🏆 Top Posts', 'post:analytics:top')],
+    [Markup.button.callback('« Back to Posts Menu', 'post:menu')],
+  ]);
+};
+
+export const postSwapTargetKeyboard = (postId: number, sourceRow: number, totalRows: number) => {
+  const rows: any[][] = [];
+  for (let i = 0; i < totalRows; i++) {
+    if (i !== sourceRow) {
+      rows.push([Markup.button.callback(`↔ Swap with Row ${i + 1}`, `post:btn:swap:${postId}:${sourceRow}:${i}`)]);
+    }
+  }
+  rows.push([Markup.button.callback('« Cancel', `post:edit:${postId}:buttons`)]);
+  return Markup.inlineKeyboard(rows);
+};
+
+export const postBuilderViewKeyboard = (postId: number) => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔄 Refresh Preview', `post:builder:refresh:${postId}`)],
+    [Markup.button.callback('✏ Edit Title', `post:edit:${postId}:title`)],
+    [Markup.button.callback('📝 Edit Content', `post:edit:${postId}:content`)],
+    [Markup.button.callback('⌨ Edit Buttons', `post:edit:${postId}:buttons`)],
+    [Markup.button.callback('📤 Publish', `post:publish:${postId}`)],
+    [Markup.button.callback('« Back to Editor', `post:edit:${postId}:full`)],
   ]);
 };

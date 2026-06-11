@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 const CACHE_KEY_PUBLISHED = 'posts:published';
 const CACHE_KEY_COMMANDS = 'posts:commands';
 const CACHE_KEY_PINNED = 'posts:pinned';
+const CACHE_KEY_MENU = 'posts:menu';
 
 export const postService = {
   async create(data: {
@@ -23,6 +24,9 @@ export const postService = {
     command?: string;
     status?: PostStatus;
     sortOrder?: number;
+    category?: string;
+    categoryIcon?: string;
+    categoryOrder?: number;
     createdBy?: bigint;
   }) {
     const post = await postRepository.create({
@@ -38,6 +42,9 @@ export const postService = {
       command: data.command,
       status: data.status ?? PostStatus.DRAFT,
       sortOrder: data.sortOrder ?? 0,
+      category: data.category,
+      categoryIcon: data.categoryIcon,
+      categoryOrder: data.categoryOrder,
       createdBy: data.createdBy,
     });
     this.invalidateCache();
@@ -53,6 +60,25 @@ export const postService = {
   async update(id: number, data: Prisma.PostUncheckedUpdateInput & { updatedBy?: bigint }) {
     const existing = await postRepository.findById(id);
     if (!existing) return null;
+    await postRepository.saveVersion(id, {
+      id: existing.id,
+      title: existing.title,
+      slug: existing.slug,
+      content: existing.content,
+      caption: existing.caption,
+      mediaFileId: existing.mediaFileId,
+      mediaType: existing.mediaType,
+      albumMediaIds: existing.albumMediaIds,
+      parseMode: existing.parseMode,
+      buttons: existing.buttons,
+      command: existing.command,
+      status: existing.status,
+      sortOrder: existing.sortOrder,
+      isPinned: existing.isPinned,
+      category: (existing as any).category,
+      categoryIcon: (existing as any).categoryIcon,
+      categoryOrder: (existing as any).categoryOrder,
+    });
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     this.invalidateCache();
     await systemLogService.log({
@@ -200,25 +226,7 @@ export const postService = {
   },
 
   async duplicate(id: number, createdBy?: bigint) {
-    const original = await postRepository.findById(id);
-    if (!original) return null;
-    const duplicate = await postRepository.create({
-      title: `${original.title} (کپی)`,
-      slug: `${original.slug}-copy-${Date.now()}`,
-      content: original.content,
-      caption: original.caption,
-      mediaFileId: original.mediaFileId,
-      mediaType: original.mediaType,
-      albumMediaIds: original.albumMediaIds,
-      parseMode: original.parseMode,
-      buttons: original.buttons,
-      command: original.command ? `${original.command}_copy` : undefined,
-      status: PostStatus.DRAFT,
-      sortOrder: (original.sortOrder ?? 0) + 1,
-      createdBy,
-    });
-    this.invalidateCache();
-    return duplicate;
+    return postRepository.duplicateWithCommands(id, `${id} (کپی)`, `copy-${id}-${Date.now()}`, createdBy);
   },
 
   async findById(id: number) {
@@ -239,6 +247,7 @@ export const postService = {
     status?: PostStatus;
     isPublished?: boolean;
     search?: string;
+    category?: string;
   }) {
     return postRepository.findAll(params);
   },
@@ -247,8 +256,12 @@ export const postService = {
     const cached = cache.get<any[]>(CACHE_KEY_PUBLISHED);
     if (cached) return cached;
     const posts = await postRepository.getPublished();
-    cache.set(CACHE_KEY_PUBLISHED, posts, 60);
+    cache.set(CACHE_KEY_PUBLISHED, posts, 10);
     return posts;
+  },
+
+  async getPublishedByPage(page: number, limit: number = 5) {
+    return postRepository.getPublishedByPage(page, limit);
   },
 
   async getDrafts() {
@@ -259,7 +272,7 @@ export const postService = {
     const cached = cache.get<any[]>(CACHE_KEY_PINNED);
     if (cached) return cached;
     const posts = await postRepository.getPinned();
-    cache.set(CACHE_KEY_PINNED, posts, 60);
+    cache.set(CACHE_KEY_PINNED, posts, 10);
     return posts;
   },
 
@@ -279,7 +292,7 @@ export const postService = {
         }
       }
     }
-    cache.set(CACHE_KEY_COMMANDS, map, 60);
+    cache.set(CACHE_KEY_COMMANDS, map, 10);
     return map;
   },
 
@@ -315,9 +328,45 @@ export const postService = {
     return postRepository.getAnalytics(postId);
   },
 
+  async getGlobalAnalytics() {
+    return postRepository.getGlobalAnalytics();
+  },
+
+  async getTopPosts(limit?: number) {
+    return postRepository.getTopPosts(limit);
+  },
+
+  async setCategory(id: number, category: string | null, icon?: string, order?: number) {
+    const data: any = { category: category || null };
+    if (icon !== undefined) data.categoryIcon = icon;
+    if (order !== undefined) data.categoryOrder = order;
+    const post = await postRepository.update(id, data);
+    this.invalidateCache();
+    return post;
+  },
+
+  async findByCategory(category: string) {
+    return postRepository.findByCategory(category);
+  },
+
+  async getCategories(): Promise<string[]> {
+    return postRepository.getCategories();
+  },
+
   async addCommand(postId: number, command: string, aliases?: string[]) {
     const existing = await prisma.postCommand.findUnique({ where: { command } });
-    if (existing) throw new Error(`Command /${command} already exists`);
+    if (existing) throw new Error(`❌ Command /${command} already exists`);
+    const aliasConflicts = await prisma.postCommand.findMany({
+      where: { OR: [{ command }, { aliases: { array_contains: command } }] },
+    });
+    if (aliases) {
+      for (const alias of aliases) {
+        const conflict = await prisma.postCommand.findFirst({
+          where: { OR: [{ command: alias }, { aliases: { array_contains: alias } }] },
+        });
+        if (conflict) throw new Error(`❌ Alias /${alias} conflicts with existing command /${conflict.command}`);
+      }
+    }
     const result = await prisma.postCommand.create({
       data: { postId, command, aliases: aliases ?? undefined },
     });
@@ -347,8 +396,15 @@ export const postService = {
   async addCommandAlias(commandId: number, alias: string) {
     const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
     if (!cmd) throw new Error('Command not found');
+    const conflict = await prisma.postCommand.findFirst({
+      where: {
+        NOT: { id: commandId },
+        OR: [{ command: alias }, { aliases: { array_contains: alias } }],
+      },
+    });
+    if (conflict) throw new Error(`❌ Alias /${alias} conflicts with command /${conflict.command}`);
     const aliases = (cmd.aliases as string[]) || [];
-    if (aliases.includes(alias)) throw new Error(`Alias /${alias} already exists`);
+    if (aliases.includes(alias)) throw new Error(`Alias /${alias} already exists on this command`);
     aliases.push(alias);
     await prisma.postCommand.update({ where: { id: commandId }, data: { aliases } });
     this.invalidateCache();
@@ -379,14 +435,57 @@ export const postService = {
     return map.get(command) || null;
   },
 
+  async saveVersion(postId: number) {
+    const post = await postRepository.findById(postId);
+    if (!post) return null;
+    const snapshot = {
+      id: post.id,
+      title: post.title,
+      slug: post.slug,
+      content: post.content,
+      caption: post.caption,
+      mediaFileId: post.mediaFileId,
+      mediaType: post.mediaType,
+      albumMediaIds: post.albumMediaIds,
+      parseMode: post.parseMode,
+      buttons: post.buttons,
+      command: post.command,
+      status: post.status,
+      sortOrder: post.sortOrder,
+      isPinned: post.isPinned,
+      category: (post as any).category,
+      categoryIcon: (post as any).categoryIcon,
+      categoryOrder: (post as any).categoryOrder,
+    };
+    return postRepository.saveVersion(postId, snapshot);
+  },
+
+  async getVersions(postId: number) {
+    return postRepository.getVersions(postId);
+  },
+
+  async restoreVersion(versionId: number) {
+    const post = await postRepository.restoreVersion(versionId);
+    if (post) this.invalidateCache();
+    return post;
+  },
+
+  async integrityCheck(): Promise<string[]> {
+    return postRepository.integrityCheck();
+  },
+
   invalidateCache() {
     cache.del(CACHE_KEY_PUBLISHED);
     cache.del(CACHE_KEY_COMMANDS);
     cache.del(CACHE_KEY_PINNED);
+    cache.del(CACHE_KEY_MENU);
   },
 
   async getAllForMenu(): Promise<any[]> {
-    const published = await this.getPublished();
-    return published.filter((p: any) => p.status === 'PUBLISHED');
+    const cached = cache.get<any[]>(CACHE_KEY_MENU);
+    if (cached) return cached;
+    const published = await postRepository.getPublished();
+    cache.set(CACHE_KEY_MENU, published, 10);
+    return published;
   },
 };
