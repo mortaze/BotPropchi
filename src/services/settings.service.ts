@@ -1,6 +1,7 @@
 import { AdminRole } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { BRAND_NAME } from '../constants';
+import { logger } from '../utils/logger';
 
 export const DEFAULT_MENU_ITEMS = [
   { key: 'dashboard', label: 'داشبورد', href: '/dashboard', order: 10, ownerOnly: false, featureKey: null },
@@ -138,110 +139,145 @@ class SettingsService {
     });
   }
 
-  // ─── Menu Layout Helpers ──────────────────────────────────
+  // ─── Menu Layout: STABLE PERSISTENCE (single source of truth) ───
+  // WARNING: NEVER auto-rebuild, sync, or modify menu_layout outside explicit admin actions.
+  // The menu_layout in DB is the ONLY source of truth for the Telegram main menu.
+
+  private menuLayoutCache: { layout: any[][]; snapshot: any[][] | null; version: number } | null = null;
+  private readonly MENU_LAYOUT_KEY = 'menu_layout';
+  private readonly MENU_LAYOUT_VERSION_KEY = 'menu_layout_version';
+  private readonly MENU_LAYOUT_SNAPSHOT_KEY = 'menu_layout_snapshot';
+
   async getMenuLayout(): Promise<any[][]> {
+    if (this.menuLayoutCache) {
+      logger.debug('[MenuLayout] Returning cached layout (version ' + this.menuLayoutCache.version + ')');
+      return this.menuLayoutCache.layout;
+    }
+
+    logger.debug('[MenuLayout] Reading layout from DB');
+    let layout: any[][] = [];
+    let snapshot: any[][] | null = null;
+    let version = 0;
+
     try {
-      const raw = await this.getSetting('menu_layout_saved');
-      if (raw) return typeof raw === 'string' ? JSON.parse(raw) : raw;
-    } catch {}
-    return [];
-  }
-
-  async saveMenuLayout(layout: any[][]) {
-    await this.setSetting('menu_layout_saved', layout);
-  }
-
-  async syncMenuLayout(publishedPosts: any[]): Promise<any[][]> {
-    const layout = await this.getMenuLayout();
-
-    const systemButtons: { ref: string; text: string }[] = [];
-    const features = await this.getFeatureMap();
-
-    if (features.discount_codes !== false) systemButtons.push({ ref: 'system:discount_codes', text: '🎯 کدهای تخفیف' });
-    if (features.prop_firms !== false) systemButtons.push({ ref: 'system:prop_firms', text: '🏢 پراپ فرم‌ها' });
-    if (features.lottery !== false) systemButtons.push({ ref: 'system:lottery', text: '🎰 قرعه‌کشی' });
-    if (features.points !== false) systemButtons.push({ ref: 'system:points', text: '⭐️ امتیاز من' });
-    if (features.leaderboard !== false) systemButtons.push({ ref: 'system:leaderboard', text: '🏆 لیدربورد' });
-    if (features.referrals !== false) systemButtons.push({ ref: 'system:referrals', text: '👥 دعوت دوستان' });
-    if (features.ai_assistant !== false) systemButtons.push({ ref: 'system:ai_assistant', text: '🤖 هوش مصنوعی پراپ هاب' });
-    systemButtons.push({ ref: 'system:search', text: '🔍 جستجو' });
-
-    const postButtons = (publishedPosts || []).map((p: any) => ({
-      ref: `post:${p.id}`,
-      text: p.title,
-    }));
-
-    const allAvailableRefs = new Map<string, string>();
-    for (const sb of systemButtons) allAvailableRefs.set(sb.ref, sb.text);
-    for (const pb of postButtons) allAvailableRefs.set(pb.ref, pb.text);
-
-    const newLayout: any[][] = [];
-
-    if (layout.length > 0) {
-      const usedRefs = new Set<string>();
-      const flatRows: any[] = [];
-
-      for (const row of layout) {
-        for (const btn of row) {
-          const ref = btn.ref || '';
-          if (allAvailableRefs.has(ref) || ref.startsWith('custom:')) {
-            if (!usedRefs.has(ref)) {
-              usedRefs.add(ref);
-              flatRows.push(btn);
-            }
+      const raw = await this.getSetting(this.MENU_LAYOUT_KEY);
+      if (raw) {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (Array.isArray(parsed)) {
+          layout = parsed;
+          version = (await this.getSetting(this.MENU_LAYOUT_VERSION_KEY)) || 0;
+          const snapRaw = await this.getSetting(this.MENU_LAYOUT_SNAPSHOT_KEY);
+          if (snapRaw) {
+            const snapParsed = typeof snapRaw === 'string' ? JSON.parse(snapRaw) : snapRaw;
+            if (Array.isArray(snapParsed)) snapshot = snapParsed;
           }
+          logger.debug(`[MenuLayout] Loaded layout version ${version}, ${layout.length} rows, snapshot available: ${snapshot !== null}`);
         }
       }
+    } catch (err) {
+      logger.error('[MenuLayout] Corrupted layout detected! Attempting snapshot fallback.', err);
+      layout = [];
+    }
 
-      for (const [ref, text] of allAvailableRefs) {
-        if (!usedRefs.has(ref)) {
-          flatRows.push({ ref, text, type: ref.startsWith('post:') ? 'CALLBACK' : 'URL', visible: true });
-        }
-      }
-
-      const EMPTY_ROW_THRESHOLD = 3;
-      let currentRow: any[] = [];
-      for (const btn of flatRows) {
-        if (currentRow.length >= EMPTY_ROW_THRESHOLD) {
-          newLayout.push(currentRow);
-          currentRow = [];
-        }
-        currentRow.push(btn);
-      }
-      if (currentRow.length > 0) newLayout.push(currentRow);
-
-    } else {
-      const allButtons = [...systemButtons, ...postButtons];
-      const rowSize = 2;
-      for (let i = 0; i < allButtons.length; i += rowSize) {
-        const row = allButtons.slice(i, i + rowSize).map(b => ({
-          ref: b.ref,
-          text: b.text,
-          type: b.ref.startsWith('post:') ? 'CALLBACK' : 'URL',
-          visible: true,
-        }));
-        newLayout.push(row);
+    // Validate layout integrity
+    const validation = this.validateMenuLayout(layout);
+    if (!validation.valid) {
+      logger.warn(`[MenuLayout] Validation failed: ${validation.reason}. Trying snapshot.`);
+      if (snapshot && this.validateMenuLayout(snapshot).valid) {
+        logger.info('[MenuLayout] Restoring from snapshot');
+        layout = snapshot;
+        await this.saveMenuLayout(layout, version);
+      } else {
+        logger.warn('[MenuLayout] Snapshot also invalid or missing. Starting fresh layout.');
+        layout = [];
+        await this.saveMenuLayout(layout, 0);
       }
     }
 
-    await this.saveMenuLayout(newLayout);
-    return newLayout;
+    this.menuLayoutCache = { layout, snapshot, version };
+    return layout;
   }
 
-  async getMenuButtonRefs(): Promise<Map<string, string>> {
-    const refs = new Map<string, string>();
+  async saveMenuLayout(layout: any[][], preserveVersion?: number) {
+    const oldLayout = this.menuLayoutCache?.layout || [];
 
-    const features = await this.getFeatureMap();
-    if (features.discount_codes !== false) refs.set('🎯 کدهای تخفیف', 'system:discount_codes');
-    if (features.prop_firms !== false) refs.set('🏢 پراپ فرم‌ها', 'system:prop_firms');
-    if (features.lottery !== false) refs.set('🎰 قرعه‌کشی', 'system:lottery');
-    if (features.points !== false) refs.set('⭐️ امتیاز من', 'system:points');
-    if (features.leaderboard !== false) refs.set('🏆 لیدربورد', 'system:leaderboard');
-    if (features.referrals !== false) refs.set('👥 دعوت دوستان', 'system:referrals');
-    if (features.ai_assistant !== false) refs.set('🤖 هوش مصنوعی پراپ هاب', 'system:ai_assistant');
-    refs.set('🔍 جستجو', 'system:search');
+    // Save layout to DB
+    await this.setSetting(this.MENU_LAYOUT_KEY, layout);
 
-    return refs;
+    // Save snapshot of previous valid layout
+    if (this.menuLayoutCache?.layout && this.menuLayoutCache.layout.length > 0) {
+      await this.setSetting(this.MENU_LAYOUT_SNAPSHOT_KEY, this.menuLayoutCache.layout);
+    }
+
+    // Increment version
+    const newVersion = preserveVersion ?? ((this.menuLayoutCache?.version ?? 0) + 1);
+    await this.setSetting(this.MENU_LAYOUT_VERSION_KEY, newVersion);
+
+    // Update cache
+    this.menuLayoutCache = {
+      layout,
+      snapshot: this.menuLayoutCache?.layout || null,
+      version: newVersion,
+    };
+
+    // Log diff
+    const oldSerialized = JSON.stringify(oldLayout);
+    const newSerialized = JSON.stringify(layout);
+    if (oldSerialized !== newSerialized) {
+      logger.info(`[MenuLayout] Saved version ${newVersion} (${layout.length} rows). Changed: ${oldSerialized !== newSerialized}`);
+    } else {
+      logger.debug(`[MenuLayout] Saved version ${newVersion} (no change)`);
+    }
+  }
+
+  validateMenuLayout(layout: any[][]): { valid: boolean; reason?: string } {
+    if (!Array.isArray(layout)) return { valid: false, reason: 'Layout root is not an array' };
+    for (let r = 0; r < layout.length; r++) {
+      if (!Array.isArray(layout[r])) return { valid: false, reason: `Row ${r} is not an array` };
+      for (let c = 0; c < layout[r].length; c++) {
+        const btn = layout[r][c];
+        if (!btn || typeof btn !== 'object') return { valid: false, reason: `Button [${r}][${c}] is not an object` };
+        if (!btn.text && !btn.ref) return { valid: false, reason: `Button [${r}][${c}] has no text or ref` };
+        if (layout[r].length > 8) return { valid: false, reason: `Row ${r} exceeds 8 buttons` };
+      }
+    }
+    if (layout.length > 20) return { valid: false, reason: 'Layout exceeds 20 rows' };
+    return { valid: true };
+  }
+
+  // Migrate old key to new key if needed
+  async migrateMenuLayoutKey() {
+    try {
+      const oldVal = await this.getSetting('menu_layout_saved');
+      const newVal = await this.getSetting(this.MENU_LAYOUT_KEY);
+      if (oldVal && !newVal) {
+        logger.info('[MenuLayout] Migrating from menu_layout_saved to menu_layout');
+        await this.setSetting(this.MENU_LAYOUT_KEY, oldVal);
+        this.menuLayoutCache = null; // invalidate cache
+      }
+    } catch (err) {
+      logger.error('[MenuLayout] Migration failed', err);
+    }
+  }
+
+  // Invalidate the cache (call after direct DB changes from admin panel)
+  invalidateMenuLayoutCache() {
+    this.menuLayoutCache = null;
+    logger.debug('[MenuLayout] Cache invalidated');
+  }
+
+  // Get ref-to-text mapping for post routing
+  getMenuButtonTextMap(layout: any[][]): Map<string, { ref: string; row: number; col: number }> {
+    const map = new Map<string, { ref: string; row: number; col: number }>();
+    for (let r = 0; r < layout.length; r++) {
+      for (let c = 0; c < layout[r].length; c++) {
+        const btn = layout[r][c];
+        if (btn && btn.text && btn.ref) {
+          map.set(btn.text, { ref: btn.ref, row: r, col: c });
+        }
+      }
+    }
+    return map;
   }
 }
 

@@ -294,7 +294,6 @@ export const menuEditorKeyboard = (layout: any[][]) => {
     }
   }
   rows.push([
-    Markup.button.callback('🔄 همگام‌سازی', 'menu:sync'),
     Markup.button.callback('👁 پیش‌نمایش', 'menu:preview'),
   ]);
   rows.push([

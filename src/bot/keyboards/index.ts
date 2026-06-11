@@ -9,45 +9,20 @@ type DiscountWithFirm = DiscountCode & {
   propFirm: PropFirm;
 };
 
-function resolveButtonText(btn: any, postsMap?: Map<number, any>): string {
-  if (btn.text) return btn.text;
-  if (btn.ref?.startsWith('post:') && postsMap) {
-    const postId = parseInt(btn.ref.replace('post:', ''));
-    const post = postsMap.get(postId);
-    if (post) return post.title;
-  }
-  return btn.ref || 'دکمه';
-}
-
-// ─── منوی اصلی (داینامیک از پست‌های منتشر شده) ──────────
+// ─── منوی اصلی (1:1 mapping from menu_layout stored text) ───
+// WARNING: This function must NEVER resolve, transform, or merge buttons.
+// The menu_layout is the single source of truth.
 export function buildMainMenuKeyboard(
   isAdmin = false,
-  features: Record<string, boolean> = {},
-  menuLayout?: any[][],
-  publishedPosts?: any[]
+  _features: Record<string, boolean> = {},
+  menuLayout?: any[][]
 ) {
-  const postsMap = new Map<number, any>();
-  if (publishedPosts) {
-    for (const p of publishedPosts) postsMap.set(p.id, p);
-  }
-
   if (menuLayout && menuLayout.length > 0) {
     const visibleRows = menuLayout
       .map(row =>
         row
           .filter((btn: any) => btn.visible !== false)
-          .map((btn: any) => {
-            const ref = btn.ref || '';
-            if (ref.startsWith('post:')) {
-              const postId = parseInt(ref.replace('post:', ''));
-              const post = postsMap.get(postId);
-              if (post && post.status === 'PUBLISHED' && post.isPublished) {
-                return post.title || btn.text || 'پست';
-              }
-              return null;
-            }
-            return btn.text || '';
-          })
+          .map((btn: any) => btn.text || '')
           .filter(Boolean)
       )
       .filter((row: string[]) => row.length > 0);
@@ -62,49 +37,7 @@ export function buildMainMenuKeyboard(
     return Markup.keyboard(visibleRows).resize().persistent();
   }
 
-  const enabled = (key: string) => features[key] !== false;
-  const rows: string[][] = [];
-
-  const first: string[] = [];
-  if (enabled('discount_codes')) first.push('🎯 کدهای تخفیف');
-  if (enabled('prop_firms')) first.push('🏢 پراپ فرم‌ها');
-  if (first.length) rows.push(first);
-
-  if (publishedPosts && publishedPosts.length > 0) {
-    const postRow: string[] = [];
-    for (const post of publishedPosts) {
-      postRow.push(post.title);
-      if (postRow.length >= 2) {
-        rows.push([...postRow]);
-        postRow.length = 0;
-      }
-    }
-    if (postRow.length > 0) rows.push(postRow);
-  }
-
-  const second: string[] = [];
-  if (enabled('lottery')) second.push('🎰 قرعه‌کشی');
-  if (enabled('points')) second.push('⭐️ امتیاز من');
-  if (second.length) rows.push(second);
-
-  const third: string[] = [];
-  if (enabled('leaderboard')) third.push('🏆 لیدربورد');
-  if (enabled('referrals')) third.push('👥 دعوت دوستان');
-  if (third.length) rows.push(third);
-
-  if (enabled('ai_assistant')) rows.push(['🤖 هوش مصنوعی پراپ هاب']);
-
-  if (config.miniApp.url) {
-    rows.push(['🚀 پروفایل من']);
-  }
-
-  if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
-
-  if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
-
-  rows.push(['↩️ بازگشت به منوی اصلی']);
-
-  return Markup.keyboard(rows.length ? rows : [['👨‍💼 پنل ادمین']]).resize().persistent();
+  return Markup.keyboard([['👨‍💼 پنل ادمین']]).resize().persistent();
 }
 
 export const mainMenuKeyboard = buildMainMenuKeyboard(false);

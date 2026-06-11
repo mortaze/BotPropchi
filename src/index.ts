@@ -18,6 +18,7 @@ import { registerHandlers } from './bot/handlers';
 import { startAdminApi } from './api/server';
 import { startScheduler } from './scheduler';
 import { botAdminService } from './services/bot-admin.service';
+import { settingsService } from './services/settings.service';
 
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
@@ -27,6 +28,9 @@ async function bootstrap() {
   }
 
   await botAdminService.ensureOwner();
+
+  // Migrate old menu_layout_saved key to new menu_layout key
+  await settingsService.migrateMenuLayoutKey().catch(err => logger.error('[Startup] Menu layout migration failed:', err));
 
   // ساخت ربات
   const bot = new Telegraf(config.bot.token);

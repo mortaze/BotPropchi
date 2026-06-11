@@ -68,13 +68,8 @@ function formatDuration(ms: number) {
 async function adminReplyOptions(telegramId?: number) {
   const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
   const features = await settingsService.getFeatureMap();
-  let menuLayout: any[][] | undefined;
-  try {
-    const raw = await settingsService.getSetting('menu_layout_saved');
-    if (raw) menuLayout = typeof raw === 'string' ? JSON.parse(raw) : raw;
-  } catch {}
-  const publishedPosts = await postService.getPublished().catch(() => []);
-  return buildMainMenuKeyboard(Boolean(admin), features, menuLayout, publishedPosts);
+  const menuLayout = await settingsService.getMenuLayout().catch(() => []);
+  return buildMainMenuKeyboard(Boolean(admin), features, menuLayout);
 }
 
 function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; content: string }[] } {
@@ -361,25 +356,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
 
-  // ─── Menu Builder (Restructured: only rearrange, no creation) ───
-  const MENU_LAYOUT_KEY = 'menu_layout_saved';
-
-  async function getMenuLayout(): Promise<any[][]> {
-    try {
-      const raw = await settingsService.getSetting(MENU_LAYOUT_KEY);
-      if (raw) return typeof raw === 'string' ? JSON.parse(raw) : raw;
-    } catch {}
-    return [];
-  }
-
-  async function saveMenuLayout(layout: any[][]) {
-    await settingsService.setSetting(MENU_LAYOUT_KEY, layout);
-  }
+  // ─── Menu Builder (only rearrange, no creation, no auto-sync) ───
 
   bot.hears('🎛 ویرایش منو', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const layout = await settingsService.syncMenuLayout(await postService.getPublished().catch(() => []));
+    const layout = await settingsService.getMenuLayout();
     await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
   });
 
@@ -387,7 +369,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     try {
       await ctx.editMessageText('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
     } catch {
@@ -395,27 +377,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     }
   });
 
-  bot.action('menu:sync', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const publishedPosts = await postService.getPublished().catch(() => []);
-    const layout = await settingsService.syncMenuLayout(publishedPosts);
-    try {
-      await ctx.editMessageText('🔄 منو همگام‌سازی شد!\n🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
-    } catch {
-      await ctx.reply('🔄 منو همگام‌سازی شد!\n🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
-    }
-  });
-
   bot.action('menu:preview', async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const layout = await getMenuLayout();
-    const features = await settingsService.getFeatureMap();
-    const publishedPosts = await postService.getPublished().catch(() => []);
-    await ctx.reply('👁 پیش‌نمایش منوی اصلی:', buildMainMenuKeyboard(true, features, layout, publishedPosts));
+    const layout = await settingsService.getMenuLayout();
+    await ctx.reply('👁 پیش‌نمایش منوی اصلی:', buildMainMenuKeyboard(true, {}, layout));
   });
 
   bot.action('menu:back', async (ctx: any) => {
@@ -432,7 +399,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     const button = layout[row]?.[col];
     if (!button) {
       await ctx.reply('دکمه‌ای یافت نشد.', menuEditorKeyboard(layout));
@@ -455,10 +422,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     if (col === 0) return ctx.reply('هم‌اکنون در چپ‌ترین است.');
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     if (!layout[row]) return;
     [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
-    await saveMenuLayout(layout);
+    await settingsService.saveMenuLayout(layout);
     await ctx.reply('✅ دکمه به چپ منتقل شد.');
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
@@ -469,10 +436,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     if (!layout[row] || col >= layout[row].length - 1) return ctx.reply('هم‌اکنون در راست‌ترین است.');
     [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
-    await saveMenuLayout(layout);
+    await settingsService.saveMenuLayout(layout);
     await ctx.reply('✅ دکمه به راست منتقل شد.');
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
@@ -491,7 +458,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const size = parseInt(ctx.match[2]);
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     const currentRow = layout[row] || [];
     const newRow: any[] = [];
     for (let i = 0; i < size; i++) {
@@ -502,8 +469,18 @@ export function registerHandlers(bot: Telegraf<Context>) {
         newRow.push({ ...lastBtn, visible: false });
       }
     }
+    // Preserve excess buttons: scatter into next row or append as new row
+    const excess = currentRow.slice(size);
+    if (excess.length > 0) {
+      const nextRowIdx = row + 1;
+      if (layout[nextRowIdx]) {
+        layout[nextRowIdx] = [...excess, ...layout[nextRowIdx]];
+      } else {
+        layout.splice(row + 1, 0, excess);
+      }
+    }
     layout[row] = newRow;
-    await saveMenuLayout(layout);
+    await settingsService.saveMenuLayout(layout);
     await ctx.reply(`✅ سطر ${row + 1} به ${size} دکمه تغییر اندازه یافت.`);
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
@@ -514,9 +491,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     if (row === 0) return ctx.reply('هم‌اکنون در بالاست.');
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     [layout[row - 1], layout[row]] = [layout[row], layout[row - 1]];
-    await saveMenuLayout(layout);
+    await settingsService.saveMenuLayout(layout);
     await ctx.reply('✅ سطر به بالا منتقل شد.');
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
@@ -526,10 +503,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     if (row >= layout.length - 1) return ctx.reply('هم‌اکنون در پایین‌ترین جایگاه است.');
     [layout[row], layout[row + 1]] = [layout[row + 1], layout[row]];
-    await saveMenuLayout(layout);
+    await settingsService.saveMenuLayout(layout);
     await ctx.reply('✅ سطر به پایین منتقل شد.');
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
@@ -539,7 +516,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     await ctx.reply('🔄 سطر مقصد را برای جابجایی انتخاب کنید:', menuSwapTargetKeyboard(row, layout.length));
   });
 
@@ -550,9 +527,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const rowA = parseInt(ctx.match[1]);
     const rowB = parseInt(ctx.match[2]);
     if (rowA === rowB) return;
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     [layout[rowA], layout[rowB]] = [layout[rowB], layout[rowA]];
-    await saveMenuLayout(layout);
+    await settingsService.saveMenuLayout(layout);
     await ctx.reply('🔄 سطرها جابجا شدند.');
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
@@ -562,9 +539,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     layout.splice(row, 1);
-    await saveMenuLayout(layout);
+    await settingsService.saveMenuLayout(layout);
     await ctx.reply('➖ سطر حذف شد.');
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
@@ -575,17 +552,17 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    const layout = await getMenuLayout();
+    const layout = await settingsService.getMenuLayout();
     if (layout[row]?.[col]) {
       layout[row][col].visible = layout[row][col].visible === false ? true : false;
-      await saveMenuLayout(layout);
+      await settingsService.saveMenuLayout(layout);
       await ctx.reply(`👁 دکمه ${layout[row][col].visible !== false ? 'نمایش داده می‌شود' : 'مخفی شد'}.`);
       await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
     }
   });
 
   // ─── Dynamic Post Button Routing ──────────────────────────
-  // Matches any published post title clicked from main menu
+  // Uses menu_layout text → ref mapping, NEVER queries published posts by title.
   bot.on('text', async (ctx: any, next) => {
     if (!ctx.from || ctx.chat?.type !== 'private') return next();
     const text = ctx.message.text;
@@ -603,11 +580,16 @@ export function registerHandlers(bot: Telegraf<Context>) {
     ];
     if (knownTexts.includes(text)) return next();
     try {
-      const posts = await postService.getPublished();
-      const match = posts.find((p: any) => p.title === text);
-      if (match) {
-        await sendPostToUser(ctx, match);
-        return;
+      const layout = await settingsService.getMenuLayout();
+      const textMap = settingsService.getMenuButtonTextMap(layout);
+      const match = textMap.get(text);
+      if (match && match.ref.startsWith('post:')) {
+        const postId = parseInt(match.ref.replace('post:', ''));
+        const post = await postService.findById(postId);
+        if (post && post.status === 'PUBLISHED' && post.isPublished) {
+          await sendPostToUser(ctx, post);
+          return;
+        }
       }
     } catch {}
     return next();
