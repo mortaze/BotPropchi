@@ -33,6 +33,8 @@ import { scoringRouter } from "./routes/scoring.routes";
 import { createMiniAppRouter } from "./routes/mini-app.routes";
 import { miniAppLogRouter } from "./routes/mini-app-log.routes";
 import { createAiRouter } from "./routes/ai.routes";
+import { postRouter } from "./routes/post.routes";
+import { menuRouter } from "./routes/menu.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -192,6 +194,12 @@ export function startAdminApi(bot?: Telegraf) {
   app.use("/api/admin-users", authMiddleware, requireOwner, adminUserRouter);
   app.use("/api/system-logs", authMiddleware, systemLogRouter);
   app.use("/api/mini-app-logs", authMiddleware, miniAppLogRouter);
+
+  // ───────────────── POST ROUTES ─────────────────
+  app.use("/api/posts", authMiddleware, requireFeature("posts"), postRouter);
+
+  // ───────────────── MENU ROUTES ─────────────────
+  app.use("/api/menu", authMiddleware, menuRouter);
 
   // ───────────────── 404 HANDLER ─────────────────
   app.use(

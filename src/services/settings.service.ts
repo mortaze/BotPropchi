@@ -20,6 +20,8 @@ export const DEFAULT_MENU_ITEMS = [
   { key: 'system-logs', label: 'لاگ سیستم', href: '/dashboard/system-logs', order: 130, ownerOnly: false, featureKey: null },
   { key: 'mini-app-logs', label: 'Mini App Logs', href: '/dashboard/mini-app-logs', order: 135, ownerOnly: false, featureKey: null },
   { key: 'ai-assistant', label: '🤖 AI Assistant', href: '/dashboard/ai-assistant', order: 136, ownerOnly: true, featureKey: 'ai_assistant' },
+  { key: 'posts', label: '📝 پست‌ها', href: '/dashboard/posts', order: 25, ownerOnly: false, featureKey: 'posts' },
+  { key: 'menu', label: '🎛 ویرایش منو', href: '/dashboard/menu', order: 27, ownerOnly: false, featureKey: null },
   { key: 'settings', label: '⚙️ تنظیمات', href: '/dashboard/settings', order: 140, ownerOnly: true, featureKey: null },
 ];
 
@@ -279,6 +281,43 @@ class SettingsService {
     }
     return map;
   }
+
+  // ─── Post ↔ Menu auto-linking ─────────────────────────
+  async addPostToMenu(postId: number, title: string): Promise<void> {
+    const layout = await this.getMenuLayout();
+    const ref = `post:${postId}`;
+
+    // Check if already exists in layout
+    const exists = layout.some(row => row.some(btn => btn.ref === ref));
+    if (exists) {
+      logger.debug(`[MenuLayout] Post already in menu: "${title}" (${ref})`);
+      return;
+    }
+
+    // Add as a new row with visibility=false (hidden by default)
+    layout.push([{ ref, text: title, visible: false }]);
+    await this.saveMenuLayout(layout);
+    logger.info(`[MenuLayout] Added post to menu: "${title}" (ref: ${ref})`);
+  }
+
+  async removePostFromMenu(postId: number): Promise<void> {
+    const layout = await this.getMenuLayout();
+    const ref = `post:${postId}`;
+
+    for (const row of layout) {
+      for (let c = row.length - 1; c >= 0; c--) {
+        if (row[c].ref === ref) {
+          row.splice(c, 1);
+        }
+      }
+    }
+
+    // Remove empty rows
+    const cleaned = layout.filter(row => row.length > 0);
+    await this.saveMenuLayout(cleaned);
+    logger.info(`[MenuLayout] Removed post from menu: ref=${ref}`);
+  }
+
 }
 
 export const settingsService = new SettingsService();

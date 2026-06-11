@@ -3,6 +3,7 @@ import { prisma } from '../prisma/client';
 import { postRepository } from '../repositories/post.repository';
 import { cache } from '../utils/cache';
 import { systemLogService } from './system-log.service';
+import { settingsService } from './settings.service';
 import { logger } from '../utils/logger';
 
 const CACHE_KEY_PUBLISHED = 'posts:published';
@@ -101,6 +102,10 @@ export const postService = {
       updatedBy: publishedBy ?? undefined,
     });
     this.invalidateCache();
+    // Auto-add to menu_layout (hidden by default)
+    await settingsService.addPostToMenu(post.id, post.title).catch(err => {
+      logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
+    });
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
       message: `Post Published: "${post.title}"`,
@@ -117,6 +122,7 @@ export const postService = {
       updatedBy: undefined,
     });
     this.invalidateCache();
+    // Don't remove from menu - keep the button reference, it just won't resolve
     logger.info(`[Post] Unpublished: "${post.title}"`);
     return post;
   },
@@ -166,6 +172,10 @@ export const postService = {
       isPublished: false,
     });
     this.invalidateCache();
+    // Optionally hide from menu too (by removing, since hidden posts shouldn't be in menu)
+    await settingsService.removePostFromMenu(post.id).catch(err => {
+      logger.error(`[Post] Failed to remove hidden post from menu:`, err);
+    });
     logger.info(`[Post] Hidden: "${post.title}"`);
     return post;
   },
@@ -176,6 +186,9 @@ export const postService = {
       isPublished: true,
     });
     this.invalidateCache();
+    await settingsService.addPostToMenu(post.id, post.title).catch(err => {
+      logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
+    });
     logger.info(`[Post] Shown (restored): "${post.title}"`);
     return post;
   },

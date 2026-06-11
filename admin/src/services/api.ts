@@ -1,6 +1,6 @@
 import axios, { AxiosError } from "axios";
 import Cookies from "js-cookie";
-import type { AdminUser, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails } from "@/types";
+import type { AdminUser, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails, PostItem, MenuLayoutButton, MenuLayoutResponse } from "@/types";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://botprophub-production.up.railway.app";
 
@@ -409,6 +409,114 @@ export const adminUsersApi = {
   },
   async delete(id: number): Promise<{ success: boolean }> {
     const { data } = await api.delete(`/api/admin-users/${id}`);
+    return data;
+  },
+};
+
+export interface PostPayload {
+  title: string;
+  slug: string;
+  content?: string;
+  caption?: string;
+  mediaFileId?: string;
+  mediaType?: string;
+  parseMode?: "Markdown" | "HTML";
+  buttons?: any;
+  command?: string;
+  status?: "DRAFT" | "PUBLISHED" | "SCHEDULED" | "ARCHIVED" | "HIDDEN";
+  sortOrder?: number;
+}
+
+export const postsApi = {
+  async getAll(params: { page?: number; limit?: number; status?: string; search?: string } = {}): Promise<{ items: PostItem[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/posts", { params: { page: params.page ?? 1, limit: params.limit ?? 20, status: params.status, search: params.search } });
+    return data;
+  },
+  async getById(id: number): Promise<PostItem> {
+    const { data } = await api.get(`/api/posts/${id}`);
+    return data;
+  },
+  async create(payload: PostPayload): Promise<PostItem> {
+    const { data } = await api.post("/api/posts", payload);
+    return data;
+  },
+  async update(id: number, payload: Partial<PostPayload>): Promise<PostItem> {
+    const { data } = await api.put(`/api/posts/${id}`, payload);
+    return data;
+  },
+  async delete(id: number): Promise<{ success: boolean; message: string }> {
+    const { data } = await api.delete(`/api/posts/${id}`);
+    return data;
+  },
+  async publish(id: number): Promise<PostItem> {
+    const { data } = await api.post(`/api/posts/${id}/publish`);
+    return data;
+  },
+  async unpublish(id: number): Promise<PostItem> {
+    const { data } = await api.post(`/api/posts/${id}/unpublish`);
+    return data;
+  },
+  async hide(id: number): Promise<PostItem> {
+    const { data } = await api.post(`/api/posts/${id}/hide`);
+    return data;
+  },
+  async duplicate(id: number): Promise<PostItem> {
+    const { data } = await api.post(`/api/posts/${id}/duplicate`);
+    return data;
+  },
+  async addCommand(id: number, command: string, aliases?: string[]): Promise<{ id: number }> {
+    const { data } = await api.post(`/api/posts/${id}/commands`, { command, aliases });
+    return data;
+  },
+  async removeCommand(id: number, commandId: number): Promise<{ success: boolean }> {
+    const { data } = await api.delete(`/api/posts/${id}/commands/${commandId}`);
+    return data;
+  },
+  async getGlobalAnalytics(): Promise<any> {
+    const { data } = await api.get("/api/posts/global-analytics");
+    return data;
+  },
+  async getAnalytics(id: number): Promise<any> {
+    const { data } = await api.get(`/api/posts/${id}/analytics`);
+    return data;
+  },
+  async getVersions(id: number): Promise<any[]> {
+    const { data } = await api.get(`/api/posts/${id}/versions`);
+    return data;
+  },
+};
+
+export const menuApi = {
+  async getLayout(): Promise<MenuLayoutResponse> {
+    const { data } = await api.get("/api/menu/layout");
+    return data;
+  },
+  async saveLayout(layout: MenuLayoutButton[][]): Promise<MenuLayoutResponse> {
+    const { data } = await api.put("/api/menu/layout", layout);
+    return data;
+  },
+  async syncPosts(): Promise<{ success: boolean; message: string; version: number }> {
+    const { data } = await api.post("/api/menu/sync-posts");
+    return data;
+  },
+  async addPost(postId: number, title: string): Promise<{ success: boolean; layout: MenuLayoutButton[][] }> {
+    const { data } = await api.post("/api/menu/add-post", { postId, title });
+    return data;
+  },
+  async removePost(postId: number): Promise<{ success: boolean; layout: MenuLayoutButton[][] }> {
+    const { data } = await api.post("/api/menu/remove-post", { postId });
+    return data;
+  },
+  async getSnapshot(): Promise<{ success: boolean; snapshot: any }> {
+    const { data } = await api.get("/api/menu/snapshot");
+    return data;
+  },
+  async rollback(): Promise<{ success: boolean; message: string; layout: MenuLayoutButton[][] }> {
+    const { data } = await api.post("/api/menu/rollback");
+    return data;
+  },
+  async getVersion(): Promise<{ success: boolean; currentVersion: number }> {
+    const { data } = await api.get("/api/menu/undo-history");
     return data;
   },
 };

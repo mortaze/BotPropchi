@@ -310,8 +310,12 @@ export const menuButtonEditKeyboard = (row: number, col: number, button: any) =>
       Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `menu:toggle:${row}:${col}`),
     ],
     [
-      Markup.button.callback('🧭 انتقال چپ', `menu:btnleft:${row}:${col}`),
-      Markup.button.callback('🧭 انتقال راست', `menu:btnright:${row}:${col}`),
+      Markup.button.callback('⬆ سطر قبل', `menu:btnup:${row}:${col}`),
+      Markup.button.callback('⬇ سطر بعد', `menu:btndown:${row}:${col}`),
+    ],
+    [
+      Markup.button.callback('◀ چپ', `menu:btnleft:${row}:${col}`),
+      Markup.button.callback('▶ راست', `menu:btnright:${row}:${col}`),
     ],
     [
       Markup.button.callback('📐 تغییر اندازه سطر', `menu:resize:${row}`),

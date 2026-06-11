@@ -540,10 +540,55 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const layout = await settingsService.getMenuLayout();
-    layout.splice(row, 1);
+    // NEVER delete buttons - redistribute to adjacent rows
+    const deletedRow = layout.splice(row, 1)[0];
+    if (deletedRow && deletedRow.length > 0) {
+      // Spread buttons to next row (or prev row if last)
+      const targetIdx = row < layout.length ? row : layout.length - 1;
+      if (targetIdx >= 0 && layout[targetIdx]) {
+        layout[targetIdx] = [...deletedRow, ...layout[targetIdx]];
+      } else {
+        // No target row, append as new row
+        layout.push(deletedRow);
+      }
+    }
     await settingsService.saveMenuLayout(layout);
-    await ctx.reply('➖ سطر حذف شد.');
+    await ctx.reply(`➖ سطر حذف شد (${deletedRow?.length || 0} دکمه به سطر دیگر منتقل شد).`);
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:btnup:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    const layout = await settingsService.getMenuLayout();
+    if (row === 0) return ctx.reply('هم‌اکنون در بالاترین سطر است.');
+    const button = layout[row]?.splice(col, 1)[0];
+    if (button) {
+      layout[row - 1].push(button);
+      await settingsService.saveMenuLayout(layout);
+      await ctx.reply(`✅ دکمه به سطر ${row} منتقل شد.`);
+      await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+    }
+  });
+
+  bot.action(/^menu:btndown:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    const layout = await settingsService.getMenuLayout();
+    if (row >= layout.length - 1) return ctx.reply('هم‌اکنون در پایین‌ترین سطر است.');
+    const button = layout[row]?.splice(col, 1)[0];
+    if (button) {
+      layout[row + 1].push(button);
+      await settingsService.saveMenuLayout(layout);
+      await ctx.reply(`✅ دکمه به سطر ${row + 2} منتقل شد.`);
+      await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+    }
   });
 
   bot.action(/^menu:toggle:(\d+):(\d+)$/, async (ctx: any) => {

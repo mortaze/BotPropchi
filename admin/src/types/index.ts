@@ -361,3 +361,51 @@ export interface AiApiKeyItem {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface PostItem {
+  id: number;
+  title: string;
+  slug: string;
+  content?: string | null;
+  caption?: string | null;
+  mediaFileId?: string | null;
+  mediaType?: string | null;
+  albumMediaIds?: string[] | null;
+  parseMode: string;
+  buttons?: any;
+  command?: string | null;
+  status: PostStatus;
+  isPublished: boolean;
+  sortOrder: number;
+  scheduledAt?: string | null;
+  unpublishAt?: string | null;
+  publishedAt?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  commands?: PostCommandItem[];
+  _count?: { views: number; clickLogs: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PostStatus = "DRAFT" | "PUBLISHED" | "SCHEDULED" | "ARCHIVED" | "HIDDEN";
+
+export interface PostCommandItem {
+  id: number;
+  postId: number;
+  command: string;
+  aliases?: string[] | null;
+}
+
+export interface MenuLayoutButton {
+  ref: string;
+  text: string;
+  type?: string;
+  visible?: boolean;
+}
+
+export interface MenuLayoutResponse {
+  success: boolean;
+  layout: MenuLayoutButton[][];
+  version: number;
+}
