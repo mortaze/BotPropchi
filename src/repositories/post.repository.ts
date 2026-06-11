@@ -106,6 +106,13 @@ export const postRepository = {
     });
   },
 
+  async getHidden() {
+    return prisma.post.findMany({
+      where: { status: PostStatus.HIDDEN },
+      orderBy: [{ updatedAt: 'desc' }],
+    });
+  },
+
   async incrementViews(id: number, userId?: number | null, telegramId?: bigint | null) {
     return prisma.$transaction([
       prisma.postView.create({

@@ -1,4 +1,4 @@
-import { PostStatus, PostButtonType } from '@prisma/client';
+import { PostStatus } from '@prisma/client';
 import { Context, Markup, Telegraf } from 'telegraf';
 import { botAdminService } from '../../services/bot-admin.service';
 import { postService } from '../../services/post.service';
@@ -16,8 +16,11 @@ import {
   postRowResizeKeyboard,
   postPublishOptionsKeyboard,
   postAnalyticsKeyboard,
+  postParseModeKeyboard,
+  postCommandListKeyboard,
+  postCommandEditKeyboard,
 } from '../keyboards/post-keyboards';
-import { buildMainMenuKeyboard, buildBotAdminPanelKeyboard } from '../keyboards';
+import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
 
 function isPostAdmin(admin: any): boolean {
@@ -53,14 +56,28 @@ function slugify(text: string): string {
 }
 
 function formatPostPreview(post: any): string {
-  const statusEmoji = post.status === 'PUBLISHED' ? '✅' : post.status === 'DRAFT' ? '📝' : '📦';
+  const statusMap: Record<string, string> = {
+    PUBLISHED: '✅ Published',
+    DRAFT: '📝 Draft',
+    SCHEDULED: '⏰ Scheduled',
+    ARCHIVED: '📦 Archived',
+    HIDDEN: '👻 Hidden',
+  };
+  const statusText = statusMap[post.status] || post.status;
+  const parseMode = post.parseMode || 'Markdown';
+  const commands = (post as any).commands || [];
   const lines = [
-    `${statusEmoji} *${post.title}*`,
+    `*${post.title}*`,
     `_ID: ${post.id} | Slug: \`${post.slug}\`_`,
+    `${statusText} | 🔤 ${parseMode}`,
     post.isPinned ? '📌 *Pinned*' : '',
+    post.sortOrder ? `🗂 Order: ${post.sortOrder}` : '',
     post.command ? `🔗 Command: \`/${post.command}\`` : '',
-    post.status === 'PUBLISHED' && post.publishedAt ? `📅 Published: ${new Date(post.publishedAt).toLocaleDateString('fa-IR')}` : '',
-    post.status === 'SCHEDULED' && post.scheduledAt ? `⏰ Scheduled: ${new Date(post.scheduledAt).toLocaleDateString('fa-IR')}` : '',
+    commands.length ? `🔗 Commands: ${commands.map((c: any) => `/${c.command}`).join(', ')}` : '',
+    post.publishedAt ? `📅 Published: ${new Date(post.publishedAt).toLocaleDateString('fa-IR')}` : '',
+    post.scheduledAt ? `⏰ Scheduled: ${new Date(post.scheduledAt).toLocaleDateString('fa-IR')}` : '',
+    post.unpublishAt ? `⏰ Unpublish: ${new Date(post.unpublishAt).toLocaleDateString('fa-IR')}` : '',
+    post.mediaType ? `🖼 Media: ${post.mediaType}` : '',
     `📊 Views: ${(post as any)._count?.views || 0} | Clicks: ${(post as any)._count?.clickLogs || 0}`,
     '',
     post.content ? post.content.substring(0, 200) : '(No content)',
@@ -195,6 +212,129 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return;
     }
 
+    // ─── Handle Alias Input ──────────────────────────────────
+    const aliasCommandId = cache.get<number>(pendingKey(ctx.from.id, 'alias_cmd_id'));
+    if (aliasCommandId && editingPostId) {
+      cache.del(pendingKey(ctx.from.id, 'alias_cmd_id'));
+      const alias = ctx.message.text.replace(/^\//, '').trim();
+      if (!alias) return ctx.reply('❌ Invalid alias.');
+      try {
+        await postService.addCommandAlias(aliasCommandId, alias);
+        await ctx.reply(`✅ Alias /${alias} added!`);
+      } catch (err: any) {
+        await ctx.reply(`❌ ${err.message || 'Failed to add alias.'}`);
+      }
+      const commands = await postService.getCommands(editingPostId);
+      await ctx.reply('🔗 Commands:', postCommandListKeyboard(editingPostId, commands));
+      return;
+    }
+
+    // ─── Handle Schedule Input ───────────────────────────────
+    const schedulePublish = cache.get<number>(pendingKey(ctx.from.id, 'schedule_publish'));
+    if (schedulePublish) {
+      cache.del(pendingKey(ctx.from.id, 'schedule_publish'));
+      const date = new Date(ctx.message.text);
+      if (isNaN(date.getTime())) return ctx.reply('❌ Invalid date format. Use ISO format: 2026-06-15T14:30:00.000Z');
+      await postService.schedule(schedulePublish, date);
+      await ctx.reply(`✅ Scheduled for publish at ${date.toISOString()}`);
+      await showPostEditor(ctx, schedulePublish);
+      return;
+    }
+
+    const scheduleUnpublish = cache.get<number>(pendingKey(ctx.from.id, 'schedule_unpublish'));
+    if (scheduleUnpublish) {
+      cache.del(pendingKey(ctx.from.id, 'schedule_unpublish'));
+      const date = new Date(ctx.message.text);
+      if (isNaN(date.getTime())) return ctx.reply('❌ Invalid date format. Use ISO format: 2026-06-20T14:30:00.000Z');
+      await postService.scheduleUnpublish(scheduleUnpublish, date);
+      await ctx.reply(`✅ Scheduled for unpublish at ${date.toISOString()}`);
+      await showPostEditor(ctx, scheduleUnpublish);
+      return;
+    }
+
+    return next();
+  });
+
+  // ─── Handle Media for Post Creation/Editing ──────────────
+  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice'], async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
+
+    const editingField = cache.get<string>(pendingKey(ctx.from.id, 'editing_field'));
+    const editingPostId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+
+    if (editingField === 'media' && editingPostId) {
+      cache.del(pendingKey(ctx.from.id, 'editing_field'));
+
+      const msg = ctx.message;
+      let mediaFileId = '';
+      let mediaType = '';
+
+      if (msg.photo) {
+        mediaFileId = msg.photo[msg.photo.length - 1].file_id;
+        mediaType = 'photo';
+      } else if (msg.video) {
+        mediaFileId = msg.video.file_id;
+        mediaType = 'video';
+      } else if (msg.animation) {
+        mediaFileId = msg.animation.file_id;
+        mediaType = 'animation';
+      } else if (msg.document) {
+        mediaFileId = msg.document.file_id;
+        mediaType = 'document';
+      } else if (msg.audio) {
+        mediaFileId = msg.audio.file_id;
+        mediaType = 'audio';
+      } else if (msg.voice) {
+        mediaFileId = msg.voice.file_id;
+        mediaType = 'voice';
+      }
+
+      if (msg.media_group_id) {
+        const groupKey = `post_media_group:${ctx.from.id}:${msg.media_group_id}`;
+        const group = cache.get<string[]>(groupKey) || [];
+        group.push(mediaFileId);
+        cache.set(groupKey, group, 60);
+        if (group.length === 1) {
+          setTimeout(async () => {
+            const allMedia = cache.get<string[]>(groupKey);
+            if (allMedia && allMedia.length > 1) {
+              await postService.update(editingPostId, {
+                mediaFileId: allMedia[0],
+                mediaType,
+                albumMediaIds: allMedia,
+                updatedBy: BigInt(ctx.from.id),
+              } as any);
+              await ctx.reply(`✅ Album with ${allMedia.length} media items saved!`);
+            } else if (allMedia) {
+              await postService.update(editingPostId, {
+                mediaFileId: allMedia[0],
+                mediaType,
+                updatedBy: BigInt(ctx.from.id),
+              } as any);
+              await ctx.reply(`✅ ${mediaType} saved!`);
+            }
+            cache.del(groupKey);
+            cache.del(pendingKey(ctx.from.id, 'editing_post'));
+            await showPostEditor(ctx, editingPostId);
+          }, 1500);
+          return ctx.reply('📦 Media group detected. Waiting for all items...');
+        }
+        return;
+      }
+
+      await postService.update(editingPostId, {
+        mediaFileId,
+        mediaType,
+        updatedBy: BigInt(ctx.from.id),
+      } as any);
+      cache.del(pendingKey(ctx.from.id, 'editing_post'));
+      await ctx.reply(`✅ ${mediaType} saved!`);
+      await showPostEditor(ctx, editingPostId);
+      return;
+    }
+
     return next();
   });
 
@@ -252,6 +392,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.set(pendingKey(ctx.from.id, 'editing_field'), 'caption', 300);
       cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
       return ctx.reply(`📝 Current caption: ${post.caption || '(none)'}\n\nSend the new caption:`);
+    }
+    if (action === 'parsemode') {
+      return ctx.reply(`🔤 Current parse mode: *${post.parseMode || 'Markdown'}*\n\nSelect parse mode:`, {
+        parse_mode: 'Markdown',
+        ...postParseModeKeyboard(postId, post.parseMode || 'Markdown'),
+      });
     }
   });
 
@@ -333,6 +479,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       drafts.map((d: any) => [Markup.button.callback(`📝 ${d.title}`, `post:view:${d.id}`)])
     );
     await ctx.reply(`📦 Drafts (${drafts.length}):`, rows);
+  });
+
+  // ─── Hidden Posts ────────────────────────────────────────
+  bot.hears('👻 Hidden Posts', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const hidden = await postService.getHidden();
+    if (hidden.length === 0) {
+      return ctx.reply('👻 No hidden posts.');
+    }
+    const rows = Markup.inlineKeyboard(
+      hidden.map((p: any) => [Markup.button.callback(`👻 ${p.title}`, `post:view:${p.id}`)])
+    );
+    await ctx.reply(`👻 Hidden Posts (${hidden.length}):`, rows);
   });
 
   // ─── Pinned Posts ───────────────────────────────────────
@@ -435,6 +595,134 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await postService.update(postId, { status: PostStatus.DRAFT, updatedBy: BigInt(ctx.from.id) } as any);
     postService.invalidateCache();
     await ctx.reply('📝 Saved as draft.');
+    await showPostEditor(ctx, postId);
+  });
+
+  // ─── Parse Mode ──────────────────────────────────────────
+  bot.action(/^post:parsemode:(\d+):(.+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const mode = ctx.match[2];
+    await postService.update(postId, { parseMode: mode, updatedBy: BigInt(ctx.from.id) } as any);
+    await ctx.reply(`✅ Parse mode set to ${mode}.`);
+    await showPostEditor(ctx, postId);
+  });
+
+  // ─── Archive ─────────────────────────────────────────────
+  bot.action(/^post:archive:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    await postService.archive(postId);
+    await ctx.reply('📦 Post archived.');
+    await showPostEditor(ctx, postId);
+  });
+
+  // ─── Hide / Show ─────────────────────────────────────────
+  bot.action(/^post:hide:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    if (post.status === 'HIDDEN') {
+      await postService.show(postId);
+      await ctx.reply('👻 Post is now visible.');
+    } else {
+      await postService.hide(postId);
+      await ctx.reply('👻 Post hidden.');
+    }
+    await showPostEditor(ctx, postId);
+  });
+
+  // ─── Schedule ────────────────────────────────────────────
+  bot.action(/^post:publish:schedule:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    cache.set(pendingKey(ctx.from.id, 'schedule_publish'), postId, 300);
+    await ctx.reply('📅 Send the date/time in ISO format:\ne.g. `2026-06-15T14:30:00.000Z`', { parse_mode: 'Markdown' });
+  });
+
+  bot.action(/^post:unpublish:schedule:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    cache.set(pendingKey(ctx.from.id, 'schedule_unpublish'), postId, 300);
+    await ctx.reply('⏰ Send the date/time to auto-unpublish in ISO format:\ne.g. `2026-06-20T14:30:00.000Z`', { parse_mode: 'Markdown' });
+  });
+
+  // ─── Preview from Editor ────────────────────────────────
+  bot.action(/^post:preview:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ Post not found.');
+    await sendPostToChat(ctx, post);
+  });
+
+  // ─── Command List ────────────────────────────────────────
+  bot.action(/^post:cmd:list:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const commands = await postService.getCommands(postId);
+    await ctx.reply(
+      commands.length ? `🔗 Commands for this post:\n${commands.map((c: any) => `/${c.command}${c.aliases?.length ? ` (aliases: ${(c.aliases as string[]).join(', ')})` : ''}`).join('\n')}` : '🔗 No commands.',
+      postCommandListKeyboard(postId, commands)
+    );
+  });
+
+  bot.action(/^post:cmd:view:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const commandId = parseInt(ctx.match[2]);
+    await ctx.reply('🔗 Command options:', postCommandEditKeyboard(postId, commandId));
+  });
+
+  bot.action(/^post:cmd:del:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const commandId = parseInt(ctx.match[2]);
+    try {
+      await postService.removeCommand(commandId);
+      await ctx.reply('🗑 Command removed.');
+    } catch (err: any) {
+      await ctx.reply(`❌ ${err.message}`);
+    }
+  });
+
+  bot.action(/^post:cmd:alias:add:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const commandId = parseInt(ctx.match[2]);
+    cache.set(pendingKey(ctx.from.id, 'alias_cmd_id'), commandId, 300);
+    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    await ctx.reply('➕ Send the alias (without /):');
+  });
+
+  // ─── Unpublish ───────────────────────────────────────────
+  bot.action(/^post:unpublish:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    await postService.unpublish(postId);
+    await ctx.reply('📥 Post unpublished.');
     await showPostEditor(ctx, postId);
   });
 
@@ -781,7 +1069,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   // ─── Post View / Send to User ──────────────────────────
   async function sendPostToChat(ctx: any, post: any) {
     await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-    const inlineButtons = buildPostInlineKeyboard((post as any).buttons || []);
+    const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
     const parseMode = post.parseMode || 'Markdown';
     const hasText = post.content || post.caption;
 
@@ -826,14 +1114,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     });
   }
 
-  function buildPostInlineKeyboard(buttons: any[]): any[][] {
+  function buildPostInlineKeyboard(buttons: any[], postId?: number): any[][] {
     if (!buttons || buttons.length === 0) return [];
     return buttons.map((row: any[]) =>
       row.map((btn: any) => {
         if (!btn) return null;
         switch (btn.type) {
           case 'URL': return Markup.button.url(btn.text || 'Link', btn.value || '');
-          case 'CALLBACK': return Markup.button.callback(btn.text || 'Button', btn.value || 'noop');
+          case 'CALLBACK': {
+            const clickData = JSON.stringify({ postId, text: btn.text, type: btn.type });
+            return Markup.button.callback(btn.text || 'Button', `post:user:click:${clickData}`);
+          }
           case 'OPEN_MINI_APP': return Markup.button.webApp(btn.text || 'Open', btn.value || '');
           case 'COPY_TEXT': return Markup.button.callback(btn.text || 'Copy', `post:user:copy:${btn.value || ''}`);
           case 'SEND_COMMAND': return Markup.button.switchToChat(btn.text || 'Send', btn.value || '');

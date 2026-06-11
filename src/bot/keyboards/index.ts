@@ -10,7 +10,7 @@ type DiscountWithFirm = DiscountCode & {
 };
 
 // ─── منوی اصلی ────────────────────────────────────────────
-export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, boolean> = {}, hasPublishedPosts = false) {
+export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, boolean> = {}, hasPublishedPosts = false, publishedPosts: any[] = []) {
   const enabled = (key: string) => features[key] !== false;
   const rows: string[][] = [];
   const first = [];
@@ -30,7 +30,13 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
     rows.push(['🚀 پروفایل من']);
   }
   if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
-  if (hasPublishedPosts) rows.push(['📋 Posts']);
+  if (hasPublishedPosts) {
+    const recentPosts = publishedPosts.slice(0, 3);
+    for (const post of recentPosts) {
+      rows.push([`📌 ${post.title?.substring(0, 30)}`]);
+    }
+    rows.push(['📋 All Posts']);
+  }
   if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
   return Markup.keyboard(rows.length ? rows : [['👨‍💼 پنل ادمین']]).resize().persistent();
 }

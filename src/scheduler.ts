@@ -18,6 +18,16 @@ export function startScheduler() {
     }
 
     try {
+      const postService = require('./services/post.service').postService;
+      const processed = await postService.processScheduled();
+      if (processed > 0) {
+        logger.info(`[Scheduler] Processed ${processed} scheduled post(s)`);
+      }
+    } catch (err) {
+      logger.error('❌ Post scheduler error', err);
+    }
+
+    try {
       const lotteries = await prisma.lottery.findMany({
         where: {
           isActive: true,

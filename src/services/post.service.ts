@@ -122,7 +122,81 @@ export const postService = {
       isPublished: false,
     });
     this.invalidateCache();
+    await systemLogService.log({
+      eventType: SystemEventType.ADMIN_ACTION,
+      message: `Post Scheduled for publish: "${post.title}" at ${scheduledAt.toISOString()}`,
+      metadata: { postId: id, scheduledAt: scheduledAt.toISOString() } as any,
+    });
+    logger.info(`[Post] Scheduled: "${post.title}" at ${scheduledAt.toISOString()}`);
     return post;
+  },
+
+  async scheduleUnpublish(id: number, unpublishAt: Date) {
+    const post = await postRepository.update(id, {
+      unpublishAt,
+    });
+    this.invalidateCache();
+    await systemLogService.log({
+      eventType: SystemEventType.ADMIN_ACTION,
+      message: `Post Scheduled for unpublish: "${post.title}" at ${unpublishAt.toISOString()}`,
+      metadata: { postId: id, unpublishAt: unpublishAt.toISOString() } as any,
+    });
+    logger.info(`[Post] Scheduled unpublish: "${post.title}" at ${unpublishAt.toISOString()}`);
+    return post;
+  },
+
+  async hide(id: number) {
+    const post = await postRepository.update(id, {
+      status: PostStatus.HIDDEN,
+      isPublished: false,
+    });
+    this.invalidateCache();
+    logger.info(`[Post] Hidden: "${post.title}"`);
+    return post;
+  },
+
+  async show(id: number) {
+    const post = await postRepository.update(id, {
+      status: PostStatus.PUBLISHED,
+      isPublished: true,
+    });
+    this.invalidateCache();
+    logger.info(`[Post] Shown (restored): "${post.title}"`);
+    return post;
+  },
+
+  async getHidden() {
+    return postRepository.getHidden();
+  },
+
+  async processScheduled(): Promise<number> {
+    const now = new Date();
+    let processed = 0;
+    const dueForPublish = await prisma.post.findMany({
+      where: {
+        status: PostStatus.SCHEDULED,
+        scheduledAt: { lte: now },
+        isPublished: false,
+      },
+    });
+    for (const post of dueForPublish) {
+      await this.publish(post.id);
+      processed++;
+      logger.info(`[Scheduler] Auto-published post: "${post.title}" (id: ${post.id})`);
+    }
+    const dueForUnpublish = await prisma.post.findMany({
+      where: {
+        status: PostStatus.PUBLISHED,
+        isPublished: true,
+        unpublishAt: { lte: now },
+      },
+    });
+    for (const post of dueForUnpublish) {
+      await this.unpublish(post.id);
+      processed++;
+      logger.info(`[Scheduler] Auto-unpublished post: "${post.title}" (id: ${post.id})`);
+    }
+    return processed;
   },
 
   async duplicate(id: number, createdBy?: bigint) {
@@ -248,12 +322,56 @@ export const postService = {
       data: { postId, command, aliases: aliases ?? undefined },
     });
     this.invalidateCache();
+    await systemLogService.log({
+      eventType: SystemEventType.ADMIN_ACTION,
+      message: `Post Command Added: /${command}`,
+      metadata: { postId, command } as any,
+    });
+    logger.info(`[Post] Command added: /${command} -> post ${postId}`);
     return result;
   },
 
   async removeCommand(commandId: number) {
+    const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
+    if (!cmd) throw new Error('Command not found');
     await prisma.postCommand.delete({ where: { id: commandId } });
     this.invalidateCache();
+    await systemLogService.log({
+      eventType: SystemEventType.ADMIN_ACTION,
+      message: `Post Command Removed: /${cmd.command}`,
+      metadata: { postId: cmd.postId, command: cmd.command } as any,
+    });
+    logger.info(`[Post] Command removed: /${cmd.command}`);
+  },
+
+  async addCommandAlias(commandId: number, alias: string) {
+    const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
+    if (!cmd) throw new Error('Command not found');
+    const aliases = (cmd.aliases as string[]) || [];
+    if (aliases.includes(alias)) throw new Error(`Alias /${alias} already exists`);
+    aliases.push(alias);
+    await prisma.postCommand.update({ where: { id: commandId }, data: { aliases } });
+    this.invalidateCache();
+    await systemLogService.log({
+      eventType: SystemEventType.ADMIN_ACTION,
+      message: `Post Command Alias Added: /${alias} -> /${cmd.command}`,
+      metadata: { postId: cmd.postId, command: cmd.command, alias } as any,
+    });
+    logger.info(`[Post] Command alias added: /${alias} -> /${cmd.command}`);
+  },
+
+  async removeCommandAlias(commandId: number, alias: string) {
+    const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
+    if (!cmd) throw new Error('Command not found');
+    const aliases = (cmd.aliases as string[]) || [];
+    const filtered = aliases.filter((a: string) => a !== alias);
+    await prisma.postCommand.update({ where: { id: commandId }, data: { aliases: filtered } });
+    this.invalidateCache();
+    logger.info(`[Post] Command alias removed: /${alias}`);
+  },
+
+  async getCommands(postId: number) {
+    return prisma.postCommand.findMany({ where: { postId } });
   },
 
   async resolveCommand(command: string): Promise<any | null> {

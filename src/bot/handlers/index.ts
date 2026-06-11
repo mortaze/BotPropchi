@@ -62,16 +62,17 @@ async function adminReplyOptions(telegramId?: number) {
   const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
   const features = await settingsService.getFeatureMap();
   let hasPublishedPosts = false;
+  let publishedPosts: any[] = [];
   try {
-    const published = await postService.getPublished();
-    hasPublishedPosts = published.length > 0;
+    publishedPosts = await postService.getPublished();
+    hasPublishedPosts = publishedPosts.length > 0;
   } catch {}
-  return buildMainMenuKeyboard(Boolean(admin), features, hasPublishedPosts);
+  return buildMainMenuKeyboard(Boolean(admin), features, hasPublishedPosts, publishedPosts);
 }
 
 async function sendPostToUser(ctx: any, post: any) {
   await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-  const inlineButtons = buildPostInlineKeyboard((post as any).buttons || []);
+  const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
   const parseMode = post.parseMode || 'Markdown';
   const hasText = post.content || post.caption;
 
@@ -120,14 +121,17 @@ async function sendPostToUser(ctx: any, post: any) {
   }
 }
 
-function buildPostInlineKeyboard(buttons: any[]): any[][] {
+function buildPostInlineKeyboard(buttons: any[], postId?: number): any[][] {
   if (!buttons || buttons.length === 0) return [];
   return buttons.map((row: any[]) =>
     row.map((btn: any) => {
       if (!btn) return null;
       switch (btn.type) {
         case 'URL': return Markup.button.url(btn.text || 'Link', btn.value || '');
-        case 'CALLBACK': return Markup.button.callback(btn.text || 'Button', btn.value || 'noop');
+        case 'CALLBACK': {
+          const clickData = JSON.stringify({ postId, text: btn.text, type: btn.type });
+          return Markup.button.callback(btn.text || 'Button', `post:user:click:${clickData}`);
+        }
         case 'OPEN_MINI_APP': return Markup.button.webApp(btn.text || 'Open', btn.value || '');
         case 'COPY_TEXT': return Markup.button.callback(btn.text || 'Copy', `post:user:copy:${btn.value || ''}`);
         case 'SEND_COMMAND': return Markup.button.switchToChat(btn.text || 'Send', btn.value || '');
@@ -384,14 +388,24 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   // ─── Posts (User-facing) ─────────────────────────────────
-  bot.hears('📋 Posts', async (ctx) => {
+  bot.hears('📋 All Posts', async (ctx) => {
     if (!(await settingsService.isFeatureEnabled('posts'))) return ctx.reply('⛔ This service is currently disabled.');
     const posts = await postService.getPublished();
     if (!posts.length) return ctx.reply('📋 No posts available.');
     const keyboard = Markup.inlineKeyboard(
-      posts.map((p: any) => [Markup.button.callback(p.title, `post:user:view:${p.id}`)])
+      posts.map((p: any) => [Markup.button.callback(p.title.substring(0, 40), `post:user:view:${p.id}`)])
     );
     await ctx.reply('📋 Published Posts:', keyboard);
+  });
+
+  // ─── Direct post click from main menu ────────────────────
+  bot.hears(/^📌 (.+)$/, async (ctx: any) => {
+    if (!(await settingsService.isFeatureEnabled('posts'))) return;
+    const title = ctx.match[1].trim();
+    const posts = await postService.getPublished();
+    const post = posts.find((p: any) => p.title?.substring(0, 30) === title);
+    if (!post) return;
+    await sendPostToUser(ctx, post);
   });
 
   bot.action(/^post:user:view:(\d+)$/, async (ctx: any) => {
@@ -407,6 +421,56 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   bot.action(/^post:user:copy:(.+)$/, async (ctx: any) => {
     await ctx.answerCbQuery(`📋 Copied: ${ctx.match[1]}`, { show_alert: true });
+  });
+
+  // ─── Post Command Routing ─────────────────────────────────
+  bot.on('text', async (ctx: any, next) => {
+    if (ctx.chat?.type !== 'private') return next();
+    const text = ctx.message.text;
+    if (!text.startsWith('/')) return next();
+    const cmd = text.slice(1).split(' ')[0].toLowerCase();
+    if (['start', 'admin_add', 'admin_suspend', 'admin_activate', 'admin_delete'].includes(cmd)) return next();
+    try {
+      const post = await postService.resolveCommand(cmd);
+      if (post && post.status === 'PUBLISHED' && post.isPublished) {
+        await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+        await sendPostToUser(ctx, post);
+        await systemLogService.log({
+          eventType: SystemEventType.ADMIN_ACTION,
+          message: `Post Command Executed: /${cmd} -> "${post.title}"`,
+          telegramId: ctx.from.id,
+          metadata: { postId: post.id, command: cmd } as any,
+        });
+        return;
+      }
+    } catch {}
+    return next();
+  });
+
+  // ─── Post Button Click Logging ───────────────────────────
+  bot.action(/^post:user:click:(.+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    try {
+      const data = JSON.parse(ctx.match[1]);
+      await postService.logClick({
+        postId: data.postId,
+        telegramId: BigInt(ctx.from.id),
+        buttonText: data.text,
+        buttonType: data.type,
+      });
+    } catch {}
+  });
+
+  // ─── Post INTERNAL_NAV routing ──────────────────────────
+  bot.action(/^post:nav:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    if (!(await settingsService.isFeatureEnabled('posts'))) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
+      return ctx.reply('❌ Post not found.');
+    }
+    await sendPostToUser(ctx, post);
   });
 
   bot.action('broadcast:confirm', async (ctx: any) => {
