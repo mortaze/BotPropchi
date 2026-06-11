@@ -137,6 +137,112 @@ class SettingsService {
       create: { key, value },
     });
   }
+
+  // ─── Menu Layout Helpers ──────────────────────────────────
+  async getMenuLayout(): Promise<any[][]> {
+    try {
+      const raw = await this.getSetting('menu_layout_saved');
+      if (raw) return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {}
+    return [];
+  }
+
+  async saveMenuLayout(layout: any[][]) {
+    await this.setSetting('menu_layout_saved', layout);
+  }
+
+  async syncMenuLayout(publishedPosts: any[]): Promise<any[][]> {
+    const layout = await this.getMenuLayout();
+
+    const systemButtons: { ref: string; text: string }[] = [];
+    const features = await this.getFeatureMap();
+
+    if (features.discount_codes !== false) systemButtons.push({ ref: 'system:discount_codes', text: '🎯 کدهای تخفیف' });
+    if (features.prop_firms !== false) systemButtons.push({ ref: 'system:prop_firms', text: '🏢 پراپ فرم‌ها' });
+    if (features.lottery !== false) systemButtons.push({ ref: 'system:lottery', text: '🎰 قرعه‌کشی' });
+    if (features.points !== false) systemButtons.push({ ref: 'system:points', text: '⭐️ امتیاز من' });
+    if (features.leaderboard !== false) systemButtons.push({ ref: 'system:leaderboard', text: '🏆 لیدربورد' });
+    if (features.referrals !== false) systemButtons.push({ ref: 'system:referrals', text: '👥 دعوت دوستان' });
+    if (features.ai_assistant !== false) systemButtons.push({ ref: 'system:ai_assistant', text: '🤖 هوش مصنوعی پراپ هاب' });
+    systemButtons.push({ ref: 'system:search', text: '🔍 جستجو' });
+
+    const postButtons = (publishedPosts || []).map((p: any) => ({
+      ref: `post:${p.id}`,
+      text: p.title,
+    }));
+
+    const allAvailableRefs = new Map<string, string>();
+    for (const sb of systemButtons) allAvailableRefs.set(sb.ref, sb.text);
+    for (const pb of postButtons) allAvailableRefs.set(pb.ref, pb.text);
+
+    const newLayout: any[][] = [];
+
+    if (layout.length > 0) {
+      const usedRefs = new Set<string>();
+      const flatRows: any[] = [];
+
+      for (const row of layout) {
+        for (const btn of row) {
+          const ref = btn.ref || '';
+          if (allAvailableRefs.has(ref) || ref.startsWith('custom:')) {
+            if (!usedRefs.has(ref)) {
+              usedRefs.add(ref);
+              flatRows.push(btn);
+            }
+          }
+        }
+      }
+
+      for (const [ref, text] of allAvailableRefs) {
+        if (!usedRefs.has(ref)) {
+          flatRows.push({ ref, text, type: ref.startsWith('post:') ? 'CALLBACK' : 'URL', visible: true });
+        }
+      }
+
+      const EMPTY_ROW_THRESHOLD = 3;
+      let currentRow: any[] = [];
+      for (const btn of flatRows) {
+        if (currentRow.length >= EMPTY_ROW_THRESHOLD) {
+          newLayout.push(currentRow);
+          currentRow = [];
+        }
+        currentRow.push(btn);
+      }
+      if (currentRow.length > 0) newLayout.push(currentRow);
+
+    } else {
+      const allButtons = [...systemButtons, ...postButtons];
+      const rowSize = 2;
+      for (let i = 0; i < allButtons.length; i += rowSize) {
+        const row = allButtons.slice(i, i + rowSize).map(b => ({
+          ref: b.ref,
+          text: b.text,
+          type: b.ref.startsWith('post:') ? 'CALLBACK' : 'URL',
+          visible: true,
+        }));
+        newLayout.push(row);
+      }
+    }
+
+    await this.saveMenuLayout(newLayout);
+    return newLayout;
+  }
+
+  async getMenuButtonRefs(): Promise<Map<string, string>> {
+    const refs = new Map<string, string>();
+
+    const features = await this.getFeatureMap();
+    if (features.discount_codes !== false) refs.set('🎯 کدهای تخفیف', 'system:discount_codes');
+    if (features.prop_firms !== false) refs.set('🏢 پراپ فرم‌ها', 'system:prop_firms');
+    if (features.lottery !== false) refs.set('🎰 قرعه‌کشی', 'system:lottery');
+    if (features.points !== false) refs.set('⭐️ امتیاز من', 'system:points');
+    if (features.leaderboard !== false) refs.set('🏆 لیدربورد', 'system:leaderboard');
+    if (features.referrals !== false) refs.set('👥 دعوت دوستان', 'system:referrals');
+    if (features.ai_assistant !== false) refs.set('🤖 هوش مصنوعی پراپ هاب', 'system:ai_assistant');
+    refs.set('🔍 جستجو', 'system:search');
+
+    return refs;
+  }
 }
 
 export const settingsService = new SettingsService();
