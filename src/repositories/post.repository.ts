@@ -47,31 +47,12 @@ export const postRepository = {
     return null;
   },
 
-  async findByCategory(category: string) {
-    return prisma.post.findMany({
-      where: { category, status: PostStatus.PUBLISHED, isPublished: true },
-      include: { _count: { select: { views: true } } },
-      orderBy: [{ categoryOrder: 'asc' }, { sortOrder: 'asc' }],
-    });
-  },
-
-  async getCategories(): Promise<string[]> {
-    const result = await prisma.post.findMany({
-      where: { status: PostStatus.PUBLISHED, isPublished: true, category: { not: null } },
-      select: { category: true, categoryIcon: true, categoryOrder: true },
-      distinct: ['category'],
-      orderBy: [{ categoryOrder: 'asc' }],
-    });
-    return result.map((r) => r.category as string);
-  },
-
   async findAll(params: {
     page?: number;
     limit?: number;
     status?: PostStatus;
     isPublished?: boolean;
     search?: string;
-    category?: string;
   }) {
     const page = Math.max(1, params.page || 1);
     const limit = Math.min(50, Math.max(1, params.limit || 10));
@@ -79,7 +60,6 @@ export const postRepository = {
     const where: Prisma.PostWhereInput = {
       ...(params.status ? { status: params.status } : {}),
       ...(params.isPublished !== undefined ? { isPublished: params.isPublished } : {}),
-      ...(params.category ? { category: params.category } : {}),
       ...(params.search
         ? {
             OR: [
@@ -119,7 +99,7 @@ export const postRepository = {
       prisma.post.findMany({
         where: { status: PostStatus.PUBLISHED, isPublished: true },
         include: { _count: { select: { views: true } } },
-        orderBy: [{ isPinned: 'desc' }, { sortOrder: 'asc' }, { publishedAt: 'desc' }],
+        orderBy: [{ sortOrder: 'asc' }, { publishedAt: 'desc' }],
         skip,
         take: limit,
       }),
@@ -133,13 +113,6 @@ export const postRepository = {
       where: { status: PostStatus.DRAFT },
       include: { _count: { select: { views: true } } },
       orderBy: [{ updatedAt: 'desc' }],
-    });
-  },
-
-  async getPinned() {
-    return prisma.post.findMany({
-      where: { isPinned: true, status: PostStatus.PUBLISHED },
-      orderBy: [{ sortOrder: 'asc' }],
     });
   },
 
@@ -282,10 +255,6 @@ export const postRepository = {
         command: snapshot.command,
         status: snapshot.status,
         sortOrder: snapshot.sortOrder,
-        isPinned: snapshot.isPinned,
-        category: snapshot.category,
-        categoryIcon: snapshot.categoryIcon,
-        categoryOrder: snapshot.categoryOrder,
       },
     });
     return post;
@@ -352,9 +321,6 @@ export const postRepository = {
           command: original.command ? `${original.command}_copy` : undefined,
           status: PostStatus.DRAFT,
           sortOrder: (original.sortOrder ?? 0) + 1,
-          category: original.category,
-          categoryIcon: original.categoryIcon,
-          categoryOrder: original.categoryOrder,
           createdBy,
         },
       });

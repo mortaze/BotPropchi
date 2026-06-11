@@ -19,7 +19,6 @@ import {
   postParseModeKeyboard,
   postCommandListKeyboard,
   postCommandEditKeyboard,
-  postCategoryKeyboard,
   postVersionHistoryKeyboard,
   postIntegrityKeyboard,
   postGlobalAnalyticsKeyboard,
@@ -76,7 +75,6 @@ function formatPostPreview(post: any): string {
     `*${post.title}*`,
     `_شناسه: ${post.id} | اسلاگ: \`${post.slug}\`_`,
     `${statusText} | 🔤 ${parseMode}`,
-    post.isPinned ? '📌 *سنجاق شده*' : '',
     post.sortOrder ? `🗂 ترتیب: ${post.sortOrder}` : '',
     post.command ? `🔗 دستور: \`/${post.command}\`` : '',
     commands.length ? `🔗 دستورات: ${commands.map((c: any) => `/${c.command}`).join(', ')}` : '',
@@ -464,7 +462,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
     const text = `📋 پست‌ها (صفحه ${page}/${result.pages})\n\n` +
       result.items.map((p: any) =>
-        `${p.isPinned ? '📌' : '  '} ${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : '📦'} ${p.title} (شناسه: ${p.id})`
+        `${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : '📦'} ${p.title} (شناسه: ${p.id})`
       ).join('\n');
     if (edit) {
       await ctx.editMessageText(text, postListKeyboard(result.items, page, result.pages));
@@ -499,20 +497,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       hidden.map((p: any) => [Markup.button.callback(`👻 ${p.title}`, `post:view:${p.id}`)])
     );
     await ctx.reply(`👻 پست‌های مخفی (${hidden.length}):`, rows);
-  });
-
-  // ─── Pinned Posts ───────────────────────────────────────
-  bot.hears('📌 پین شده', async (ctx: any) => {
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const pinned = await postService.getPinned();
-    if (pinned.length === 0) {
-      return ctx.reply('📌 پستی پین نشده است.');
-    }
-    const rows = Markup.inlineKeyboard(
-      pinned.map((p: any) => [Markup.button.callback(`📌 ${p.title}`, `post:view:${p.id}`)])
-    );
-    await ctx.reply(`📌 پست‌های پین شده (${pinned.length}):`, rows);
   });
 
   // ─── Search Posts ───────────────────────────────────────
@@ -729,18 +713,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     await postService.unpublish(postId);
     await ctx.reply('📥 انتشار پست لغو شد.');
-    await showPostEditor(ctx, postId);
-  });
-
-  // ─── Pin / Unpin ────────────────────────────────────────
-  bot.action(/^post:pin:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const updated = await postService.togglePin(postId);
-    if (!updated) return ctx.reply('❌ پست یافت نشد.');
-    await ctx.reply(updated.isPinned ? '📌 پست سنجاق شد!' : '📌 سنجاق پست برداشته شد!');
     await showPostEditor(ctx, postId);
   });
 
@@ -1045,7 +1017,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       '• حالت نمایش (Markdown / HTML)',
       '• ترتیب',
       '• دستورات و نام‌های مستعار',
-      '• وضعیت سنجاق',
       '• نوع رسانه',
     ].join('\n');
     await ctx.reply(text, {
@@ -1060,79 +1031,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.action('post:menu', async (ctx: any) => {
     await ctx.answerCbQuery();
     await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
-  });
-
-  // ─── Category ───────────────────────────────────────────
-  bot.action(/^post:category:edit:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    cache.set(pendingKey(ctx.from.id, 'category_post'), postId, 300);
-    const categories = await postService.getCategories();
-    await ctx.reply(
-      `📁 دسته‌بندی برای: *${post.title}*\nدسته فعلی: ${(post as any).category || '(ندارد)'}`,
-      { parse_mode: 'Markdown', ...postCategoryKeyboard(categories, (post as any).category) }
-    );
-  });
-
-  bot.action(/^post:category:set:(.*)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const category = ctx.match[1] || null;
-    const postId = cache.get<number>(pendingKey(ctx.from.id, 'category_post'));
-    if (!postId) return ctx.reply('❌ پست انتخاب نشده است. از ویرایشگر استفاده کنید.');
-    await postService.setCategory(postId, category);
-    await ctx.reply(`✅ دسته‌بندی به "${category || 'ندارد'}" تغییر یافت.`);
-    await showPostEditor(ctx, postId);
-  });
-
-  bot.action('post:category:new', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    cache.set(pendingKey(ctx.from.id, 'category_new'), true, 300);
-    await ctx.reply('📁 نام دسته‌بندی جدید را وارد کنید:');
-  });
-
-  bot.action(/^post:category:posts:(.+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const category = ctx.match[1];
-    const posts = await postService.findByCategory(category);
-    if (posts.length === 0) return ctx.reply(`📁 پستی در دسته "${category}" وجود ندارد.`);
-    const text = `📁 دسته: *${category}*\n${posts.map((p: any) => `• ${p.title}`).join('\n')}`;
-    await ctx.reply(text, { parse_mode: 'Markdown', ...postListKeyboard(posts, 1, 1) });
-  });
-
-  bot.action('post:category:back', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
-  });
-
-  bot.on('text', async (ctx: any, next) => {
-    if (!ctx.from) return next();
-    const creatingCategory = cache.get<boolean>(pendingKey(ctx.from.id, 'category_new'));
-    if (!creatingCategory) return next();
-    cache.del(pendingKey(ctx.from.id, 'category_new'));
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return next();
-    const catName = ctx.message.text.trim();
-    if (!catName) return ctx.reply('❌ نام دسته‌بندی نمی‌تواند خالی باشد.');
-    const postId = cache.get<number>(pendingKey(ctx.from.id, 'category_post'));
-    if (postId) {
-      await postService.setCategory(postId, catName);
-      await ctx.reply(`✅ دسته‌بندی "${catName}" تنظیم شد.`);
-      await showPostEditor(ctx, postId);
-    } else {
-      await ctx.reply(`✅ دسته‌بندی "${catName}" ایجاد شد. می‌توانید آن را از ویرایشگر به پست اختصاص دهید.`);
-    }
   });
 
   // ─── Version History ────────────────────────────────────
@@ -1365,14 +1263,35 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   // This is handled by modifying buildMainMenuKeyboard in keyboards/index.ts
 
   // ─── Post View / Send to User ──────────────────────────
+  function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; content: string }[] } {
+    const segments: { type: 'text' | 'copy'; content: string }[] = [];
+    const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        segments.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+      }
+      segments.push({ type: 'copy', content: match[1] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+      segments.push({ type: 'text', content: text.slice(lastIndex) });
+    }
+    return { segments };
+  }
+
   async function sendPostToChat(ctx: any, post: any) {
     await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
     const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
     const parseMode = post.parseMode || 'Markdown';
-    const hasText = post.content || post.caption;
+    const rawText = post.content || post.caption || '';
+    const { segments } = parseCopyBlocks(rawText);
+    const hasCopyBlocks = segments.some(s => s.type === 'copy');
+    const textWithoutCopy = segments.filter(s => s.type === 'text').map(s => s.content).join('').trim();
 
     if (post.mediaFileId && post.mediaType) {
-      const mediaConfig: any = { caption: post.caption || post.content, parse_mode: parseMode, ...(inlineButtons ? Markup.inlineKeyboard(inlineButtons) : {}) };
+      const mediaConfig: any = { caption: textWithoutCopy || post.caption, parse_mode: parseMode, ...(inlineButtons ? Markup.inlineKeyboard(inlineButtons) : {}) };
       switch (post.mediaType) {
         case 'photo': await ctx.replyWithPhoto(post.mediaFileId, mediaConfig); break;
         case 'video': await ctx.replyWithVideo(post.mediaFileId, mediaConfig); break;
@@ -1386,22 +1305,34 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const media = post.albumMediaIds.map((id: string, i: number) => ({
         type: 'photo' as const,
         media: id,
-        caption: i === 0 ? (post.caption || post.content) : undefined,
+        caption: i === 0 ? textWithoutCopy : undefined,
         parse_mode: parseMode,
       }));
       await ctx.replyWithMediaGroup(media);
       if (inlineButtons.length > 0) {
         await ctx.reply('عملیات:', Markup.inlineKeyboard(inlineButtons));
       }
-    } else if (hasText) {
-      const text = post.content || post.caption;
+    } else if (textWithoutCopy) {
       try {
-        await ctx.reply(text, { parse_mode: parseMode, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
+        await ctx.reply(textWithoutCopy, { parse_mode: parseMode, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
       } catch {
-        await ctx.reply(text, { ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
+        await ctx.reply(textWithoutCopy, { ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
       }
     } else {
       await ctx.reply('(پست خالی)', { ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
+    }
+
+    if (hasCopyBlocks) {
+      for (const segment of segments) {
+        if (segment.type === 'copy') {
+          await ctx.reply(
+            '📋 کپی کد',
+            Markup.inlineKeyboard([
+              [Markup.button.callback('📋 برای کپی لمس کنید', `post:user:copyblock:${Buffer.from(segment.content).toString('base64')}`)],
+            ])
+          );
+        }
+      }
     }
 
     await systemLogService.log({

@@ -7,7 +7,6 @@ import { logger } from '../utils/logger';
 
 const CACHE_KEY_PUBLISHED = 'posts:published';
 const CACHE_KEY_COMMANDS = 'posts:commands';
-const CACHE_KEY_PINNED = 'posts:pinned';
 const CACHE_KEY_MENU = 'posts:menu';
 
 export const postService = {
@@ -24,9 +23,6 @@ export const postService = {
     command?: string;
     status?: PostStatus;
     sortOrder?: number;
-    category?: string;
-    categoryIcon?: string;
-    categoryOrder?: number;
     createdBy?: bigint;
   }) {
     const post = await postRepository.create({
@@ -42,9 +38,6 @@ export const postService = {
       command: data.command,
       status: data.status ?? PostStatus.DRAFT,
       sortOrder: data.sortOrder ?? 0,
-      category: data.category,
-      categoryIcon: data.categoryIcon,
-      categoryOrder: data.categoryOrder,
       createdBy: data.createdBy,
     });
     this.invalidateCache();
@@ -74,10 +67,6 @@ export const postService = {
       command: existing.command,
       status: existing.status,
       sortOrder: existing.sortOrder,
-      isPinned: existing.isPinned,
-      category: (existing as any).category,
-      categoryIcon: (existing as any).categoryIcon,
-      categoryOrder: (existing as any).categoryOrder,
     });
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     this.invalidateCache();
@@ -268,14 +257,6 @@ export const postService = {
     return postRepository.getDrafts();
   },
 
-  async getPinned() {
-    const cached = cache.get<any[]>(CACHE_KEY_PINNED);
-    if (cached) return cached;
-    const posts = await postRepository.getPinned();
-    cache.set(CACHE_KEY_PINNED, posts, 10);
-    return posts;
-  },
-
   async getCommandMap(): Promise<Map<string, any>> {
     const cached = cache.get<Map<string, any>>(CACHE_KEY_COMMANDS);
     if (cached) return cached;
@@ -294,14 +275,6 @@ export const postService = {
     }
     cache.set(CACHE_KEY_COMMANDS, map, 10);
     return map;
-  },
-
-  async togglePin(id: number) {
-    const post = await postRepository.findById(id);
-    if (!post) return null;
-    const updated = await postRepository.update(id, { isPinned: !post.isPinned });
-    this.invalidateCache();
-    return updated;
   },
 
   async reorder(id: number, sortOrder: number) {
@@ -334,23 +307,6 @@ export const postService = {
 
   async getTopPosts(limit?: number) {
     return postRepository.getTopPosts(limit);
-  },
-
-  async setCategory(id: number, category: string | null, icon?: string, order?: number) {
-    const data: any = { category: category || null };
-    if (icon !== undefined) data.categoryIcon = icon;
-    if (order !== undefined) data.categoryOrder = order;
-    const post = await postRepository.update(id, data);
-    this.invalidateCache();
-    return post;
-  },
-
-  async findByCategory(category: string) {
-    return postRepository.findByCategory(category);
-  },
-
-  async getCategories(): Promise<string[]> {
-    return postRepository.getCategories();
   },
 
   async addCommand(postId: number, command: string, aliases?: string[]) {
@@ -452,10 +408,6 @@ export const postService = {
       command: post.command,
       status: post.status,
       sortOrder: post.sortOrder,
-      isPinned: post.isPinned,
-      category: (post as any).category,
-      categoryIcon: (post as any).categoryIcon,
-      categoryOrder: (post as any).categoryOrder,
     };
     return postRepository.saveVersion(postId, snapshot);
   },
@@ -477,7 +429,6 @@ export const postService = {
   invalidateCache() {
     cache.del(CACHE_KEY_PUBLISHED);
     cache.del(CACHE_KEY_COMMANDS);
-    cache.del(CACHE_KEY_PINNED);
     cache.del(CACHE_KEY_MENU);
   },
 

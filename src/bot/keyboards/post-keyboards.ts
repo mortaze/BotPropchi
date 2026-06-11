@@ -4,7 +4,7 @@ export const postMainMenuKeyboard = () =>
   Markup.keyboard([
     ['➕ ایجاد پست'],
     ['📋 مدیریت پست‌ها', '📦 پیش‌نویس‌ها'],
-    ['📌 پین شده', '👻 پست‌های مخفی'],
+    ['👻 پست‌های مخفی'],
     ['👁 پیش‌نمایش', '📤 انتشار'],
     ['🔎 جستجو', '📊 آمار پست'],
     ['📊 آمار کلی', '🔍 بررسی سلامت'],
@@ -27,7 +27,6 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
       Markup.button.callback('🔤 حالت نمایش', `post:edit:${postId}:parsemode`),
     ],
     [
-      Markup.button.callback('📍 سنجاق/برداشتن', `post:pin:${postId}`),
       Markup.button.callback('🗂 تغییر ترتیب', `post:reorder:${postId}`),
     ],
     [
@@ -40,7 +39,6 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
     ],
     [
       Markup.button.callback('🏗 نمای ساختمانی', `post:builder:${postId}`),
-      Markup.button.callback('📁 دسته‌بندی', `post:category:edit:${postId}`),
     ],
     [
       Markup.button.callback('📜 تاریخچه نسخه‌ها', `post:version:list:${postId}`),
@@ -61,7 +59,7 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
 export const postListKeyboard = (posts: any[], page: number, totalPages: number) => {
   const rows: any[][] = posts.map((p: any) => [
     Markup.button.callback(
-      `${p.isPinned ? '📌' : ''} ${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : p.status === 'SCHEDULED' ? '⏰' : p.status === 'HIDDEN' ? '👻' : '📦'} ${p.title.substring(0, 30)}`,
+      `${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : p.status === 'SCHEDULED' ? '⏰' : p.status === 'HIDDEN' ? '👻' : '📦'} ${p.title.substring(0, 30)}`,
       `post:view:${p.id}`
     ),
   ]);
@@ -79,7 +77,6 @@ export const postViewKeyboard = (post: any) => {
     [Markup.button.callback('✏ ویرایش', `post:edit:${post.id}:full`)],
     [
       Markup.button.callback(post.isPublished ? '📥 لغو انتشار' : '📤 انتشار', `post:publish:${post.id}`),
-      Markup.button.callback(post.isPinned ? '📌 برداشتن سنجاق' : '📍 سنجاق', `post:pin:${post.id}`),
     ],
     [
       Markup.button.callback('📋 کپی کردن', `post:duplicate:${post.id}`),
@@ -222,26 +219,6 @@ export const postCommandEditKeyboard = (postId: number, commandId: number) => {
   ]);
 };
 
-export const postCategoryKeyboard = (categories: string[], current?: string | null) => {
-  const rows: any[][] = categories.map((cat) => [
-    Markup.button.callback(
-      `${current === cat ? '✅ ' : ''}${cat}`,
-      `post:category:set:${cat}`
-    ),
-  ]);
-  rows.push([Markup.button.callback('🚫 بدون دسته‌بندی', `post:category:set:`), Markup.button.callback('➕ دسته جدید', 'post:category:new')]);
-  rows.push([Markup.button.callback('« بازگشت', `post:category:back`)]);
-  return Markup.inlineKeyboard(rows);
-};
-
-export const postCategoriesListKeyboard = (categories: string[]) => {
-  const rows: any[][] = categories.map((cat) => [
-    Markup.button.callback(cat, `post:category:posts:${cat}`),
-  ]);
-  rows.push([Markup.button.callback('« بازگشت به منوی پست', 'post:menu')]);
-  return Markup.inlineKeyboard(rows);
-};
-
 export const postVersionHistoryKeyboard = (versions: any[], postId: number, page?: number) => {
   const rows: any[][] = versions.slice(0, 10).map((v: any) => [
     Markup.button.callback(
@@ -288,4 +265,90 @@ export const postBuilderViewKeyboard = (postId: number) => {
     [Markup.button.callback('📤 انتشار', `post:publish:${postId}`)],
     [Markup.button.callback('« بازگشت به ویرایشگر', `post:edit:${postId}:full`)],
   ]);
+};
+
+export const menuEditorKeyboard = (layout: any[][]) => {
+  const rows: any[][] = [];
+  if (layout && layout.length > 0) {
+    for (let r = 0; r < layout.length; r++) {
+      const row = layout[r];
+      const rowButtons: any[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const btn = row[c];
+        rowButtons.push(
+          Markup.button.callback(
+            `${btn.text?.substring(0, 12) || '???'}`,
+            `menu:edit:${r}:${c}`
+          )
+        );
+      }
+      rowButtons.push(Markup.button.callback('✏️', `menu:edit:${r}:${row.length}`));
+      rows.push(rowButtons);
+      rows.push([
+        Markup.button.callback('⬆', `menu:rowup:${r}`),
+        Markup.button.callback('⬇', `menu:rowdown:${r}`),
+        Markup.button.callback('🔄 جابجایی', `menu:swap:${r}`),
+        Markup.button.callback('📋 کپی سطر', `menu:duprow:${r}`),
+        Markup.button.callback('➖ حذف سطر', `menu:delrow:${r}`),
+      ]);
+    }
+  }
+  rows.push([
+    Markup.button.callback('➕ افزودن سطر', 'menu:addrow'),
+  ]);
+  rows.push([
+    Markup.button.callback('👁 پیش‌نمایش', 'menu:preview'),
+    Markup.button.callback('🔙 بازگشت', 'menu:back'),
+  ]);
+  return Markup.inlineKeyboard(rows);
+};
+
+export const menuButtonEditKeyboard = (row: number, col: number, button: any) => {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('🎨 تغییر متن', `menu:btntext:${row}:${col}`),
+      Markup.button.callback('🔗 تغییر آدرس/مقدار', `menu:btnvalue:${row}:${col}`),
+    ],
+    [
+      Markup.button.callback('🧭 انتقال چپ', `menu:btnleft:${row}:${col}`),
+      Markup.button.callback('🧭 انتقال راست', `menu:btnright:${row}:${col}`),
+    ],
+    [
+      Markup.button.callback('📐 تغییر اندازه سطر', `menu:resize:${row}`),
+      Markup.button.callback('➖ حذف دکمه', `menu:btndel:${row}:${col}`),
+    ],
+    [Markup.button.callback('« بازگشت به ویرایشگر منو', 'menu:editor')],
+  ]);
+};
+
+export const menuButtonTypeKeyboard = (row: number, col: number) => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔗 لینک', `menu:settype:${row}:${col}:URL`)],
+    [Markup.button.callback('📞 بازگشت (Callback)', `menu:settype:${row}:${col}:CALLBACK`)],
+    [Markup.button.callback('📱 مینی اپ', `menu:settype:${row}:${col}:OPEN_MINI_APP`)],
+    [Markup.button.callback('📋 کپی متن', `menu:settype:${row}:${col}:COPY_TEXT`)],
+    [Markup.button.callback('📤 ارسال دستور', `menu:settype:${row}:${col}:SEND_COMMAND`)],
+    [Markup.button.callback('« بازگشت به ویرایشگر منو', 'menu:editor')],
+  ]);
+};
+
+export const menuRowResizeKeyboard = (row: number) => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('۱ دکمه در سطر', `menu:rowsize:${row}:1`)],
+    [Markup.button.callback('۲ دکمه در سطر', `menu:rowsize:${row}:2`)],
+    [Markup.button.callback('۳ دکمه در سطر', `menu:rowsize:${row}:3`)],
+    [Markup.button.callback('۴ دکمه در سطر', `menu:rowsize:${row}:4`)],
+    [Markup.button.callback('« بازگشت به ویرایشگر منو', 'menu:editor')],
+  ]);
+};
+
+export const menuSwapTargetKeyboard = (sourceRow: number, totalRows: number) => {
+  const rows: any[][] = [];
+  for (let i = 0; i < totalRows; i++) {
+    if (i !== sourceRow) {
+      rows.push([Markup.button.callback(`↔ جابجایی با سطر ${i + 1}`, `menu:swapto:${sourceRow}:${i}`)]);
+    }
+  }
+  rows.push([Markup.button.callback('« لغو', 'menu:editor')]);
+  return Markup.inlineKeyboard(rows);
 };

@@ -10,7 +10,18 @@ type DiscountWithFirm = DiscountCode & {
 };
 
 // ─── منوی اصلی ────────────────────────────────────────────
-export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, boolean> = {}, hasPublishedPosts = false, publishedPosts: any[] = []) {
+export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, boolean> = {}, menuLayout?: any[][]) {
+  if (menuLayout && menuLayout.length > 0) {
+    const rows = menuLayout.map(row =>
+      row.map((btn: any) => btn.text || '')
+    );
+    if (isAdmin) {
+      const adminRow = rows.find(r => r.includes('👨‍💼 پنل ادمین'));
+      if (!adminRow) rows.push(['👨‍💼 پنل ادمین']);
+    }
+    return Markup.keyboard(rows).resize().persistent();
+  }
+
   const enabled = (key: string) => features[key] !== false;
   const rows: string[][] = [];
   const first = [];
@@ -30,16 +41,6 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
     rows.push(['🚀 پروفایل من']);
   }
   if (enabled('discount_codes') || enabled('prop_firms')) rows.push(['🔍 جستجو']);
-  if (hasPublishedPosts && publishedPosts.length > 0) {
-    for (const post of publishedPosts.slice(0, 5)) {
-      rows.push([`📌 ${post.title?.substring(0, 30)}`]);
-    }
-    if (publishedPosts.length > 5) {
-      rows.push(['📋 همه پست‌ها', '🔽 بیشتر']);
-    } else {
-      rows.push(['📋 همه پست‌ها']);
-    }
-  }
   if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
   return Markup.keyboard(rows.length ? rows : [['👨‍💼 پنل ادمین']]).resize().persistent();
 }
@@ -54,6 +55,7 @@ export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   const rows: string[][] = [];
   if (canBroadcast) rows.push(['📢 پیام همگانی']);
   rows.push(['📝 پست‌ها']);
+  rows.push(['🎛 ویرایش منو']);
   rows.push(['👥 مدیریت ادمین‌ها']);
   rows.push(['📊 گزارشات']);
   rows.push(['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی']);

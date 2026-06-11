@@ -760,11 +760,7 @@ model Post {
   scheduledAt   DateTime?
   unpublishAt   DateTime?
   sortOrder     Int        @default(0)
-  isPinned      Boolean    @default(false)
   status        PostStatus @default(DRAFT)
-  category      String?
-  categoryIcon  String?
-  categoryOrder Int        @default(0)
   rawContent    String?
   renderedContent String?
   createdBy     BigInt?
@@ -782,7 +778,6 @@ model Post {
   @@index([isPublished])
   @@index([slug])
   @@index([sortOrder])
-  @@index([category])
   @@map("posts")
 }
 

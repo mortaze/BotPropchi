@@ -17,6 +17,7 @@ import { wordpressApiClient, WordPressApiClientError } from '../../services/word
 import { DEFAULT_BOT_USERNAME } from '../../constants';
 import { postService } from '../../services/post.service';
 import { config } from '../../config';
+import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 import {
@@ -29,6 +30,13 @@ import {
   buildMiniAppProfileKeyboard,
   paginationKeyboard,
 } from '../keyboards';
+import {
+  menuEditorKeyboard,
+  menuButtonEditKeyboard,
+  menuButtonTypeKeyboard,
+  menuRowResizeKeyboard,
+  menuSwapTargetKeyboard,
+} from '../keyboards/post-keyboards';
 
 type PaginatedResult<T> = { items: T[]; total: number; pages: number };
 
@@ -61,24 +69,45 @@ function formatDuration(ms: number) {
 async function adminReplyOptions(telegramId?: number) {
   const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
   const features = await settingsService.getFeatureMap();
-  let hasPublishedPosts = false;
-  let publishedPosts: any[] = [];
+  let menuLayout: any[][] | undefined;
   try {
-    publishedPosts = await postService.getPublished();
-    hasPublishedPosts = publishedPosts.length > 0;
+    const raw = await settingsService.getSetting('menu_layout_saved');
+    if (raw) menuLayout = typeof raw === 'string' ? JSON.parse(raw) : raw;
   } catch {}
-  return buildMainMenuKeyboard(Boolean(admin), features, hasPublishedPosts, publishedPosts);
+  return buildMainMenuKeyboard(Boolean(admin), features, menuLayout);
+}
+
+function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; content: string }[] } {
+  const segments: { type: 'text' | 'copy'; content: string }[] = [];
+  const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+    }
+    segments.push({ type: 'copy', content: match[1] });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    segments.push({ type: 'text', content: text.slice(lastIndex) });
+  }
+  return { segments };
 }
 
 async function sendPostToUser(ctx: any, post: any) {
   await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
   const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
   const parseMode = post.parseMode || 'Markdown';
-  const hasText = post.content || post.caption;
+  const rawText = post.content || post.caption || '';
+  const { segments } = parseCopyBlocks(rawText);
+  const hasCopyBlocks = segments.some(s => s.type === 'copy');
+
+  const textWithoutCopy = segments.filter(s => s.type === 'text').map(s => s.content).join('').trim();
 
   if (post.mediaFileId && post.mediaType) {
     const mediaConfig: any = {
-      caption: post.caption || post.content,
+      caption: textWithoutCopy || post.caption,
       parse_mode: parseMode,
       ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
     };
@@ -95,22 +124,21 @@ async function sendPostToUser(ctx: any, post: any) {
     const media = post.albumMediaIds.map((id: string, i: number) => ({
       type: 'photo' as const,
       media: id,
-      caption: i === 0 ? (post.caption || post.content) : undefined,
+      caption: i === 0 ? textWithoutCopy : undefined,
       parse_mode: parseMode,
     }));
     await ctx.replyWithMediaGroup(media);
     if (inlineButtons.length > 0) {
       await ctx.reply(':', Markup.inlineKeyboard(inlineButtons));
     }
-  } else if (hasText) {
-    const text = post.content || post.caption;
+  } else if (textWithoutCopy) {
     try {
-      await ctx.reply(text, {
+      await ctx.reply(textWithoutCopy, {
         parse_mode: parseMode,
         ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
       });
     } catch {
-      await ctx.reply(text, {
+      await ctx.reply(textWithoutCopy, {
         ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
       });
     }
@@ -118,6 +146,19 @@ async function sendPostToUser(ctx: any, post: any) {
     await ctx.reply(post.title, {
       ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
     });
+  }
+
+  if (hasCopyBlocks) {
+    for (const segment of segments) {
+      if (segment.type === 'copy') {
+        await ctx.reply(
+          `📋 کپی کد`,
+          Markup.inlineKeyboard([
+            [Markup.button.callback('📋 برای کپی لمس کنید', `post:user:copyblock:${Buffer.from(segment.content).toString('base64')}`)],
+          ])
+        );
+      }
+    }
   }
 }
 
@@ -266,12 +307,41 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const name = ctx.from?.first_name || 'کاربر';
     const scoring = await scoringService.getSettings();
 
+    const profile = await userService.getProfile(BigInt(ctx.from!.id));
+    const isNewUser = !profile || (profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 10_000);
+
+    if (isNewUser) {
+      const totalUsers = await prisma.user.count();
+      const adminList = await botAdminService.list();
+      const activeAdmins = adminList.filter(a => a.status === 'ACTIVE');
+      const now = new Date().toLocaleString('fa-IR');
+      for (const admin of activeAdmins) {
+        try {
+          await bot.telegram.sendMessage(
+            Number(admin.telegramId),
+            [
+              '🎉 کاربر جدید وارد شد',
+              '',
+              `👤 نام: ${ctx.from?.first_name || 'نامشخص'} ${ctx.from?.last_name || ''}`,
+              `🆔 آیدی عددی: ${ctx.from?.id}`,
+              `📛 یوزرنیم: @${ctx.from?.username || 'ندارد'}`,
+              `📈 تعداد کل کاربران: ${totalUsers}`,
+              `📅 زمان: ${now}`,
+            ].join('\n'),
+            Markup.inlineKeyboard([
+              [Markup.button.callback('👤 مشاهده کاربر', 'noop')],
+              [Markup.button.callback('📊 آمار', 'noop')],
+            ])
+          );
+        } catch {}
+      }
+    }
+
     if (scoring.isWelcomeMessageEnabled) {
       await ctx.reply(
         scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
         { parse_mode: 'Markdown', ...(await adminReplyOptions(ctx.from?.id)) }
       );
-      const profile = await userService.getProfile(BigInt(ctx.from!.id));
       const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
       if (scoring.startPoints > 0 && isFirstEntrance) {
         await ctx.reply(scoringService.formatTemplate(scoring.initialPointsMessageText, { name, points: scoring.startPoints }));
@@ -289,6 +359,289 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
     await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+  });
+
+  // ─── Menu Builder ───────────────────────────────────────
+  const MENU_LAYOUT_KEY = 'menu_layout_saved';
+
+  async function getMenuLayout(): Promise<any[][]> {
+    try {
+      const raw = await settingsService.getSetting(MENU_LAYOUT_KEY);
+      if (raw) return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {}
+    return [];
+  }
+
+  async function saveMenuLayout(layout: any[][]) {
+    await settingsService.setSetting(MENU_LAYOUT_KEY, layout);
+  }
+
+  bot.hears('🎛 ویرایش منو', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const layout = await getMenuLayout();
+    await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا ویرایش کنید:', menuEditorKeyboard(layout));
+  });
+
+  bot.action('menu:editor', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const layout = await getMenuLayout();
+    try {
+      await ctx.editMessageText('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا ویرایش کنید:', menuEditorKeyboard(layout));
+    } catch {
+      await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا ویرایش کنید:', menuEditorKeyboard(layout));
+    }
+  });
+
+  bot.action('menu:preview', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const layout = await getMenuLayout();
+    const features = await settingsService.getFeatureMap();
+    await ctx.reply('👁 پیش‌نمایش منوی اصلی:', buildMainMenuKeyboard(true, features, layout));
+  });
+
+  bot.action('menu:back', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+  });
+
+  bot.action('menu:addrow', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const layout = await getMenuLayout();
+    layout.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
+    await saveMenuLayout(layout);
+    try {
+      await ctx.editMessageText('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا ویرایش کنید:', menuEditorKeyboard(layout));
+    } catch {
+      await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا ویرایش کنید:', menuEditorKeyboard(layout));
+    }
+  });
+
+  bot.action(/^menu:edit:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    const layout = await getMenuLayout();
+    const button = layout[row]?.[col];
+    if (!button) {
+      await ctx.reply('نوع دکمه را انتخاب کنید:', menuButtonTypeKeyboard(row, col));
+      return;
+    }
+    await ctx.reply(
+      `دکمه: "${button.text}"\nنوع: ${button.type || 'URL'}\nمقدار: ${button.value || '-'}`,
+      menuButtonEditKeyboard(row, col, button)
+    );
+  });
+
+  bot.action(/^menu:settype:(\d+):(\d+):(.+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    const btnType = ctx.match[3];
+    const layout = await getMenuLayout();
+    if (!layout[row]) layout[row] = [];
+    if (!layout[row][col]) layout[row][col] = {};
+    layout[row][col].type = btnType;
+    await saveMenuLayout(layout);
+    await ctx.reply(`✅ نوع دکمه تنظیم شد. اکنون مقدار را ارسال کنید:`);
+    cache.set(`menu:pending:${ctx.from.id}`, JSON.stringify({ row, col, field: 'value' }), 300);
+  });
+
+  bot.action(/^menu:btntext:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    cache.set(`menu:pending:${ctx.from.id}`, JSON.stringify({ row, col, field: 'text' }), 300);
+    await ctx.reply('🎨 متن جدید دکمه را ارسال کنید:');
+  });
+
+  bot.action(/^menu:btnvalue:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    cache.set(`menu:pending:${ctx.from.id}`, JSON.stringify({ row, col, field: 'value' }), 300);
+    await ctx.reply('🔗 آدرس/مقدار جدید دکمه را ارسال کنید:');
+  });
+
+  bot.action(/^menu:btnleft:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    if (col === 0) return ctx.reply('هم‌اکنون در چپ‌ترین است.');
+    const layout = await getMenuLayout();
+    if (!layout[row]) return;
+    [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
+    await saveMenuLayout(layout);
+    await ctx.reply('✅ دکمه به چپ منتقل شد.');
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:btnright:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    const layout = await getMenuLayout();
+    if (!layout[row] || col >= layout[row].length - 1) return ctx.reply('هم‌اکنون در راست‌ترین است.');
+    [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
+    await saveMenuLayout(layout);
+    await ctx.reply('✅ دکمه به راست منتقل شد.');
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:btndel:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
+    const layout = await getMenuLayout();
+    if (layout[row]) {
+      layout[row].splice(col, 1);
+      if (layout[row].length === 0) layout.splice(row, 1);
+    }
+    await saveMenuLayout(layout);
+    await ctx.reply('➖ دکمه حذف شد.');
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:resize:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    await ctx.reply('📐 تعداد دکمه در سطر را انتخاب کنید:', menuRowResizeKeyboard(row));
+  });
+
+  bot.action(/^menu:rowsize:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const size = parseInt(ctx.match[2]);
+    const layout = await getMenuLayout();
+    const currentRow = layout[row] || [];
+    const newRow: any[] = [];
+    for (let i = 0; i < size; i++) {
+      newRow.push(currentRow[i] || { text: `دکمه ${i + 1}`, type: 'URL', value: '' });
+    }
+    layout[row] = newRow;
+    await saveMenuLayout(layout);
+    await ctx.reply(`✅ سطر ${row + 1} به ${size} دکمه تغییر اندازه یافت.`);
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:rowup:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    if (row === 0) return ctx.reply('هم‌اکنون در بالاست.');
+    const layout = await getMenuLayout();
+    [layout[row - 1], layout[row]] = [layout[row], layout[row - 1]];
+    await saveMenuLayout(layout);
+    await ctx.reply('✅ سطر به بالا منتقل شد.');
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:rowdown:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const layout = await getMenuLayout();
+    if (row >= layout.length - 1) return ctx.reply('هم‌اکنون در پایین‌ترین جایگاه است.');
+    [layout[row], layout[row + 1]] = [layout[row + 1], layout[row]];
+    await saveMenuLayout(layout);
+    await ctx.reply('✅ سطر به پایین منتقل شد.');
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:swap:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const layout = await getMenuLayout();
+    await ctx.reply('🔄 سطر مقصد را برای جابجایی انتخاب کنید:', menuSwapTargetKeyboard(row, layout.length));
+  });
+
+  bot.action(/^menu:swapto:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const rowA = parseInt(ctx.match[1]);
+    const rowB = parseInt(ctx.match[2]);
+    if (rowA === rowB) return;
+    const layout = await getMenuLayout();
+    [layout[rowA], layout[rowB]] = [layout[rowB], layout[rowA]];
+    await saveMenuLayout(layout);
+    await ctx.reply('🔄 سطرها جابجا شدند.');
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:duprow:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const layout = await getMenuLayout();
+    if (!layout[row]) return ctx.reply('❌ سطر یافت نشد.');
+    const duplicated = layout[row].map((b: any) => ({ ...b }));
+    layout.splice(row + 1, 0, duplicated);
+    await saveMenuLayout(layout);
+    await ctx.reply('📋 سطر کپی شد.');
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  bot.action(/^menu:delrow:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const row = parseInt(ctx.match[1]);
+    const layout = await getMenuLayout();
+    layout.splice(row, 1);
+    await saveMenuLayout(layout);
+    await ctx.reply('➖ سطر حذف شد.');
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+  });
+
+  // ─── Handle text input for menu button values ───────────
+  bot.on('text', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const pending = cache.get<string>(`menu:pending:${ctx.from.id}`);
+    if (!pending) return next();
+    cache.del(`menu:pending:${ctx.from.id}`);
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return next();
+    const { row, col, field } = JSON.parse(pending);
+    const layout = await getMenuLayout();
+    if (!layout[row]) layout[row] = [];
+    if (!layout[row][col]) layout[row][col] = {};
+    layout[row][col][field] = ctx.message.text;
+    await saveMenuLayout(layout);
+    await ctx.reply(`✅ ${field === 'text' ? 'متن' : 'مقدار'} دکمه به‌روز شد!`);
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
 
   bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {
@@ -387,66 +740,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply('⚙️ تنظیمات مدیریتی از پنل وب و دستورات ادمین قابل مدیریت است.');
   });
 
-  // ─── Posts (User-facing) ─────────────────────────────────
-  function userPostPageKey(id: number) { return `user_post_page:${id}`; }
-
-  bot.hears('📋 همه پست‌ها', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('posts'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
-    cache.set(userPostPageKey(ctx.from.id), 1, 300);
-    const result = await postService.getPublishedByPage(1, 5);
-    if (!result.items.length) return ctx.reply('📋 پستی موجود نیست.');
-    const rows: any[][] = result.items.map((p: any) => [Markup.button.callback(p.title.substring(0, 40), `post:user:view:${p.id}`)]);
-    const nav: any[] = [];
-    if (result.pages > 1) {
-      nav.push(Markup.button.callback(`${1}/${result.pages}`, 'noop'));
-      nav.push(Markup.button.callback('▶️', `post:user:page:2`));
-    }
-    if (nav.length) rows.push(nav);
-    await ctx.reply('📋 پست‌های منتشر شده:', Markup.inlineKeyboard(rows));
-  });
-
-  bot.hears('🔽 بیشتر', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('posts'))) return;
-    const currentPage = cache.get<number>(userPostPageKey(ctx.from.id)) || 1;
-    const nextPage = currentPage + 1;
-    cache.set(userPostPageKey(ctx.from.id), nextPage, 300);
-    const result = await postService.getPublishedByPage(nextPage, 5);
-    if (!result.items.length) { cache.set(userPostPageKey(ctx.from.id), currentPage, 300); return ctx.reply('📋 پست دیگری وجود ندارد.'); }
-    const rows: any[][] = result.items.map((p: any) => [Markup.button.callback(p.title.substring(0, 40), `post:user:view:${p.id}`)]);
-    const nav: any[] = [];
-    nav.push(Markup.button.callback('◀️', `post:user:page:${result.page - 1}`));
-    nav.push(Markup.button.callback(`${result.page}/${result.pages}`, 'noop'));
-    if (result.page < result.pages) nav.push(Markup.button.callback('▶️', `post:user:page:${result.page + 1}`));
-    if (nav.length > 1) rows.push(nav);
-    await ctx.reply('📋 پست‌های منتشر شده:', Markup.inlineKeyboard(rows));
-  });
-
-  bot.action(/^post:user:page:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    if (!(await settingsService.isFeatureEnabled('posts'))) return;
-    const page = parseInt(ctx.match[1]);
-    cache.set(userPostPageKey(ctx.from.id), page, 300);
-    const result = await postService.getPublishedByPage(page, 5);
-    if (!result.items.length) return ctx.reply('📋 پستی وجود ندارد.');
-    const rows: any[][] = result.items.map((p: any) => [Markup.button.callback(p.title.substring(0, 40), `post:user:view:${p.id}`)]);
-    const nav: any[] = [];
-    nav.push(Markup.button.callback('◀️', `post:user:page:${result.page - 1}`));
-    nav.push(Markup.button.callback(`${result.page}/${result.pages}`, 'noop'));
-    if (result.page < result.pages) nav.push(Markup.button.callback('▶️', `post:user:page:${result.page + 1}`));
-    if (nav.length > 1) rows.push(nav);
-    await ctx.editMessageText('📋 پست‌های منتشر شده:', Markup.inlineKeyboard(rows)).catch(() => {});
-  });
-
-  // ─── Direct post click from main menu ────────────────────
-  bot.hears(/^📌 (.+)$/, async (ctx: any) => {
-    if (!(await settingsService.isFeatureEnabled('posts'))) return;
-    const title = ctx.match[1].trim();
-    const posts = await postService.getPublished();
-    const post = posts.find((p: any) => p.title?.substring(0, 30) === title);
-    if (!post) return;
-    await sendPostToUser(ctx, post);
-  });
-
+  // ─── Post: User View by ID (via command routing) ────────
   bot.action(/^post:user:view:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     if (!(await settingsService.isFeatureEnabled('posts'))) return;
@@ -460,6 +754,19 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   bot.action(/^post:user:copy:(.+)$/, async (ctx: any) => {
     await ctx.answerCbQuery(`📋 کپی شد: ${ctx.match[1]}`, { show_alert: true });
+  });
+
+  bot.action(/^post:user:copyblock:(.+)$/, async (ctx: any) => {
+    try {
+      const content = Buffer.from(ctx.match[1], 'base64').toString('utf-8');
+      await ctx.answerCbQuery();
+      await ctx.reply(content, { parse_mode: undefined });
+      await ctx.reply('📋 برای کپی لمس کنید', Markup.inlineKeyboard([
+        [Markup.button.callback('📋 کپی', `post:user:copy:${content}`)],
+      ]));
+    } catch {
+      await ctx.answerCbQuery('❌ خطا در پردازش', { show_alert: true });
+    }
   });
 
   // ─── Post Command Routing ─────────────────────────────────

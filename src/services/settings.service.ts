@@ -124,6 +124,19 @@ class SettingsService {
     this.featureCache.set(key, { enabled, expires: Date.now() + 30_000 });
     return enabled;
   }
+
+  async getSetting(key: string): Promise<any | null> {
+    const row = await prisma.systemSetting.findUnique({ where: { key } });
+    return row?.value ?? null;
+  }
+
+  async setSetting(key: string, value: any) {
+    await prisma.systemSetting.upsert({
+      where: { key },
+      update: { value },
+      create: { key, value },
+    });
+  }
 }
 
 export const settingsService = new SettingsService();
