@@ -278,21 +278,33 @@ export const postService = {
 
   async getCommandMap(): Promise<Map<string, any>> {
     const cached = cache.get<Map<string, any>>(CACHE_KEY_COMMANDS);
-    if (cached) return cached;
+    if (cached) {
+      logger.debug(`[CommandMap] Using cache (${cached.size} entries)`);
+      return cached;
+    }
     const posts = await postRepository.getPublished();
     const map = new Map<string, any>();
     for (const post of posts) {
-      if (post.command) map.set(post.command, post);
-      if ((post as any).commands) {
-        for (const cmd of (post as any).commands) {
+      if (post.command) {
+        map.set(post.command, post);
+        logger.debug(`[CommandMap] Post.command: /${post.command} -> "${post.title}"`);
+      }
+      const cmds = (post as any).commands;
+      if (cmds && Array.isArray(cmds) && cmds.length > 0) {
+        for (const cmd of cmds) {
           map.set(cmd.command, post);
+          logger.debug(`[CommandMap] PostCommand: /${cmd.command} -> "${post.title}"`);
           if (cmd.aliases && Array.isArray(cmd.aliases)) {
-            for (const alias of cmd.aliases) map.set(alias, post);
+            for (const alias of cmd.aliases) {
+              map.set(alias, post);
+              logger.debug(`[CommandMap] Alias: /${alias} -> "${post.title}"`);
+            }
           }
         }
       }
     }
-    cache.set(CACHE_KEY_COMMANDS, map, 10);
+    logger.info(`[CommandMap] Built map with ${map.size} command entries from ${posts.length} published posts`);
+    cache.set(CACHE_KEY_COMMANDS, map, 300);
     return map;
   },
 
@@ -433,8 +445,24 @@ export const postService = {
   },
 
   async resolveCommand(command: string): Promise<any | null> {
+    logger.debug(`[CommandResolve] Resolving /${command}`);
     const map = await this.getCommandMap();
-    return map.get(command) || null;
+    const found = map.get(command);
+    if (found) {
+      logger.debug(`[CommandResolve] Found /${command} -> "${found.title}" (id: ${found.id})`);
+      return found;
+    }
+    // Fallback: direct DB query in case cache is stale or command was added to unpublished post
+    logger.debug(`[CommandResolve] /${command} not in map, querying DB...`);
+    const dbPost = await postRepository.findByCommand(command);
+    if (dbPost && dbPost.status === 'PUBLISHED' && dbPost.isPublished) {
+      logger.info(`[CommandResolve] DB fallback found /${command} -> "${dbPost.title}" (id: ${dbPost.id})`);
+      // Invalidate cache so next lookup uses fresh data
+      this.invalidateCache();
+      return dbPost;
+    }
+    logger.warn(`[CommandResolve] /${command} not found`);
+    return null;
   },
 
   async saveVersion(postId: number) {

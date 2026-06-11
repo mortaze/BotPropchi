@@ -88,7 +88,7 @@ export const postRepository = {
   async getPublished() {
     return prisma.post.findMany({
       where: { status: PostStatus.PUBLISHED, isPublished: true },
-      include: { _count: { select: { views: true } } },
+      include: { commands: true, _count: { select: { views: true } } },
       orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
     });
   },
@@ -98,7 +98,7 @@ export const postRepository = {
     const [items, total] = await Promise.all([
       prisma.post.findMany({
         where: { status: PostStatus.PUBLISHED, isPublished: true },
-        include: { _count: { select: { views: true } } },
+        include: { commands: true, _count: { select: { views: true } } },
         orderBy: [{ sortOrder: 'asc' }, { publishedAt: 'desc' }],
         skip,
         take: limit,
