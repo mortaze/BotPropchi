@@ -1,49 +1,34 @@
-@font-face {
-  font-family: "BYekan";
-  src: url("/font/BYekan.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "BYekan";
-  src: url("/font/BYekanBold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 222 28% 8%;
-    --foreground: 220 20% 92%;
-    --card: 222 25% 11%;
-    --card-foreground: 220 20% 92%;
-    --popover: 222 25% 11%;
-    --popover-foreground: 220 20% 92%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 28% 8%;
-    --secondary: 222 20% 16%;
-    --secondary-foreground: 220 20% 85%;
-    --muted: 222 20% 16%;
-    --muted-foreground: 220 12% 55%;
-    --accent: 222 20% 18%;
-    --accent-foreground: 220 20% 92%;
-    --destructive: 0 70% 50%;
+    --background: 0 0% 98%;
+    --foreground: 222 20% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 20% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 20% 12%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 20% 20%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 94%;
+    --accent-foreground: 222 20% 12%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 222 20% 16%;
-    --input: 222 20% 16%;
-    --ring: 217 91% 60%;
-    --sidebar: 222 32% 7%;
-    --sidebar-foreground: 220 15% 65%;
-    --sidebar-border: 222 25% 12%;
-    --sidebar-accent: 222 25% 13%;
-    --chart-1: 217 91% 60%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.625rem;
+    --sidebar: 222 30% 10%;
+    --sidebar-foreground: 220 15% 75%;
+    --sidebar-border: 222 20% 15%;
+    --sidebar-accent: 222 20% 15%;
+    --chart-1: 221 83% 53%;
     --chart-2: 142 71% 45%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
@@ -84,8 +69,7 @@
 
 @layer base {
   * { @apply border-border; }
-  html, body, button, input, textarea, select, table, dialog, [role="dialog"], [data-radix-popper-content-wrapper] { font-family: var(--font-vazir), BYekan, Tahoma, Arial, sans-serif !important; }
-  body { @apply bg-background text-foreground; }
+  body { @apply bg-background text-foreground; font-family: "Vazirmatn", sans-serif; }
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
@@ -107,115 +91,4 @@
   .skeleton { @apply bg-muted animate-pulse rounded-md; }
   .page-header { @apply flex items-center justify-between mb-6; }
   .section-title { @apply text-xl font-bold text-foreground; }
-}
-@layer components {
-  .input { @apply w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50; }
-  .label { @apply mb-1.5 block text-sm font-medium text-foreground; }
-}
-
-@layer utilities {
-  .touch-target { min-height: 44px; min-width: 44px; }
-}
-
-@layer components {
-  @media (max-width: 640px) {
-    .page-header { @apply flex-col items-stretch gap-3; }
-    .data-table,
-    .data-table thead,
-    .data-table tbody,
-    .data-table th,
-    .data-table td,
-    .data-table tr { @apply block; }
-    .data-table thead { @apply hidden; }
-    .data-table tbody { @apply space-y-3 p-3; }
-    .data-table tr { @apply rounded-xl border border-border bg-card p-3 shadow-sm; }
-    .data-table td { @apply flex items-start justify-between gap-4 border-0 px-0 py-2 text-left; }
-    .data-table td::before { content: attr(data-label); @apply text-right text-xs font-semibold text-muted-foreground; }
-    .data-table td:not([data-label])::before { content: none; }
-    .data-table tr:hover td { @apply bg-transparent; }
-  }
-}
-
-.glass-card {
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 2rem;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.28));
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
-}
-
-.glass-nav,
-.glass-sheet {
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  border-radius: 2rem;
-  background: rgba(255, 255, 255, 0.62);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.58);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-}
-
-.liquid-button,
-.liquid-button-secondary {
-  display: inline-flex;
-  min-height: 3rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border-radius: 1.35rem;
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 900;
-  transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
-}
-
-.liquid-button {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.95), rgba(124, 58, 237, 0.92));
-  color: white;
-  box-shadow: 0 16px 36px rgba(14, 165, 233, 0.25);
-}
-
-.liquid-button-secondary {
-  border: 1px solid rgba(14, 165, 233, 0.25);
-  background: rgba(255, 255, 255, 0.3);
-  color: rgb(3, 105, 161);
-}
-
-.liquid-button:active,
-.liquid-button-secondary:active {
-  transform: scale(0.98);
-}
-
-.liquid-button:disabled {
-  opacity: 0.55;
-}
-
-.animate-soft-in {
-  animation: soft-in 420ms ease both;
-}
-
-@keyframes soft-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.99); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@media (prefers-color-scheme: dark) {
-  .glass-card {
-    border-color: rgba(255, 255, 255, 0.14);
-    background: linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.055));
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  }
-
-  .glass-nav,
-  .glass-sheet {
-    border-color: rgba(255, 255, 255, 0.16);
-    background: rgba(7, 17, 31, 0.72);
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  }
-
-  .liquid-button-secondary {
-    border-color: rgba(125, 211, 252, 0.24);
-    background: rgba(255, 255, 255, 0.1);
-    color: rgb(224, 242, 254);
-  }
 }
