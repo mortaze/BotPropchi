@@ -35,9 +35,9 @@ export function buildMainMenuKeyboard(isAdmin = false, features: Record<string, 
       rows.push([`📌 ${post.title?.substring(0, 30)}`]);
     }
     if (publishedPosts.length > 5) {
-      rows.push(['📋 All Posts', '🔽 More']);
+      rows.push(['📋 همه پست‌ها', '🔽 بیشتر']);
     } else {
-      rows.push(['📋 All Posts']);
+      rows.push(['📋 همه پست‌ها']);
     }
   }
   if (isAdmin) rows.push(['👨‍💼 پنل ادمین']);
@@ -53,7 +53,7 @@ export function buildMiniAppProfileKeyboard() {
 export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   const rows: string[][] = [];
   if (canBroadcast) rows.push(['📢 پیام همگانی']);
-  rows.push(['📝 Posts']);
+  rows.push(['📝 پست‌ها']);
   rows.push(['👥 مدیریت ادمین‌ها']);
   rows.push(['📊 گزارشات']);
   rows.push(['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی']);

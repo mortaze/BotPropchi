@@ -390,11 +390,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
   // ─── Posts (User-facing) ─────────────────────────────────
   function userPostPageKey(id: number) { return `user_post_page:${id}`; }
 
-  bot.hears('📋 All Posts', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('posts'))) return ctx.reply('⛔ This service is currently disabled.');
+  bot.hears('📋 همه پست‌ها', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('posts'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     cache.set(userPostPageKey(ctx.from.id), 1, 300);
     const result = await postService.getPublishedByPage(1, 5);
-    if (!result.items.length) return ctx.reply('📋 No posts available.');
+    if (!result.items.length) return ctx.reply('📋 پستی موجود نیست.');
     const rows: any[][] = result.items.map((p: any) => [Markup.button.callback(p.title.substring(0, 40), `post:user:view:${p.id}`)]);
     const nav: any[] = [];
     if (result.pages > 1) {
@@ -402,23 +402,23 @@ export function registerHandlers(bot: Telegraf<Context>) {
       nav.push(Markup.button.callback('▶️', `post:user:page:2`));
     }
     if (nav.length) rows.push(nav);
-    await ctx.reply('📋 Published Posts:', Markup.inlineKeyboard(rows));
+    await ctx.reply('📋 پست‌های منتشر شده:', Markup.inlineKeyboard(rows));
   });
 
-  bot.hears('🔽 More', async (ctx) => {
+  bot.hears('🔽 بیشتر', async (ctx) => {
     if (!(await settingsService.isFeatureEnabled('posts'))) return;
     const currentPage = cache.get<number>(userPostPageKey(ctx.from.id)) || 1;
     const nextPage = currentPage + 1;
     cache.set(userPostPageKey(ctx.from.id), nextPage, 300);
     const result = await postService.getPublishedByPage(nextPage, 5);
-    if (!result.items.length) { cache.set(userPostPageKey(ctx.from.id), currentPage, 300); return ctx.reply('📋 No more posts.'); }
+    if (!result.items.length) { cache.set(userPostPageKey(ctx.from.id), currentPage, 300); return ctx.reply('📋 پست دیگری وجود ندارد.'); }
     const rows: any[][] = result.items.map((p: any) => [Markup.button.callback(p.title.substring(0, 40), `post:user:view:${p.id}`)]);
     const nav: any[] = [];
     nav.push(Markup.button.callback('◀️', `post:user:page:${result.page - 1}`));
     nav.push(Markup.button.callback(`${result.page}/${result.pages}`, 'noop'));
     if (result.page < result.pages) nav.push(Markup.button.callback('▶️', `post:user:page:${result.page + 1}`));
     if (nav.length > 1) rows.push(nav);
-    await ctx.reply('📋 Published Posts:', Markup.inlineKeyboard(rows));
+    await ctx.reply('📋 پست‌های منتشر شده:', Markup.inlineKeyboard(rows));
   });
 
   bot.action(/^post:user:page:(\d+)$/, async (ctx: any) => {
@@ -427,14 +427,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const page = parseInt(ctx.match[1]);
     cache.set(userPostPageKey(ctx.from.id), page, 300);
     const result = await postService.getPublishedByPage(page, 5);
-    if (!result.items.length) return ctx.reply('📋 No posts.');
+    if (!result.items.length) return ctx.reply('📋 پستی وجود ندارد.');
     const rows: any[][] = result.items.map((p: any) => [Markup.button.callback(p.title.substring(0, 40), `post:user:view:${p.id}`)]);
     const nav: any[] = [];
     nav.push(Markup.button.callback('◀️', `post:user:page:${result.page - 1}`));
     nav.push(Markup.button.callback(`${result.page}/${result.pages}`, 'noop'));
     if (result.page < result.pages) nav.push(Markup.button.callback('▶️', `post:user:page:${result.page + 1}`));
     if (nav.length > 1) rows.push(nav);
-    await ctx.editMessageText('📋 Published Posts:', Markup.inlineKeyboard(rows)).catch(() => {});
+    await ctx.editMessageText('📋 پست‌های منتشر شده:', Markup.inlineKeyboard(rows)).catch(() => {});
   });
 
   // ─── Direct post click from main menu ────────────────────
@@ -453,13 +453,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
-      return ctx.reply('❌ Post not found.');
+      return ctx.reply('❌ پست یافت نشد.');
     }
     await sendPostToUser(ctx, post);
   });
 
   bot.action(/^post:user:copy:(.+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery(`📋 Copied: ${ctx.match[1]}`, { show_alert: true });
+    await ctx.answerCbQuery(`📋 کپی شد: ${ctx.match[1]}`, { show_alert: true });
   });
 
   // ─── Post Command Routing ─────────────────────────────────

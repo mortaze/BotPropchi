@@ -765,6 +765,8 @@ model Post {
   category      String?
   categoryIcon  String?
   categoryOrder Int        @default(0)
+  rawContent    String?
+  renderedContent String?
   createdBy     BigInt?
   updatedBy     BigInt?
   createdAt     DateTime   @default(now())
