@@ -143,6 +143,18 @@ postRouter.post('/:id/commands', async (req, res) => {
   }
 });
 
+postRouter.put('/:id/commands/:commandId', async (req, res) => {
+  const schema = z.object({ command: z.string().min(1).optional(), aliases: z.array(z.string()).optional() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+  try {
+    const cmd = await postService.updateCommand(Number(req.params.commandId), parsed.data);
+    res.json(cmd);
+  } catch (err: any) {
+    res.status(409).json({ success: false, error: err.message });
+  }
+});
+
 postRouter.delete('/:id/commands/:commandId', async (req, res) => {
   await postService.removeCommand(Number(req.params.commandId));
   res.json({ success: true });

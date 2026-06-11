@@ -4,6 +4,7 @@ import { postRepository } from '../repositories/post.repository';
 import { cache } from '../utils/cache';
 import { systemLogService } from './system-log.service';
 import { settingsService } from './settings.service';
+import { eventBus, Events } from '../utils/events';
 import { logger } from '../utils/logger';
 
 const CACHE_KEY_PUBLISHED = 'posts:published';
@@ -47,6 +48,7 @@ export const postService = {
       message: `Post Created: "${post.title}" (slug: ${post.slug})`,
       metadata: { postId: post.id, slug: post.slug } as any,
     });
+    eventBus.emit(Events.POST_CREATED, { postId: post.id, title: post.title });
     logger.info(`[Post] Created: "${post.title}" (${post.slug})`);
     return post;
   },
@@ -76,6 +78,7 @@ export const postService = {
       message: `Post Updated: "${post.title}"`,
       metadata: { postId: id, changes: Object.keys(data) } as any,
     });
+    eventBus.emit(Events.POST_UPDATED, { postId: id, changes: Object.keys(data) });
     logger.info(`[Post] Updated: "${post.title}" (id: ${id})`);
     return post;
   },
@@ -90,6 +93,7 @@ export const postService = {
       message: `Post Deleted: "${post.title}"`,
       metadata: { postId: id } as any,
     });
+    eventBus.emit(Events.POST_DELETED, { postId: id, title: post.title });
     logger.info(`[Post] Deleted: "${post.title}" (id: ${id})`);
     return post;
   },
@@ -111,6 +115,7 @@ export const postService = {
       message: `Post Published: "${post.title}"`,
       metadata: { postId: id } as any,
     });
+    eventBus.emit(Events.POST_PUBLISHED, { postId: post.id, title: post.title });
     logger.info(`[Post] Published: "${post.title}"`);
     return post;
   },
@@ -176,6 +181,7 @@ export const postService = {
     await settingsService.removePostFromMenu(post.id).catch(err => {
       logger.error(`[Post] Failed to remove hidden post from menu:`, err);
     });
+    eventBus.emit(Events.POST_HIDDEN, { postId: id, title: post.title });
     logger.info(`[Post] Hidden: "${post.title}"`);
     return post;
   },
@@ -345,6 +351,7 @@ export const postService = {
       message: `Post Command Added: /${command}`,
       metadata: { postId, command } as any,
     });
+    eventBus.emit(Events.COMMAND_ADDED, { postId, command });
     logger.info(`[Post] Command added: /${command} -> post ${postId}`);
     return result;
   },
@@ -359,7 +366,33 @@ export const postService = {
       message: `Post Command Removed: /${cmd.command}`,
       metadata: { postId: cmd.postId, command: cmd.command } as any,
     });
+    eventBus.emit(Events.COMMAND_REMOVED, { postId: cmd.postId, command: cmd.command });
     logger.info(`[Post] Command removed: /${cmd.command}`);
+  },
+
+  async updateCommand(commandId: number, data: { command?: string; aliases?: string[] }) {
+    const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
+    if (!cmd) throw new Error('Command not found');
+    // Check conflict if command name is changing
+    if (data.command && data.command !== cmd.command) {
+      const conflict = await prisma.postCommand.findFirst({
+        where: { command: data.command, NOT: { id: commandId } },
+      });
+      if (conflict) throw new Error(`Command /${data.command} already exists`);
+    }
+    const updated = await prisma.postCommand.update({
+      where: { id: commandId },
+      data: { ...(data.command && { command: data.command }), ...(data.aliases && { aliases: data.aliases }) },
+    });
+    this.invalidateCache();
+    await systemLogService.log({
+      eventType: SystemEventType.ADMIN_ACTION,
+      message: `Post Command Updated: /${updated.command}`,
+      metadata: { commandId, changes: Object.keys(data) } as any,
+    });
+    eventBus.emit(Events.COMMAND_UPDATED, { commandId, command: updated.command });
+    logger.info(`[Post] Command updated: /${updated.command} (id: ${commandId})`);
+    return updated;
   },
 
   async addCommandAlias(commandId: number, alias: string) {

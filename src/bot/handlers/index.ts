@@ -33,7 +33,6 @@ import {
 import {
   menuEditorKeyboard,
   menuButtonEditKeyboard,
-  menuRowResizeKeyboard,
   menuSwapTargetKeyboard,
 } from '../keyboards/post-keyboards';
 
@@ -444,47 +443,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
 
-  bot.action(/^menu:resize:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    await ctx.reply('📐 تعداد دکمه در سطر را انتخاب کنید:', menuRowResizeKeyboard(row));
-  });
-
-  bot.action(/^menu:rowsize:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const size = parseInt(ctx.match[2]);
-    const layout = await settingsService.getMenuLayout();
-    const currentRow = layout[row] || [];
-    const newRow: any[] = [];
-    for (let i = 0; i < size; i++) {
-      if (currentRow[i]) {
-        newRow.push({ ...currentRow[i] });
-      } else {
-        const lastBtn = currentRow[currentRow.length - 1] || currentRow[0] || {};
-        newRow.push({ ...lastBtn, visible: false });
-      }
-    }
-    // Preserve excess buttons: scatter into next row or append as new row
-    const excess = currentRow.slice(size);
-    if (excess.length > 0) {
-      const nextRowIdx = row + 1;
-      if (layout[nextRowIdx]) {
-        layout[nextRowIdx] = [...excess, ...layout[nextRowIdx]];
-      } else {
-        layout.splice(row + 1, 0, excess);
-      }
-    }
-    layout[row] = newRow;
-    await settingsService.saveMenuLayout(layout);
-    await ctx.reply(`✅ سطر ${row + 1} به ${size} دکمه تغییر اندازه یافت.`);
-    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
-  });
-
   bot.action(/^menu:rowup:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
@@ -534,29 +492,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
   });
 
-  bot.action(/^menu:delrow:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const layout = await settingsService.getMenuLayout();
-    // NEVER delete buttons - redistribute to adjacent rows
-    const deletedRow = layout.splice(row, 1)[0];
-    if (deletedRow && deletedRow.length > 0) {
-      // Spread buttons to next row (or prev row if last)
-      const targetIdx = row < layout.length ? row : layout.length - 1;
-      if (targetIdx >= 0 && layout[targetIdx]) {
-        layout[targetIdx] = [...deletedRow, ...layout[targetIdx]];
-      } else {
-        // No target row, append as new row
-        layout.push(deletedRow);
-      }
-    }
-    await settingsService.saveMenuLayout(layout);
-    await ctx.reply(`➖ سطر حذف شد (${deletedRow?.length || 0} دکمه به سطر دیگر منتقل شد).`);
-    await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
-  });
-
   bot.action(/^menu:btnup:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
@@ -581,12 +516,16 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
-    if (row >= layout.length - 1) return ctx.reply('هم‌اکنون در پایین‌ترین سطر است.');
     const button = layout[row]?.splice(col, 1)[0];
     if (button) {
-      layout[row + 1].push(button);
+      const targetRow = row + 1;
+      if (targetRow >= layout.length) {
+        // Create new empty row at the end
+        layout.push([]);
+      }
+      layout[targetRow].push(button);
       await settingsService.saveMenuLayout(layout);
-      await ctx.reply(`✅ دکمه به سطر ${row + 2} منتقل شد.`);
+      await ctx.reply(`✅ دکمه به سطر ${targetRow + 1} منتقل شد.`);
       await ctx.reply('🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
     }
   });

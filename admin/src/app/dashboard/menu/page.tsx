@@ -1,16 +1,151 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Eye, EyeOff, Save, RotateCcw, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, Save, RotateCcw, RefreshCw, GripVertical } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  horizontalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Badge, Button, Card, CardContent, CardHeader } from "@/components/ui";
 import { getApiError, menuApi } from "@/services/api";
 import type { MenuLayoutButton } from "@/types";
 
+function SortableRow({
+  row,
+  rowIndex,
+  onToggleVisibility,
+  isDragging,
+}: {
+  row: MenuLayoutButton[];
+  rowIndex: number;
+  onToggleVisibility: (ri: number, bi: number) => void;
+  isDragging: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging: isRowDragging,
+  } = useSortable({ id: `row-${rowIndex}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isRowDragging ? 0.5 : undefined,
+  };
+
+  return (
+    <Card ref={setNodeRef} style={style}>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button className="cursor-grab touch-none" {...attributes} {...listeners}>
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <h3 className="text-sm font-semibold">ردیف {rowIndex + 1}</h3>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <SortableContext items={row.map((_, bi) => `btn-${rowIndex}-${bi}`)} strategy={horizontalListSortingStrategy}>
+          <div className="flex flex-wrap gap-3">
+            {row.map((btn, bi) => (
+              <SortableButton
+                key={`btn-${rowIndex}-${bi}`}
+                btn={btn}
+                rowIndex={rowIndex}
+                btnIndex={bi}
+                onToggleVisibility={onToggleVisibility}
+                isDragging={isDragging}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SortableButton({
+  btn,
+  rowIndex,
+  btnIndex,
+  onToggleVisibility,
+}: {
+  btn: MenuLayoutButton;
+  rowIndex: number;
+  btnIndex: number;
+  onToggleVisibility: (ri: number, bi: number) => void;
+  isDragging: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging: isBtnDragging,
+  } = useSortable({ id: `btn-${rowIndex}-${btnIndex}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isBtnDragging ? 0.5 : undefined,
+  };
+
+  function isPostRef(ref: string) {
+    return ref.startsWith("post_");
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex min-w-[120px] flex-1 items-center gap-2 rounded-xl border border-border bg-background/60 p-3">
+      <button className="cursor-grab touch-none" {...attributes} {...listeners}>
+        <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+      </button>
+      <Badge variant={isPostRef(btn.ref) ? "info" : "outline"} className="shrink-0">
+        {isPostRef(btn.ref) ? "پست" : "سیستم"}
+      </Badge>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{btn.text}</p>
+        <p className="truncate text-xs text-muted-foreground" dir="ltr">{btn.ref}</p>
+      </div>
+      <div className="flex shrink-0 gap-1">
+        <Button size="sm" variant="ghost" onClick={() => onToggleVisibility(rowIndex, btnIndex)}>
+          {(btn.visible ?? true) ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function MenuPage() {
   const [layout, setLayout] = useState<MenuLayoutButton[][]>([]);
   const [version, setVersion] = useState(0);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const layoutQuery = useQuery({
     queryKey: ["menu-layout"],
@@ -52,48 +187,53 @@ export default function MenuPage() {
     onError: (e) => toast.error(getApiError(e)),
   });
 
-  function moveRow(fromIndex: number, toIndex: number) {
-    if (toIndex < 0 || toIndex >= layout.length) return;
-    const next = [...layout];
-    [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
-    setLayout(next);
-  }
-
-  function deleteRow(index: number) {
-    const next = layout.filter((_, i) => i !== index);
-    setLayout(next);
-  }
-
-  function resizeRow(index: number, cols: number) {
-    const next = [...layout];
-    const row = next[index];
-    if (row.length <= cols) return;
-    const keep = row.slice(0, cols);
-    const overflow = row.slice(cols);
-    next[index] = keep;
-    next.splice(index + 1, 0, overflow);
-    setLayout(next);
-  }
-
-  function moveButton(rowIndex: number, fromIndex: number, toIndex: number) {
-    const next = [...layout];
-    const row = [...next[rowIndex]];
-    if (toIndex < 0 || toIndex >= row.length) return;
-    [row[fromIndex], row[toIndex]] = [row[toIndex], row[fromIndex]];
-    next[rowIndex] = row;
-    setLayout(next);
-  }
-
   function toggleVisibility(rowIndex: number, btnIndex: number) {
-    const next = [...layout];
-    const row = [...next[rowIndex]];
-    row[btnIndex] = { ...row[btnIndex], visible: !(row[btnIndex].visible ?? true) };
-    next[rowIndex] = row;
-    setLayout(next);
+    setLayout((prev) => {
+      const next = prev.map((row) => row.map((btn) => ({ ...btn })));
+      next[rowIndex][btnIndex] = {
+        ...next[rowIndex][btnIndex],
+        visible: !(next[rowIndex][btnIndex].visible ?? true),
+      };
+      return next;
+    });
   }
 
-  function isPostRef(ref: string) {
-    return ref.startsWith("post_");
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeIdStr = String(active.id);
+    const overIdStr = String(over.id);
+
+    if (activeIdStr.startsWith("row-")) {
+      // Row reorder
+      const oldIndex = parseInt(activeIdStr.replace("row-", ""));
+      const newIndex = parseInt(overIdStr.replace("row-", ""));
+      setLayout((prev) => arrayMove(prev, oldIndex, newIndex));
+    } else if (activeIdStr.startsWith("btn-") && overIdStr.startsWith("btn-")) {
+      // Button swap within same row
+      const [_, aRow, aCol] = activeIdStr.split("-");
+      const [__, bRow, bCol] = overIdStr.split("-");
+      if (aRow !== bRow) return; // Only allow within-row for now
+      const rowIdx = parseInt(aRow);
+      const fromIdx = parseInt(aCol);
+      const toIdx = parseInt(bCol);
+      setLayout((prev) => {
+        const next = prev.map((row) => [...row]);
+        const row = next[rowIdx];
+        const fromItem = row[fromIdx];
+        const toItem = row[toIdx];
+        // Swap in-place
+        row[fromIdx] = toItem;
+        row[toIdx] = fromItem;
+        return next;
+      });
+    }
   }
 
   return (
@@ -107,7 +247,7 @@ export default function MenuPage() {
           <Badge>نسخه {version}</Badge>
           <Button variant="outline" size="sm" onClick={() => rollbackMutation.mutate()} loading={rollbackMutation.isPending}><RotateCcw className="h-4 w-4" />بازگشت</Button>
           <Button variant="outline" size="sm" onClick={() => syncMutation.mutate()} loading={syncMutation.isPending}><RefreshCw className="h-4 w-4" />همگام‌سازی پست‌ها</Button>
-          <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}><Save className="h-4 w-4" />ذخیره</Button>
+          <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}><Save className="h-4 w-4" />ذخیره تغییرات</Button>
         </div>
       </div>
 
@@ -140,47 +280,26 @@ export default function MenuPage() {
             </CardContent>
           </Card>
 
-          <div className="space-y-4">
-            {layout.map((row, ri) => (
-              <Card key={ri}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">ردیف {ri + 1}</h3>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" disabled={ri === 0} onClick={() => moveRow(ri, ri - 1)}><ArrowUp className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" disabled={ri === layout.length - 1} onClick={() => moveRow(ri, ri + 1)}><ArrowDown className="h-4 w-4" /></Button>
-                      {[1, 2, 3].map((c) => (
-                        <Button key={c} size="sm" variant={row.length <= c ? "secondary" : "ghost"} onClick={() => resizeRow(ri, c)}>{c}</Button>
-                      ))}
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteRow(ri)}><Trash2 className="h-4 w-4" /></Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-3">
-                    {row.map((btn, bi) => (
-                      <div key={bi} className="flex min-w-[120px] flex-1 items-center gap-2 rounded-xl border border-border bg-background/60 p-3">
-                        <Badge variant={isPostRef(btn.ref) ? "info" : "outline"} className="shrink-0">
-                          {isPostRef(btn.ref) ? "پست" : "سیستم"}
-                        </Badge>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{btn.text}</p>
-                          <p className="truncate text-xs text-muted-foreground" dir="ltr">{btn.ref}</p>
-                        </div>
-                        <div className="flex shrink-0 gap-1">
-                          <Button size="sm" variant="ghost" disabled={bi === 0} onClick={() => moveButton(ri, bi, bi - 1)}><ArrowUp className="h-3.5 w-3.5" /></Button>
-                          <Button size="sm" variant="ghost" disabled={bi === row.length - 1} onClick={() => moveButton(ri, bi, bi + 1)}><ArrowDown className="h-3.5 w-3.5" /></Button>
-                          <Button size="sm" variant="ghost" onClick={() => toggleVisibility(ri, bi)}>
-                            {(btn.visible ?? true) ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={layout.map((_, ri) => `row-${ri}`)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-4">
+                {layout.map((row, ri) => (
+                  <SortableRow
+                    key={`row-${ri}`}
+                    row={row}
+                    rowIndex={ri}
+                    onToggleVisibility={toggleVisibility}
+                    isDragging={activeId === `row-${ri}`}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         </>
       )}
     </div>

@@ -2,6 +2,7 @@ import { AdminRole } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { BRAND_NAME } from '../constants';
 import { logger } from '../utils/logger';
+import { eventBus, Events } from '../utils/events';
 
 export const DEFAULT_MENU_ITEMS = [
   { key: 'dashboard', label: 'داشبورد', href: '/dashboard', order: 10, ownerOnly: false, featureKey: null },
@@ -149,12 +150,27 @@ class SettingsService {
   private readonly MENU_LAYOUT_KEY = 'menu_layout';
   private readonly MENU_LAYOUT_VERSION_KEY = 'menu_layout_version';
   private readonly MENU_LAYOUT_SNAPSHOT_KEY = 'menu_layout_snapshot';
+  private nextButtonId = 1;
+
+  private ensureButtonIds(layout: any[][]): any[][] {
+    return layout.map(row =>
+      row.map(btn => {
+        if (!btn.id) {
+          btn.id = `btn_${this.nextButtonId++}`;
+        }
+        return btn;
+      })
+    );
+  }
 
   async getMenuLayout(): Promise<any[][]> {
     if (this.menuLayoutCache) {
       logger.debug('[MenuLayout] Returning cached layout (version ' + this.menuLayoutCache.version + ')');
       return this.menuLayoutCache.layout;
     }
+    // Load next ID from DB
+    const savedNextId = await this.getSetting('menu_layout_next_id');
+    this.nextButtonId = Number(savedNextId) || 1;
 
     logger.debug('[MenuLayout] Reading layout from DB');
     let layout: any[][] = [];
@@ -166,7 +182,7 @@ class SettingsService {
       if (raw) {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (Array.isArray(parsed)) {
-          layout = parsed;
+          layout = this.ensureButtonIds(parsed);
           version = (await this.getSetting(this.MENU_LAYOUT_VERSION_KEY)) || 0;
           const snapRaw = await this.getSetting(this.MENU_LAYOUT_SNAPSHOT_KEY);
           if (snapRaw) {
@@ -203,6 +219,9 @@ class SettingsService {
   async saveMenuLayout(layout: any[][], preserveVersion?: number) {
     const oldLayout = this.menuLayoutCache?.layout || [];
 
+    // Ensure all buttons have stable IDs
+    layout = this.ensureButtonIds(layout);
+
     // Save layout to DB
     await this.setSetting(this.MENU_LAYOUT_KEY, layout);
 
@@ -210,6 +229,9 @@ class SettingsService {
     if (this.menuLayoutCache?.layout && this.menuLayoutCache.layout.length > 0) {
       await this.setSetting(this.MENU_LAYOUT_SNAPSHOT_KEY, this.menuLayoutCache.layout);
     }
+
+    // Persist next ID for stable IDs across restarts
+    await this.setSetting('menu_layout_next_id', this.nextButtonId);
 
     // Increment version
     const newVersion = preserveVersion ?? ((this.menuLayoutCache?.version ?? 0) + 1);
@@ -268,6 +290,20 @@ class SettingsService {
     logger.debug('[MenuLayout] Cache invalidated');
   }
 
+  // Listen for post events to invalidate menu cache
+  setupEventListeners() {
+    const invalidate = () => {
+      this.invalidateMenuLayoutCache();
+    };
+    eventBus.on(Events.POST_CREATED, invalidate);
+    eventBus.on(Events.POST_PUBLISHED, invalidate);
+    eventBus.on(Events.POST_DELETED, invalidate);
+    eventBus.on(Events.POST_HIDDEN, invalidate);
+    eventBus.on(Events.POST_UPDATED, invalidate);
+    eventBus.on(Events.POST_UNPUBLISHED, invalidate);
+    logger.info('[MenuLayout] Event listeners registered');
+  }
+
   // Get ref-to-text mapping for post routing
   getMenuButtonTextMap(layout: any[][]): Map<string, { ref: string; row: number; col: number }> {
     const map = new Map<string, { ref: string; row: number; col: number }>();
@@ -295,7 +331,8 @@ class SettingsService {
     }
 
     // Add as a new row with visibility=false (hidden by default)
-    layout.push([{ ref, text: title, visible: false }]);
+    this.ensureButtonIds(layout);
+    layout.push([{ id: `btn_${this.nextButtonId++}`, ref, text: title, visible: false }]);
     await this.saveMenuLayout(layout);
     logger.info(`[MenuLayout] Added post to menu: "${title}" (ref: ${ref})`);
   }
@@ -321,3 +358,5 @@ class SettingsService {
 }
 
 export const settingsService = new SettingsService();
+// Auto-register event listeners for live cache invalidation
+settingsService.setupEventListeners();

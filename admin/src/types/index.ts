@@ -398,6 +398,7 @@ export interface PostCommandItem {
 }
 
 export interface MenuLayoutButton {
+  id?: string;
   ref: string;
   text: string;
   type?: string;

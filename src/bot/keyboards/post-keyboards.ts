@@ -288,8 +288,6 @@ export const menuEditorKeyboard = (layout: any[][]) => {
         Markup.button.callback('⬆', `menu:rowup:${r}`),
         Markup.button.callback('⬇', `menu:rowdown:${r}`),
         Markup.button.callback('🔄 جابجایی', `menu:swap:${r}`),
-        Markup.button.callback('📐 اندازه', `menu:resize:${r}`),
-        Markup.button.callback('➖ حذف', `menu:delrow:${r}`),
       ]);
     }
   }
@@ -316,9 +314,6 @@ export const menuButtonEditKeyboard = (row: number, col: number, button: any) =>
     [
       Markup.button.callback('◀ چپ', `menu:btnleft:${row}:${col}`),
       Markup.button.callback('▶ راست', `menu:btnright:${row}:${col}`),
-    ],
-    [
-      Markup.button.callback('📐 تغییر اندازه سطر', `menu:resize:${row}`),
     ],
     [Markup.button.callback('« بازگشت به ویرایشگر منو', 'menu:editor')],
   ];
