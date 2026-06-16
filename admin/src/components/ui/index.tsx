@@ -1,5 +1,6 @@
 // src/components/ui/index.tsx
 "use client";
+import React from "react";
 import { cn } from "@/lib/utils";
 import { ChevronRight, ChevronLeft, Inbox } from "lucide-react";
 
@@ -92,9 +93,19 @@ export function Pagination({ page, pages, onChange }: { page: number; pages: num
 }
 
 // ─── Card ──────────────────────────────────────────────────
-export function Card({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("bg-card border border-border rounded-xl", className)}>{children}</div>;
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode;
 }
+export const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ children, className, ...props }, ref) => {
+    return (
+      <div ref={ref} className={cn("bg-card border border-border rounded-xl", className)} {...props}>
+        {children}
+      </div>
+    );
+  }
+);
+Card.displayName = "Card";
 
 export function CardHeader({ children, className }: { children: React.ReactNode; className?: string }) {
   return <div className={cn("p-5 border-b border-border", className)}>{children}</div>;
