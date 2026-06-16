@@ -36,6 +36,7 @@ import { createAiRouter } from "./routes/ai.routes";
 import { postRouter } from "./routes/post.routes";
 import { menuRouter } from "./routes/menu.routes";
 import { forcedMembershipRouter } from "./routes/forced-membership.routes";
+import { forceJoinRouter } from "./routes/force-join.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -204,6 +205,9 @@ export function startAdminApi(bot?: Telegraf) {
 
   // ───────────────── FORCED MEMBERSHIP SETTINGS ─────────────────
   app.use("/api/admin/membership", forcedMembershipRouter);
+
+  // ───────────────── FORCE JOIN SETTINGS ────────────────────────
+  app.use("/api/admin/force-join", forceJoinRouter);
 
   // ───────────────── 404 HANDLER ─────────────────
   app.use(

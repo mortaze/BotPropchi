@@ -1,4 +1,5 @@
-import { prisma } from '../../prisma/client';
+import type { ForceJoinSettingsData } from '../forceJoin.service';
+import { forceJoinService } from '../forceJoin.service';
 import { logger } from '../../utils/logger';
 
 export interface ForcedMembershipSettingsData {
@@ -16,7 +17,7 @@ export interface ForcedMembershipSettingsData {
   updatedAt: Date;
 }
 
-const DEFAULT_SETTINGS: ForcedMembershipSettingsData = {
+const LEGACY_FALLBACKS: ForcedMembershipSettingsData = {
   enabled: true,
   channelId: '',
   notJoinedMessage: '⚠️ برای استفاده از ربات باید ابتدا در کانال زیر عضو شوید.',
@@ -31,99 +32,60 @@ const DEFAULT_SETTINGS: ForcedMembershipSettingsData = {
   updatedAt: new Date(),
 };
 
+function toLegacy(newSettings: ForceJoinSettingsData): ForcedMembershipSettingsData {
+  return {
+    enabled: true,
+    channelId: '',
+    notJoinedMessage: newSettings.notJoinedMessage || LEGACY_FALLBACKS.notJoinedMessage,
+    leaveWarningMessage: newSettings.welcomeMessage || LEGACY_FALLBACKS.leaveWarningMessage,
+    helpMessage: newSettings.welcomeMessage || LEGACY_FALLBACKS.helpMessage,
+    joinButtonText: newSettings.joinButtonText || LEGACY_FALLBACKS.joinButtonText,
+    checkButtonText: newSettings.checkMembershipButtonText || LEGACY_FALLBACKS.checkButtonText,
+    instructionText: newSettings.notJoinedMessage || LEGACY_FALLBACKS.instructionText,
+    welcomeBackMessage: newSettings.successJoinMessage || LEGACY_FALLBACKS.welcomeBackMessage,
+    checkingMessage: newSettings.retryMessage || LEGACY_FALLBACKS.checkingMessage,
+    verifiedMessage: newSettings.successJoinMessage || LEGACY_FALLBACKS.verifiedMessage,
+    updatedAt: newSettings.updatedAt,
+  };
+}
+
 class ForcedMembershipSettingsService {
-  private cache: ForcedMembershipSettingsData | null = null;
-  private cacheExpires = 0;
-  private readonly CACHE_TTL = 30_000;
-
-  private async ensureRow(): Promise<void> {
-    await prisma.forcedMembershipSettings.upsert({
-      where: { id: 1 },
-      update: {},
-      create: { id: 1, ...DEFAULT_SETTINGS },
-    });
-  }
-
   invalidateCache(): void {
-    this.cache = null;
-    this.cacheExpires = 0;
+    forceJoinService.invalidateCache();
   }
 
   async getSettings(): Promise<ForcedMembershipSettingsData> {
-    if (this.cache && Date.now() < this.cacheExpires) {
-      return this.cache;
+    try {
+      const newSettings = await forceJoinService.getSettings();
+      return toLegacy(newSettings);
+    } catch (err) {
+      logger.error('[ForcedMembershipSettings] Fallback to legacy defaults:', err);
+      return { ...LEGACY_FALLBACKS, updatedAt: new Date() };
     }
-
-    await this.ensureRow();
-
-    const row = await prisma.forcedMembershipSettings.findUnique({ where: { id: 1 } });
-    const settings: ForcedMembershipSettingsData = row
-      ? {
-          enabled: row.enabled,
-          channelId: row.channelId,
-          notJoinedMessage: row.notJoinedMessage,
-          leaveWarningMessage: row.leaveWarningMessage,
-          helpMessage: row.helpMessage,
-          joinButtonText: row.joinButtonText,
-          checkButtonText: row.checkButtonText,
-          instructionText: row.instructionText,
-          welcomeBackMessage: row.welcomeBackMessage,
-          checkingMessage: row.checkingMessage,
-          verifiedMessage: row.verifiedMessage,
-          updatedAt: row.updatedAt,
-        }
-      : { ...DEFAULT_SETTINGS };
-
-    this.cache = settings;
-    this.cacheExpires = Date.now() + this.CACHE_TTL;
-    return settings;
   }
 
   async updateSettings(data: Partial<Omit<ForcedMembershipSettingsData, 'updatedAt'>>): Promise<ForcedMembershipSettingsData> {
-    await this.ensureRow();
+    const mapped: Partial<Omit<ForceJoinSettingsData, 'id' | 'createdAt' | 'updatedAt'>> = {};
 
-    const updateData: any = {};
-    if (data.enabled !== undefined) updateData.enabled = data.enabled;
-    if (data.channelId !== undefined) updateData.channelId = data.channelId;
-    if (data.notJoinedMessage !== undefined) updateData.notJoinedMessage = data.notJoinedMessage;
-    if (data.leaveWarningMessage !== undefined) updateData.leaveWarningMessage = data.leaveWarningMessage;
-    if (data.helpMessage !== undefined) updateData.helpMessage = data.helpMessage;
-    if (data.joinButtonText !== undefined) updateData.joinButtonText = data.joinButtonText;
-    if (data.checkButtonText !== undefined) updateData.checkButtonText = data.checkButtonText;
-    if (data.instructionText !== undefined) updateData.instructionText = data.instructionText;
-    if (data.welcomeBackMessage !== undefined) updateData.welcomeBackMessage = data.welcomeBackMessage;
-    if (data.checkingMessage !== undefined) updateData.checkingMessage = data.checkingMessage;
-    if (data.verifiedMessage !== undefined) updateData.verifiedMessage = data.verifiedMessage;
+    if (data.notJoinedMessage !== undefined) {
+      mapped.notJoinedMessage = data.notJoinedMessage;
+    }
+    if (data.leaveWarningMessage !== undefined) mapped.welcomeMessage = data.leaveWarningMessage;
+    if (data.helpMessage !== undefined) mapped.welcomeMessage = data.helpMessage;
+    if (data.joinButtonText !== undefined) mapped.joinButtonText = data.joinButtonText;
+    if (data.checkButtonText !== undefined) mapped.checkMembershipButtonText = data.checkButtonText;
+    if (data.welcomeBackMessage !== undefined) mapped.successJoinMessage = data.welcomeBackMessage;
+    if (data.checkingMessage !== undefined) mapped.retryMessage = data.checkingMessage;
+    if (data.verifiedMessage !== undefined) mapped.successJoinMessage = data.verifiedMessage;
 
-    const updated = await prisma.forcedMembershipSettings.update({
-      where: { id: 1 },
-      data: updateData,
-    });
-
-    const settings: ForcedMembershipSettingsData = {
-      enabled: updated.enabled,
-      channelId: updated.channelId,
-      notJoinedMessage: updated.notJoinedMessage,
-      leaveWarningMessage: updated.leaveWarningMessage,
-      helpMessage: updated.helpMessage,
-      joinButtonText: updated.joinButtonText,
-      checkButtonText: updated.checkButtonText,
-      instructionText: updated.instructionText,
-      welcomeBackMessage: updated.welcomeBackMessage,
-      checkingMessage: updated.checkingMessage,
-      verifiedMessage: updated.verifiedMessage,
-      updatedAt: updated.updatedAt,
-    };
-
-    this.cache = settings;
-    this.cacheExpires = Date.now() + this.CACHE_TTL;
-    logger.info('[ForcedMembershipSettings] Settings updated');
-    return settings;
+    const updated = await forceJoinService.updateSettings(mapped);
+    forceJoinService.invalidateCache();
+    logger.info('[ForcedMembershipSettings] Settings updated via adapter');
+    return toLegacy(updated);
   }
 
   async isEnabled(): Promise<boolean> {
-    const settings = await this.getSettings();
-    return settings.enabled;
+    return true;
   }
 }
 

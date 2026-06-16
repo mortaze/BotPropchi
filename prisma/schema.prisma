@@ -713,6 +713,23 @@ model ForcedMembershipSettings {
 }
 
 
+model ForceJoinSettings {
+  id                          Int      @id @default(1)
+  title                       String   @default("عضویت اجباری")
+  welcomeMessage              String   @default("برای استفاده از ربات ابتدا در کانال‌های زیر عضو شوید")
+  notJoinedMessage            String   @default("هنوز در همه کانال‌ها عضو نشده‌اید")
+  joinButtonText              String   @default("عضویت")
+  checkMembershipButtonText   String   @default("بررسی عضویت")
+  successJoinMessage          String   @default("عضویت شما تایید شد ✅")
+  errorMessage                String   @default("خطا در بررسی عضویت")
+  retryMessage                String   @default("دوباره تلاش کنید")
+  emptyChannelsMessage        String   @default("فعلاً کانالی تعریف نشده است")
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@map("force_join_settings")
+}
+
 model MenuOrder {
   id        Int      @id @default(autoincrement())
   key       String   @unique

@@ -410,3 +410,18 @@ export interface MenuLayoutResponse {
   layout: MenuLayoutButton[][];
   version: number;
 }
+
+export interface ForceJoinSettings {
+  id: number;
+  title: string;
+  welcomeMessage: string;
+  notJoinedMessage: string;
+  joinButtonText: string;
+  checkMembershipButtonText: string;
+  successJoinMessage: string;
+  errorMessage: string;
+  retryMessage: string;
+  emptyChannelsMessage: string;
+  createdAt: string;
+  updatedAt: string;
+}

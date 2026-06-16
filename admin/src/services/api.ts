@@ -520,3 +520,18 @@ export const menuApi = {
     return data;
   },
 };
+
+export const forceJoinApi = {
+  async getSettings(): Promise<{ success: boolean; data: import("@/types").ForceJoinSettings }> {
+    const { data } = await api.get("/api/admin/force-join/settings");
+    return data;
+  },
+  async updateSettings(payload: Partial<import("@/types").ForceJoinSettings>): Promise<{ success: boolean; data: import("@/types").ForceJoinSettings }> {
+    const { data } = await api.put("/api/admin/force-join/settings", payload);
+    return data;
+  },
+  async resetToDefaults(): Promise<{ success: boolean; data: import("@/types").ForceJoinSettings }> {
+    const { data } = await api.post("/api/admin/force-join/settings/reset");
+    return data;
+  },
+};

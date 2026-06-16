@@ -9,13 +9,14 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
 import { settingsApi } from "@/services/api";
 
-const iconMap = { dashboard: LayoutDashboard, users: Users, posts: FileText, menu: Settings, lotteries: Ticket, discounts: Gift, "prop-firms": Building2, referrals: Share2, scoring: Star, "required-channels": RadioTower, groups: ShieldCheck, "keyword-replies": MessageSquareReply, "bot-admins": UserCog, "admin-users": UserCog, analytics: BarChart3, "system-logs": FileText, "mini-app-logs": Activity, settings: Settings } as const;
+const iconMap = { dashboard: LayoutDashboard, users: Users, posts: FileText, menu: Settings, lotteries: Ticket, discounts: Gift, "prop-firms": Building2, referrals: Share2, scoring: Star, "required-channels": RadioTower, groups: ShieldCheck, "keyword-replies": MessageSquareReply, "bot-admins": UserCog, "admin-users": UserCog, analytics: BarChart3, "system-logs": FileText, "mini-app-logs": Activity, settings: Settings, "force-join": Settings } as const;
 const fallback = [
   { key: "dashboard", href: "/dashboard", label: "داشبورد" },
   { key: "users", href: "/dashboard/users", label: "کاربران" },
   { key: "lotteries", href: "/dashboard/lotteries", label: "قرعه‌کشی‌ها" },
   { key: "discounts", href: "/dashboard/discounts", label: "تخفیف‌ها" },
   { key: "mini-app-logs", href: "/dashboard/mini-app-logs", label: "Mini App Logs" },
+  { key: "force-join", href: "/dashboard/force-join", label: "عضویت اجباری" },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
