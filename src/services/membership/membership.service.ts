@@ -1,127 +1,103 @@
-import { prisma } from '../../prisma/client';
+import { Telegraf } from 'telegraf';
 import { redisClient } from '../../utils/redis';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
-import { channelRepository } from '../../repositories/channel.repository';
-import { userService } from '../user.service';
-import { systemLogService } from '../system-log.service';
-import { membershipQueue } from '../../queue/membership.queue';
-import { SystemEventType, SystemLogLevel } from '@prisma/client';
+import { config } from '../../config';
+import { requiredChannelsService, type RequiredChannelInfo } from '../requiredChannels.service';
 
-const CACHE_TTL = 45;
-const VALID_MEMBER_STATUSES = ['member', 'administrator', 'creator'];
+const VALID_MEMBER_STATUSES = new Set(['member', 'administrator', 'creator']);
 
-export type MembershipState = 'UNKNOWN' | 'CHECKING' | 'JOINED' | 'LEFT' | 'BLOCKED' | 'REJOINED';
+function getPerChannelCacheKey(telegramId: number, channelId: string): string {
+  return `member:${telegramId}:${channelId}`;
+}
 
-export interface MembershipResult {
+interface ChannelCheckResult {
+  channelId: string;
+  title: string;
+  inviteLink: string | null;
   isMember: boolean;
-  notJoined: Array<{
-    title: string;
-    inviteLink: string | null;
-    channelId: string;
-    buttonText?: string | null;
-  }>;
-}
-
-export interface MembershipStateResult extends MembershipResult {
-  state: MembershipState;
-}
-
-function getCacheKey(telegramId: number | bigint | string): string {
-  return `membership:${String(telegramId)}`;
-}
-
-function getWarnKey(telegramId: number): string {
-  return `membership:warned:${telegramId}`;
 }
 
 class MembershipService {
-  async checkMembership(telegramId: number): Promise<MembershipResult> {
-    const cacheKey = getCacheKey(telegramId);
+  private bot: Telegraf | null = null;
 
-    const cached = await this.getCached<MembershipResult>(cacheKey);
-    if (cached) return cached;
-
-    const channels = await channelRepository.findActive();
-    if (channels.length === 0) {
-      const result: MembershipResult = { isMember: true, notJoined: [] };
-      await this.setCache(cacheKey, result);
-      return result;
-    }
-
-    await membershipQueue.add(
-      { type: 'CHECK_MEMBERSHIP', telegramId, force: false },
-      `CHECK:${telegramId}`
-    );
-
-    return { isMember: false, notJoined: [] };
+  setBot(bot: Telegraf): void {
+    this.bot = bot;
   }
 
-  async forceCheck(telegramId: number): Promise<MembershipResult> {
-    const cacheKey = getCacheKey(telegramId);
-    await this.delCache(cacheKey);
-
-    await membershipQueue.add(
-      { type: 'VERIFY_MEMBERSHIP', telegramId, channelIds: [] },
-      `FORCE_CHECK:${telegramId}:${Date.now()}`
-    );
-
-    const channels = await channelRepository.findActive();
-    const notJoined = channels.map((ch) => ({
-      title: ch.displayTitle || ch.title,
-      inviteLink: ch.inviteLink || (ch.username ? `https://t.me/${ch.username}` : null),
-      channelId: ch.chatId || ch.channelId,
-      buttonText: ch.buttonText,
-    }));
-
-    return { isMember: false, notJoined };
-  }
-
-  async handleChatMemberUpdate(
+  async checkMembershipConcurrent(
     telegramId: number,
-    chatId: string,
-    newStatus: string,
-    oldStatus: string
-  ): Promise<void> {
-    await membershipQueue.add(
-      {
-        type: 'CHAT_MEMBER_UPDATE',
-        telegramId,
-        chatId,
-        newStatus,
-        oldStatus,
-      },
-      `CHAT_MEMBER:${telegramId}:${chatId}`
+    channels?: RequiredChannelInfo[]
+  ): Promise<{ isMember: boolean; notJoined: ChannelCheckResult[] }> {
+    const chs = channels ?? requiredChannelsService.getChannels();
+    if (chs.length === 0) return { isMember: true, notJoined: [] };
+
+    const results = await Promise.allSettled(
+      chs.map((ch) => this.checkSingleChannel(telegramId, ch))
     );
+
+    const notJoined: ChannelCheckResult[] = [];
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        if (!r.value.isMember) notJoined.push(r.value);
+      }
+    }
+
+    return { isMember: notJoined.length === 0, notJoined };
   }
 
-  async setMember(telegramId: number, isMember: boolean, notJoined: MembershipResult['notJoined'] = []): Promise<void> {
-    const cacheKey = getCacheKey(telegramId);
-    const result: MembershipResult = { isMember, notJoined };
-    await this.setCache(cacheKey, result);
+  private async checkSingleChannel(
+    telegramId: number,
+    channel: RequiredChannelInfo
+  ): Promise<ChannelCheckResult> {
+    const cacheKey = getPerChannelCacheKey(telegramId, channel.chatId);
 
-    if (isMember) {
-      await userService.markMembershipVerified(BigInt(telegramId)).catch(() => {});
-      await userService.processPendingReferral(BigInt(telegramId)).catch(() => {});
+    const cached = await this.getCached<boolean>(cacheKey);
+    if (cached !== undefined) {
+      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember: cached };
+    }
+
+    if (!this.bot) {
+      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember: false };
+    }
+
+    try {
+      const member = await this.bot.telegram.getChatMember(channel.chatId as any, telegramId);
+      const isMember = VALID_MEMBER_STATUSES.has(member.status);
+      await this.setCache(cacheKey, isMember);
+      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember };
+    } catch (err) {
+      const desc = (err as any)?.response?.description || (err as Error).message || 'Unknown error';
+      logger.warn(`[Membership] getChatMember failed user=${telegramId} channel=${channel.chatId}: ${desc}`);
+      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember: false };
     }
   }
 
-  async invalidate(telegramId: number | bigint | string): Promise<void> {
-    const key = getCacheKey(telegramId);
-    await this.delCache(key);
-  }
-
-  async invalidateAll(): Promise<void> {
-    await redisClient.invalidateByPrefix('membership:');
-    cache.delByPrefix('membership:');
-  }
-
-  async clearWarnCooldown(telegramId: number): Promise<void> {
-    const key = getWarnKey(telegramId);
+  async invalidateChannel(telegramId: number, channelId: string): Promise<void> {
+    const key = getPerChannelCacheKey(telegramId, channelId);
     await Promise.all([
       redisClient.del(key),
       Promise.resolve(cache.del(key)),
     ]);
+  }
+
+  async setChannelCached(telegramId: number, channelId: string, isMember: boolean): Promise<void> {
+    const key = getPerChannelCacheKey(telegramId, channelId);
+    await this.setCache(key, isMember);
+  }
+
+  async invalidateAll(telegramId?: number): Promise<void> {
+    if (telegramId) {
+      const chs = requiredChannelsService.getChannels();
+      await Promise.all(
+        chs.map((ch) => this.invalidateChannel(telegramId, ch.chatId))
+      );
+    } else {
+      await Promise.all([
+        redisClient.invalidateByPrefix('member:'),
+        Promise.resolve(cache.delByPrefix('member:')),
+      ]);
+    }
   }
 
   private async getCached<T>(key: string): Promise<T | undefined> {
@@ -132,17 +108,11 @@ class MembershipService {
     return undefined;
   }
 
-  private async setCache(key: string, result: MembershipResult): Promise<void> {
+  private async setCache(key: string, value: boolean): Promise<void> {
+    const ttl = config.membership.cacheTtl;
     await Promise.all([
-      redisClient.set(key, result, CACHE_TTL),
-      Promise.resolve(cache.set(key, result, CACHE_TTL)),
-    ]);
-  }
-
-  private async delCache(key: string): Promise<void> {
-    await Promise.all([
-      redisClient.del(key),
-      Promise.resolve(cache.del(key)),
+      redisClient.set(key, value, ttl),
+      Promise.resolve(cache.set(key, value, ttl)),
     ]);
   }
 }

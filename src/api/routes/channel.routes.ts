@@ -3,6 +3,8 @@ import { Router } from 'express';
 import { Telegraf } from 'telegraf';
 import { z } from 'zod';
 import { channelService } from '../../services/channel.service';
+import { requiredChannelsService } from '../../services/requiredChannels.service';
+import { membershipService } from '../../services/membership/membership.service';
 import { serializeBigInts } from '../../utils/serialize';
 
 const channelSchema = z.object({
@@ -57,6 +59,18 @@ export function createChannelRouter(bot?: Telegraf) {
   channelRouter.delete('/:id', async (req, res) => {
     await channelService.delete(Number(req.params.id));
     res.json({ success: true });
+  });
+
+  channelRouter.post('/refresh-cache', async (_req, res) => {
+    if (!bot) return res.status(503).json({ success: false, error: 'ربات تلگرام در API در دسترس نیست' });
+    try {
+      await requiredChannelsService.refresh(bot);
+      await membershipService.invalidateAll();
+      res.json({ success: true, message: 'Cache refreshed' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ success: false, error: message });
+    }
   });
 
   return channelRouter;

@@ -19,6 +19,8 @@ import { startScheduler } from './scheduler';
 import { botAdminService } from './services/bot-admin.service';
 import { settingsService } from './services/settings.service';
 import { membershipGuard } from './middleware/membership.guard';
+import { membershipService } from './services/membership/membership.service';
+import { requiredChannelsService } from './services/requiredChannels.service';
 import { registerChatMemberHandlers } from './bot/webhooks/chatMember.handler';
 import { startMembershipWorker } from './workers/membership.worker';
 
@@ -37,18 +39,26 @@ async function bootstrap() {
   // ساخت ربات
   const bot = new Telegraf(config.bot.token);
 
-  // آغاز Membership Worker
+  // تنظیم نمونه ربات برای سرویس‌ها
+  membershipService.setBot(bot);
+
+  // آغاز Membership Worker (برای پردازش‌های سنگین)
   startMembershipWorker(bot);
 
-  // Middleware ها
+  // بارگذاری کانال‌های مورد نیاز
+  await requiredChannelsService.initialize(bot);
+
+  // Middleware ها (به ترتیب: لاگ → نرخ → کاربر → عضویت → ویژگی → گروه)
   bot.use(loggingMiddleware());
   bot.use(rateLimitMiddleware(20, 60_000));
   bot.use(userMiddleware());
+
+  // chat_member handler باید قبل از membershipGuard ثبت شود
+  registerChatMemberHandlers(bot);
+
   bot.use(membershipGuard(bot));
   bot.use(featureToggleMiddleware());
   bot.use(groupAccessMiddleware(bot));
-
-  registerChatMemberHandlers(bot);
 
   // ثبت هندلرها
   registerHandlers(bot);
@@ -68,8 +78,10 @@ async function bootstrap() {
   // اجرای Scheduler
   startScheduler();
 
-  // اجرای ربات
-  await bot.launch();
+  // اجرای ربات با دریافت تمام آپدیت‌های مورد نیاز
+  await bot.launch({
+    allowedUpdates: ['message', 'edited_message', 'callback_query', 'chat_member', 'my_chat_member'],
+  });
 
   const me = await bot.telegram.getMe();
 
@@ -95,4 +107,3 @@ bootstrap().catch((err) => {
 
   process.exit(1);
 });
-

@@ -51,6 +51,11 @@ export const config = {
     ttl: parseInt(process.env.CACHE_TTL_SECONDS || '300'),
   },
 
+  membership: {
+    cacheTtl: parseInt(process.env.MEMBERSHIP_CACHE_TTL || '300'),
+    requiredChannels: process.env.MEMBERSHIP_REQUIRED_CHANNELS || '',
+  },
+
   wordpress: {
     apiUrl: process.env.WORDPRESS_API_URL || '',
     botApiKey: process.env.WORDPRESS_BOT_API_KEY || '',

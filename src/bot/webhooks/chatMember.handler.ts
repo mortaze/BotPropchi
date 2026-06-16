@@ -2,8 +2,8 @@ import { Context } from 'telegraf';
 import { logger } from '../../utils/logger';
 import { membershipService } from '../../services/membership/membership.service';
 
-const VALID_ROLES = ['member', 'administrator', 'creator'];
-const LEFT_ROLES = ['left', 'kicked'];
+const VALID_ROLES = new Set(['member', 'administrator', 'creator']);
+const LEFT_ROLES = new Set(['left', 'kicked', 'banned']);
 
 export async function handleMyChatMember(ctx: Context): Promise<void> {
   try {
@@ -12,11 +12,10 @@ export async function handleMyChatMember(ctx: Context): Promise<void> {
 
     const chat = update.chat;
     const newStatus = update.new_chat_member?.status;
-    const oldStatus = update.old_chat_member?.status;
 
     if (newStatus === 'administrator' || newStatus === 'creator') {
       logger.info(`[ChatMember] Bot is now admin in chat ${chat.id} (${chat.title || 'unknown'})`);
-    } else if (LEFT_ROLES.includes(newStatus)) {
+    } else if (LEFT_ROLES.has(newStatus)) {
       logger.warn(`[ChatMember] Bot was removed from chat ${chat.id} (${chat.title || 'unknown'})`);
     }
   } catch (err) {
@@ -30,32 +29,21 @@ export async function handleChatMember(ctx: Context): Promise<void> {
     if (!update) return;
 
     const chat = update.chat;
-    const from = update.from;
+    const userId = update.new_chat_member?.user?.id;
     const newStatus = update.new_chat_member?.status;
     const oldStatus = update.old_chat_member?.status;
-    const userId = update.new_chat_member?.user?.id || from?.id;
 
-    if (!userId || !chat) return;
+    if (!userId || !chat || !newStatus) return;
     if (chat.type !== 'channel') return;
 
-    if (LEFT_ROLES.includes(newStatus)) {
-      logger.info(`[ChatMember] User ${userId} LEFT channel ${chat.id}`);
+    const channelId = String(chat.id);
 
-      await membershipService.handleChatMemberUpdate(
-        userId,
-        String(chat.id),
-        newStatus,
-        oldStatus || 'member'
-      ).catch((err) => logger.error('[ChatMember] Failed to process leave:', err));
-    } else if (VALID_ROLES.includes(newStatus) && LEFT_ROLES.includes(oldStatus || '')) {
-      logger.info(`[ChatMember] User ${userId} JOINED channel ${chat.id}`);
-
-      await membershipService.handleChatMemberUpdate(
-        userId,
-        String(chat.id),
-        newStatus,
-        oldStatus || 'left'
-      ).catch((err) => logger.error('[ChatMember] Failed to process join:', err));
+    if (LEFT_ROLES.has(newStatus)) {
+      await membershipService.invalidateChannel(userId, channelId);
+      logger.info(`[ChatMember] User ${userId} left channel ${channelId} — cache invalidated`);
+    } else if (VALID_ROLES.has(newStatus) && (LEFT_ROLES.has(oldStatus || '') || oldStatus === undefined)) {
+      await membershipService.setChannelCached(userId, channelId, true);
+      logger.info(`[ChatMember] User ${userId} joined channel ${channelId} — cache updated to true`);
     }
   } catch (err) {
     logger.error('[ChatMember] chat_member handler error:', err);
@@ -73,5 +61,5 @@ export function registerChatMemberHandlers(bot: any): void {
     return next();
   });
 
-  logger.info('[ChatMember] Handlers registered (my_chat_member + chat_member)');
+  logger.info('[ChatMember] Handlers registered with direct cache invalidation');
 }

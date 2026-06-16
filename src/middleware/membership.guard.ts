@@ -1,80 +1,44 @@
 import { Context, Telegraf } from 'telegraf';
 import { logger } from '../utils/logger';
 import { membershipService } from '../services/membership/membership.service';
-import { userService } from '../services/user.service';
-import { systemLogService } from '../services/system-log.service';
-import { forcedMembershipSettingsService } from '../services/membership/forcedMembership.service';
-import { redisClient } from '../utils/redis';
-import { cache } from '../utils/cache';
-import { SystemEventType } from '@prisma/client';
-import { buildForceJoinKeyboard } from '../bot/keyboards';
-
-const WARN_COOLDOWN_SECONDS = 60;
-
-function getWarnCacheKey(telegramId: number): string {
-  return `membership:warned:${telegramId}`;
-}
-
-async function hasRecentWarning(telegramId: number): Promise<boolean> {
-  const key = getWarnCacheKey(telegramId);
-  const redisVal = await redisClient.get(key);
-  if (redisVal) return true;
-  return cache.get(key) === true;
-}
-
-async function markWarningSent(telegramId: number): Promise<void> {
-  const key = getWarnCacheKey(telegramId);
-  await Promise.all([
-    redisClient.set(key, true, WARN_COOLDOWN_SECONDS),
-    Promise.resolve(cache.set(key, true, WARN_COOLDOWN_SECONDS)),
-  ]);
-}
+import { requiredChannelsService } from '../services/requiredChannels.service';
 
 export function membershipGuard(bot: Telegraf) {
   return async (ctx: Context, next: () => Promise<void>) => {
     if (!ctx.from) return next();
+
+    const updateType = (ctx as any).updateType as string;
+    if (updateType === 'chat_member' || updateType === 'my_chat_member') return next();
+
     if (ctx.chat && ctx.chat.type !== 'private') return next();
 
-    const callbackData = (ctx.callbackQuery as any)?.data as string | undefined;
-    if (callbackData === 'check:membership') return next();
-
     const telegramId = ctx.from.id;
-    const isCallback = !!ctx.callbackQuery;
 
     try {
-      const isEnabled = await forcedMembershipSettingsService.isEnabled();
-      if (!isEnabled) return next();
+      const channels = requiredChannelsService.getChannels();
+      if (channels.length === 0) return next();
 
-      const result = await membershipService.checkMembership(telegramId);
+      const result = await membershipService.checkMembershipConcurrent(telegramId, channels);
 
-      if (result.isMember) {
-        await userService.markMembershipVerified(BigInt(telegramId)).catch(() => {});
-        await userService.processPendingReferral(BigInt(telegramId)).catch(() => {});
-        return next();
-      }
+      if (result.isMember) return next();
 
-      await userService.markMembershipUnverified(BigInt(telegramId), 'guard_blocked').catch(() => {});
-
-      await systemLogService.log({
-        eventType: SystemEventType.FORCE_JOIN,
-        telegramId,
-        message: 'Membership guard blocked user',
-        metadata: { notJoinedCount: result.notJoined.length, isCallback },
-      });
-
-      const settings = await forcedMembershipSettingsService.getSettings();
-
-      if (isCallback) {
-        await ctx.answerCbQuery(settings.notJoinedMessage, { show_alert: true }).catch(() => {});
+      if (ctx.callbackQuery) {
+        try {
+          await ctx.answerCbQuery('لطفاً ابتدا در کانال‌های زیر عضو شوید.', { show_alert: true });
+        } catch {}
         return;
       }
 
-      const warned = await hasRecentWarning(telegramId);
-      if (warned) return;
+      const lines: string[] = ['لطفاً برای استفاده از ربات در کانال‌های زیر عضو شوید:'];
+      for (const ch of result.notJoined) {
+        const link = ch.inviteLink || `https://t.me/${ch.channelId.replace(/^-100/, '')}`;
+        lines.push(`\n🔹 ${ch.title}\n${link}`);
+      }
+      lines.push('\nپس از عضویت، دوباره پیام خود را ارسال کنید.');
 
-      await markWarningSent(telegramId);
-
-      await ctx.reply(settings.notJoinedMessage, buildForceJoinKeyboard(result.notJoined, settings.joinButtonText, settings.checkButtonText));
+      try {
+        await ctx.reply(lines.join(''));
+      } catch {}
     } catch (err) {
       logger.error(`[MembershipGuard] Error for user ${telegramId}:`, err);
       return next();

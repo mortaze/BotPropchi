@@ -4,17 +4,11 @@ import { config } from '../config';
 import { logger } from '../utils/logger';
 import { redisClient } from '../utils/redis';
 import { cache } from '../utils/cache';
-import { buildForceJoinKeyboard } from '../bot/keyboards';
-import { channelRepository } from '../repositories/channel.repository';
-import { prisma } from '../prisma/client';
-import { systemLogService } from '../services/system-log.service';
+import { requiredChannelsService, type RequiredChannelInfo } from '../services/requiredChannels.service';
 import { membershipService } from '../services/membership/membership.service';
-import { forcedMembershipSettingsService } from '../services/membership/forcedMembership.service';
-import { SystemEventType, SystemLogLevel } from '@prisma/client';
 import type { MembershipJobData } from '../queue/membership.queue';
 
-const VALID_MEMBER_STATUSES = ['member', 'administrator', 'creator'];
-const LEFT_STATUSES = ['left', 'kicked'];
+const VALID_MEMBER_STATUSES = new Set(['member', 'administrator', 'creator']);
 
 let botInstance: Telegraf | null = null;
 
@@ -27,152 +21,52 @@ function getBot(): Telegraf {
   return botInstance;
 }
 
-function telegramErrorDetails(error: any) {
-  const description = error?.response?.description || error?.description || error?.message || String(error);
-  const isForbidden = /forbidden|bot was kicked|user is deactivated/i.test(description);
-  const isChatNotFound = /chat not found/i.test(description);
-  return { description, isChatNotFound, isForbidden };
-}
-
-async function getActiveChannels() {
-  return channelRepository.findActive();
-}
-
-async function resolveChatIdentifier(channel: any): Promise<string> {
-  const raw = String(channel.chatId || channel.channelId || '').trim();
-  if (!raw) return channel.username ? `@${channel.username}` : '';
-  if (raw.startsWith('@')) return channel.username ? `@${channel.username}` : raw;
-  return raw;
-}
-
-async function persistMembershipRecord(
-  telegramId: number,
-  requiredChannelId: number,
-  status: string,
-  checkedAt: Date,
-  error: string | null
-): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { telegramId: BigInt(telegramId) } });
-  if (!user) return;
-
-  await prisma.userRequiredChannelMembership.upsert({
-    where: { userId_requiredChannelId: { userId: user.id, requiredChannelId } },
-    update: {
-      status,
-      lastCheckedAt: checkedAt,
-      verifiedAt: VALID_MEMBER_STATUSES.includes(status.toLowerCase()) ? checkedAt : undefined,
-      error,
-    },
-    create: {
-      userId: user.id,
-      requiredChannelId,
-      status,
-      lastCheckedAt: checkedAt,
-      verifiedAt: VALID_MEMBER_STATUSES.includes(status.toLowerCase()) ? checkedAt : null,
-      error,
-    },
-  });
-}
-
-async function checkTelegramMembership(
+async function checkSingleChannel(
   bot: Telegraf,
   telegramId: number,
-  channels: Awaited<ReturnType<typeof getActiveChannels>>
-): Promise<{ isMember: boolean; notJoined: any[] }> {
-  const notJoined: any[] = [];
-  const checkedAt = new Date();
-
-  for (const channel of channels) {
-    const chatIdentifier = await resolveChatIdentifier(channel);
-    if (!chatIdentifier || chatIdentifier.startsWith('@')) {
-      notJoined.push({
-        title: channel.displayTitle || channel.title,
-        inviteLink: channel.inviteLink || (channel.username ? `https://t.me/${channel.username}` : null),
-        channelId: chatIdentifier || channel.channelId,
-        buttonText: channel.buttonText,
-      });
-      continue;
-    }
-
-    try {
-      const member = await bot.telegram.getChatMember(chatIdentifier as any, telegramId);
-      const status = member.status;
-
-      await persistMembershipRecord(telegramId, channel.id, status.toUpperCase(), checkedAt, null);
-
-      if (!VALID_MEMBER_STATUSES.includes(status)) {
-        notJoined.push({
-          title: channel.displayTitle || channel.title,
-          inviteLink: channel.inviteLink || (channel.username ? `https://t.me/${channel.username}` : null),
-          channelId: chatIdentifier,
-          buttonText: channel.buttonText,
-        });
-
-        if (LEFT_STATUSES.includes(status)) {
-          await systemLogService.log({
-            eventType: SystemEventType.FORCE_JOIN,
-            level: SystemLogLevel.WARN,
-            telegramId,
-            message: 'User left required channel',
-            metadata: { channelId: channel.id, chatId: chatIdentifier, status },
-          });
-        }
-      }
-    } catch (err) {
-      const details = telegramErrorDetails(err);
-      logger.warn(`[MembershipWorker] getChatMember failed user=${telegramId} chat=${chatIdentifier}: ${details.description}`);
-
-      await persistMembershipRecord(telegramId, channel.id, 'ERROR', checkedAt, details.description);
-
-      notJoined.push({
-        title: channel.displayTitle || channel.title,
-        inviteLink: channel.inviteLink || (channel.username ? `https://t.me/${channel.username}` : null),
-        channelId: chatIdentifier,
-        buttonText: channel.buttonText,
-      });
-    }
-  }
-
-  return { isMember: notJoined.length === 0, notJoined };
-}
-
-async function sendBlockMessage(
-  bot: Telegraf,
-  telegramId: number,
-  notJoined: any[],
-  messageText: string
-): Promise<void> {
+  channel: RequiredChannelInfo
+): Promise<boolean> {
   try {
-    const settings = await forcedMembershipSettingsService.getSettings();
-
-    await bot.telegram.sendMessage(telegramId, messageText, {
-      reply_markup: buildForceJoinKeyboard(notJoined, settings.joinButtonText, settings.checkButtonText).reply_markup,
-    });
+    const member = await bot.telegram.getChatMember(channel.chatId as any, telegramId);
+    const isMember = VALID_MEMBER_STATUSES.has(member.status);
+    await membershipService.setChannelCached(telegramId, channel.chatId, isMember);
+    return isMember;
   } catch (err) {
-    const details = telegramErrorDetails(err);
-    if (details.isForbidden) {
-      logger.debug(`[MembershipWorker] Cannot message user ${telegramId}: blocked or never started bot`);
-    } else {
-      logger.error(`[MembershipWorker] sendMessage failed for ${telegramId}:`, details.description);
-    }
+    const desc = (err as any)?.response?.description || (err as Error).message || 'Unknown error';
+    logger.warn(`[MembershipWorker] getChatMember failed user=${telegramId} channel=${channel.chatId}: ${desc}`);
+    return false;
   }
 }
 
-async function processCheckMembership(data: { type: 'CHECK_MEMBERSHIP'; telegramId: number; force?: boolean }): Promise<void> {
+async function processCheckMembership(data: { type: 'CHECK_MEMBERSHIP'; telegramId: number }): Promise<void> {
   const { telegramId } = data;
-
   const bot = getBot();
-  const channels = await getActiveChannels();
+  const channels = requiredChannelsService.getChannels();
   if (channels.length === 0) return;
 
-  const result = await checkTelegramMembership(bot, telegramId, channels);
+  const results = await Promise.allSettled(
+    channels.map((ch) => checkSingleChannel(bot, telegramId, ch))
+  );
 
-  await membershipService.setMember(telegramId, result.isMember, result.notJoined);
+  const notJoined: RequiredChannelInfo[] = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && !r.value) {
+      notJoined.push(channels[i]);
+    }
+  });
 
-  if (!result.isMember) {
-    const settings = await forcedMembershipSettingsService.getSettings();
-    if (settings.enabled) {
-      await sendBlockMessage(bot, telegramId, result.notJoined, settings.notJoinedMessage);
+  if (notJoined.length > 0) {
+    const lines: string[] = ['لطفاً برای استفاده از ربات در کانال‌های زیر عضو شوید:'];
+    for (const ch of notJoined) {
+      const link = ch.inviteLink || `https://t.me/${ch.chatId.replace(/^-100/, '')}`;
+      lines.push(`\n🔹 ${ch.title}\n${link}`);
+    }
+    lines.push('\nپس از عضویت، دوباره پیام خود را ارسال کنید.');
+
+    try {
+      await bot.telegram.sendMessage(telegramId, lines.join(''));
+    } catch {
+      // user blocked or never started bot — silent
     }
   }
 }
@@ -184,61 +78,26 @@ async function processChatMemberUpdate(data: {
   newStatus: string;
   oldStatus: string;
 }): Promise<void> {
-  const { telegramId, newStatus } = data;
-  const left = LEFT_STATUSES.includes(newStatus);
-  const joined = VALID_MEMBER_STATUSES.includes(newStatus);
+  const { telegramId, chatId, newStatus } = data;
+  const left = newStatus === 'left' || newStatus === 'kicked' || newStatus === 'banned';
+  const joined = VALID_MEMBER_STATUSES.has(newStatus);
 
   if (left) {
-    await membershipService.setMember(telegramId, false, []);
-    await membershipService.clearWarnCooldown(telegramId);
-
-    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(telegramId) } });
-    if (user) {
-      const settings = await forcedMembershipSettingsService.getSettings();
-      if (settings.enabled) {
-        await sendBlockMessage(
-          getBot(),
-          telegramId,
-          [
-            {
-              title: data.chatId,
-              inviteLink: null,
-              channelId: data.chatId,
-              buttonText: settings.joinButtonText,
-            },
-          ],
-          settings.leaveWarningMessage
-        );
-      }
-    }
+    await membershipService.invalidateChannel(telegramId, chatId);
   } else if (joined) {
-    await membershipService.setMember(telegramId, true);
-    await membershipService.clearWarnCooldown(telegramId);
-
-    const settings = await forcedMembershipSettingsService.getSettings();
-    if (settings.enabled) {
-      try {
-        await getBot().telegram.sendMessage(telegramId, settings.welcomeBackMessage);
-      } catch (err) {
-        const details = telegramErrorDetails(err);
-        if (!details.isForbidden) {
-          logger.error(`[MembershipWorker] Welcome back message failed for ${telegramId}:`, details.description);
-        }
-      }
-    }
+    await membershipService.setChannelCached(telegramId, chatId, true);
   }
 }
 
 async function processVerifyMembership(data: { type: 'VERIFY_MEMBERSHIP'; telegramId: number }): Promise<void> {
   const { telegramId } = data;
-
   const bot = getBot();
-  const channels = await getActiveChannels();
+  const channels = requiredChannelsService.getChannels();
   if (channels.length === 0) return;
 
-  const result = await checkTelegramMembership(bot, telegramId, channels);
-
-  await membershipService.setMember(telegramId, result.isMember, result.notJoined);
+  await Promise.allSettled(
+    channels.map((ch) => checkSingleChannel(bot, telegramId, ch))
+  );
 }
 
 export async function handleJobInline(data: MembershipJobData): Promise<void> {
