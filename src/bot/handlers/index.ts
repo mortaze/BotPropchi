@@ -284,10 +284,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
         await groupService.upsertFromChat({ id: chat.id, title: chat.title, username: chat.username });
         await groupService.refreshBotAdmin(bot, chat.id).catch(logger.error);
       }
-      if (chat.type === 'channel' || chat.type === 'group' || chat.type === 'supergroup') {
-        await channelService.registerPendingFromChat({ id: chat.id, title: chat.title, username: chat.username, type: chat.type }).catch(logger.error);
-        await systemLogService.log({ eventType: SystemEventType.GROUP_INTEGRATION, message: 'Bot added to chat and queued for force-join approval', metadata: { chat } as any });
-      }
     }
     return next();
   });

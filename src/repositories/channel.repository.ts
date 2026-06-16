@@ -13,6 +13,10 @@ export const channelRepository = {
     return prisma.requiredChannel.findUnique({ where: { id } });
   },
 
+  async findByChannelId(channelId: string) {
+    return prisma.requiredChannel.findUnique({ where: { channelId } });
+  },
+
   async findActive() {
     return prisma.requiredChannel.findMany({
       where: { isActive: true, status: 'APPROVED' },
@@ -29,10 +33,13 @@ export const channelRepository = {
       where: { channelId },
       update: {
         title: data.title,
+        displayTitle: data.displayTitle,
         chatId: data.chatId,
         username: data.username,
         type: data.type,
         inviteLink: data.inviteLink,
+        botStatus: data.botStatus,
+        lastError: data.lastError,
       },
       create: data,
     });

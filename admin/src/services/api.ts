@@ -263,6 +263,10 @@ export const requiredChannelsApi = {
     const { data } = await api.delete(`/api/required-channels/${id}`);
     return data;
   },
+  async refreshCache(): Promise<{ success: boolean; message: string }> {
+    const { data } = await api.post("/api/required-channels/refresh-cache");
+    return data;
+  },
 };
 
 export const analyticsApi = {

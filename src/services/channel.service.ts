@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { systemLogService } from './system-log.service';
 
 const VALID_MEMBER_STATUSES = ['member', 'administrator', 'creator'];
+const ADMIN_ROLES = new Set(['administrator', 'creator']);
 const LEFT_STATUSES = ['left', 'kicked'];
 const MEMBERSHIP_CACHE_TTL_SECONDS = 180;
 
@@ -103,7 +104,27 @@ export const channelService = {
     const channelId = String(chat.id);
     const type = chat.type === 'group' || chat.type === 'supergroup' ? RequiredChannelType.GROUP : RequiredChannelType.CHANNEL;
     const username = normalizeUsername(chat.username);
-    const item = await channelRepository.upsertByChannelId(channelId, {
+    const existing = await channelRepository.findByChannelId(channelId);
+    if (existing) {
+      const updateData: Prisma.RequiredChannelUpdateInput = {
+        title: chat.title || existing.title,
+        displayTitle: chat.title || existing.displayTitle,
+        chatId: channelId,
+        username: username || existing.username,
+        type,
+        inviteLink: chat.inviteLink || existing.inviteLink || (username ? `https://t.me/${username}` : undefined),
+        botStatus: 'administrator',
+        lastError: null,
+      };
+      if (existing.status === RequiredChannelStatus.REJECTED || existing.status === RequiredChannelStatus.DISABLED) {
+        updateData.status = RequiredChannelStatus.PENDING;
+        updateData.isActive = false;
+      }
+      const item = await channelRepository.update(existing.id, updateData);
+      await systemLogService.log({ eventType: SystemEventType.FORCE_JOIN, message: 'Required channel re-discovered by bot — status reset to pending', metadata: { channelId, title: chat.title, oldStatus: existing.status } });
+      return item;
+    }
+    const item = await channelRepository.create({
       channelId,
       chatId: channelId,
       title: chat.title || channelId,
@@ -116,6 +137,18 @@ export const channelService = {
     });
     await systemLogService.log({ eventType: SystemEventType.FORCE_JOIN, message: 'Required channel discovered by bot', metadata: { channelId, title: chat.title, username, type } });
     return item;
+  },
+
+  async updateBotStatus(channelId: string, botStatus: string, lastError: string | null): Promise<void> {
+    const existing = await channelRepository.findByChannelId(channelId);
+    if (!existing) return;
+    const isAdmin = ADMIN_ROLES.has(botStatus);
+    await channelRepository.update(existing.id, {
+      botStatus,
+      botStatusCheckedAt: new Date(),
+      lastError,
+      isActive: existing.status === RequiredChannelStatus.APPROVED ? isAdmin : existing.isActive,
+    });
   },
 
   async refreshBotStatus(bot: Telegraf, id: number) {
