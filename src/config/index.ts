@@ -43,6 +43,10 @@ export const config = {
     url: required('DATABASE_URL'),
   },
 
+  redis: {
+    url: process.env.REDIS_URL || null,
+  },
+
   cache: {
     ttl: parseInt(process.env.CACHE_TTL_SECONDS || '300'),
   },

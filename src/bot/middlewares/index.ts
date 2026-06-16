@@ -40,7 +40,7 @@ export function userMiddleware() {
   };
 }
 
-// ─── بررسی عضویت اجباری ───────────────────────────────────
+// ─── بررسی عضویت اجباری (fallback layer) ──────────────────
 export function membershipMiddleware(bot: Telegraf) {
   return async (ctx: Context, next: () => Promise<void>) => {
     if (!ctx.from) return next();

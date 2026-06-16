@@ -13,6 +13,8 @@ import { systemLogService } from '../../services/system-log.service';
 import { settingsService } from '../../services/settings.service';
 import { scoringService } from '../../services/scoring.service';
 import { userService } from '../../services/user.service';
+import { redisClient } from '../../utils/redis';
+import { membershipService } from '../../services/membership/membership.service';
 import { wordpressApiClient, WordPressApiClientError } from '../../services/wordpress-api.client';
 import { DEFAULT_BOT_USERNAME } from '../../constants';
 import { postService } from '../../services/post.service';
@@ -1176,16 +1178,19 @@ export function registerHandlers(bot: Telegraf<Context>) {
 });
 
   bot.action('check:membership', async (ctx) => {
-    cache.del(`membership:v2:${ctx.from?.id}`);
+    const telegramId = BigInt(ctx.from!.id);
+    await membershipService.invalidateCache(telegramId);
     await ctx.answerCbQuery('در حال بررسی...');
-    const result = await channelService.checkMembership(bot, BigInt(ctx.from!.id), { force: true });
+    const result = await channelService.checkMembership(bot, telegramId, { force: true });
     if (!result.isMember) {
-      await userService.markMembershipUnverified(BigInt(ctx.from!.id), 'manual_recheck_failed').catch(logger.error);
+      await userService.markMembershipUnverified(telegramId, 'manual_recheck_failed').catch(logger.error);
       return ctx.reply('شما از کانال اجباری خارج شده‌اید.\nبرای ادامه استفاده از ربات مجدداً عضو شوید.', joinChannelsKeyboard(result.notJoined));
     }
-    cache.set(`membership:v2:${ctx.from?.id}`, { isMember: true, notJoined: [] }, 180);
-    await userService.markMembershipVerified(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
-    await userService.processPendingReferral(BigInt(ctx.from!.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
+    const cacheEntry = { isMember: true, notJoined: [] };
+    await redisClient.set(`membership:v3:${ctx.from!.id}`, cacheEntry, 45);
+    cache.set(`membership:v3:${ctx.from!.id}`, cacheEntry, 45);
+    await userService.markMembershipVerified(telegramId).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
+    await userService.processPendingReferral(telegramId).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
     await ctx.reply('✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.', await adminReplyOptions(ctx.from?.id));
   });
 

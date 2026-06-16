@@ -19,6 +19,9 @@ import { startAdminApi } from './api/server';
 import { startScheduler } from './scheduler';
 import { botAdminService } from './services/bot-admin.service';
 import { settingsService } from './services/settings.service';
+import { membershipGuard } from './middleware/membership.guard';
+import { registerChatMemberHandler } from './bot/webhooks/chatMember.handler';
+import { startMembershipWorker } from './workers/membership.worker';
 
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
@@ -35,13 +38,20 @@ async function bootstrap() {
   // ساخت ربات
   const bot = new Telegraf(config.bot.token);
 
+  // آغاز Membership Worker
+  startMembershipWorker(bot);
+
   // Middleware ها
   bot.use(loggingMiddleware());
   bot.use(rateLimitMiddleware(20, 60_000));
   bot.use(userMiddleware());
+  bot.use(membershipGuard(bot));
   bot.use(membershipMiddleware(bot));
   bot.use(featureToggleMiddleware());
   bot.use(groupAccessMiddleware(bot));
+
+  // ثبت هندلرهای chat_member
+  registerChatMemberHandler(bot);
 
   // ثبت هندلرها
   registerHandlers(bot);
