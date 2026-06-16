@@ -27,11 +27,11 @@ import {
   propFirmDiscountKeyboard,
   lotteryHistoryKeyboard,
   lotteryKeyboard,
-  joinChannelsKeyboard,
   buildBotAdminPanelKeyboard,
   buildMainMenuKeyboard,
   buildMiniAppProfileKeyboard,
   paginationKeyboard,
+  buildForceJoinKeyboard,
 } from '../keyboards';
 import {
   menuEditorKeyboard,
@@ -1180,16 +1180,16 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   bot.action('check:membership', async (ctx) => {
     const telegramId = ctx.from!.id;
+    const settings = await forcedMembershipSettingsService.getSettings();
     await membershipService.invalidate(telegramId);
-    await ctx.answerCbQuery('در حال بررسی...');
+    await ctx.answerCbQuery(settings.checkingMessage);
     const result = await channelService.checkMembership(bot, BigInt(telegramId), { force: true });
     if (!result.isMember) {
       await userService.markMembershipUnverified(BigInt(telegramId), 'manual_recheck_failed').catch(logger.error);
-      const settings = await forcedMembershipSettingsService.getSettings();
-      return ctx.reply(settings.notJoinedMessage, joinChannelsKeyboard(result.notJoined));
+      return ctx.reply(settings.notJoinedMessage, buildForceJoinKeyboard(result.notJoined, settings.joinButtonText, settings.checkButtonText));
     }
     await membershipService.setMember(telegramId, true);
-    await ctx.reply('✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.', await adminReplyOptions(ctx.from?.id));
+    await ctx.reply(settings.verifiedMessage, await adminReplyOptions(ctx.from?.id));
   });
 
   bot.action('noop', async (ctx) => {

@@ -14,6 +14,9 @@ const settingsSchema = z.object({
   joinButtonText: z.string().trim().min(1).max(100).optional(),
   checkButtonText: z.string().trim().min(1).max(100).optional(),
   instructionText: z.string().trim().min(1).max(2000).optional(),
+  welcomeBackMessage: z.string().trim().min(1).max(2000).optional(),
+  checkingMessage: z.string().trim().min(1).max(500).optional(),
+  verifiedMessage: z.string().trim().min(1).max(2000).optional(),
 });
 
 export const forcedMembershipRouter = Router();

@@ -10,18 +10,24 @@ export interface ForcedMembershipSettingsData {
   joinButtonText: string;
   checkButtonText: string;
   instructionText: string;
+  welcomeBackMessage: string;
+  checkingMessage: string;
+  verifiedMessage: string;
   updatedAt: Date;
 }
 
 const DEFAULT_SETTINGS: ForcedMembershipSettingsData = {
   enabled: true,
   channelId: '',
-  notJoinedMessage: '⚠️ To use this bot, you must join our channel first.',
-  leaveWarningMessage: '❌ You left the channel. Please rejoin to continue using the bot.',
-  helpMessage: 'To use this bot, you must be a member of our channel.\n\nPlease join the channel below and click the check button.',
-  joinButtonText: 'Join Channel',
-  checkButtonText: '✅ I joined, check again',
-  instructionText: 'Please join the channel(s) below and click the check button to verify your membership.',
+  notJoinedMessage: '⚠️ برای استفاده از ربات باید ابتدا در کانال زیر عضو شوید.',
+  leaveWarningMessage: '❌ شما کانال را ترک کردید. لطفاً دوباره عضو شوید.',
+  helpMessage: 'برای استفاده از ربات باید عضو کانال ما باشید.\n\nلطفاً در کانال زیر عضو شده و دکمه بررسی را بزنید.',
+  joinButtonText: 'عضویت در کانال',
+  checkButtonText: '✅ عضو شدم، بررسی کن',
+  instructionText: 'لطفاً در کانال(های) زیر عضو شده و دکمه بررسی را بزنید.',
+  welcomeBackMessage: '✅ خوش آمدید! عضویت شما تایید شد و اکنون می‌توانید از ربات استفاده کنید.',
+  checkingMessage: 'در حال بررسی عضویت شما...',
+  verifiedMessage: '✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.',
   updatedAt: new Date(),
 };
 
@@ -61,6 +67,9 @@ class ForcedMembershipSettingsService {
           joinButtonText: row.joinButtonText,
           checkButtonText: row.checkButtonText,
           instructionText: row.instructionText,
+          welcomeBackMessage: row.welcomeBackMessage,
+          checkingMessage: row.checkingMessage,
+          verifiedMessage: row.verifiedMessage,
           updatedAt: row.updatedAt,
         }
       : { ...DEFAULT_SETTINGS };
@@ -82,6 +91,9 @@ class ForcedMembershipSettingsService {
     if (data.joinButtonText !== undefined) updateData.joinButtonText = data.joinButtonText;
     if (data.checkButtonText !== undefined) updateData.checkButtonText = data.checkButtonText;
     if (data.instructionText !== undefined) updateData.instructionText = data.instructionText;
+    if (data.welcomeBackMessage !== undefined) updateData.welcomeBackMessage = data.welcomeBackMessage;
+    if (data.checkingMessage !== undefined) updateData.checkingMessage = data.checkingMessage;
+    if (data.verifiedMessage !== undefined) updateData.verifiedMessage = data.verifiedMessage;
 
     const updated = await prisma.forcedMembershipSettings.update({
       where: { id: 1 },
@@ -97,6 +109,9 @@ class ForcedMembershipSettingsService {
       joinButtonText: updated.joinButtonText,
       checkButtonText: updated.checkButtonText,
       instructionText: updated.instructionText,
+      welcomeBackMessage: updated.welcomeBackMessage,
+      checkingMessage: updated.checkingMessage,
+      verifiedMessage: updated.verifiedMessage,
       updatedAt: updated.updatedAt,
     };
 

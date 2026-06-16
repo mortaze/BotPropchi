@@ -6,6 +6,7 @@ import { miniAppLogService } from '../../services/mini-app-log.service';
 import { serializeBigInts } from '../../utils/serialize';
 import { channelService } from '../../services/channel.service';
 import { settingsService } from '../../services/settings.service';
+import { forcedMembershipSettingsService } from '../../services/membership/forcedMembership.service';
 
 
 
@@ -52,9 +53,12 @@ export function createMiniAppRouter(bot?: Telegraf) {
     try {
       const initData = typeof req.body?.initData === 'string' ? req.body.initData : '';
       const telegramUser = await miniAppService.verifyInitData(initData, getRequestContext(req));
-      const result = await channelService.checkMembership(bot, BigInt(telegramUser.id));
+      const [result, settings] = await Promise.all([
+        channelService.checkMembership(bot, BigInt(telegramUser.id)),
+        forcedMembershipSettingsService.getSettings(),
+      ]);
       if (result.isMember) return next();
-      return res.status(403).json({ success: false, forceJoinRequired: true, error: '⚠️ برای استفاده از ربات باید عضو کانال شوید', joinButtonText: 'Join Channel', channels: result.notJoined });
+      return res.status(403).json({ success: false, forceJoinRequired: true, error: settings.notJoinedMessage, joinButtonText: settings.joinButtonText, channels: result.notJoined });
     } catch (error) {
       const response = authErrorResponse(error);
       return res.status(response.status).json(response.body);

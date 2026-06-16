@@ -7,7 +7,7 @@ import { forcedMembershipSettingsService } from '../services/membership/forcedMe
 import { redisClient } from '../utils/redis';
 import { cache } from '../utils/cache';
 import { SystemEventType } from '@prisma/client';
-import { joinChannelsKeyboard } from '../bot/keyboards';
+import { buildForceJoinKeyboard } from '../bot/keyboards';
 
 const WARN_COOLDOWN_SECONDS = 60;
 
@@ -74,7 +74,7 @@ export function membershipGuard(bot: Telegraf) {
 
       await markWarningSent(telegramId);
 
-      await ctx.reply(settings.notJoinedMessage, joinChannelsKeyboard(result.notJoined));
+      await ctx.reply(settings.notJoinedMessage, buildForceJoinKeyboard(result.notJoined, settings.joinButtonText, settings.checkButtonText));
     } catch (err) {
       logger.error(`[MembershipGuard] Error for user ${telegramId}:`, err);
       return next();

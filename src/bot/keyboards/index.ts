@@ -143,11 +143,12 @@ export function joinChannelsKeyboard(
     inviteLink: string | null;
     channelId: string;
     buttonText?: string | null;
-  }>
+  }>,
+  checkButtonText?: string
 ) {
   const buttons: any[] = channels.map((ch) => [
     Markup.button.url(
-      ch.buttonText || 'Join Channel',
+      ch.buttonText || 'عضویت در کانال',
       ch.inviteLink ||
         `https://t.me/${ch.channelId.replace('@', '')}`
     ),
@@ -155,9 +156,34 @@ export function joinChannelsKeyboard(
 
   buttons.push([
     Markup.button.callback(
-      '✅ عضو شدم، بررسی کن',
+      checkButtonText || '✅ عضو شدم، بررسی کن',
       'check:membership'
     ),
+  ]);
+
+  return Markup.inlineKeyboard(buttons);
+}
+
+export function buildForceJoinKeyboard(
+  notJoined: Array<{
+    title: string;
+    inviteLink: string | null;
+    channelId: string;
+    buttonText?: string | null;
+  }>,
+  joinButtonText: string,
+  checkButtonText: string
+) {
+  const buttons: any[] = notJoined.map((ch) => [
+    Markup.button.url(
+      ch.buttonText || joinButtonText,
+      ch.inviteLink ||
+        `https://t.me/${ch.channelId.replace('@', '')}`
+    ),
+  ]);
+
+  buttons.push([
+    Markup.button.callback(checkButtonText, 'check:membership'),
   ]);
 
   return Markup.inlineKeyboard(buttons);

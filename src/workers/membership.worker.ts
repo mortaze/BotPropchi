@@ -4,6 +4,7 @@ import { config } from '../config';
 import { logger } from '../utils/logger';
 import { redisClient } from '../utils/redis';
 import { cache } from '../utils/cache';
+import { buildForceJoinKeyboard } from '../bot/keyboards';
 import { channelRepository } from '../repositories/channel.repository';
 import { prisma } from '../prisma/client';
 import { systemLogService } from '../services/system-log.service';
@@ -145,17 +146,7 @@ async function sendBlockMessage(
     const settings = await forcedMembershipSettingsService.getSettings();
 
     await bot.telegram.sendMessage(telegramId, messageText, {
-      reply_markup: {
-        inline_keyboard: [
-          ...notJoined.map((ch) => [
-            {
-              text: ch.buttonText || settings.joinButtonText || 'Join Channel',
-              url: ch.inviteLink || `https://t.me/${ch.channelId.replace('@', '')}`,
-            },
-          ]),
-          [{ text: settings.checkButtonText || '✅ I joined, check again', callback_data: 'check:membership' }],
-        ],
-      },
+      reply_markup: buildForceJoinKeyboard(notJoined, settings.joinButtonText, settings.checkButtonText).reply_markup,
     });
   } catch (err) {
     const details = telegramErrorDetails(err);
@@ -213,7 +204,7 @@ async function processChatMemberUpdate(data: {
               title: data.chatId,
               inviteLink: null,
               channelId: data.chatId,
-              buttonText: settings.joinButtonText || 'Join Channel',
+              buttonText: settings.joinButtonText,
             },
           ],
           settings.leaveWarningMessage
@@ -223,6 +214,18 @@ async function processChatMemberUpdate(data: {
   } else if (joined) {
     await membershipService.setMember(telegramId, true);
     await membershipService.clearWarnCooldown(telegramId);
+
+    const settings = await forcedMembershipSettingsService.getSettings();
+    if (settings.enabled) {
+      try {
+        await getBot().telegram.sendMessage(telegramId, settings.welcomeBackMessage);
+      } catch (err) {
+        const details = telegramErrorDetails(err);
+        if (!details.isForbidden) {
+          logger.error(`[MembershipWorker] Welcome back message failed for ${telegramId}:`, details.description);
+        }
+      }
+    }
   }
 }
 
