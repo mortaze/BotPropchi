@@ -694,14 +694,17 @@ model SystemSetting {
 }
 
 model ForcedMembershipSettings {
-  id              Int      @id @default(1)
-  enabled         Boolean  @default(true)
-  channelId       String   @default("")
-  warningMessage  String   @default("❌ You left the channel. Please rejoin to continue using the bot.")
-  helpMessage     String   @default("To use this bot, you must be a member of our channel.\n\nPlease join the channel below and click the check button.")
-  joinButtonText  String   @default("Join Channel")
-  updatedAt       DateTime @updatedAt
-  createdAt       DateTime @default(now())
+  id                Int      @id @default(1)
+  enabled           Boolean  @default(true)
+  channelId         String   @default("")
+  notJoinedMessage  String   @default("⚠️ To use this bot, you must join our channel first.")
+  leaveWarningMessage String @default("❌ You left the channel. Please rejoin to continue using the bot.")
+  helpMessage       String   @default("To use this bot, you must be a member of our channel.\n\nPlease join the channel below and click the check button.")
+  joinButtonText    String   @default("Join Channel")
+  checkButtonText   String   @default("✅ I joined, check again")
+  instructionText   String   @default("Please join the channel(s) below and click the check button to verify your membership.")
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
 
   @@map("forced_membership_settings")
 }

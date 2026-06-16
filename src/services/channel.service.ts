@@ -78,12 +78,12 @@ export const channelService = {
       ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       ...(data.status !== undefined ? this.statusData(data.status) : {}),
     };
-    cache.delByPrefix('membership:v2:');
+    cache.delByPrefix('membership:');
     return channelRepository.update(id, updateData);
   },
 
   delete(id: number) {
-    cache.delByPrefix('membership:v2:');
+    cache.delByPrefix('membership:');
     return channelRepository.delete(id);
   },
 

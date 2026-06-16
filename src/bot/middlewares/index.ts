@@ -3,12 +3,8 @@
 
 import { Context, Telegraf } from 'telegraf';
 import { userService } from '../../services/user.service';
-import { channelService } from '../../services/channel.service';
-import { joinChannelsKeyboard } from '../keyboards';
 import { logger } from '../../utils/logger';
 import { groupService } from '../../services/group.service';
-import { systemLogService } from '../../services/system-log.service';
-import { SystemEventType } from '@prisma/client';
 import { settingsService } from '../../services/settings.service';
 import { BOT_TEXT_FEATURES, featureForCallback } from '../service-toggle';
 
@@ -40,33 +36,7 @@ export function userMiddleware() {
   };
 }
 
-// ─── بررسی عضویت اجباری (fallback layer) ──────────────────
-export function membershipMiddleware(bot: Telegraf) {
-  return async (ctx: Context, next: () => Promise<void>) => {
-    if (!ctx.from) return next();
-    if (ctx.chat && ctx.chat.type !== 'private') return next();
 
-    const callbackData = (ctx.callbackQuery as any)?.data as string | undefined;
-    if (callbackData === 'check:membership') {
-      return next();
-    }
-
-    const { isMember, notJoined } = await channelService.checkMembership(bot, BigInt(ctx.from.id));
-
-    if (isMember) {
-      await userService.markMembershipVerified(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ذخیره تأیید عضویت:', err));
-      await userService.processPendingReferral(BigInt(ctx.from.id)).catch((err) => logger.error('خطا در ثبت رفرال پس از تأیید عضویت:', err));
-      return next();
-    }
-
-    await userService.markMembershipUnverified(BigInt(ctx.from.id), 'required_channel_missing').catch((err) => logger.error('خطا در ثبت خروج از کانال:', err));
-    await systemLogService.log({ eventType: SystemEventType.FORCE_JOIN, telegramId: ctx.from.id, message: 'Force join blocked user', metadata: { notJoined } as any });
-    await ctx.reply(
-      '⚠️ برای استفاده از ربات باید عضو کانال شوید',
-      joinChannelsKeyboard(notJoined)
-    );
-  };
-}
 
 // ─── بررسی فعال بودن سرویس قبل از اجرای هندلرها ─────────────
 export function featureToggleMiddleware() {

@@ -7,7 +7,6 @@ import { logger } from './utils/logger';
 
 import {
   userMiddleware,
-  membershipMiddleware,
   featureToggleMiddleware,
   groupAccessMiddleware,
   rateLimitMiddleware,
@@ -20,7 +19,7 @@ import { startScheduler } from './scheduler';
 import { botAdminService } from './services/bot-admin.service';
 import { settingsService } from './services/settings.service';
 import { membershipGuard } from './middleware/membership.guard';
-import { registerChatMemberHandler } from './bot/webhooks/chatMember.handler';
+import { registerChatMemberHandlers } from './bot/webhooks/chatMember.handler';
 import { startMembershipWorker } from './workers/membership.worker';
 
 async function bootstrap() {
@@ -46,12 +45,10 @@ async function bootstrap() {
   bot.use(rateLimitMiddleware(20, 60_000));
   bot.use(userMiddleware());
   bot.use(membershipGuard(bot));
-  bot.use(membershipMiddleware(bot));
   bot.use(featureToggleMiddleware());
   bot.use(groupAccessMiddleware(bot));
 
-  // ثبت هندلرهای chat_member
-  registerChatMemberHandler(bot);
+  registerChatMemberHandlers(bot);
 
   // ثبت هندلرها
   registerHandlers(bot);

@@ -8,9 +8,12 @@ import { requireOwner } from '../middlewares/auth.middleware';
 const settingsSchema = z.object({
   enabled: z.boolean().optional(),
   channelId: z.string().trim().optional(),
-  warningMessage: z.string().trim().min(1).max(2000).optional(),
+  notJoinedMessage: z.string().trim().min(1).max(2000).optional(),
+  leaveWarningMessage: z.string().trim().min(1).max(2000).optional(),
   helpMessage: z.string().trim().min(1).max(2000).optional(),
   joinButtonText: z.string().trim().min(1).max(100).optional(),
+  checkButtonText: z.string().trim().min(1).max(100).optional(),
+  instructionText: z.string().trim().min(1).max(2000).optional(),
 });
 
 export const forcedMembershipRouter = Router();
@@ -56,7 +59,7 @@ forcedMembershipRouter.put('/settings', requireOwner, async (req, res) => {
 
 forcedMembershipRouter.post('/invalidate-cache', requireOwner, async (_req, res) => {
   try {
-    await membershipService.invalidateAllCache();
+    await membershipService.invalidateAll();
     forcedMembershipSettingsService.invalidateCache();
     res.json({ success: true, message: 'Cache invalidated' });
   } catch (err) {
