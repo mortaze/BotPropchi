@@ -16,7 +16,7 @@ const fallback = [
   { key: "lotteries", href: "/dashboard/lotteries", label: "قرعه‌کشی‌ها" },
   { key: "discounts", href: "/dashboard/discounts", label: "تخفیف‌ها" },
   { key: "mini-app-logs", href: "/dashboard/mini-app-logs", label: "Mini App Logs" },
-  { key: "force-join", href: "/dashboard/force-join", label: "عضویت اجباری" },
+  { key: "force-join", href: "/dashboard/force-join", label: "متن‌های عضویت اجباری" },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, Eye, RotateCcw, Save, Settings } from "lucide-react";
+import { Cloud, CloudOff, Eye, RotateCcw, Save, Settings } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, Input, Textarea, Skeleton, Modal } from "@/components/ui";
 import { getApiError, forceJoinApi } from "@/services/api";
 import type { ForceJoinSettings } from "@/types";
@@ -24,6 +24,21 @@ const LABELS: Record<FormKey, string> = {
 
 const TEXTAREAS: FormKey[] = ["welcomeMessage", "notJoinedMessage", "successJoinMessage", "errorMessage", "retryMessage", "emptyChannelsMessage"];
 
+const INPUT_MAX: Partial<Record<FormKey, number>> = {
+  title: 200,
+  joinButtonText: 200,
+  checkMembershipButtonText: 200,
+};
+
+const TEXTAREA_MAX: Partial<Record<FormKey, number>> = {
+  welcomeMessage: 2000,
+  notJoinedMessage: 2000,
+  successJoinMessage: 2000,
+  errorMessage: 2000,
+  retryMessage: 2000,
+  emptyChannelsMessage: 2000,
+};
+
 function SettingSkeleton() {
   return (
     <Card>
@@ -40,6 +55,12 @@ function SettingSkeleton() {
   );
 }
 
+function CharCounter({ current, max }: { current: number; max: number }) {
+  const pct = current / max;
+  const color = pct > 0.9 ? "text-red-500" : pct > 0.75 ? "text-yellow-500" : "text-muted-foreground";
+  return <span className={`text-xs ${color}`}>{current}/{max}</span>;
+}
+
 export default function ForceJoinSettingsPage() {
   const query = useQuery({
     queryKey: ["force-join-settings"],
@@ -49,6 +70,9 @@ export default function ForceJoinSettingsPage() {
   const [form, setForm] = useState<Partial<ForceJoinSettings>>({});
   const [previewOpen, setPreviewOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const settings = query.data?.data;
   const current = { ...settings, ...form } as ForceJoinSettings;
@@ -58,6 +82,7 @@ export default function ForceJoinSettingsPage() {
     onSuccess: () => {
       toast.success("تنظیمات با موفقیت ذخیره شد");
       setDirty(false);
+      setLastSaved(new Date());
       query.refetch();
     },
     onError: (error) => toast.error(getApiError(error)),
@@ -69,10 +94,42 @@ export default function ForceJoinSettingsPage() {
       toast.success("تنظیمات به حالت پیش‌فرض بازگشت");
       setForm(res.data);
       setDirty(false);
+      setLastSaved(new Date());
       query.refetch();
     },
     onError: (error) => toast.error(getApiError(error)),
   });
+
+  useEffect(() => {
+    if (!dirty) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      if (!dirty) return;
+      const payload: Record<string, string> = {};
+      for (const key of Object.keys(form) as FormKey[]) {
+        const val = form[key];
+        if (val !== undefined && val !== settings?.[key]) {
+          payload[key] = val;
+        }
+      }
+      if (Object.keys(payload).length > 0) {
+        update.mutate(payload as Partial<ForceJoinSettings>);
+      }
+    }, 5000);
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  }, [dirty, form, settings]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
 
   const setField = (key: FormKey, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -80,6 +137,7 @@ export default function ForceJoinSettingsPage() {
   };
 
   const handleSave = () => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     const payload: Record<string, string> = {};
     for (const key of Object.keys(form) as FormKey[]) {
       const val = form[key];
@@ -95,9 +153,12 @@ export default function ForceJoinSettingsPage() {
   };
 
   const handleReset = () => {
-    if (confirm("آیا از بازگشت به تنظیمات پیش‌فرض اطمینان دارید؟")) {
-      resetMutation.mutate();
-    }
+    setResetConfirmOpen(true);
+  };
+
+  const confirmReset = () => {
+    setResetConfirmOpen(false);
+    resetMutation.mutate();
   };
 
   if (query.isLoading) {
@@ -126,12 +187,23 @@ export default function ForceJoinSettingsPage() {
           <p className="text-sm text-muted-foreground">مدیریت متن‌های نمایش داده شده به کاربران در فرآیند عضویت اجباری</p>
         </div>
         <div className="flex items-center gap-2">
-          {dirty && (
-            <span className="flex items-center gap-1.5 rounded-full bg-yellow-500/10 px-3 py-1 text-xs font-medium text-yellow-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-yellow-500 animate-pulse" />
-              تغییرات ذخیره نشده
+          {dirty ? (
+            <>
+              <span className="flex items-center gap-1.5 rounded-full bg-yellow-500/10 px-3 py-1 text-xs font-medium text-yellow-600">
+                <span className="h-1.5 w-1.5 rounded-full bg-yellow-500 animate-pulse" />
+                تغییرات ذخیره نشده
+              </span>
+              <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-600">
+                <Cloud className="h-3 w-3" />
+                ذخیره خودکار در ۵ ثانیه
+              </span>
+            </>
+          ) : lastSaved ? (
+            <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-600">
+              <CloudOff className="h-3 w-3" />
+              آخرین ذخیره: {lastSaved.toLocaleTimeString("fa-IR")}
             </span>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -158,20 +230,30 @@ export default function ForceJoinSettingsPage() {
               label={LABELS.title}
               value={current.title ?? ""}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("title", e.target.value)}
+              maxLength={INPUT_MAX.title}
             />
           </div>
 
           <div className="mt-6 grid gap-6 md:grid-cols-2">
-            {TEXTAREAS.map((key) => (
-              <Textarea
-                key={key}
-                label={LABELS[key]}
-                value={(current[key as FormKey] as string) ?? ""}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setField(key, e.target.value)}
-                className="min-h-24 leading-7"
-                dir="auto"
-              />
-            ))}
+            {TEXTAREAS.map((key) => {
+              const max = TEXTAREA_MAX[key] ?? 2000;
+              const val = (current[key as FormKey] as string) ?? "";
+              return (
+                <div key={key} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-foreground">{LABELS[key]}</label>
+                    <CharCounter current={val.length} max={max} />
+                  </div>
+                  <textarea
+                    value={val}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setField(key, e.target.value)}
+                    maxLength={max}
+                    className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary min-h-24 leading-7 border-input"
+                    dir="auto"
+                  />
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-6 grid gap-6 md:grid-cols-2">
@@ -179,11 +261,13 @@ export default function ForceJoinSettingsPage() {
               label={LABELS.joinButtonText}
               value={current.joinButtonText ?? ""}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("joinButtonText", e.target.value)}
+              maxLength={INPUT_MAX.joinButtonText}
             />
             <Input
               label={LABELS.checkMembershipButtonText}
               value={current.checkMembershipButtonText ?? ""}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("checkMembershipButtonText", e.target.value)}
+              maxLength={INPUT_MAX.checkMembershipButtonText}
             />
           </div>
         </CardContent>
@@ -219,6 +303,20 @@ export default function ForceJoinSettingsPage() {
                 {current.checkMembershipButtonText || "بررسی عضویت"}
               </span>
             </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={resetConfirmOpen} onClose={() => setResetConfirmOpen(false)} title="تأیید بازگردانی">
+        <div className="space-y-4">
+          <p className="text-sm leading-7 text-muted-foreground">
+            آیا از بازگشت به تنظیمات پیش‌فرض اطمینان دارید؟ تمام تغییرات ذخیره‌نشده از بین خواهند رفت.
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setResetConfirmOpen(false)}>انصراف</Button>
+            <Button size="sm" onClick={confirmReset} loading={resetMutation.isPending}>
+              <RotateCcw className="h-4 w-4" /> بازگردانی
+            </Button>
           </div>
         </div>
       </Modal>

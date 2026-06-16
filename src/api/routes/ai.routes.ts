@@ -6,6 +6,7 @@ import { aiService, AiServiceError } from '../../services/ai.service';
 import { userService } from '../../services/user.service';
 import { channelService } from '../../services/channel.service';
 import { settingsService } from '../../services/settings.service';
+import { forcedMembershipSettingsService } from '../../services/membership/forcedMembership.service';
 import { authMiddleware, requireOwner } from '../middlewares/auth.middleware';
 
 export function createAiRouter(bot?: Telegraf) {
@@ -37,8 +38,11 @@ aiRouter.post('/chat', chatLimiter, async (req, res) => {
   try {
     const telegramId = parsed.data.telegramId ? BigInt(parsed.data.telegramId) : undefined;
     if (bot && telegramId && (await settingsService.isFeatureEnabled('force_join'))) {
-      const membership = await channelService.checkMembership(bot, telegramId);
-      if (!membership.isMember) return res.status(403).json({ success: false, forceJoinRequired: true, error: '⚠️ برای استفاده از ربات باید عضو کانال شوید', channels: membership.notJoined });
+      const [membership, fSettings] = await Promise.all([
+        channelService.checkMembership(bot, telegramId),
+        forcedMembershipSettingsService.getSettings(),
+      ]);
+      if (!membership.isMember) return res.status(403).json({ success: false, forceJoinRequired: true, error: fSettings.notJoinedMessage, joinButtonText: fSettings.joinButtonText, channels: membership.notJoined });
     }
     const profile = telegramId ? await userService.getProfile(telegramId).catch(() => null) : null;
     const result = await aiService.chat({ message: parsed.data.message, telegramId, userId: profile?.id, source: 'API' });

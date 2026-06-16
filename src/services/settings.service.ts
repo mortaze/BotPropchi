@@ -23,6 +23,7 @@ export const DEFAULT_MENU_ITEMS = [
   { key: 'ai-assistant', label: '🤖 AI Assistant', href: '/dashboard/ai-assistant', order: 136, ownerOnly: true, featureKey: 'ai_assistant' },
   { key: 'posts', label: '📝 پست‌ها', href: '/dashboard/posts', order: 25, ownerOnly: false, featureKey: 'posts' },
   { key: 'menu', label: '🎛 ویرایش منو', href: '/dashboard/menu', order: 27, ownerOnly: false, featureKey: null },
+  { key: 'force-join', label: 'متن‌های عضویت اجباری', href: '/dashboard/force-join', order: 72, ownerOnly: false, featureKey: 'force_join' },
   { key: 'settings', label: '⚙️ تنظیمات', href: '/dashboard/settings', order: 140, ownerOnly: true, featureKey: null },
 ];
 
