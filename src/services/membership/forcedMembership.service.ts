@@ -13,6 +13,8 @@ export interface ForcedMembershipSettingsData {
   instructionText: string;
   welcomeBackMessage: string;
   checkingMessage: string;
+  retryMessage: string;
+  errorMessage: string;
   verifiedMessage: string;
   updatedAt: Date;
 }
@@ -28,6 +30,8 @@ const LEGACY_FALLBACKS: ForcedMembershipSettingsData = {
   instructionText: 'لطفاً در کانال(های) زیر عضو شده و دکمه بررسی را بزنید.',
   welcomeBackMessage: '✅ خوش آمدید! عضویت شما تایید شد و اکنون می‌توانید از ربات استفاده کنید.',
   checkingMessage: 'در حال بررسی عضویت شما...',
+  retryMessage: 'هنوز در همه کانال‌ها عضو نشده‌اید',
+  errorMessage: 'خطا در بررسی عضویت',
   verifiedMessage: '✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.',
   updatedAt: new Date(),
 };
@@ -44,6 +48,8 @@ function toLegacy(newSettings: ForceJoinSettingsData): ForcedMembershipSettingsD
     instructionText: newSettings.notJoinedMessage || LEGACY_FALLBACKS.instructionText,
     welcomeBackMessage: newSettings.successJoinMessage || LEGACY_FALLBACKS.welcomeBackMessage,
     checkingMessage: newSettings.retryMessage || LEGACY_FALLBACKS.checkingMessage,
+    retryMessage: newSettings.retryMessage || LEGACY_FALLBACKS.retryMessage,
+    errorMessage: newSettings.errorMessage || LEGACY_FALLBACKS.errorMessage,
     verifiedMessage: newSettings.successJoinMessage || LEGACY_FALLBACKS.verifiedMessage,
     updatedAt: newSettings.updatedAt,
   };
@@ -76,6 +82,8 @@ class ForcedMembershipSettingsService {
     if (data.checkButtonText !== undefined) mapped.checkMembershipButtonText = data.checkButtonText;
     if (data.welcomeBackMessage !== undefined) mapped.successJoinMessage = data.welcomeBackMessage;
     if (data.checkingMessage !== undefined) mapped.retryMessage = data.checkingMessage;
+    if (data.retryMessage !== undefined) mapped.retryMessage = data.retryMessage;
+    if (data.errorMessage !== undefined) mapped.errorMessage = data.errorMessage;
     if (data.verifiedMessage !== undefined) mapped.successJoinMessage = data.verifiedMessage;
 
     const updated = await forceJoinService.updateSettings(mapped);

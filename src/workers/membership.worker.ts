@@ -6,6 +6,8 @@ import { redisClient } from '../utils/redis';
 import { cache } from '../utils/cache';
 import { requiredChannelsService, type RequiredChannelInfo } from '../services/requiredChannels.service';
 import { membershipService } from '../services/membership/membership.service';
+import { forcedMembershipSettingsService } from '../services/membership/forcedMembership.service';
+import { buildForceJoinKeyboard } from '../bot/keyboards';
 import type { MembershipJobData } from '../queue/membership.queue';
 
 const VALID_MEMBER_STATUSES = new Set(['member', 'administrator', 'creator']);
@@ -56,15 +58,20 @@ async function processCheckMembership(data: { type: 'CHECK_MEMBERSHIP'; telegram
   });
 
   if (notJoined.length > 0) {
-    const lines: string[] = ['لطفاً برای استفاده از ربات در کانال‌های زیر عضو شوید:'];
-    for (const ch of notJoined) {
-      const link = ch.inviteLink || `https://t.me/${ch.chatId.replace(/^-100/, '')}`;
-      lines.push(`\n🔹 ${ch.title}\n${link}`);
-    }
-    lines.push('\nپس از عضویت، دوباره پیام خود را ارسال کنید.');
-
     try {
-      await bot.telegram.sendMessage(telegramId, lines.join(''));
+      const settings = await forcedMembershipSettingsService.getSettings();
+      const keyboard = buildForceJoinKeyboard(
+        notJoined.map((ch) => ({
+          title: ch.title,
+          inviteLink: ch.inviteLink,
+          channelId: ch.chatId,
+        })),
+        settings.joinButtonText,
+        settings.checkButtonText
+      );
+      await bot.telegram.sendMessage(telegramId, settings.notJoinedMessage, {
+        reply_markup: keyboard.reply_markup,
+      });
     } catch {
       // user blocked or never started bot — silent
     }

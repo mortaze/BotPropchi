@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Cloud, CloudOff, Eye, RotateCcw, Save, Settings } from "lucide-react";
@@ -61,6 +61,37 @@ function CharCounter({ current, max }: { current: number; max: number }) {
   return <span className={`text-xs ${color}`}>{current}/{max}</span>;
 }
 
+function LivePreview({ settings }: { settings: ForceJoinSettings }) {
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold">پیش‌نمایش زنده</h3>
+      <div className="rounded-xl border border-border bg-background/60 p-4">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">پیام عدم عضویت</p>
+        <div className="rounded-lg bg-card p-3 text-sm leading-7 shadow-sm border border-border/50 min-h-[4rem]">
+          {settings.notJoinedMessage || "—"}
+        </div>
+      </div>
+      <div className="rounded-xl border border-border bg-background/60 p-4">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">پیام موفقیت</p>
+        <div className="rounded-lg bg-card p-3 text-sm leading-7 shadow-sm border border-border/50 min-h-[4rem]">
+          {settings.successJoinMessage || "—"}
+        </div>
+      </div>
+      <div className="rounded-xl border border-border bg-background/60 p-4">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">دکمه‌ها</p>
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+            {settings.joinButtonText || "عضویت"}
+          </span>
+          <span className="inline-flex items-center rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground">
+            {settings.checkMembershipButtonText || "بررسی عضویت"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ForceJoinSettingsPage() {
   const query = useQuery({
     queryKey: ["force-join-settings"],
@@ -72,10 +103,22 @@ export default function ForceJoinSettingsPage() {
   const [dirty, setDirty] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [debouncedPreview, setDebouncedPreview] = useState<ForceJoinSettings | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const settings = query.data?.data;
   const current = { ...settings, ...form } as ForceJoinSettings;
+
+  useEffect(() => {
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    previewTimer.current = setTimeout(() => {
+      setDebouncedPreview(current);
+    }, 300);
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    };
+  }, [form, settings]);
 
   const update = useMutation({
     mutationFn: forceJoinApi.updateSettings,
@@ -225,50 +268,60 @@ export default function ForceJoinSettingsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-6 md:grid-cols-2">
-            <Input
-              label={LABELS.title}
-              value={current.title ?? ""}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("title", e.target.value)}
-              maxLength={INPUT_MAX.title}
-            />
-          </div>
+          <div className="grid gap-8 md:grid-cols-2">
+            <div className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <Input
+                  label={LABELS.title}
+                  value={current.title ?? ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("title", e.target.value)}
+                  maxLength={INPUT_MAX.title}
+                />
+              </div>
 
-          <div className="mt-6 grid gap-6 md:grid-cols-2">
-            {TEXTAREAS.map((key) => {
-              const max = TEXTAREA_MAX[key] ?? 2000;
-              const val = (current[key as FormKey] as string) ?? "";
-              return (
-                <div key={key} className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium text-foreground">{LABELS[key]}</label>
-                    <CharCounter current={val.length} max={max} />
-                  </div>
-                  <textarea
-                    value={val}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setField(key, e.target.value)}
-                    maxLength={max}
-                    className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary min-h-24 leading-7 border-input"
-                    dir="auto"
-                  />
-                </div>
-              );
-            })}
-          </div>
+              <div className="grid gap-6 md:grid-cols-2">
+                {TEXTAREAS.map((key) => {
+                  const max = TEXTAREA_MAX[key] ?? 2000;
+                  const val = (current[key as FormKey] as string) ?? "";
+                  return (
+                    <div key={key} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-medium text-foreground">{LABELS[key]}</label>
+                        <CharCounter current={val.length} max={max} />
+                      </div>
+                      <textarea
+                        value={val}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setField(key, e.target.value)}
+                        maxLength={max}
+                        className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary min-h-24 leading-7 border-input"
+                        dir="auto"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
 
-          <div className="mt-6 grid gap-6 md:grid-cols-2">
-            <Input
-              label={LABELS.joinButtonText}
-              value={current.joinButtonText ?? ""}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("joinButtonText", e.target.value)}
-              maxLength={INPUT_MAX.joinButtonText}
-            />
-            <Input
-              label={LABELS.checkMembershipButtonText}
-              value={current.checkMembershipButtonText ?? ""}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("checkMembershipButtonText", e.target.value)}
-              maxLength={INPUT_MAX.checkMembershipButtonText}
-            />
+              <div className="grid gap-6 md:grid-cols-2">
+                <Input
+                  label={LABELS.joinButtonText}
+                  value={current.joinButtonText ?? ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("joinButtonText", e.target.value)}
+                  maxLength={INPUT_MAX.joinButtonText}
+                />
+                <Input
+                  label={LABELS.checkMembershipButtonText}
+                  value={current.checkMembershipButtonText ?? ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setField("checkMembershipButtonText", e.target.value)}
+                  maxLength={INPUT_MAX.checkMembershipButtonText}
+                />
+              </div>
+            </div>
+
+            <div className="hidden md:block">
+              <div className="sticky top-6">
+                <LivePreview settings={debouncedPreview ?? current} />
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

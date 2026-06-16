@@ -2,6 +2,8 @@ import { Context, Telegraf } from 'telegraf';
 import { logger } from '../utils/logger';
 import { membershipService } from '../services/membership/membership.service';
 import { requiredChannelsService } from '../services/requiredChannels.service';
+import { forcedMembershipSettingsService } from '../services/membership/forcedMembership.service';
+import { buildForceJoinKeyboard } from '../bot/keyboards';
 
 export function membershipGuard(bot: Telegraf) {
   return async (ctx: Context, next: () => Promise<void>) => {
@@ -29,15 +31,20 @@ export function membershipGuard(bot: Telegraf) {
         return;
       }
 
-      const lines: string[] = ['لطفاً برای استفاده از ربات در کانال‌های زیر عضو شوید:'];
-      for (const ch of result.notJoined) {
-        const link = ch.inviteLink || `https://t.me/${ch.channelId.replace(/^-100/, '')}`;
-        lines.push(`\n🔹 ${ch.title}\n${link}`);
-      }
-      lines.push('\nپس از عضویت، دوباره پیام خود را ارسال کنید.');
+      const settings = await forcedMembershipSettingsService.getSettings();
+
+      const keyboard = buildForceJoinKeyboard(
+        result.notJoined.map((ch) => ({
+          title: ch.title,
+          inviteLink: ch.inviteLink,
+          channelId: ch.channelId,
+        })),
+        settings.joinButtonText,
+        settings.checkButtonText
+      );
 
       try {
-        await ctx.reply(lines.join(''));
+        await ctx.reply(settings.notJoinedMessage, { reply_markup: keyboard.reply_markup });
       } catch {}
     } catch (err) {
       logger.error(`[MembershipGuard] Error for user ${telegramId}:`, err);

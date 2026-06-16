@@ -6,9 +6,14 @@ import { config } from '../../config';
 import { requiredChannelsService, type RequiredChannelInfo } from '../requiredChannels.service';
 
 const VALID_MEMBER_STATUSES = new Set(['member', 'administrator', 'creator']);
+const CHANNEL_TITLE_CACHE_TTL = 3600;
 
 function getPerChannelCacheKey(telegramId: number, channelId: string): string {
   return `member:${telegramId}:${channelId}`;
+}
+
+function getChannelTitleCacheKey(channelId: string): string {
+  return `channel:title:${channelId}`;
 }
 
 interface ChannelCheckResult {
@@ -46,6 +51,38 @@ class MembershipService {
     return { isMember: notJoined.length === 0, notJoined };
   }
 
+  async getChannelTitle(channelId: string): Promise<string> {
+    const cacheKey = getChannelTitleCacheKey(channelId);
+    const cached = await this.getCached<string>(cacheKey);
+    if (cached) return cached;
+
+    if (!this.bot) return `کانال ${channelId}`;
+
+    try {
+      const chat = await this.bot.telegram.getChat(channelId as any);
+      const title = (chat as any).title || String(channelId);
+      await this.setCache(cacheKey, title, CHANNEL_TITLE_CACHE_TTL);
+      return title;
+    } catch {
+      return `کانال ${channelId}`;
+    }
+  }
+
+  async invalidateChannelTitle(channelId: string): Promise<void> {
+    const key = getChannelTitleCacheKey(channelId);
+    await Promise.all([
+      redisClient.del(key),
+      Promise.resolve(cache.del(key)),
+    ]);
+  }
+
+  async invalidateAllChannelTitles(): Promise<void> {
+    await Promise.all([
+      redisClient.invalidateByPrefix('channel:title:'),
+      Promise.resolve(cache.delByPrefix('channel:title:')),
+    ]);
+  }
+
   private async checkSingleChannel(
     telegramId: number,
     channel: RequiredChannelInfo
@@ -69,7 +106,7 @@ class MembershipService {
     } catch (err) {
       const desc = (err as any)?.response?.description || (err as Error).message || 'Unknown error';
       logger.warn(`[Membership] getChatMember failed user=${telegramId} channel=${channel.chatId}: ${desc}`);
-      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember: false };
+      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember: true };
     }
   }
 
@@ -108,11 +145,11 @@ class MembershipService {
     return undefined;
   }
 
-  private async setCache(key: string, value: boolean): Promise<void> {
-    const ttl = config.membership.cacheTtl;
+  private async setCache<T>(key: string, value: T, ttl?: number): Promise<void> {
+    const t = ttl ?? config.membership.cacheTtl;
     await Promise.all([
-      redisClient.set(key, value, ttl),
-      Promise.resolve(cache.set(key, value, ttl)),
+      redisClient.set(key, value, t),
+      Promise.resolve(cache.set(key, value, t)),
     ]);
   }
 }

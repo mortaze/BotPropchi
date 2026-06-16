@@ -66,7 +66,11 @@ class RequiredChannelsService {
 
     this.loaded = true;
     cache.set(CACHE_KEY, this.channels, 300);
-    logger.info(`[RequiredChannels] Loaded ${this.channels.length} required channel(s)`);
+    if (this.channels.length === 0) {
+      logger.warn('[RequiredChannels] No required channels configured — membership checks disabled');
+    } else {
+      logger.info(`[RequiredChannels] Loaded ${this.channels.length} required channel(s)`);
+    }
   }
 
   getChannels(): RequiredChannelInfo[] {

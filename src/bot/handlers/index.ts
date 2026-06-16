@@ -1181,25 +1181,34 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   bot.action('check:membership', async (ctx) => {
     const telegramId = ctx.from!.id;
-    await membershipService.invalidateAll(telegramId);
-    const channels = requiredChannelsService.getChannels();
-    if (channels.length === 0) {
-      await ctx.answerCbQuery('همه کانال‌ها عضو هستید.');
-      return;
-    }
-    const result = await membershipService.checkMembershipConcurrent(telegramId, channels);
-    if (!result.isMember) {
-      await userService.markMembershipUnverified(BigInt(telegramId), 'manual_recheck_failed').catch(logger.error);
-      const lines: string[] = ['لطفاً در کانال‌های زیر عضو شوید:'];
-      for (const ch of result.notJoined) {
-        const link = ch.inviteLink || `https://t.me/${ch.channelId.replace(/^-100/, '')}`;
-        lines.push(`\n🔹 ${ch.title}\n${link}`);
+    await ctx.answerCbQuery().catch(() => {});
+
+    try {
+      await membershipService.invalidateAll(telegramId);
+      const channels = requiredChannelsService.getChannels();
+      if (channels.length === 0) {
+        await ctx.answerCbQuery('همه کانال‌ها عضو هستید.');
+        return;
       }
-      lines.push('\nپس از عضویت، دوباره تلاش کنید.');
-      return ctx.reply(lines.join(''));
+
+      const result = await membershipService.checkMembershipConcurrent(telegramId, channels);
+
+      if (result.isMember) {
+        const settings = await forcedMembershipSettingsService.getSettings();
+        try {
+          await ctx.editMessageText(settings.verifiedMessage, { reply_markup: undefined });
+        } catch {
+          await ctx.reply(settings.verifiedMessage, await adminReplyOptions(ctx.from?.id));
+        }
+        await ctx.answerCbQuery('✅').catch(() => {});
+      } else {
+        const settings = await forcedMembershipSettingsService.getSettings();
+        await ctx.answerCbQuery(settings.retryMessage, { show_alert: true });
+      }
+    } catch {
+      const settings = await forcedMembershipSettingsService.getSettings().catch(() => null);
+      await ctx.answerCbQuery(settings?.errorMessage || 'خطا در بررسی عضویت', { show_alert: true });
     }
-    await ctx.answerCbQuery('عضویت شما تأیید شد ✅');
-    await ctx.reply('✅ عضویت شما تأیید شد.', await adminReplyOptions(ctx.from?.id));
   });
 
   bot.action('noop', async (ctx) => {
