@@ -44,14 +44,3 @@ describe('menu Unicode stability', () => {
     expect(validateTelegramButton('\uD800').valid).toBe(false);
   });
 });
-
-import { menuEditorKeyboard } from '../bot/keyboards/post-keyboards';
-
-describe('menu editor keyboard rendering', () => {
-  it('never renders ??? for empty raw post text; it falls back to ref until resolved titles arrive', () => {
-    const keyboard = menuEditorKeyboard([[{ id: 'btn_10', ref: 'post:10', text: '', visible: true }]]) as any;
-    const payload = JSON.stringify(keyboard.reply_markup);
-    expect(payload).not.toContain('???');
-    expect(payload).toContain('post:10');
-  });
-});

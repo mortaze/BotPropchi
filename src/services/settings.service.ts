@@ -171,13 +171,6 @@ class SettingsService {
     );
   }
 
-
-  private menuTextSummary(layout: any[][]): string {
-    const labels = layout.flat().map((btn: any) => btn?.text || btn?.label || btn?.title || btn?.ref || '').filter(Boolean);
-    const corrupted = labels.filter((label: string) => label.includes('???')).length;
-    return `rows=${layout.length} buttons=${labels.length} corrupted=${corrupted} sample=${JSON.stringify(labels.slice(0, 5))}`;
-  }
-
   private normalizeMenuButton(btn: any, rowIndex: number, colIndex: number): any {
     const normalized = { ...btn, rowIndex, position: colIndex };
     const label = normalized.text ?? normalized.label ?? normalized.title ?? '';
@@ -257,8 +250,6 @@ class SettingsService {
 
   async saveMenuLayout(layout: any[][], preserveVersion?: number) {
     const oldLayout = this.menuLayoutCache?.layout || [];
-
-    logger.info(`[MenuLayout] Pre-save summary: ${this.menuTextSummary(layout)}`);
 
     // Ensure all buttons have stable IDs and preserve every metadata field while normalizing text fields.
     layout = this.ensureButtonIds(layout).map((row, rowIndex) =>
