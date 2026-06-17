@@ -24,6 +24,7 @@ import { discountRouter } from "./routes/discount.routes";
 import lotteryRouter from "./routes/lottery.routes";
 import { userRouter } from "./routes/user.routes";
 import { referralRouter } from "./routes/referral.routes";
+import { leaderboardRouter } from "./routes/leaderboard.routes";
 import { createChannelRouter } from "./routes/channel.routes";
 import { createGroupRouter } from "./routes/group.routes";
 import { keywordReplyRouter } from "./routes/keyword-reply.routes";
@@ -166,6 +167,9 @@ export function startAdminApi(bot?: Telegraf) {
   );
 
   app.use("/api/scoring", authMiddleware, requireFeature("points"), scoringRouter);
+
+  // ───────────────── LEADERBOARD / SEASONS ROUTES ─────────────────
+  app.use("/api/leaderboard", authMiddleware, leaderboardRouter);
 
 
   app.use(

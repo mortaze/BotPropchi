@@ -44,6 +44,8 @@ model User {
   miniAppDebugLogs MiniAppDebugLog[]
   aiChatLogs     AiChatLog[]
   requiredChannelMemberships UserRequiredChannelMembership[]
+  referralLogsAsInviter ReferralLog[] @relation("ReferralLogInviter")
+  referralLogsAsReferred ReferralLog[] @relation("ReferralLogReferred")
 
   @@index([referredById])
   @@index([profileCompleted])
@@ -146,6 +148,47 @@ model Referral {
   @@index([referrerId])
   @@index([createdAt])
   @@map("referrals")
+}
+
+////////////////////////////////////////////////////////////
+// SEASONS
+////////////////////////////////////////////////////////////
+
+model Season {
+  id        Int      @id @default(autoincrement())
+  name      String
+  isActive  Boolean  @default(false)
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referralLogs ReferralLog[]
+
+  @@index([isActive])
+  @@map("seasons")
+}
+
+////////////////////////////////////////////////////////////
+// REFERRAL LOGS (IMMUTABLE — never update, never delete)
+////////////////////////////////////////////////////////////
+
+model ReferralLog {
+  id         Int      @id @default(autoincrement())
+  inviterId  Int
+  referredId Int
+  seasonId   Int
+  createdAt  DateTime @default(now())
+
+  inviter User   @relation("ReferralLogInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  referred User  @relation("ReferralLogReferred", fields: [referredId], references: [id], onDelete: Cascade)
+  season  Season @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+
+  @@index([inviterId])
+  @@index([seasonId])
+  @@index([inviterId, seasonId])
+  @@index([createdAt])
+  @@map("referral_logs")
 }
 
 model ReferralSettings {

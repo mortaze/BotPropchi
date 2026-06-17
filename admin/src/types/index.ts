@@ -195,6 +195,30 @@ export interface ReferralLeaderboardItem {
   totalRewardPoints: number;
 }
 
+export interface Season {
+  id: number;
+  name: string;
+  isActive: boolean;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: number;
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
+  inviteCount: number;
+}
+
+export interface LeaderboardStats {
+  totalReferrals: number;
+  totalInviters: number;
+}
+
 export interface ReferralAdminResponse {
   success: boolean;
   items: ReferralItem[];

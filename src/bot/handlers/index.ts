@@ -6,6 +6,7 @@ import { lotteryService } from '../../services/lottery.service';
 import { groupService } from '../../services/group.service';
 import { keywordReplyService } from '../../services/keyword-reply.service';
 import { referralService } from '../../services/referral.service';
+import { leaderboardService } from '../../services/leaderboard.service';
 import { analyticsService } from '../../services/analytics.service';
 import { botAdminService } from '../../services/bot-admin.service';
 import { broadcastService } from '../../services/broadcast.service';
@@ -1311,6 +1312,40 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   bot.action('noop', async (ctx) => {
     await ctx.answerCbQuery();
+  });
+
+  bot.command('leaderboard', async (ctx) => {
+    try {
+      const season = await leaderboardService.getActiveSeason();
+      if (!season) {
+        await ctx.reply('🏆 در حال حاضر هیچ فصل لیدربوردی فعال نیست.');
+        return;
+      }
+
+      const leaderboard = await leaderboardService.getLeaderboard(season.id, 10);
+      const stats = await leaderboardService.getLeaderboardStats(season.id);
+
+      if (leaderboard.length === 0) {
+        await ctx.reply(`🏆 فصل ${season.name}\n📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}\n\nهنوز دعوتی ثبت نشده. اولین نفر باش!`);
+        return;
+      }
+
+      const lines = leaderboard.map(
+        (entry) => `${entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `  ${entry.rank}.`} ${entry.firstName || entry.username || `کاربر ${entry.userId}`} — ${entry.inviteCount} دعوت`
+      );
+
+      await ctx.reply([
+        `🏆 *لیدربورد فصل: ${season.name}*`,
+        `📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}`,
+        '',
+        ...lines,
+        '',
+        `📊 مجموع دعوت‌ها: ${stats.totalReferrals} | تعداد شرکت‌کنندگان: ${stats.totalInviters}`,
+      ].join('\n'), { parse_mode: 'Markdown' });
+    } catch (err) {
+      logger.error('[LeaderboardCommand] Error:', err);
+      await ctx.reply('❌ خطا در دریافت لیدربورد.');
+    }
   });
 
   // ─── Register Post Management Handlers ─────────────────

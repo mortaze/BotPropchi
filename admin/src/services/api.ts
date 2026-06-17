@@ -186,6 +186,29 @@ export const referralsApi = {
   },
 };
 
+export const seasonsApi = {
+  async list(): Promise<{ success: boolean; data: Season[] }> {
+    const { data } = await api.get("/api/leaderboard/seasons");
+    return data;
+  },
+  async getActive(): Promise<{ success: boolean; data: Season | null }> {
+    const { data } = await api.get("/api/leaderboard/seasons/active");
+    return data;
+  },
+  async create(payload: { name: string; startDate: string; endDate: string }): Promise<{ success: boolean; data: Season }> {
+    const { data } = await api.post("/api/leaderboard/seasons", payload);
+    return data;
+  },
+  async endSeason(id: number): Promise<{ success: boolean; message: string }> {
+    const { data } = await api.post(`/api/leaderboard/seasons/${id}/end`);
+    return data;
+  },
+  async getLeaderboard(seasonId: number, limit = 10): Promise<{ success: boolean; data: { leaderboard: LeaderboardEntry[]; stats: LeaderboardStats } }> {
+    const { data } = await api.get(`/api/leaderboard/seasons/${seasonId}/leaderboard`, { params: { limit } });
+    return data;
+  },
+};
+
 export type TelegramGroupStatus = "PENDING" | "APPROVED" | "REJECTED" | "DISABLED";
 export type KeywordReplyResponseType = "TEXT" | "PHOTO" | "DOCUMENT";
 export interface KeywordReplyPayload { keyword: string; response?: string | null; responseType: KeywordReplyResponseType; parseMode?: import("@/types").BroadcastParseMode | null; mediaFileId?: string | null; isActive?: boolean; }

@@ -23,6 +23,7 @@ import { membershipService } from './services/membership/membership.service';
 import { requiredChannelsService } from './services/requiredChannels.service';
 import { registerChatMemberHandlers } from './bot/webhooks/chatMember.handler';
 import { startMembershipWorker } from './workers/membership.worker';
+import { startLeaderboardWorker } from './workers/leaderboard.worker';
 
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
@@ -44,6 +45,15 @@ async function bootstrap() {
 
   // آغاز Membership Worker (برای پردازش‌های سنگین)
   startMembershipWorker(bot);
+
+  // آغاز Leaderboard Worker (برای بازسازی کش لیدربورد)
+  startLeaderboardWorker();
+
+  // اطمینان از وجود فصل فعال
+  const { leaderboardService } = await import('./services/leaderboard.service');
+  await leaderboardService.getOrCreateActiveSeason().catch((err) =>
+    logger.error('[Startup] Failed to ensure active season:', err)
+  );
 
   // بارگذاری کانال‌های مورد نیاز
   await requiredChannelsService.initialize(bot);

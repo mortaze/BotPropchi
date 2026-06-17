@@ -4,6 +4,8 @@ import { logger } from '../utils/logger';
 import { pointService } from './point.service';
 import { systemLogService } from './system-log.service';
 import { scoringService } from './scoring.service';
+import { leaderboardService } from './leaderboard.service';
+import { leaderboardQueue } from '../queue/leaderboard.queue';
 import { DEFAULT_BOT_USERNAME } from '../constants';
 
 const SETTINGS_ID = 1;
@@ -150,6 +152,12 @@ export const referralService = {
     if (result) {
       logger.info(`Referral reward granted. referrerId=${referrerId}, referredUserId=${referredUserId}, points=${settings.inviteRewardPoints}`);
       await systemLogService.log({ eventType: SystemEventType.REFERRAL, userId: referrerId, message: 'Referral reward granted', metadata: { referrerId, referredUserId, points: settings.inviteRewardPoints } });
+
+      const season = await leaderboardService.getActiveSeason();
+      if (season) {
+        await leaderboardService.logReferral(referrerId, referredUserId);
+        await leaderboardQueue.add({ type: 'REBUILD_LEADERBOARD', seasonId: season.id });
+      }
     }
     return result;
   },

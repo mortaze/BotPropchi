@@ -6,7 +6,7 @@ import { Gift, Search, ToggleLeft, Trophy, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Pagination, TableRowSkeleton, Toggle } from "@/components/ui";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
-import { getApiError, referralsApi } from "@/services/api";
+import { getApiError, referralsApi, seasonsApi } from "@/services/api";
 import type { ReferralSettings } from "@/types";
 
 const userLabel = (user?: { firstName?: string; lastName?: string | null; username?: string | null; id?: number }) => {
@@ -20,6 +20,13 @@ export default function ReferralsPage() {
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["referrals", page], queryFn: () => referralsApi.getAdmin({ page, limit: 20 }) });
+  const activeSeasonQuery = useQuery({ queryKey: ["active-season"], queryFn: seasonsApi.getActive, staleTime: 30_000 });
+  const activeSeason = activeSeasonQuery.data?.data;
+  const seasonLeaderboardQuery = useQuery({
+    queryKey: ["season-leaderboard", activeSeason?.id],
+    queryFn: () => seasonsApi.getLeaderboard(activeSeason!.id, 10),
+    enabled: !!activeSeason,
+  });
 
   const filteredItems = useMemo(() => {
     const items = query.data?.items ?? [];
@@ -85,21 +92,44 @@ export default function ReferralsPage() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-1">
-          <CardHeader><h2 className="font-semibold">لیدربورد دعوت‌کنندگان</h2></CardHeader>
+          <CardHeader>
+            <h2 className="font-semibold">لیدربورد دعوت‌کنندگان</h2>
+            {activeSeason && (
+              <p className="text-xs text-muted-foreground">فصل فعال: {activeSeason.name}</p>
+            )}
+          </CardHeader>
           <CardContent className="space-y-3">
-            {(query.data?.leaderboard ?? []).map((item, index) => (
-              <div key={item.referrerId} className="flex items-center justify-between rounded-lg bg-muted/40 p-3">
-                <div>
-                  <p className="font-medium">{index + 1}. {userLabel(item.referrer)}</p>
-                  <p className="text-xs text-muted-foreground">@{item.referrer?.username ?? "-"}</p>
+            {activeSeason && seasonLeaderboardQuery.data?.data?.leaderboard.length ? (
+              seasonLeaderboardQuery.data.data.leaderboard.map((entry) => (
+                <div key={entry.userId} className="flex items-center justify-between rounded-lg bg-muted/40 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-primary">{entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `${entry.rank}.`}</span>
+                    <div>
+                      <p className="font-medium">{entry.firstName || entry.username || `کاربر ${entry.userId}`}</p>
+                      {entry.username && <p className="text-xs text-muted-foreground">@{entry.username}</p>}
+                    </div>
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold text-primary">{formatNumber(entry.inviteCount)}</p>
+                    <p className="text-xs text-muted-foreground">دعوت</p>
+                  </div>
                 </div>
-                <div className="text-left">
-                  <p className="font-semibold text-primary">{formatNumber(item.inviteCount)}</p>
-                  <p className="text-xs text-muted-foreground">{formatNumber(item.totalRewardPoints)} امتیاز</p>
+              ))
+            ) : (
+              (query.data?.leaderboard ?? []).map((item, index) => (
+                <div key={item.referrerId} className="flex items-center justify-between rounded-lg bg-muted/40 p-3">
+                  <div>
+                    <p className="font-medium">{index + 1}. {userLabel(item.referrer)}</p>
+                    <p className="text-xs text-muted-foreground">@{item.referrer?.username ?? "-"}</p>
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold text-primary">{formatNumber(item.inviteCount)}</p>
+                    <p className="text-xs text-muted-foreground">{formatNumber(item.totalRewardPoints)} امتیاز</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-            {!query.data?.leaderboard.length && <EmptyState title="هنوز دعوت موفقی ثبت نشده" />}
+              ))
+            )}
+            {!query.data?.leaderboard.length && !activeSeason && <EmptyState title="هنوز دعوت موفقی ثبت نشده" />}
           </CardContent>
         </Card>
 
