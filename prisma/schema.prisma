@@ -46,6 +46,7 @@ model User {
   requiredChannelMemberships UserRequiredChannelMembership[]
   referralLogsAsInviter ReferralLog[] @relation("ReferralLogInviter")
   referralLogsAsReferred ReferralLog[] @relation("ReferralLogReferred")
+  leaderboardCacheEntries LeaderboardCache[] @relation("LeaderboardCacheUser")
 
   @@index([referredById])
   @@index([profileCompleted])
@@ -163,10 +164,30 @@ model Season {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  referralLogs ReferralLog[]
+  referralLogs         ReferralLog[]
+  leaderboardCacheEntries LeaderboardCache[] @relation("LeaderboardCacheSeason")
 
   @@index([isActive])
   @@map("seasons")
+}
+
+////////////////////////////////////////////////////////////
+// LEADERBOARD CACHE (PERFORMANCE LAYER)
+////////////////////////////////////////////////////////////
+
+model LeaderboardCache {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  seasonId  Int
+  score     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation("LeaderboardCacheUser", fields: [userId], references: [id], onDelete: Cascade)
+  season Season @relation("LeaderboardCacheSeason", fields: [seasonId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, seasonId])
+  @@index([seasonId, score])
+  @@map("leaderboard_cache")
 }
 
 ////////////////////////////////////////////////////////////

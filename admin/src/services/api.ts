@@ -199,12 +199,20 @@ export const seasonsApi = {
     const { data } = await api.post("/api/leaderboard/seasons", payload);
     return data;
   },
+  async activateSeason(id: number): Promise<{ success: boolean; data: Season }> {
+    const { data } = await api.post(`/api/leaderboard/seasons/${id}/activate`);
+    return data;
+  },
   async endSeason(id: number): Promise<{ success: boolean; message: string }> {
     const { data } = await api.post(`/api/leaderboard/seasons/${id}/end`);
     return data;
   },
   async getLeaderboard(seasonId: number, limit = 10): Promise<{ success: boolean; data: { leaderboard: LeaderboardEntry[]; stats: LeaderboardStats } }> {
     const { data } = await api.get(`/api/leaderboard/seasons/${seasonId}/leaderboard`, { params: { limit } });
+    return data;
+  },
+  async search(seasonId: number, q: string): Promise<{ success: boolean; data: LeaderboardEntry[] }> {
+    const { data } = await api.get(`/api/leaderboard/seasons/${seasonId}/search`, { params: { q } });
     return data;
   },
 };

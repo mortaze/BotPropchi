@@ -1,4 +1,6 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { redisClient } from '../utils/redis';
 import { logger } from '../utils/logger';
 
@@ -21,6 +23,21 @@ export interface SeasonInfo {
   isActive: boolean;
   startDate: Date;
   endDate: Date;
+}
+
+function formatLeaderboard(cacheRows: { userId: number; score: number }[], users: { id: number; firstName: string; lastName: string | null; username: string | null }[]): LeaderboardEntry[] {
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  return cacheRows.map((row, index) => {
+    const user = userMap.get(row.userId);
+    return {
+      rank: index + 1,
+      userId: row.userId,
+      firstName: user?.firstName ?? null,
+      lastName: user?.lastName ?? null,
+      username: user?.username ?? null,
+      inviteCount: row.score,
+    };
+  });
 }
 
 export const leaderboardService = {
@@ -54,6 +71,17 @@ export const leaderboardService = {
     return season;
   },
 
+  async activateSeason(seasonId: number): Promise<SeasonInfo> {
+    await prisma.$transaction(async (tx) => {
+      await tx.season.updateMany({ where: { isActive: true }, data: { isActive: false } });
+      return tx.season.update({ where: { id: seasonId }, data: { isActive: true } });
+    });
+    await redisClient.invalidateByPrefix(ACTIVE_SEASON_CACHE_KEY);
+    const season = await prisma.season.findUnique({ where: { id: seasonId } });
+    logger.info(`[Leaderboard] Season #${seasonId} activated`);
+    return season!;
+  },
+
   async endSeason(seasonId: number): Promise<void> {
     await prisma.season.update({
       where: { id: seasonId },
@@ -61,6 +89,7 @@ export const leaderboardService = {
     });
     await redisClient.del(ACTIVE_SEASON_CACHE_KEY);
     await redisClient.invalidateByPrefix(`${LEADERBOARD_CACHE_PREFIX}${seasonId}`);
+    logger.info(`[Leaderboard] Season #${seasonId} ended`);
   },
 
   async createSeason(data: { name: string; startDate: Date; endDate: Date }): Promise<SeasonInfo> {
@@ -73,16 +102,33 @@ export const leaderboardService = {
     return prisma.season.findMany({ orderBy: { startDate: 'desc' } });
   },
 
+  async logReferralInTx(tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>, inviterId: number, referredId: number): Promise<void> {
+    const season = await tx.season.findFirst({ where: { isActive: true } });
+    if (!season) return;
+
+    await tx.referralLog.create({
+      data: { inviterId, referredId, seasonId: season.id },
+    });
+
+    await tx.leaderboardCache.upsert({
+      where: { userId_seasonId: { userId: inviterId, seasonId: season.id } },
+      update: { score: { increment: 1 } },
+      create: { userId: inviterId, seasonId: season.id, score: 1 },
+    });
+  },
+
   async logReferral(inviterId: number, referredId: number): Promise<void> {
     const season = await this.getActiveSeason();
     if (!season) return;
 
     await prisma.referralLog.create({
-      data: {
-        inviterId,
-        referredId,
-        seasonId: season.id,
-      },
+      data: { inviterId, referredId, seasonId: season.id },
+    });
+
+    await prisma.leaderboardCache.upsert({
+      where: { userId_seasonId: { userId: inviterId, seasonId: season.id } },
+      update: { score: { increment: 1 } },
+      create: { userId: inviterId, seasonId: season.id, score: 1 },
     });
   },
 
@@ -91,45 +137,78 @@ export const leaderboardService = {
     const cached = await redisClient.get<LeaderboardEntry[]>(cacheKey);
     if (cached) return cached;
 
-    const rows = await prisma.referralLog.groupBy({
-      by: ['inviterId'],
+    const cacheRows = await prisma.leaderboardCache.findMany({
       where: { seasonId },
-      _count: { id: true },
-      orderBy: [{ _count: { id: 'desc' } }],
+      orderBy: { score: 'desc' },
       take: limit,
     });
 
-    if (rows.length === 0) return [];
+    if (cacheRows.length === 0) return [];
 
-    const userIds = rows.map((r) => r.inviterId);
+    const userIds = cacheRows.map((r) => r.userId);
     const users = await prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, firstName: true, lastName: true, username: true },
     });
-    const userMap = new Map(users.map((u) => [u.id, u]));
 
-    const leaderboard: LeaderboardEntry[] = rows.map((row, index) => {
-      const user = userMap.get(row.inviterId);
-      return {
-        rank: index + 1,
-        userId: row.inviterId,
-        firstName: user?.firstName ?? null,
-        lastName: user?.lastName ?? null,
-        username: user?.username ?? null,
-        inviteCount: row._count.id,
-      };
-    });
-
+    const leaderboard = formatLeaderboard(cacheRows, users);
     await redisClient.set(cacheKey, leaderboard, LEADERBOARD_CACHE_TTL);
     return leaderboard;
+  },
+
+  async getUserRank(seasonId: number, userId: number): Promise<{ rank: number; score: number } | null> {
+    const cacheKey = `${LEADERBOARD_CACHE_PREFIX}${seasonId}:rank:${userId}`;
+    const cached = await redisClient.get<{ rank: number; score: number }>(cacheKey);
+    if (cached) return cached;
+
+    const entry = await prisma.leaderboardCache.findUnique({
+      where: { userId_seasonId: { userId, seasonId } },
+    });
+    if (!entry || entry.score === 0) return null;
+
+    const higherCount = await prisma.leaderboardCache.count({
+      where: { seasonId, score: { gt: entry.score } },
+    });
+    const result = { rank: higherCount + 1, score: entry.score };
+    await redisClient.set(cacheKey, result, LEADERBOARD_CACHE_TTL);
+    return result;
+  },
+
+  async searchUserInLeaderboard(seasonId: number, query: string): Promise<LeaderboardEntry[]> {
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { firstName: { contains: query, mode: 'insensitive' } },
+          { lastName: { contains: query, mode: 'insensitive' } },
+          { username: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, firstName: true, lastName: true, username: true },
+      take: 20,
+    });
+
+    if (users.length === 0) return [];
+
+    const userIds = users.map((u) => u.id);
+    const cacheRows = await prisma.leaderboardCache.findMany({
+      where: { seasonId, userId: { in: userIds }, score: { gt: 0 } },
+      orderBy: { score: 'desc' },
+    });
+
+    if (cacheRows.length === 0) return [];
+
+    const scoredUserIds = new Set(cacheRows.map((r) => r.userId));
+    const matchedUsers = users.filter((u) => scoredUserIds.has(u.id));
+
+    return formatLeaderboard(cacheRows, matchedUsers);
   },
 
   async getLeaderboardStats(seasonId: number): Promise<{ totalReferrals: number; totalInviters: number }> {
     const [totalReferrals, inviters] = await Promise.all([
       prisma.referralLog.count({ where: { seasonId } }),
-      prisma.referralLog.groupBy({ by: ['inviterId'], where: { seasonId }, _count: { id: true } }),
+      prisma.leaderboardCache.count({ where: { seasonId, score: { gt: 0 } } }),
     ]);
-    return { totalReferrals, totalInviters: inviters.length };
+    return { totalReferrals, totalInviters: inviters };
   },
 
   async invalidateCache(seasonId: number): Promise<void> {

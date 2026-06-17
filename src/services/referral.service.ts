@@ -140,6 +140,8 @@ export const referralService = {
         data: { totalReferrals: { increment: 1 } },
       });
 
+      await leaderboardService.logReferralInTx(tx, referrerId, referredUserId);
+
       return referral;
     }).catch(async (error) => {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -153,10 +155,9 @@ export const referralService = {
       logger.info(`Referral reward granted. referrerId=${referrerId}, referredUserId=${referredUserId}, points=${settings.inviteRewardPoints}`);
       await systemLogService.log({ eventType: SystemEventType.REFERRAL, userId: referrerId, message: 'Referral reward granted', metadata: { referrerId, referredUserId, points: settings.inviteRewardPoints } });
 
-      const season = await leaderboardService.getActiveSeason();
+      const season = await leaderboardService.getActiveSeason().catch(() => null);
       if (season) {
-        await leaderboardService.logReferral(referrerId, referredUserId);
-        await leaderboardQueue.add({ type: 'REBUILD_LEADERBOARD', seasonId: season.id });
+        await leaderboardQueue.add({ type: 'REBUILD_LEADERBOARD', seasonId: season.id }).catch(() => {});
       }
     }
     return result;

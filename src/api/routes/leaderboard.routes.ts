@@ -26,6 +26,30 @@ leaderboardRouter.get('/seasons/active', async (_req, res) => {
   }
 });
 
+leaderboardRouter.post('/seasons/:id/activate', async (req, res) => {
+  try {
+    const id = z.coerce.number().int().positive().parse(req.params.id);
+    const season = await leaderboardService.activateSeason(id);
+    logger.info(`Season #${id} activated by admin`);
+    return res.json({ success: true, data: serializeBigInts(season) });
+  } catch (error: any) {
+    logger.error('ACTIVATE SEASON ERROR', error);
+    return res.status(500).json({ success: false, error: error.message || 'خطا در فعال‌سازی فصل' });
+  }
+});
+
+leaderboardRouter.get('/seasons/:id/search', async (req, res) => {
+  try {
+    const seasonId = z.coerce.number().int().positive().parse(req.params.id);
+    const q = z.string().min(1).max(100).parse(req.query.q);
+    const results = await leaderboardService.searchUserInLeaderboard(seasonId, q);
+    return res.json({ success: true, data: serializeBigInts(results) });
+  } catch (error: any) {
+    logger.error('SEARCH LEADERBOARD ERROR', error);
+    return res.status(500).json({ success: false, error: error.message || 'خطا در جستجوی لیدربورد' });
+  }
+});
+
 leaderboardRouter.post('/seasons', async (req, res) => {
   try {
     const schema = z.object({

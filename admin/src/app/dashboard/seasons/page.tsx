@@ -41,6 +41,15 @@ export default function SeasonsPage() {
     onError: (error) => toast.error(getApiError(error, "خطا در پایان فصل")),
   });
 
+  const activateMutation = useMutation({
+    mutationFn: (id: number) => seasonsApi.activateSeason(id),
+    onSuccess: () => {
+      toast.success("فصل فعال شد");
+      queryClient.invalidateQueries({ queryKey: ["seasons"] });
+    },
+    onError: (error) => toast.error(getApiError(error, "خطا در فعال‌سازی فصل")),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -82,6 +91,8 @@ export default function SeasonsPage() {
               onToggle={() => setSelectedSeason(selectedSeason === season.id ? null : season.id)}
               onEnd={() => endMutation.mutate(season.id)}
               ending={endMutation.isPending}
+              onActivate={() => activateMutation.mutate(season.id)}
+              activating={activateMutation.isPending}
             />
           ))
         )}
@@ -96,22 +107,36 @@ function SeasonCard({
   onToggle,
   onEnd,
   ending,
+  onActivate,
+  activating,
 }: {
   season: { id: number; name: string; isActive: boolean; startDate: string; endDate: string };
   selected: boolean;
   onToggle: () => void;
   onEnd: () => void;
   ending: boolean;
+  onActivate: () => void;
+  activating: boolean;
 }) {
+  const [searchQuery, setSearchQuery] = useState("");
+
   const leaderboardQuery = useQuery({
     queryKey: ["season-leaderboard", season.id],
     queryFn: () => seasonsApi.getLeaderboard(season.id, 10),
-    enabled: selected,
+    enabled: selected && !searchQuery,
+  });
+
+  const searchQuery_ = useQuery({
+    queryKey: ["season-leaderboard-search", season.id, searchQuery],
+    queryFn: () => seasonsApi.search(season.id, searchQuery),
+    enabled: selected && searchQuery.trim().length > 0,
   });
 
   const totalReferrals = leaderboardQuery.data?.data?.stats?.totalReferrals ?? 0;
   const totalInviters = leaderboardQuery.data?.data?.stats?.totalInviters ?? 0;
-  const entries = leaderboardQuery.data?.data?.leaderboard ?? [];
+  const entries = searchQuery.trim()
+    ? (searchQuery_.data?.data ?? [])
+    : (leaderboardQuery.data?.data?.leaderboard ?? []);
 
   return (
     <Card>
@@ -133,6 +158,9 @@ function SeasonCard({
             <Button variant="outline" size="sm" onClick={onToggle}>
               <SquareStack className="h-4 w-4" />{selected ? "بستن" : "لیدربورد"}
             </Button>
+            {!season.isActive && (
+              <Button variant="primary" size="sm" onClick={onActivate} loading={activating}>فعال‌سازی</Button>
+            )}
             {season.isActive && (
               <Button variant="danger" size="sm" onClick={onEnd} loading={ending}>پایان فصل</Button>
             )}
@@ -141,16 +169,24 @@ function SeasonCard({
       </CardHeader>
       {selected && (
         <CardContent>
-          {leaderboardQuery.isLoading ? (
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex gap-4 text-sm text-muted-foreground">
+              <span>کل دعوت‌ها: <strong>{formatNumber(totalReferrals)}</strong></span>
+              <span>شرکت‌کنندگان: <strong>{formatNumber(totalInviters)}</strong></span>
+            </div>
+            <input
+              className="input w-full md:w-56"
+              placeholder="جستجوی کاربر در لیدربورد..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          {leaderboardQuery.isLoading && !searchQuery.trim() ? (
             <TableRowSkeleton cols={3} />
           ) : entries.length === 0 ? (
             <EmptyState title="دعوتی در این فصل ثبت نشده" />
           ) : (
             <>
-              <div className="mb-3 flex gap-4 text-sm text-muted-foreground">
-                <span>کل دعوت‌ها: <strong>{formatNumber(totalReferrals)}</strong></span>
-                <span>شرکت‌کنندگان: <strong>{formatNumber(totalInviters)}</strong></span>
-              </div>
               <div className="space-y-2">
                 {entries.map((entry) => (
                   <div key={entry.userId} className="flex items-center justify-between rounded-lg bg-muted/40 p-3">

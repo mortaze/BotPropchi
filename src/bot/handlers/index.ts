@@ -1326,22 +1326,34 @@ export function registerHandlers(bot: Telegraf<Context>) {
       const stats = await leaderboardService.getLeaderboardStats(season.id);
 
       if (leaderboard.length === 0) {
-        await ctx.reply(`🏆 فصل ${season.name}\n📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}\n\nهنوز دعوتی ثبت نشده. اولین نفر باش!`);
+        await ctx.reply(
+          `🏆 فصل ${season.name}\n` +
+          `📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}\n\n` +
+          'هنوز دعوتی ثبت نشده. اولین نفر باش!'
+        );
         return;
       }
 
-      const lines = leaderboard.map(
-        (entry) => `${entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `  ${entry.rank}.`} ${entry.firstName || entry.username || `کاربر ${entry.userId}`} — ${entry.inviteCount} دعوت`
-      );
+      const medal = (rank: number) => rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `  ${rank}.`;
 
-      await ctx.reply([
-        `🏆 *لیدربورد فصل: ${season.name}*`,
-        `📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}`,
-        '',
-        ...lines,
-        '',
-        `📊 مجموع دعوت‌ها: ${stats.totalReferrals} | تعداد شرکت‌کنندگان: ${stats.totalInviters}`,
-      ].join('\n'), { parse_mode: 'Markdown' });
+      const safeName = (entry: typeof leaderboard[0]) => {
+        const raw = entry.firstName || entry.username || `کاربر ${entry.userId}`;
+        return `\u2068${raw}\u2069`;
+      };
+
+      const lines: string[] = [];
+      for (const entry of leaderboard) {
+        lines.push(`${medal(entry.rank)} ${safeName(entry)}`);
+        lines.push(`🎯 ${entry.inviteCount} دعوت`);
+        lines.push('');
+      }
+
+      const header =
+        `🏆 *لیدربورد فصل: ${season.name}*\n` +
+        `📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}\n`;
+      const footer = `📊 مجموع دعوت\u200cها: ${stats.totalReferrals} | شرکت\u200cکنندگان: ${stats.totalInviters}`;
+
+      await ctx.reply([header, ...lines, footer].join('\n'), { parse_mode: 'Markdown' });
     } catch (err) {
       logger.error('[LeaderboardCommand] Error:', err);
       await ctx.reply('❌ خطا در دریافت لیدربورد.');
