@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { PostStatus } from '@prisma/client';
 import { postService } from '../../services/post.service';
+import { settingsService } from '../../services/settings.service';
 
 export const postRouter = Router();
 
@@ -156,4 +157,16 @@ postRouter.put('/:id/commands/:commandId', async (req, res) => {
 postRouter.delete('/:id/commands/:commandId', async (req, res) => {
   await postService.removeCommand(Number(req.params.commandId));
   res.json({ success: true });
+});
+
+postRouter.post('/:id/sync-menu', async (req, res) => {
+  try {
+    const post = await postService.findById(Number(req.params.id));
+    if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
+    await settingsService.addPostToMenu(post.id, post.title, true);
+    const layout = await settingsService.getMenuLayout();
+    res.json({ success: true, message: `پست "${post.title}" به منو همگام‌سازی شد`, layout });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'خطا در همگام‌سازی' });
+  }
 });

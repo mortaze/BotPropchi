@@ -496,6 +496,10 @@ export const postsApi = {
     const { data } = await api.get(`/api/posts/${id}/versions`);
     return data;
   },
+  async syncMenu(id: number): Promise<{ success: boolean; message: string; layout: MenuLayoutButton[][] }> {
+    const { data } = await api.post(`/api/posts/${id}/sync-menu`);
+    return data;
+  },
 };
 
 export const menuApi = {

@@ -665,11 +665,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
     return next();
   });
 
-  // ─── Close main menu (toggle_allowed mode) ──────────────────
-  bot.hears('🗕 بستن منو', async (ctx) => {
-    await ctx.reply('✅ منو بسته شد. برای نمایش دوباره منو، /start را بزنید.', Markup.removeKeyboard());
-  });
-
   bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {
     cache.del(`ai_mode:${ctx.from.id}`);
     await ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));

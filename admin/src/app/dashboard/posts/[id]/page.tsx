@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { Plus, Trash2, EyeOff, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Trash2, EyeOff, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input } from "@/components/ui";
 import PostForm from "@/components/forms/PostForm";
@@ -67,6 +67,12 @@ export default function PostDetailPage() {
     onError: (e) => toast.error(getApiError(e)),
   });
 
+  const syncMenuMutation = useMutation({
+    mutationFn: () => postsApi.syncMenu(id),
+    onSuccess: (data) => { toast.success(data.message || "پست به منو همگام‌سازی شد"); },
+    onError: (e) => toast.error(getApiError(e)),
+  });
+
   const addCommandMutation = useMutation({
     mutationFn: (command: string) => postsApi.addCommand(id, command),
     onSuccess: () => { toast.success("دستور اضافه شد"); setNewCommand(""); qc.invalidateQueries({ queryKey: ["post", id] }); },
@@ -108,6 +114,7 @@ export default function PostDetailPage() {
         ) : (
           <Button onClick={() => publishMutation.mutate()} loading={publishMutation.isPending}><CheckCircle className="h-4 w-4" />انتشار</Button>
         )}
+        <Button variant="outline" onClick={() => syncMenuMutation.mutate()} loading={syncMenuMutation.isPending}><RefreshCw className="h-4 w-4" />همگام‌سازی با منو</Button>
         <Button variant="outline" onClick={() => hideMutation.mutate()} loading={hideMutation.isPending}><EyeOff className="h-4 w-4" />مخفی کردن</Button>
         <Button variant="danger" onClick={() => { if (confirm("آیا از حذف این پست اطمینان دارید؟")) deleteMutation.mutate(); }} loading={deleteMutation.isPending}><Trash2 className="h-4 w-4" />حذف</Button>
       </div>

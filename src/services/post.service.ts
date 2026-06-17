@@ -73,6 +73,14 @@ export const postService = {
     });
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     this.invalidateCache();
+
+    // Auto-sync menu title for published posts (single source of truth = post database)
+    if (post.status === 'PUBLISHED' && post.isPublished) {
+      settingsService.addPostToMenu(post.id, post.title, true).catch(err => {
+        logger.warn(`[Post] Menu title sync failed for post ${id}:`, err);
+      });
+    }
+
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
       message: `Post Updated: "${post.title}"`,

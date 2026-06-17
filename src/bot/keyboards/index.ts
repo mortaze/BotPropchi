@@ -36,12 +36,14 @@ export function buildMainMenuKeyboard(
     }
 
     if (displayMode === 'toggle_allowed') {
-      visibleRows.push(['🗕 بستن منو']);
+      return Markup.keyboard(visibleRows).resize();
     }
-
     return Markup.keyboard(visibleRows).resize().persistent();
   }
 
+  if (displayMode === 'toggle_allowed') {
+    return Markup.keyboard([['👨‍💼 پنل ادمین']]).resize();
+  }
   return Markup.keyboard([['👨‍💼 پنل ادمین']]).resize().persistent();
 }
 
