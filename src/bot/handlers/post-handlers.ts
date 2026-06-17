@@ -87,6 +87,19 @@ function formatPostPreview(post: any): string {
   return lines;
 }
 
+// ─── Single-message editing: edit if possible, reply as fallback ───
+async function safeEdit(ctx: any, text: string, extra?: any): Promise<void> {
+  if (ctx.callbackQuery?.message) {
+    try {
+      await ctx.editMessageText(text, extra);
+      return;
+    } catch (e: any) {
+      logger.debug('[safeEdit] Fallback to reply:', e.description || e.message);
+    }
+  }
+  await ctx.reply(text, extra).catch(() => {});
+}
+
 export function registerPostHandlers(bot: Telegraf<Context>) {
   // ─── Post Admin Menu ─────────────────────────────────────
   bot.hears('📝 پست‌ها', async (ctx: any) => {
@@ -345,14 +358,23 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const hasContent = !!(post.content || post.mediaFileId);
     const preview = formatPostPreview(post);
-    try {
-      await ctx.reply(preview, {
+    // Auto-detect: if called from callback, edit existing message; otherwise reply
+    if (ctx.callbackQuery?.message) {
+      await safeEdit(ctx, preview, {
         parse_mode: 'Markdown',
         link_preview_options: { is_disabled: true },
         ...postEditorKeyboard(postId, hasContent),
       });
-    } catch {
-      await ctx.reply(preview, { link_preview_options: { is_disabled: true }, ...postEditorKeyboard(postId, hasContent) });
+    } else {
+      try {
+        await ctx.reply(preview, {
+          parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
+          ...postEditorKeyboard(postId, hasContent),
+        });
+      } catch {
+        await ctx.reply(preview, { link_preview_options: { is_disabled: true }, ...postEditorKeyboard(postId, hasContent) });
+      }
     }
   }
 
@@ -372,22 +394,22 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (action === 'title') {
       cache.set(pendingKey(ctx.from.id, 'editing_field'), 'title', 300);
       cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-      return ctx.reply(`✏ عنوان فعلی: *${post.title}*\n\nعنوان جدید را ارسال کنید:`, { parse_mode: 'Markdown' });
+      return safeEdit(ctx, `✏ عنوان فعلی: *${post.title}*\n\nعنوان جدید را ارسال کنید:`, { parse_mode: 'Markdown' });
     }
     if (action === 'content') {
       cache.set(pendingKey(ctx.from.id, 'editing_field'), 'content', 300);
       cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
       const current = post.content ? `محتوا فعلی:\n${post.content.substring(0, 200)}` : '(بدون محتوا)';
-      return ctx.reply(`📝 ${current}\n\nمحتوای جدید را ارسال کنید (Markdown پشتیبانی می‌شود):`);
+      return safeEdit(ctx, `📝 ${current}\n\nمحتوای جدید را ارسال کنید (Markdown پشتیبانی می‌شود):`);
     }
     if (action === 'media') {
       cache.set(pendingKey(ctx.from.id, 'editing_field'), 'media', 300);
       cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-      return ctx.reply('🖼 فایل رسانه ارسال کنید (عکس، ویدیو، گیف، سند، صدا، ویس):');
+      return safeEdit(ctx, '🖼 فایل رسانه ارسال کنید (عکس، ویدیو، گیف، سند، صدا، ویس):');
     }
     if (action === 'buttons') {
       const buttons = (post as any).buttons || [];
-      await ctx.reply('⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
+      await safeEdit(ctx, '⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
         postButtonsEditorKeyboard(postId, buttons));
       return;
     }
@@ -552,8 +574,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    await ctx.reply(`📤 گزینه‌های انتشار برای "${post.title}":`, postPublishOptionsKeyboard(postId));
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
+    await safeEdit(ctx, `📤 گزینه‌های انتشار برای "${post.title}":`, postPublishOptionsKeyboard(postId));
   });
 
   bot.action(/^post:publish:now:(\d+)$/, async (ctx: any) => {
@@ -562,9 +584,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     await postService.publish(postId, BigInt(ctx.from.id));
-    await ctx.reply('✅ پست منتشر شد!');
     const post = await postService.findById(postId);
-    await showPostEditor(ctx, postId);
+    const preview = formatPostPreview(post);
+    const hasContent = !!(post.content || post.mediaFileId);
+    await safeEdit(ctx, `✅ پست منتشر شد!\n\n${preview}`, {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postEditorKeyboard(postId, hasContent),
+    });
   });
 
   bot.action(/^post:draft:(\d+)$/, async (ctx: any) => {
@@ -574,8 +601,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     await postService.update(postId, { status: PostStatus.DRAFT, updatedBy: BigInt(ctx.from.id) } as any);
     postService.invalidateCache();
-    await ctx.reply('📝 به عنوان پیش‌نویس ذخیره شد.');
-    await showPostEditor(ctx, postId);
+    const post = await postService.findById(postId);
+    const preview = formatPostPreview(post);
+    const hasContent = !!(post.content || post.mediaFileId);
+    await safeEdit(ctx, `📝 به عنوان پیش‌نویس ذخیره شد.\n\n${preview}`, {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postEditorKeyboard(postId, hasContent),
+    });
   });
 
   // ─── Archive ─────────────────────────────────────────────
@@ -585,8 +618,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     await postService.archive(postId);
-    await ctx.reply('📦 پست بایگانی شد.');
-    await showPostEditor(ctx, postId);
+    const post = await postService.findById(postId);
+    const preview = formatPostPreview(post);
+    const hasContent = !!(post.content || post.mediaFileId);
+    await safeEdit(ctx, `📦 پست بایگانی شد.\n\n${preview}`, {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postEditorKeyboard(postId, hasContent),
+    });
   });
 
   // ─── Hide / Show ─────────────────────────────────────────
@@ -597,14 +636,21 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.status === 'HIDDEN') {
+    const wasHidden = post.status === 'HIDDEN';
+    if (wasHidden) {
       await postService.show(postId);
-      await ctx.reply('👻 پست اکنون قابل مشاهده است.');
     } else {
       await postService.hide(postId);
-      await ctx.reply('👻 پست مخفی شد.');
     }
-    await showPostEditor(ctx, postId);
+    const updated = await postService.findById(postId);
+    const preview = formatPostPreview(updated);
+    const hasContent = !!(updated.content || updated.mediaFileId);
+    const msg = wasHidden ? '👻 پست اکنون قابل مشاهده است.' : '👻 پست مخفی شد.';
+    await safeEdit(ctx, `${msg}\n\n${preview}`, {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postEditorKeyboard(postId, hasContent),
+    });
   });
 
   // ─── Schedule ────────────────────────────────────────────
@@ -614,7 +660,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     cache.set(pendingKey(ctx.from.id, 'schedule_publish'), postId, 300);
-    await ctx.reply('📅 تاریخ/زمان را به فرمت ISO ارسال کنید:\nmثلاً `2026-06-15T14:30:00.000Z`', { parse_mode: 'Markdown' });
+    await safeEdit(ctx, '📅 تاریخ/زمان را به فرمت ISO ارسال کنید:\nmثلاً `2026-06-15T14:30:00.000Z`', { parse_mode: 'Markdown' });
   });
 
   bot.action(/^post:unpublish:schedule:(\d+)$/, async (ctx: any) => {
@@ -623,7 +669,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     cache.set(pendingKey(ctx.from.id, 'schedule_unpublish'), postId, 300);
-    await ctx.reply('⏰ تاریخ/زمان لغو انتشار خودکار را به فرمت ISO ارسال کنید:\nmثلاً `2026-06-20T14:30:00.000Z`', { parse_mode: 'Markdown' });
+    await safeEdit(ctx, '⏰ تاریخ/زمان لغو انتشار خودکار را به فرمت ISO ارسال کنید:\nmثلاً `2026-06-20T14:30:00.000Z`', { parse_mode: 'Markdown' });
   });
 
   // ─── Preview from Editor ────────────────────────────────
@@ -644,7 +690,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const commands = await postService.getCommands(postId);
-    await ctx.reply(
+    await safeEdit(ctx,
       commands.length ? `🔗 دستورات این پست:\n${commands.map((c: any) => `/${c.command}${c.aliases?.length ? ` (نام‌های مستعار: ${(c.aliases as string[]).join(', ')})` : ''}`).join('\n')}` : '🔗 دستوری وجود ندارد.',
       postCommandListKeyboard(postId, commands)
     );
@@ -656,7 +702,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const commandId = parseInt(ctx.match[2]);
-    await ctx.reply('🔗 گزینه‌های دستور:', postCommandEditKeyboard(postId, commandId));
+    await safeEdit(ctx, '🔗 گزینه‌های دستور:', postCommandEditKeyboard(postId, commandId));
   });
 
   bot.action(/^post:cmd:del:(\d+):(\d+)$/, async (ctx: any) => {
@@ -666,9 +712,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const commandId = parseInt(ctx.match[2]);
     try {
       await postService.removeCommand(commandId);
-      await ctx.reply('🗑 دستور حذف شد.');
+      await safeEdit(ctx, '🗑 دستور حذف شد.');
     } catch (err: any) {
-      await ctx.reply(`❌ ${err.message}`);
+      await safeEdit(ctx, `❌ ${err.message}`);
     }
   });
 
@@ -680,7 +726,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const commandId = parseInt(ctx.match[2]);
     cache.set(pendingKey(ctx.from.id, 'alias_cmd_id'), commandId, 300);
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await ctx.reply('➕ نام مستعار را ارسال کنید (بدون /):');
+    await safeEdit(ctx, '➕ نام مستعار را ارسال کنید (بدون /):');
   });
 
   // ─── Unpublish ───────────────────────────────────────────
@@ -690,8 +736,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     await postService.unpublish(postId);
-    await ctx.reply('📥 انتشار پست لغو شد.');
-    await showPostEditor(ctx, postId);
+    const post = await postService.findById(postId);
+    const preview = formatPostPreview(post);
+    const hasContent = !!(post.content || post.mediaFileId);
+    await safeEdit(ctx, `📥 انتشار پست لغو شد.\n\n${preview}`, {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postEditorKeyboard(postId, hasContent),
+    });
   });
 
   // ─── Delete ─────────────────────────────────────────────
@@ -717,8 +769,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     await postService.delete(postId);
-    await ctx.reply('🗑 پست حذف شد.');
-    await ctx.editMessageText('🗑 پست حذف شد.').catch(() => {});
+    await safeEdit(ctx, '🗑 پست حذف شد.');
   });
 
   // ─── Buttons Editor ─────────────────────────────────────
@@ -730,16 +781,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     const button = buttons[row]?.[col];
     if (!button) {
-      return ctx.reply(
-        'نوع دکمه را انتخاب کنید:',
-        postButtonTypeKeyboard(postId, row, col)
-      );
+      return safeEdit(ctx, 'نوع دکمه را انتخاب کنید:', postButtonTypeKeyboard(postId, row, col));
     }
-    await ctx.reply(
+    await safeEdit(ctx,
       `دکمه: "${button.text}"\nنوع: ${button.type || 'URL'}\nمقدار: ${button.value || '-'}`,
       postButtonEditKeyboard(postId, row, col, button)
     );
@@ -754,7 +802,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const col = parseInt(ctx.match[3]);
     cache.set(pendingKey(ctx.from.id, 'editing_button'), `text:${row}:${col}`, 300);
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await ctx.reply('🎨 متن جدید دکمه را ارسال کنید:');
+    await safeEdit(ctx, '🎨 متن جدید دکمه را ارسال کنید:');
   });
 
   bot.action(/^post:btn:value:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -766,7 +814,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const col = parseInt(ctx.match[3]);
     cache.set(pendingKey(ctx.from.id, 'editing_button'), `value:${row}:${col}`, 300);
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await ctx.reply('🔗 آدرس/مقدار جدید دکمه را ارسال کنید:');
+    await safeEdit(ctx, '🔗 آدرس/مقدار جدید دکمه را ارسال کنید:');
   });
 
   bot.action(/^post:btn:up:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -775,14 +823,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
-    if (row === 0) return ctx.reply('هم‌اکنون در بالاست.');
+    if (row === 0) return safeEdit(ctx, 'هم‌اکنون در بالاست.');
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     [buttons[row - 1], buttons[row]] = [buttons[row], buttons[row - 1]];
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('✅ دکمه به بالا منتقل شد.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '✅ دکمه به بالا منتقل شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:down:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -792,13 +839,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
-    if (row >= buttons.length - 1) return ctx.reply('هم‌اکنون در پایین‌ترین است.');
+    if (row >= buttons.length - 1) return safeEdit(ctx, 'هم‌اکنون در پایین‌ترین است.');
     [buttons[row], buttons[row + 1]] = [buttons[row + 1], buttons[row]];
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('✅ دکمه به پایین منتقل شد.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '✅ دکمه به پایین منتقل شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:del:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -809,15 +855,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     if (buttons[row]) {
       buttons[row].splice(col, 1);
       if (buttons[row].length === 0) buttons.splice(row, 1);
     }
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('➖ دکمه حذف شد.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '➖ دکمه حذف شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:addrow:(\d+)$/, async (ctx: any) => {
@@ -826,12 +871,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('➕ سطر دکمه جدید اضافه شد.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '➕ سطر دکمه جدید اضافه شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:resize:(\d+):(\d+)$/, async (ctx: any) => {
@@ -840,7 +884,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
-    await ctx.reply('📐 تعداد دکمه در سطر را انتخاب کنید:', postRowResizeKeyboard(postId, row));
+    await safeEdit(ctx, '📐 تعداد دکمه در سطر را انتخاب کنید:', postRowResizeKeyboard(postId, row));
   });
 
   bot.action(/^post:btn:rowsize:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -851,7 +895,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[2]);
     const size = parseInt(ctx.match[3]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     const currentRow = buttons[row] || [];
     const newRow: any[] = [];
@@ -860,8 +904,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
     buttons[row] = newRow;
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply(`✅ سطر ${row + 1} به ${size} دکمه تغییر اندازه یافت.`);
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, `✅ سطر ${row + 1} به ${size} دکمه تغییر اندازه یافت.\n\n⌨ ویرایشگر دکمه:`, postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:settype:(\d+):(\d+):(\d+):(.+)$/, async (ctx: any) => {
@@ -873,13 +916,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const col = parseInt(ctx.match[3]);
     const btnType = ctx.match[4];
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     if (!buttons[row]) buttons[row] = [];
     if (!buttons[row][col]) buttons[row][col] = {};
     buttons[row][col].type = btnType;
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply(`✅ نوع دکمه به ${btnType} تغییر یافت. اکنون مقدار را تنظیم کنید:`);
+    await safeEdit(ctx, `✅ نوع دکمه به ${btnType} تغییر یافت. اکنون مقدار را تنظیم کنید:`);
     cache.set(pendingKey(ctx.from.id, 'editing_button'), `value:${row}:${col}`, 300);
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
   });
@@ -892,7 +935,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً `sgb/discount/rules`', { parse_mode: 'Markdown' });
+    await safeEdit(ctx, '🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً `sgb/discount/rules`', { parse_mode: 'Markdown' });
   });
 
   // ─── Analytics ──────────────────────────────────────────
@@ -909,7 +952,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const analytics = await postService.getAnalytics(postId);
     const text = [
       `📊 *آمار: ${post.title}*`,
@@ -921,7 +964,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       '📈 بازدید روزانه (۳۰ روز اخیر):',
       ...analytics.dailyViews.slice(-7).map((d: any) => `  ${d.date}: ${d.count} بازدید`),
     ].join('\n');
-    await ctx.reply(text, { parse_mode: 'Markdown', ...postAnalyticsKeyboard(postId) });
+    await safeEdit(ctx, text, { parse_mode: 'Markdown', ...postAnalyticsKeyboard(postId) });
   });
 
   bot.on('text', async (ctx: any, next) => {
@@ -952,7 +995,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   // ─── Back to Posts Menu ─────────────────────────────────
   bot.action('post:menu', async (ctx: any) => {
     await ctx.answerCbQuery();
-    await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+    await safeEdit(ctx, '📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
   });
 
   // ─── Version History ────────────────────────────────────
@@ -962,8 +1005,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const versions = await postService.getVersions(postId);
-    if (versions.length === 0) return ctx.reply('📜 نسخه‌ای ذخیره نشده است.');
-    await ctx.reply(
+    if (versions.length === 0) return safeEdit(ctx, '📜 نسخه‌ای ذخیره نشده است.');
+    await safeEdit(ctx,
       `📜 تاریخچه نسخه‌ها (${versions.length}):\nبرای بازیابی روی نسخه ضربه بزنید.`,
       postVersionHistoryKeyboard(versions, postId)
     );
@@ -976,11 +1019,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const versionId = parseInt(ctx.match[1]);
     try {
       const restored = await postService.restoreVersion(versionId);
-      if (!restored) return ctx.reply('❌ نسخه یافت نشد.');
-      await ctx.reply(`✅ نسخه بازیابی شد: "${restored.title}"`);
+      if (!restored) return safeEdit(ctx, '❌ نسخه یافت نشد.');
       await showPostEditor(ctx, restored.id);
     } catch (err: any) {
-      await ctx.reply(`❌ ${err.message}`);
+      await safeEdit(ctx, `❌ ${err.message}`);
     }
   });
 
@@ -995,12 +1037,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    await ctx.reply('🔍 در حال بررسی سلامت...');
     const issues = await postService.integrityCheck();
     if (issues.length === 0) {
-      await ctx.reply('✅ همه پست‌ها سالم هستند.');
+      await safeEdit(ctx, '✅ همه پست‌ها سالم هستند.');
     } else {
-      await ctx.reply(`⚠ مشکلات یافت شد:\n\n${issues.join('\n')}`);
+      await safeEdit(ctx, `⚠ مشکلات یافت شد:\n\n${issues.join('\n')}`);
     }
   });
 
@@ -1043,7 +1084,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       `👆 کلیک کل: ${analytics.totalClicks}`,
       `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
     ].join('\n');
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() }).catch(() => {});
+    await safeEdit(ctx, text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
   });
 
   bot.action('post:analytics:top', async (ctx: any) => {
@@ -1051,10 +1092,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const topPosts = await postService.getTopPosts(10);
-    if (topPosts.length === 0) return ctx.reply('🏆 پستی وجود ندارد.');
+    if (topPosts.length === 0) return safeEdit(ctx, '🏆 پستی وجود ندارد.');
     const text = '🏆 *پست‌های برتر بر اساس بازدید*\n\n' +
       topPosts.map((p: any, i: number) => `${i + 1}. ${p.title} — ${(p as any).views || 0} بازدید`).join('\n');
-    await ctx.reply(text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
+    await safeEdit(ctx, text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
   });
 
   // ─── Button Row Management ──────────────────────────────
@@ -1064,14 +1105,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
-    if (row === 0) return ctx.reply('هم‌اکنون در بالاست.');
+    if (row === 0) return safeEdit(ctx, 'هم‌اکنون در بالاست.');
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     [buttons[row - 1], buttons[row]] = [buttons[row], buttons[row - 1]];
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('✅ سطر به بالا منتقل شد.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '✅ سطر به بالا منتقل شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:rowdown:(\d+):(\d+)$/, async (ctx: any) => {
@@ -1081,13 +1121,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
-    if (row >= buttons.length - 1) return ctx.reply('هم‌اکنون در پایین‌ترین جایگاه است.');
+    if (row >= buttons.length - 1) return safeEdit(ctx, 'هم‌اکنون در پایین‌ترین جایگاه است.');
     [buttons[row], buttons[row + 1]] = [buttons[row + 1], buttons[row]];
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('✅ سطر به پایین منتقل شد.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '✅ سطر به پایین منتقل شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:swap:(\d+):(\d+)$/, async (ctx: any) => {
@@ -1097,9 +1136,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
-    await ctx.reply('🔄 سطر مقصد را برای جابجایی انتخاب کنید:', postSwapTargetKeyboard(postId, row, buttons.length));
+    await safeEdit(ctx, '🔄 سطر مقصد را برای جابجایی انتخاب کنید:', postSwapTargetKeyboard(postId, row, buttons.length));
   });
 
   bot.action(/^post:btn:swap:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -1111,12 +1150,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const rowB = parseInt(ctx.match[3]);
     if (rowA === rowB) return;
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     [buttons[rowA], buttons[rowB]] = [buttons[rowB], buttons[rowA]];
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('🔄 سطرها جابجا شدند.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '🔄 سطرها جابجا شدند.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:duprow:(\d+):(\d+)$/, async (ctx: any) => {
@@ -1126,14 +1164,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
-    if (!buttons[row]) return ctx.reply('❌ سطر یافت نشد.');
+    if (!buttons[row]) return safeEdit(ctx, '❌ سطر یافت نشد.');
     const duplicated = buttons[row].map((b: any) => ({ ...b }));
     buttons.splice(row + 1, 0, duplicated);
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('📋 سطر کپی شد.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '📋 سطر کپی شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   bot.action(/^post:btn:delrow:(\d+):(\d+)$/, async (ctx: any) => {
@@ -1143,12 +1180,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
     buttons.splice(row, 1);
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await ctx.reply('➖ سطر حذف شد.');
-    await ctx.reply('⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+    await safeEdit(ctx, '➖ سطر حذف شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
   // ─── Back to Admin Panel ───────────────────────────────
