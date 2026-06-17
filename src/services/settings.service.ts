@@ -179,7 +179,25 @@ class SettingsService {
     if (typeof normalized.title === 'string') normalized.title = sanitizeTelegramText(normalized.title);
     return normalized;
   }
+private menuTextSummary(layout: any[][]): string {
+  try {
+    return layout
+      .flat()
+      .map(btn => {
+        const txt =
+          btn?.text ||
+          btn?.label ||
+          btn?.title ||
+          btn?.ref ||
+          '[empty]';
 
+        return String(txt).substring(0, 30);
+      })
+      .join(' | ');
+  } catch {
+    return '[summary_failed]';
+  }
+}
   async getMenuLayout(): Promise<any[][]> {
     if (this.menuLayoutCache) {
       logger.debug('[MenuLayout] Returning cached layout (version ' + this.menuLayoutCache.version + ')');
