@@ -613,6 +613,11 @@ model Post {
   albumMediaIds   Json?
   parseMode       String?        @default("Markdown")
   buttons         Json?
+  entities                Json?
+  telegramPayload         Json?
+  telegramMessageSnapshot Json?
+  contentFormat           String?
+  contentVersion          Int              @default(1)
   command         String?
   isPublished     Boolean        @default(false)
   publishedAt     DateTime?
@@ -631,12 +636,98 @@ model Post {
   commands        PostCommand[]
   versions        PostVersion[]
   views           PostView[]
+  richMedia       PostMedia[]
+  richEntities    PostEntity[]
+  attachments     PostAttachment[]
+  keyboards       PostKeyboard[]
 
   @@index([status])
   @@index([isPublished])
   @@index([slug])
   @@index([sortOrder])
   @@map("posts")
+}
+
+model PostMedia {
+  id              Int      @id @default(autoincrement())
+  postId          Int
+  type            String
+  fileId          String
+  fileUniqueId    String?
+  mediaGroupId    String?
+  caption         String?
+  captionEntities Json?
+  width           Int?
+  height          Int?
+  duration        Int?
+  fileName        String?
+  mimeType        String?
+  fileSize        Int?
+  thumbnailFileId String?
+  order           Int      @default(0)
+  payload         Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  post            Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([mediaGroupId])
+  @@map("post_media")
+}
+
+model PostEntity {
+  id            Int      @id @default(autoincrement())
+  postId        Int
+  source        String   @default("text")
+  type          String
+  offset        Int
+  length        Int
+  url           String?
+  user          Json?
+  language      String?
+  customEmojiId String?
+  payload       Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  post          Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([type])
+  @@map("post_entities")
+}
+
+model PostAttachment {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  type      String
+  fileId    String?
+  url       String?
+  name      String?
+  payload   Json?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_attachments")
+}
+
+model PostKeyboard {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  row       Int      @default(0)
+  col       Int      @default(0)
+  text      String
+  type      String
+  value     String?
+  payload   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_keyboards")
 }
 
 model PostButton {

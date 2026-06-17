@@ -25,6 +25,7 @@ import { config } from '../../config';
 import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
+import { renderPostToTelegram } from '../../services/post-renderer.service';
 import { sanitizeTelegramText, sanitizeTelegramExtra } from '../../utils/unicode';
 import {
   propFirmDiscountKeyboard,
@@ -115,6 +116,7 @@ function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; con
 
 async function sendPostToUser(ctx: any, post: any) {
   await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+  if ((post as any).telegramPayload) return renderPostToTelegram(ctx, post);
   const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
   const parseMode = post.parseMode || 'Markdown';
   const rawText = post.content || post.caption || '';

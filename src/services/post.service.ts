@@ -7,6 +7,7 @@ import { settingsService } from './settings.service';
 import { eventBus, Events } from '../utils/events';
 import { logger } from '../utils/logger';
 import { sanitizeTelegramText, sanitizeJsonStrings, validateDbInput } from '../utils/unicode';
+import { extractTelegramSnapshot, validateTelegramEntities, validateTelegramHtml } from './post-renderer.service';
 
 const CACHE_KEY_PUBLISHED = 'posts:published';
 const CACHE_KEY_COMMANDS = 'posts:commands';
@@ -23,6 +24,11 @@ export const postService = {
     albumMediaIds?: string[];
     parseMode?: string;
     buttons?: any[];
+    entities?: any[];
+    telegramPayload?: any;
+    telegramMessageSnapshot?: any;
+    contentFormat?: string;
+    contentVersion?: number;
     command?: string;
     status?: PostStatus;
     sortOrder?: number;
@@ -38,6 +44,11 @@ export const postService = {
       albumMediaIds: data.albumMediaIds ? JSON.parse(JSON.stringify(data.albumMediaIds)) : undefined,
       parseMode: data.parseMode ?? 'Markdown',
       buttons: data.buttons ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
+      entities: data.entities ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.entities))) : undefined,
+      telegramPayload: data.telegramPayload ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramPayload))) : undefined,
+      telegramMessageSnapshot: data.telegramMessageSnapshot ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramMessageSnapshot))) : undefined,
+      contentFormat: data.contentFormat,
+      contentVersion: data.contentVersion ?? 1,
       command: data.command,
       status: data.status ?? PostStatus.DRAFT,
       sortOrder: data.sortOrder ?? 0,
@@ -69,6 +80,11 @@ export const postService = {
       albumMediaIds: existing.albumMediaIds,
       parseMode: existing.parseMode,
       buttons: existing.buttons,
+      entities: (existing as any).entities,
+      telegramPayload: (existing as any).telegramPayload,
+      telegramMessageSnapshot: (existing as any).telegramMessageSnapshot,
+      contentFormat: (existing as any).contentFormat,
+      contentVersion: (existing as any).contentVersion,
       command: existing.command,
       status: existing.status,
       sortOrder: existing.sortOrder,
@@ -78,6 +94,9 @@ export const postService = {
     if (typeof data.content === 'string') data.content = sanitizeTelegramText(data.content);
     if (typeof data.caption === 'string') data.caption = sanitizeTelegramText(data.caption);
     if (data.buttons) data.buttons = sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons)));
+    if ((data as any).entities) (data as any).entities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).entities)));
+    if ((data as any).telegramPayload) (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
+    if ((data as any).telegramMessageSnapshot) (data as any).telegramMessageSnapshot = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramMessageSnapshot)));
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     this.invalidateCache();
 
@@ -262,6 +281,67 @@ export const postService = {
       logger.info(`[Scheduler] Auto-unpublished post: "${post.title}" (id: ${post.id})`);
     }
     return processed;
+  },
+
+  validateNativePostInput(input: { content?: string | null; caption?: string | null; entities?: any[] | null; buttons?: any[] | null; media?: any[] | null; contentFormat?: string | null }) {
+    const text = input.content || input.caption || '';
+    const issues = [
+      ...validateTelegramEntities(text, input.entities || undefined),
+      ...(input.contentFormat === 'HTML' ? validateTelegramHtml(text) : []),
+    ];
+    if (input.buttons && !Array.isArray(input.buttons)) issues.push('[PostKeyboard] buttons must be an array of rows');
+    (input.buttons || []).forEach((row: any, r: number) => {
+      if (!Array.isArray(row)) issues.push(`[PostKeyboard] row ${r} must be an array`);
+      (Array.isArray(row) ? row : []).forEach((btn: any, c: number) => {
+        if (!btn?.text) issues.push(`[PostKeyboard] button ${r}:${c} requires text`);
+        if (btn?.type === 'URL' && !(btn.value || btn.url)) issues.push(`[PostKeyboard] URL button ${r}:${c} requires value/url`);
+      });
+    });
+    (input.media || []).forEach((m: any, i: number) => {
+      if (!m?.fileId) issues.push(`[PostMedia] media ${i} requires fileId`);
+      if (!m?.type) issues.push(`[PostMedia] media ${i} requires type`);
+    });
+    issues.forEach(issue => logger.warn(issue));
+    return { valid: issues.length === 0, issues };
+  },
+
+  async importFromTelegram(postId: number, message: any, updatedBy?: bigint) {
+    const snapshot = extractTelegramSnapshot(message);
+    const content = message.text || '';
+    const caption = message.caption || undefined;
+    const media = snapshot.media;
+    const entities = snapshot.entities || [];
+    const keyboard = snapshot.keyboard || [];
+    const validation = this.validateNativePostInput({ content: content || caption, caption, entities, buttons: keyboard, media, contentFormat: 'entities' });
+    if (!validation.valid) logger.warn(`[PostImport] Validation warnings for post ${postId}: ${validation.issues.join('; ')}`);
+    const payload = { text: content || caption || '', caption, entities, media, keyboard };
+    const update: any = {
+      content: content || undefined,
+      caption,
+      entities,
+      telegramPayload: payload,
+      telegramMessageSnapshot: snapshot.message,
+      contentFormat: 'telegram_entities',
+      contentVersion: 2,
+      buttons: keyboard.length ? keyboard.map((row: any[]) => row.map((b: any) => ({ text: b.text, type: b.url ? 'URL' : b.web_app ? 'WEB_APP' : b.login_url ? 'LOGIN_URL' : b.copy_text ? 'COPY_TEXT' : b.switch_inline_query ? 'SWITCH_INLINE' : 'CALLBACK', value: b.url || b.callback_data || b.web_app?.url || b.login_url?.url || b.copy_text?.text || b.switch_inline_query || '', payload: b }))) : undefined,
+      mediaFileId: media[0]?.fileId,
+      mediaType: media[0]?.type,
+      albumMediaIds: media.length > 1 ? media.map((m: any) => m.fileId) : undefined,
+      parseMode: null,
+      updatedBy,
+    };
+    logger.info(`[PostImport] Importing Telegram message into post ${postId} entities=${entities.length} media=${media.length} buttons=${keyboard.length}`);
+    const post = await postRepository.update(postId, update);
+    await prisma.$transaction([
+      prisma.postMedia.deleteMany({ where: { postId } }),
+      prisma.postEntity.deleteMany({ where: { postId } }),
+      prisma.postKeyboard.deleteMany({ where: { postId } }),
+    ]);
+    for (let i = 0; i < media.length; i++) await prisma.postMedia.create({ data: { postId, ...media[i], order: i } as any });
+    for (let i = 0; i < entities.length; i++) await prisma.postEntity.create({ data: { postId, source: caption ? 'caption' : 'text', type: entities[i].type, offset: entities[i].offset, length: entities[i].length, url: entities[i].url, user: entities[i].user, language: entities[i].language, customEmojiId: entities[i].custom_emoji_id, payload: entities[i] } as any });
+    for (let r = 0; r < keyboard.length; r++) for (let c = 0; c < keyboard[r].length; c++) await prisma.postKeyboard.create({ data: { postId, row: r, col: c, text: keyboard[r][c].text, type: keyboard[r][c].url ? 'URL' : keyboard[r][c].callback_data ? 'CALLBACK' : 'NATIVE', value: keyboard[r][c].url || keyboard[r][c].callback_data, payload: keyboard[r][c] } as any });
+    this.invalidateCache();
+    return post;
   },
 
   async duplicate(id: number, createdBy?: bigint) {

@@ -397,6 +397,14 @@ export interface PostItem {
   albumMediaIds?: string[] | null;
   parseMode: string;
   buttons?: any;
+  entities?: any;
+  telegramPayload?: any;
+  telegramMessageSnapshot?: any;
+  contentFormat?: string | null;
+  contentVersion?: number;
+  richMedia?: any[];
+  richEntities?: any[];
+  keyboards?: any[];
   command?: string | null;
   status: PostStatus;
   isPublished: boolean;
