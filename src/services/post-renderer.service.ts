@@ -8,6 +8,15 @@ const ENTITY_TYPES = new Set([
   'text_link', 'text_mention', 'custom_emoji',
 ]);
 
+const MEDIA_SENDERS: Record<string, { inputType: string; method: string; apiMethod: string }> = {
+  photo: { inputType: 'photo', method: 'replyWithPhoto', apiMethod: 'sendPhoto' },
+  video: { inputType: 'video', method: 'replyWithVideo', apiMethod: 'sendVideo' },
+  animation: { inputType: 'animation', method: 'replyWithAnimation', apiMethod: 'sendAnimation' },
+  document: { inputType: 'document', method: 'replyWithDocument', apiMethod: 'sendDocument' },
+  audio: { inputType: 'audio', method: 'replyWithAudio', apiMethod: 'sendAudio' },
+  voice: { inputType: 'voice', method: 'replyWithVoice', apiMethod: 'sendVoice' },
+};
+
 export function validateTelegramHtml(html?: string | null): string[] {
   if (!html) return [];
   const issues: string[] = [];
@@ -28,10 +37,14 @@ export function validateTelegramHtml(html?: string | null): string[] {
   return issues;
 }
 
+function telegramLength(text: string) {
+  return Buffer.from(text || '', 'utf16le').length / 2;
+}
+
 export function validateTelegramEntities(text: string | null | undefined, entities: any[] | null | undefined): string[] {
   const issues: string[] = [];
   if (!entities) return issues;
-  const length = [...(text || '')].length;
+  const length = telegramLength(text || '');
   entities.forEach((e, i) => {
     if (!ENTITY_TYPES.has(e.type)) issues.push(`[PostEntity] entity ${i} has unsupported type ${e.type}`);
     if (!Number.isInteger(e.offset) || !Number.isInteger(e.length) || e.offset < 0 || e.length < 1) issues.push(`[PostEntity] entity ${i} has invalid range`);
@@ -40,6 +53,11 @@ export function validateTelegramEntities(text: string | null | undefined, entiti
     if (e.type === 'custom_emoji' && !e.custom_emoji_id) issues.push(`[PostEntity] custom_emoji entity ${i} requires custom_emoji_id`);
   });
   return issues;
+}
+
+function cleanEntities(entities: any[] | null | undefined) {
+  if (!Array.isArray(entities)) return undefined;
+  return entities.map(e => ({ ...e, custom_emoji_id: e.custom_emoji_id ?? e.customEmojiId })).filter(e => ENTITY_TYPES.has(e.type));
 }
 
 function buttonToTelegram(btn: any, postId?: number) {
@@ -78,34 +96,70 @@ export function extractTelegramSnapshot(message: any) {
   return { text, caption: message.caption, entities, media, keyboard, message };
 }
 
-export async function renderPostToTelegram(ctx: any, post: any) {
-  logger.info(`[PostRender] Rendering post ${post.id} native=${!!post.telegramPayload}`);
-  const payload = post.telegramPayload as any;
-  const buttons = buildTelegramKeyboard(payload?.keyboard || post.buttons || [], post.id);
+function buildPayload(post: any) {
+  const snapshot = post.telegramMessageSnapshot || {};
+  const payload = post.telegramPayload || {};
+  const text = snapshot.text ?? payload.text ?? post.content ?? post.caption ?? post.title ?? '';
+  const caption = snapshot.caption ?? payload.caption ?? post.caption ?? undefined;
+  const textEntities = cleanEntities(snapshot.entities ?? payload.entities ?? post.entities);
+  const captionEntities = cleanEntities(snapshot.caption_entities ?? payload.captionEntities ?? payload.entities ?? post.entities);
+  const media = Array.isArray(payload.media) && payload.media.length ? payload.media : extractTelegramSnapshot(snapshot).media;
+  const keyboard = payload.keyboard || snapshot.reply_markup?.inline_keyboard || post.buttons || [];
+  const buttons = buildTelegramKeyboard(keyboard, post.id);
   const markup = buttons.length ? Markup.inlineKeyboard(buttons) : {};
-  const text = payload?.text ?? post.content ?? post.caption ?? post.title;
-  const entities = payload?.entities ?? post.entities;
-  const media = payload?.media || [];
-  const common: any = { link_preview_options: { is_disabled: true }, ...markup };
-  if (post.telegramPayload) {
-    if (media.length > 1) {
-      await ctx.replyWithMediaGroup(media.map((m: any, i: number) => ({ type: m.type === 'animation' ? 'document' : m.type, media: m.fileId, caption: i === 0 ? (m.caption || text) : undefined, caption_entities: i === 0 ? (m.captionEntities || entities) : undefined })));
-      if (buttons.length) await ctx.reply('عملیات:', markup);
+  return { text, caption, textEntities, captionEntities, media, buttons, common: { link_preview_options: { is_disabled: true }, ...markup } };
+}
+
+function logRequest(method: string, request: any) {
+  logger.info(`[TelegramSend] ${method} ${JSON.stringify(request, (_, v) => typeof v === 'bigint' ? v.toString() : v)}`);
+}
+
+export function buildPostDebugSnapshot(post: any) {
+  const rendered = buildPayload(post);
+  const hasMedia = rendered.media.length > 0;
+  return {
+    storedContent: { content: post.content, caption: post.caption, contentFormat: post.contentFormat },
+    entities: { post: post.entities, finalTextEntities: rendered.textEntities, finalCaptionEntities: rendered.captionEntities },
+    parseMode: post.parseMode,
+    telegramPayload: post.telegramPayload,
+    telegramMessageSnapshot: post.telegramMessageSnapshot,
+    finalTelegramApiRequest: hasMedia
+      ? { method: rendered.media.length > 1 ? 'sendMediaGroup' : MEDIA_SENDERS[rendered.media[0].type]?.apiMethod, media: rendered.media, caption: rendered.caption || rendered.text || undefined, caption_entities: rendered.captionEntities }
+      : { method: 'sendMessage', text: rendered.text || '(پست خالی)', entities: rendered.textEntities, parse_mode: (post.telegramPayload || post.telegramMessageSnapshot) ? undefined : post.parseMode },
+  };
+}
+
+export async function renderPostToTelegram(ctx: any, post: any) {
+  const payload = buildPayload(post);
+  logger.info(`[PostRender] post=${post.id} native=${!!post.telegramPayload} snapshot=${!!post.telegramMessageSnapshot} media=${payload.media.length}`);
+  logger.info(`[TelegramPayload] post=${post.id} ${JSON.stringify({ textLength: telegramLength(payload.text), captionLength: telegramLength(payload.caption || ''), media: payload.media.map((m: any) => m.type) })}`);
+  logger.info(`[TelegramEntities] post=${post.id} text=${payload.textEntities?.length || 0} caption=${payload.captionEntities?.length || 0}`);
+
+  if (post.telegramPayload || post.telegramMessageSnapshot) {
+    if (payload.media.length > 1) {
+      const mediaGroup = payload.media.map((m: any, i: number) => ({ type: MEDIA_SENDERS[m.type]?.inputType || m.type, media: m.fileId, caption: i === 0 ? (m.caption || payload.caption || payload.text || undefined) : undefined, caption_entities: i === 0 ? cleanEntities(m.captionEntities) || payload.captionEntities : undefined }));
+      logRequest('sendMediaGroup', { media: mediaGroup });
+      await ctx.replyWithMediaGroup(mediaGroup);
+      if (payload.buttons.length) await ctx.reply('عملیات:', Markup.inlineKeyboard(payload.buttons));
       return;
     }
-    if (media.length === 1) {
-      const m = media[0];
-      const extra = { ...common, caption: m.caption || text || undefined, caption_entities: m.captionEntities || entities || undefined };
-      if (m.type === 'photo') return ctx.replyWithPhoto(m.fileId, extra);
-      if (m.type === 'video') return ctx.replyWithVideo(m.fileId, extra);
-      if (m.type === 'animation') return ctx.replyWithAnimation(m.fileId, extra);
-      if (m.type === 'document') return ctx.replyWithDocument(m.fileId, extra);
-      if (m.type === 'audio') return ctx.replyWithAudio(m.fileId, extra);
-      if (m.type === 'voice') return ctx.replyWithVoice(m.fileId, extra);
-      if (m.type === 'sticker') return ctx.replyWithSticker(m.fileId, markup as any);
+    if (payload.media.length === 1) {
+      const m = payload.media[0];
+      if (m.type === 'sticker') {
+        logRequest('sendSticker', { sticker: m.fileId });
+        return ctx.replyWithSticker(m.fileId, payload.buttons.length ? Markup.inlineKeyboard(payload.buttons) : undefined);
+      }
+      const sender = MEDIA_SENDERS[m.type] || MEDIA_SENDERS.document;
+      const extra = { ...payload.common, caption: m.caption || payload.caption || payload.text || undefined, caption_entities: cleanEntities(m.captionEntities) || payload.captionEntities || undefined };
+      logRequest(sender.apiMethod, { media: m.fileId, ...extra });
+      return ctx[sender.method](m.fileId, extra);
     }
-    return ctx.reply(text || '(پست خالی)', { ...common, entities: entities || undefined });
+    const request = { ...payload.common, entities: payload.textEntities || undefined };
+    logRequest('sendMessage', { text: payload.text || '(پست خالی)', ...request });
+    return ctx.reply(payload.text || '(پست خالی)', request);
   }
+
   const parseMode = post.parseMode || 'Markdown';
-  return ctx.reply(text || '(پست خالی)', { ...common, parse_mode: parseMode });
+  logRequest('sendMessage', { text: payload.text || '(پست خالی)', parse_mode: parseMode });
+  return ctx.reply(payload.text || '(پست خالی)', { ...payload.common, parse_mode: parseMode });
 }
