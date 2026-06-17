@@ -465,6 +465,11 @@ export interface PostPayload {
   mediaType?: string;
   parseMode?: "Markdown" | "HTML";
   buttons?: any;
+  entities?: any;
+  telegramPayload?: any;
+  telegramMessageSnapshot?: any;
+  contentFormat?: string;
+  contentVersion?: number;
   command?: string;
   status?: "DRAFT" | "PUBLISHED" | "SCHEDULED" | "ARCHIVED" | "HIDDEN";
   sortOrder?: number;

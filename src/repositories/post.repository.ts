@@ -17,26 +17,26 @@ export const postRepository = {
   async findById(id: number) {
     return prisma.post.findUnique({
       where: { id },
-      include: { commands: true, _count: { select: { views: true, clickLogs: true } } },
+      include: { commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true, clickLogs: true } } },
     });
   },
 
   async findBySlug(slug: string) {
     return prisma.post.findUnique({
       where: { slug },
-      include: { commands: true, _count: { select: { views: true, clickLogs: true } } },
+      include: { commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true, clickLogs: true } } },
     });
   },
 
   async findByCommand(command: string) {
     const post = await prisma.post.findFirst({
       where: { OR: [{ command }, { commands: { some: { command } } }] },
-      include: { commands: true, _count: { select: { views: true, clickLogs: true } } },
+      include: { commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true, clickLogs: true } } },
     });
     if (post) return post;
     const allPosts = await prisma.post.findMany({
       where: { commands: { some: {} } },
-      include: { commands: true, _count: { select: { views: true, clickLogs: true } } },
+      include: { commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true, clickLogs: true } } },
     });
     for (const p of allPosts) {
       for (const cmd of p.commands) {
@@ -75,7 +75,7 @@ export const postRepository = {
     const [items, total] = await Promise.all([
       prisma.post.findMany({
         where,
-        include: { commands: true, _count: { select: { views: true, clickLogs: true } } },
+        include: { commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true, clickLogs: true } } },
         orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
         skip,
         take: limit,
@@ -88,7 +88,7 @@ export const postRepository = {
   async getPublished() {
     return prisma.post.findMany({
       where: { status: PostStatus.PUBLISHED, isPublished: true },
-      include: { commands: true, _count: { select: { views: true } } },
+      include: { commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true } } },
       orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
     });
   },
@@ -98,7 +98,7 @@ export const postRepository = {
     const [items, total] = await Promise.all([
       prisma.post.findMany({
         where: { status: PostStatus.PUBLISHED, isPublished: true },
-        include: { commands: true, _count: { select: { views: true } } },
+        include: { commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true } } },
         orderBy: [{ sortOrder: 'asc' }, { publishedAt: 'desc' }],
         skip,
         take: limit,

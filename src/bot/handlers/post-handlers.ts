@@ -27,6 +27,7 @@ import {
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
+import { renderPostToTelegram } from '../../services/post-renderer.service';
 
 function isPostAdmin(admin: any): boolean {
   if (!admin) return false;
@@ -113,6 +114,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   });
 
   // ─── Create Post ─────────────────────────────────────────
+  bot.hears('📥 Import From Telegram', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    cache.set(pendingKey(ctx.from.id, 'import_title'), true, 300);
+    await ctx.reply('📥 عنوان پست جدید را ارسال کنید، سپس پیام تلگرام اصلی را فوروارد کنید.');
+  });
+
   bot.hears('➕ ایجاد پست', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
@@ -126,11 +134,31 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || !isPostAdmin(admin)) return next();
 
+    const importTitle = cache.get<boolean>(pendingKey(ctx.from.id, 'import_title'));
+    const importingPostId = cache.get<number>(pendingKey(ctx.from.id, 'import_post'));
     const creating = cache.get<boolean>(pendingKey(ctx.from.id, 'creating'));
     const editingField = cache.get<string>(pendingKey(ctx.from.id, 'editing_field'));
     const editingPostId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
     const editingButton = cache.get<string>(pendingKey(ctx.from.id, 'editing_button'));
     const editingCommand = cache.get<boolean>(pendingKey(ctx.from.id, 'editing_cmd'));
+
+    if (importTitle) {
+      cache.del(pendingKey(ctx.from.id, 'import_title'));
+      const title = ctx.message.text;
+      const slug = slugify(title);
+      const post = await postService.create({ title, slug, content: '', contentFormat: 'telegram_entities', contentVersion: 2, createdBy: BigInt(ctx.from.id) } as any);
+      cache.set(pendingKey(ctx.from.id, 'import_post'), post.id, 300);
+      await ctx.reply(`✅ پیش‌نویس ساخته شد (شناسه ${post.id}). حالا پیام اصلی را از تلگرام فوروارد کنید یا همینجا ارسال کنید.`);
+      return;
+    }
+
+    if (importingPostId) {
+      cache.del(pendingKey(ctx.from.id, 'import_post'));
+      await postService.importFromTelegram(importingPostId, ctx.message, BigInt(ctx.from.id));
+      await ctx.reply('✅ پیام تلگرام با entityها، قالب‌بندی، دکمه‌ها و مدیا ایمپورت شد.');
+      await showPostEditor(ctx, importingPostId);
+      return;
+    }
 
     if (creating) {
       cache.del(pendingKey(ctx.from.id, 'creating'));
@@ -282,6 +310,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const editingField = cache.get<string>(pendingKey(ctx.from.id, 'editing_field'));
     const editingPostId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+
+    const importingPostId = cache.get<number>(pendingKey(ctx.from.id, 'import_post'));
+    if (importingPostId) {
+      cache.del(pendingKey(ctx.from.id, 'import_post'));
+      await postService.importFromTelegram(importingPostId, ctx.message, BigInt(ctx.from.id));
+      await ctx.reply('✅ پیام تلگرام با ساختار native ایمپورت شد.');
+      await showPostEditor(ctx, importingPostId);
+      return;
+    }
 
     if (editingField === 'media' && editingPostId) {
       cache.del(pendingKey(ctx.from.id, 'editing_field'));
@@ -1194,6 +1231,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   async function sendPostToChat(ctx: any, post: any) {
     await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
     const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
+    if ((post as any).telegramPayload) return renderPostToTelegram(ctx, post);
     const parseMode = post.parseMode || 'Markdown';
     const rawText = post.content || post.caption || '';
     const { segments } = parseCopyBlocks(rawText);
