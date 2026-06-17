@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger';
 export const menuRouter = Router();
 
 const layoutSchema = z.array(z.array(z.object({
+  id: z.string().optional(),
   ref: z.string(),
   text: z.string(),
   type: z.string().optional(),

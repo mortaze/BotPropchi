@@ -3,7 +3,7 @@ import { prisma } from '../prisma/client';
 import { BRAND_NAME } from '../constants';
 import { logger } from '../utils/logger';
 import { eventBus, Events } from '../utils/events';
-import { sanitizeTelegramText, sanitizeJsonStrings, ensureTelegramSafe, validateUnicode, logUnicodeIssue } from '../utils/unicode';
+import { sanitizeTelegramText, ensureTelegramSafe, validateUnicode, logUnicodeIssue } from '../utils/unicode';
 
 export const DEFAULT_MENU_ITEMS = [
   { key: 'dashboard', label: 'داشبورد', href: '/dashboard', order: 10, ownerOnly: false, featureKey: null },
@@ -238,8 +238,14 @@ class SettingsService {
     // Ensure all buttons have stable IDs
     layout = this.ensureButtonIds(layout);
 
-    // Sanitize all button text before saving
-    layout = sanitizeJsonStrings(layout) as any[][];
+    // Only sanitize the text field — never touch ref, id, or other fields
+    for (const row of layout) {
+      for (const btn of row) {
+        if (btn.text && typeof btn.text === 'string') {
+          btn.text = sanitizeTelegramText(btn.text);
+        }
+      }
+    }
 
     // Save layout to DB
     await this.setSetting(this.MENU_LAYOUT_KEY, layout);

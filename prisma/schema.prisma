@@ -7,46 +7,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-////////////////////////////////////////////////////////////
-// USERS
-////////////////////////////////////////////////////////////
-
 model User {
-  id             Int      @id @default(autoincrement())
-  telegramId     BigInt   @unique
-  username       String?
-  firstName      String
-  lastName       String?
-  telegramFirstName String?
-  telegramLastName  String?
-  realFirstName     String?
-  realLastName      String?
-  phoneNumber    String?
-  profileCompleted Boolean @default(false)
-  points         Int      @default(0)
-  totalReferrals Int      @default(0)
-  isBlocked      Boolean  @default(false)
-  membershipVerifiedAt DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  referredById   Int?
-
-  referredBy     User?      @relation("UserReferrals", fields: [referredById], references: [id])
-  referrals      User[]     @relation("UserReferrals")
-  sentReferrals  Referral[] @relation("ReferralReferrer")
-  receivedReferral Referral? @relation("ReferralReferred")
-  broadcastLogs  BroadcastLog[]
-  pointLogs      PointLog[]
-  lotteryEntries LotteryEntry[]
-  lotteryWins    LotteryWinner[]
-  clickLogs      ClickLog[]
-  systemLogs     SystemLog[]
-  miniAppDebugLogs MiniAppDebugLog[]
-  aiChatLogs     AiChatLog[]
+  id                         Int                             @id @default(autoincrement())
+  telegramId                 BigInt                          @unique
+  username                   String?
+  firstName                  String
+  lastName                   String?
+  points                     Int                             @default(0)
+  totalReferrals             Int                             @default(0)
+  isBlocked                  Boolean                         @default(false)
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @updatedAt
+  referredById               Int?
+  membershipVerifiedAt       DateTime?
+  phoneNumber                String?
+  profileCompleted           Boolean                         @default(false)
+  realFirstName              String?
+  realLastName               String?
+  telegramFirstName          String?
+  telegramLastName           String?
+  aiChatLogs                 AiChatLog[]
+  broadcastLogs              BroadcastLog[]
+  clickLogs                  ClickLog[]
+  leaderboardCacheEntries    LeaderboardCache[]              @relation("LeaderboardCacheUser")
+  lotteryEntries             LotteryEntry[]
+  lotteryWins                LotteryWinner[]
+  miniAppDebugLogs           MiniAppDebugLog[]
+  pointLogs                  PointLog[]
+  referralLogsAsInviter      ReferralLog[]                   @relation("ReferralLogInviter")
+  referralLogsAsReferred     ReferralLog[]                   @relation("ReferralLogReferred")
+  receivedReferral           Referral?                       @relation("ReferralReferred")
+  sentReferrals              Referral[]                      @relation("ReferralReferrer")
+  systemLogs                 SystemLog[]
   requiredChannelMemberships UserRequiredChannelMembership[]
-  referralLogsAsInviter ReferralLog[] @relation("ReferralLogInviter")
-  referralLogsAsReferred ReferralLog[] @relation("ReferralLogReferred")
-  leaderboardCacheEntries LeaderboardCache[] @relation("LeaderboardCacheUser")
+  referredBy                 User?                           @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals                  User[]                          @relation("UserReferrals")
 
   @@index([referredById])
   @@index([profileCompleted])
@@ -54,53 +49,40 @@ model User {
   @@map("users")
 }
 
-////////////////////////////////////////////////////////////
-// PROP FIRMS
-////////////////////////////////////////////////////////////
-
 model PropFirm {
-  id            Int      @id @default(autoincrement())
-  name          String   @unique
-  slug          String   @unique
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  slug          String         @unique
   description   String?
   logoUrl       String?
   websiteUrl    String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   reviewLink    String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
   discountCodes DiscountCode[]
 
   @@map("prop_firms")
 }
 
-////////////////////////////////////////////////////////////
-// DISCOUNT CODES
-////////////////////////////////////////////////////////////
-
 model DiscountCode {
-  id              Int              @id @default(autoincrement())
+  id              Int        @id @default(autoincrement())
   title           String
-  code            String           @unique
+  code            String     @unique
   discountPercent Float
   affiliateLink   String?
   expiresAt       DateTime?
-  isFeatured      Boolean          @default(false)
-  isActive        Boolean          @default(true)
-  usageCount      Int              @default(0)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  isFeatured      Boolean    @default(false)
+  isActive        Boolean    @default(true)
+  usageCount      Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
   propFirmId      Int
-
-  propFirm PropFirm @relation(fields: [propFirmId], references: [id], onDelete: Cascade)
-  clickLogs ClickLog[]
+  clickLogs       ClickLog[]
+  propFirm        PropFirm   @relation(fields: [propFirmId], references: [id], onDelete: Cascade)
 
   @@map("discount_codes")
 }
-
-////////////////////////////////////////////////////////////
-// POINTS
-////////////////////////////////////////////////////////////
 
 model PointLog {
   id          Int          @id @default(autoincrement())
@@ -109,71 +91,43 @@ model PointLog {
   type        PointLogType
   description String?
   createdAt   DateTime     @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([type])
   @@map("point_logs")
 }
 
-enum PointLogType {
-  REFERRAL
-  REFERRAL_REWARD
-  DAILY_ACTIVITY
-  LINK_CLICK
-  AFFILIATE_PURCHASE
-  LOTTERY_ENTRY
-  ADMIN_GRANT
-  PENALTY
-  PROFILE_COMPLETION_REWARD
-}
-
-
-////////////////////////////////////////////////////////////
-// REFERRALS
-////////////////////////////////////////////////////////////
-
 model Referral {
-  id                         Int      @id @default(autoincrement())
-  referrerId                 Int
-  referredUserId             Int      @unique
-  rewardPoints               Int
-  membershipVerifiedAt       DateTime?
-  membershipVerificationStatus String   @default("VERIFIED")
-  createdAt                  DateTime @default(now())
-
-  referrer     User @relation("ReferralReferrer", fields: [referrerId], references: [id], onDelete: Cascade)
-  referredUser User @relation("ReferralReferred", fields: [referredUserId], references: [id], onDelete: Cascade)
+  id                           Int       @id @default(autoincrement())
+  referrerId                   Int
+  referredUserId               Int       @unique
+  rewardPoints                 Int
+  createdAt                    DateTime  @default(now())
+  membershipVerificationStatus String    @default("VERIFIED")
+  membershipVerifiedAt         DateTime?
+  referredUser                 User      @relation("ReferralReferred", fields: [referredUserId], references: [id], onDelete: Cascade)
+  referrer                     User      @relation("ReferralReferrer", fields: [referrerId], references: [id], onDelete: Cascade)
 
   @@index([referrerId])
   @@index([createdAt])
   @@map("referrals")
 }
 
-////////////////////////////////////////////////////////////
-// SEASONS
-////////////////////////////////////////////////////////////
-
 model Season {
-  id        Int      @id @default(autoincrement())
-  name      String
-  isActive  Boolean  @default(false)
-  startDate DateTime
-  endDate   DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  referralLogs         ReferralLog[]
+  id                      Int                @id @default(autoincrement())
+  name                    String
+  isActive                Boolean            @default(false)
+  startDate               DateTime
+  endDate                 DateTime
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
   leaderboardCacheEntries LeaderboardCache[] @relation("LeaderboardCacheSeason")
+  referralLogs            ReferralLog[]
 
   @@index([isActive])
   @@map("seasons")
 }
-
-////////////////////////////////////////////////////////////
-// LEADERBOARD CACHE (PERFORMANCE LAYER)
-////////////////////////////////////////////////////////////
 
 model LeaderboardCache {
   id        Int      @id @default(autoincrement())
@@ -181,18 +135,13 @@ model LeaderboardCache {
   seasonId  Int
   score     Int      @default(0)
   updatedAt DateTime @updatedAt
-
-  user   User   @relation("LeaderboardCacheUser", fields: [userId], references: [id], onDelete: Cascade)
-  season Season @relation("LeaderboardCacheSeason", fields: [seasonId], references: [id], onDelete: Restrict)
+  season    Season   @relation("LeaderboardCacheSeason", fields: [seasonId], references: [id])
+  user      User     @relation("LeaderboardCacheUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, seasonId])
   @@index([seasonId, score])
   @@map("leaderboard_cache")
 }
-
-////////////////////////////////////////////////////////////
-// REFERRAL LOGS (IMMUTABLE — never update, never delete)
-////////////////////////////////////////////////////////////
 
 model ReferralLog {
   id         Int      @id @default(autoincrement())
@@ -200,10 +149,9 @@ model ReferralLog {
   referredId Int
   seasonId   Int
   createdAt  DateTime @default(now())
-
-  inviter User   @relation("ReferralLogInviter", fields: [inviterId], references: [id], onDelete: Cascade)
-  referred User  @relation("ReferralLogReferred", fields: [referredId], references: [id], onDelete: Cascade)
-  season  Season @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  inviter    User     @relation("ReferralLogInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  referred   User     @relation("ReferralLogReferred", fields: [referredId], references: [id], onDelete: Cascade)
+  season     Season   @relation(fields: [seasonId], references: [id])
 
   @@index([inviterId])
   @@index([seasonId])
@@ -222,44 +170,38 @@ model ReferralSettings {
   @@map("referral_settings")
 }
 
-////////////////////////////////////////////////////////////
-// LOTTERY
-////////////////////////////////////////////////////////////
-
 model Lottery {
-  id              Int      @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   title           String
   description     String?
   prize           String
   startAt         DateTime
   endAt           DateTime
-  winnersCount    Int      @default(1)
-  minPoints       Int      @default(0)
-  entryCost       Int      @default(10)
-  isActive        Boolean  @default(true)
-  isCompleted     Boolean  @default(false)
+  winnersCount    Int             @default(1)
+  minPoints       Int             @default(0)
+  isActive        Boolean         @default(true)
+  isCompleted     Boolean         @default(false)
   announcementMsg String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  entries LotteryEntry[]
-  winners LotteryWinner[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  entryCost       Int             @default(10)
+  entries         LotteryEntry[]
+  winners         LotteryWinner[]
 
   @@map("lotteries")
 }
 
 model LotteryEntry {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  lotteryId   Int
-  ticketCount Int      @default(1)
-  pointsSpent Int      @default(0)
-  chanceWeight Int     @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lottery Lottery @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  lotteryId    Int
+  createdAt    DateTime @default(now())
+  chanceWeight Int      @default(1)
+  pointsSpent  Int      @default(0)
+  ticketCount  Int      @default(1)
+  updatedAt    DateTime @updatedAt
+  lottery      Lottery  @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, lotteryId])
   @@index([lotteryId])
@@ -280,9 +222,8 @@ model LotteryWinner {
   notified         Boolean  @default(false)
   prizeDelivered   Boolean  @default(false)
   wonAt            DateTime @default(now())
-
-  lottery Lottery @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lottery          Lottery  @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([lotteryId, userId])
   @@index([lotteryId])
@@ -290,52 +231,46 @@ model LotteryWinner {
   @@map("lottery_winners")
 }
 
-////////////////////////////////////////////////////////////
-// REQUIRED CHANNELS
-////////////////////////////////////////////////////////////
-
 model RequiredChannel {
-  id         Int                     @id @default(autoincrement())
-  channelId  String                  @unique
-  chatId     String?
-  title      String
-  username   String?
-  type       RequiredChannelType     @default(CHANNEL)
-  inviteLink String?
-  displayTitle String?
-  buttonText String?
-  botStatus String?
+  id                 Int                             @id @default(autoincrement())
+  channelId          String                          @unique
+  title              String
+  inviteLink         String?
+  isActive           Boolean                         @default(true)
+  createdAt          DateTime                        @default(now())
+  chatId             String?
+  type               RequiredChannelType             @default(CHANNEL)
+  updatedAt          DateTime                        @updatedAt
+  username           String?
+  approvedAt         DateTime?
+  disabledAt         DateTime?
+  rejectedAt         DateTime?
+  status             RequiredChannelStatus           @default(APPROVED)
+  botStatus          String?
   botStatusCheckedAt DateTime?
-  lastError String?
-  status     RequiredChannelStatus   @default(APPROVED)
-  isActive   Boolean                 @default(true)
-  approvedAt DateTime?
-  rejectedAt DateTime?
-  disabledAt DateTime?
-  createdAt  DateTime                @default(now())
-  updatedAt  DateTime                @updatedAt
+  buttonText         String?
+  displayTitle       String?
+  lastError          String?
+  memberships        UserRequiredChannelMembership[]
 
   @@index([isActive])
   @@index([status])
   @@index([type])
-  memberships UserRequiredChannelMembership[]
-
   @@map("required_channels")
 }
 
 model UserRequiredChannelMembership {
-  id                Int      @id @default(autoincrement())
+  id                Int             @id @default(autoincrement())
   userId            Int
   requiredChannelId Int
   status            String
   verifiedAt        DateTime?
-  lastCheckedAt     DateTime @default(now())
+  lastCheckedAt     DateTime        @default(now())
   error             String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  requiredChannel RequiredChannel @relation(fields: [requiredChannelId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  requiredChannel   RequiredChannel @relation(fields: [requiredChannelId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, requiredChannelId])
   @@index([requiredChannelId, status])
@@ -343,44 +278,26 @@ model UserRequiredChannelMembership {
   @@map("user_required_channel_memberships")
 }
 
-enum RequiredChannelType {
-  CHANNEL
-  GROUP
-}
-
-enum RequiredChannelStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  DISABLED
-}
-
-
-////////////////////////////////////////////////////////////
-// BROADCASTS
-////////////////////////////////////////////////////////////
-
 model Broadcast {
-  id             Int              @id @default(autoincrement())
-  title          String
-  messageType    BroadcastType    @default(TEXT)
-  content        String?
-  mediaFileId    String?
-  mediaItems     Json?
-  parseMode      BroadcastParseMode?
-  inlineKeyboard Json?
-  status         BroadcastStatus  @default(DRAFT)
-  scheduledAt    DateTime?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  totalRecipients Int             @default(0)
-  successCount   Int              @default(0)
-  failedCount    Int              @default(0)
-  createdBy      String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-
-  logs BroadcastLog[]
+  id              Int                 @id @default(autoincrement())
+  title           String
+  messageType     BroadcastType       @default(TEXT)
+  content         String?
+  mediaFileId     String?
+  mediaItems      Json?
+  parseMode       BroadcastParseMode?
+  inlineKeyboard  Json?
+  status          BroadcastStatus     @default(DRAFT)
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  totalRecipients Int                 @default(0)
+  successCount    Int                 @default(0)
+  failedCount     Int                 @default(0)
+  createdBy       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  logs            BroadcastLog[]
 
   @@index([status])
   @@index([scheduledAt])
@@ -398,14 +315,424 @@ model BroadcastLog {
   sentAt      DateTime?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
-
-  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  broadcast   Broadcast          @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([broadcastId, userId])
   @@index([broadcastId, status])
   @@index([telegramId])
   @@map("broadcast_logs")
+}
+
+model ClickLog {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  discountCodeId Int
+  createdAt      DateTime     @default(now())
+  discountCode   DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("click_logs")
+}
+
+model TelegramGroup {
+  id                Int                 @id @default(autoincrement())
+  chatId            BigInt              @unique
+  title             String
+  username          String?
+  status            TelegramGroupStatus @default(PENDING)
+  botIsAdmin        Boolean             @default(false)
+  botAdminCheckedAt DateTime?
+  addedAt           DateTime            @default(now())
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  disabledAt        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  keywordLogs       KeywordReplyLog[]
+
+  @@index([status])
+  @@index([botIsAdmin])
+  @@map("telegram_groups")
+}
+
+model KeywordReply {
+  id           Int                      @id @default(autoincrement())
+  keyword      String
+  response     String?
+  responseType KeywordReplyResponseType @default(TEXT)
+  parseMode    BroadcastParseMode?
+  mediaFileId  String?
+  isActive     Boolean                  @default(true)
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  logs         KeywordReplyLog[]
+
+  @@index([isActive])
+  @@index([keyword])
+  @@map("keyword_replies")
+}
+
+model KeywordReplyLog {
+  id              Int           @id @default(autoincrement())
+  keywordReplyId  Int
+  telegramGroupId Int
+  userTelegramId  BigInt
+  messageId       Int
+  matchedText     String
+  createdAt       DateTime      @default(now())
+  keywordReply    KeywordReply  @relation(fields: [keywordReplyId], references: [id], onDelete: Cascade)
+  telegramGroup   TelegramGroup @relation(fields: [telegramGroupId], references: [id], onDelete: Cascade)
+
+  @@index([keywordReplyId])
+  @@index([telegramGroupId])
+  @@index([createdAt])
+  @@map("keyword_reply_logs")
+}
+
+model BotAdmin {
+  id         Int            @id @default(autoincrement())
+  telegramId BigInt         @unique
+  username   String?
+  firstName  String?
+  lastName   String?
+  role       BotAdminRole   @default(ADMIN)
+  status     BotAdminStatus @default(ACTIVE)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([status])
+  @@index([role])
+  @@map("bot_admins")
+}
+
+model MiniAppDebugLog {
+  id         Int      @id @default(autoincrement())
+  telegramId BigInt?
+  eventType  String
+  message    String
+  payload    Json?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([telegramId])
+  @@index([eventType])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("mini_app_debug_logs")
+}
+
+model SystemLog {
+  id         Int             @id @default(autoincrement())
+  eventType  SystemEventType
+  level      SystemLogLevel  @default(INFO)
+  message    String
+  userId     Int?
+  telegramId BigInt?
+  metadata   Json?
+  createdAt  DateTime        @default(now())
+  user       User?           @relation(fields: [userId], references: [id])
+
+  @@index([eventType])
+  @@index([level])
+  @@index([userId])
+  @@index([telegramId])
+  @@index([createdAt])
+  @@map("system_logs")
+}
+
+model Admin {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  role         AdminRole @default(ADMIN)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  email        String?   @unique
+  firstName    String?
+  lastName     String?
+  updatedAt    DateTime  @updatedAt
+
+  @@map("admins")
+}
+
+model ScoringSettings {
+  id                       Int      @id @default(1)
+  startPoints              Int      @default(0)
+  channelJoinPoints        Int      @default(0)
+  futureActivityPoints     Int      @default(0)
+  dailyActivityPoints      Int      @default(5)
+  linkClickPoints          Int      @default(2)
+  referralRewardPoints     Int      @default(20)
+  welcomeMessageText       String   @default("سلام {name} عزیز! 👋\n\n🎯 به ربات کدهای تخفیف پراپ فرم خوش آمدید\n\nاز منوی زیر انتخاب کنید:")
+  initialPointsMessageText String   @default("🎁 {points} امتیاز اولیه به حساب شما اضافه شد.")
+  isWelcomeMessageEnabled  Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  profileCompletionPoints  Int      @default(50)
+
+  @@map("scoring_settings")
+}
+
+model AiSettings {
+  id                    Int      @id @default(1)
+  systemPrompt          String   @default("تو یک دستیار تخصصی فارسی‌زبان در حوزه پراپ فرم‌ها هستی. فقط درباره پراپ فرم‌ها، قوانین حساب‌ها، قوانین تریدینگ و کدهای تخفیف پاسخ بده.")
+  allowedSourceUrls     Json     @default("[]")
+  fallbackMessage       String   @default("این سوال خارج از محدوده سیستم است.")
+  topicFallbackMessage  String   @default("⚠️ این دستیار فقط برای سوالات مربوط به پراپ فرم‌ها و کدهای تخفیف فعال است.")
+  sourceFallbackMessage String   @default("اطلاعات این موضوع در منابع معتبر پراپ هاب موجود نیست.")
+  model                 String   @default("gemini-2.5-flash")
+  rateLimitPerHour      Int      @default(20)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("ai_settings")
+}
+
+model AiApiKey {
+  id         Int         @id @default(autoincrement())
+  name       String?
+  apiKey     String
+  keyPreview String
+  isActive   Boolean     @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  chatLogs   AiChatLog[]
+
+  @@index([isActive])
+  @@map("ai_api_keys")
+}
+
+model AiChatLog {
+  id         Int          @id @default(autoincrement())
+  userId     Int?
+  telegramId BigInt?
+  message    String
+  response   String?
+  status     AiChatStatus @default(SUCCESS)
+  source     String       @default("API")
+  error      String?
+  aiApiKeyId Int?
+  createdAt  DateTime     @default(now())
+  aiApiKey   AiApiKey?    @relation(fields: [aiApiKeyId], references: [id])
+  user       User?        @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([telegramId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("ai_chat_logs")
+}
+
+model SystemSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model ForcedMembershipSettings {
+  id                  Int      @id @default(1)
+  enabled             Boolean  @default(true)
+  channelId           String   @default("")
+  helpMessage         String   @default("برای استفاده از ربات باید عضو کانال ما باشید.\n\nلطفاً در کانال زیر عضو شده و دکمه بررسی را بزنید.")
+  joinButtonText      String   @default("عضویت در کانال")
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+  checkButtonText     String   @default("✅ عضو شدم، بررسی کن")
+  instructionText     String   @default("لطفاً در کانال(های) زیر عضو شده و دکمه بررسی را بزنید.")
+  leaveWarningMessage String   @default("❌ شما کانال را ترک کردید. لطفاً دوباره عضو شوید.")
+  notJoinedMessage    String   @default("⚠️ برای استفاده از ربات باید ابتدا در کانال زیر عضو شوید.")
+  checkingMessage     String   @default("در حال بررسی عضویت شما...")
+  verifiedMessage     String   @default("✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.")
+  welcomeBackMessage  String   @default("✅ خوش آمدید! عضویت شما تایید شد و اکنون می‌توانید از ربات استفاده کنید.")
+
+  @@map("forced_membership_settings")
+}
+
+model ForceJoinSettings {
+  id                        Int      @id @default(1)
+  title                     String   @default("عضویت اجباری")
+  welcomeMessage            String   @default("برای استفاده از ربات ابتدا در کانال‌های زیر عضو شوید")
+  notJoinedMessage          String   @default("هنوز در همه کانال‌ها عضو نشده‌اید")
+  joinButtonText            String   @default("عضویت")
+  checkMembershipButtonText String   @default("بررسی عضویت")
+  successJoinMessage        String   @default("عضویت شما تایید شد ✅")
+  errorMessage              String   @default("خطا در بررسی عضویت")
+  retryMessage              String   @default("دوباره تلاش کنید")
+  emptyChannelsMessage      String   @default("فعلاً کانالی تعریف نشده است")
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@map("force_join_settings")
+}
+
+model MenuOrder {
+  id         Int      @id @default(autoincrement())
+  key        String   @unique
+  label      String
+  href       String
+  order      Int
+  isActive   Boolean  @default(true)
+  ownerOnly  Boolean  @default(false)
+  featureKey String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([order])
+  @@map("menu_orders")
+}
+
+model FeatureToggle {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  label       String
+  description String?
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("feature_toggles")
+}
+
+model Post {
+  id              Int            @id @default(autoincrement())
+  title           String
+  slug            String         @unique
+  content         String?
+  caption         String?
+  mediaFileId     String?
+  mediaType       String?
+  albumMediaIds   Json?
+  parseMode       String?        @default("Markdown")
+  buttons         Json?
+  command         String?
+  isPublished     Boolean        @default(false)
+  publishedAt     DateTime?
+  scheduledAt     DateTime?
+  unpublishAt     DateTime?
+  sortOrder       Int            @default(0)
+  status          PostStatus     @default(DRAFT)
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  rawContent      String?
+  renderedContent String?
+  postButtons     PostButton[]
+  clickLogs       PostClickLog[]
+  commands        PostCommand[]
+  versions        PostVersion[]
+  views           PostView[]
+
+  @@index([status])
+  @@index([isPublished])
+  @@index([slug])
+  @@index([sortOrder])
+  @@map("posts")
+}
+
+model PostButton {
+  id        Int            @id @default(autoincrement())
+  postId    Int
+  row       Int            @default(0)
+  col       Int            @default(0)
+  text      String
+  type      PostButtonType @default(URL)
+  value     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  post      Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_buttons")
+}
+
+model PostCommand {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  command   String   @unique
+  aliases   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([command])
+  @@map("post_commands")
+}
+
+model PostView {
+  id         Int      @id @default(autoincrement())
+  postId     Int
+  userId     Int?
+  telegramId BigInt?
+  action     String   @default("view")
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("post_views")
+}
+
+model PostClickLog {
+  id         Int      @id @default(autoincrement())
+  postId     Int
+  userId     Int?
+  telegramId BigInt?
+  buttonText String?
+  buttonType String?
+  createdAt  DateTime @default(now())
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_click_logs")
+}
+
+model PostVersion {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  snapshot  Json
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([createdAt])
+  @@map("post_versions")
+}
+
+enum PointLogType {
+  REFERRAL
+  DAILY_ACTIVITY
+  LINK_CLICK
+  AFFILIATE_PURCHASE
+  LOTTERY_ENTRY
+  ADMIN_GRANT
+  PENALTY
+  REFERRAL_REWARD
+  PROFILE_COMPLETION_REWARD
+}
+
+enum RequiredChannelType {
+  CHANNEL
+  GROUP
+}
+
+enum RequiredChannelStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISABLED
 }
 
 enum BroadcastType {
@@ -417,11 +744,11 @@ enum BroadcastType {
   AUDIO
   STICKER
   ANIMATION
+  MEDIA_GROUP
+  COPY_MESSAGE
   CONTACT
   LOCATION
   POLL
-  MEDIA_GROUP
-  COPY_MESSAGE
   FORWARD_MESSAGE
 }
 
@@ -448,48 +775,6 @@ enum BroadcastLogStatus {
   SKIPPED
 }
 
-////////////////////////////////////////////////////////////
-// CLICK LOGS
-////////////////////////////////////////////////////////////
-
-model ClickLog {
-  id             Int      @id @default(autoincrement())
-  userId         Int
-  discountCodeId Int
-  createdAt      DateTime @default(now())
-
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  discountCode DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
-
-  @@map("click_logs")
-}
-
-////////////////////////////////////////////////////////////
-// GROUP MANAGEMENT
-////////////////////////////////////////////////////////////
-
-model TelegramGroup {
-  id             Int                 @id @default(autoincrement())
-  chatId         BigInt              @unique
-  title          String
-  username       String?
-  status         TelegramGroupStatus @default(PENDING)
-  botIsAdmin     Boolean             @default(false)
-  botAdminCheckedAt DateTime?
-  addedAt        DateTime            @default(now())
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  disabledAt     DateTime?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-
-  keywordLogs    KeywordReplyLog[]
-
-  @@index([status])
-  @@index([botIsAdmin])
-  @@map("telegram_groups")
-}
-
 enum TelegramGroupStatus {
   PENDING
   APPROVED
@@ -497,71 +782,10 @@ enum TelegramGroupStatus {
   DISABLED
 }
 
-////////////////////////////////////////////////////////////
-// KEYWORD REPLIES
-////////////////////////////////////////////////////////////
-
-model KeywordReply {
-  id          Int                       @id @default(autoincrement())
-  keyword     String
-  response    String?
-  responseType KeywordReplyResponseType @default(TEXT)
-  parseMode   BroadcastParseMode?
-  mediaFileId String?
-  isActive    Boolean                   @default(true)
-  createdAt   DateTime                  @default(now())
-  updatedAt   DateTime                  @updatedAt
-
-  logs        KeywordReplyLog[]
-
-  @@index([isActive])
-  @@index([keyword])
-  @@map("keyword_replies")
-}
-
 enum KeywordReplyResponseType {
   TEXT
   PHOTO
   DOCUMENT
-}
-
-model KeywordReplyLog {
-  id              Int      @id @default(autoincrement())
-  keywordReplyId  Int
-  telegramGroupId Int
-  userTelegramId  BigInt
-  messageId       Int
-  matchedText     String
-  createdAt       DateTime @default(now())
-
-  keywordReply  KeywordReply  @relation(fields: [keywordReplyId], references: [id], onDelete: Cascade)
-  telegramGroup TelegramGroup @relation(fields: [telegramGroupId], references: [id], onDelete: Cascade)
-
-  @@index([keywordReplyId])
-  @@index([telegramGroupId])
-  @@index([createdAt])
-  @@map("keyword_reply_logs")
-}
-
-
-////////////////////////////////////////////////////////////
-// BOT ADMINS
-////////////////////////////////////////////////////////////
-
-model BotAdmin {
-  id         Int            @id @default(autoincrement())
-  telegramId BigInt         @unique
-  username   String?
-  firstName  String?
-  lastName   String?
-  role       BotAdminRole   @default(ADMIN)
-  status     BotAdminStatus @default(ACTIVE)
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-
-  @@index([status])
-  @@index([role])
-  @@map("bot_admins")
 }
 
 enum BotAdminRole {
@@ -574,49 +798,6 @@ enum BotAdminRole {
 enum BotAdminStatus {
   ACTIVE
   SUSPENDED
-}
-
-////////////////////////////////////////////////////////////
-// SYSTEM LOGS
-////////////////////////////////////////////////////////////
-
-model MiniAppDebugLog {
-  id         Int      @id @default(autoincrement())
-  telegramId BigInt?
-  eventType  String
-  message    String
-  payload    Json?
-  userAgent  String?
-  createdAt  DateTime @default(now())
-  userId     Int?
-
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([telegramId])
-  @@index([eventType])
-  @@index([userId])
-  @@index([createdAt])
-  @@map("mini_app_debug_logs")
-}
-
-model SystemLog {
-  id             Int            @id @default(autoincrement())
-  eventType      SystemEventType
-  level          SystemLogLevel  @default(INFO)
-  message        String
-  userId         Int?
-  telegramId     BigInt?
-  metadata       Json?
-  createdAt      DateTime       @default(now())
-
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([eventType])
-  @@index([level])
-  @@index([userId])
-  @@index([telegramId])
-  @@index([createdAt])
-  @@map("system_logs")
 }
 
 enum SystemEventType {
@@ -640,103 +821,11 @@ enum SystemLogLevel {
   ERROR
 }
 
-////////////////////////////////////////////////////////////
-// ADMINS
-////////////////////////////////////////////////////////////
-
-model Admin {
-  id           Int       @id @default(autoincrement())
-  firstName    String?
-  lastName     String?
-  username     String    @unique
-  email        String?   @unique
-  passwordHash String
-  role         AdminRole @default(ADMIN)
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  @@map("admins")
-}
-
 enum AdminRole {
   SUPER_ADMIN
   ADMIN
   MODERATOR
   OWNER
-}
-
-
-model ScoringSettings {
-  id                      Int      @id @default(1)
-  startPoints             Int      @default(0)
-  channelJoinPoints       Int      @default(0)
-  futureActivityPoints    Int      @default(0)
-  dailyActivityPoints     Int      @default(5)
-  linkClickPoints         Int      @default(2)
-  referralRewardPoints    Int      @default(20)
-  profileCompletionPoints Int      @default(50)
-  welcomeMessageText      String   @default("سلام {name} عزیز! 👋\n\n🎯 به ربات کدهای تخفیف پراپ فرم خوش آمدید\n\nاز منوی زیر انتخاب کنید:")
-  initialPointsMessageText String  @default("🎁 {points} امتیاز اولیه به حساب شما اضافه شد.")
-  isWelcomeMessageEnabled Boolean  @default(true)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-
-  @@map("scoring_settings")
-}
-
-model AiSettings {
-  id                   Int      @id @default(1)
-  systemPrompt         String   @default("تو یک دستیار تخصصی فارسی‌زبان در حوزه پراپ فرم‌ها هستی. فقط درباره پراپ فرم‌ها، قوانین حساب‌ها، قوانین تریدینگ و کدهای تخفیف پاسخ بده.")
-  allowedSourceUrls    Json     @default("[]")
-  fallbackMessage      String   @default("این سوال خارج از محدوده سیستم است.")
-  topicFallbackMessage String   @default("⚠️ این دستیار فقط برای سوالات مربوط به پراپ فرم‌ها و کدهای تخفیف فعال است.")
-  sourceFallbackMessage String  @default("اطلاعات این موضوع در منابع معتبر پراپ هاب موجود نیست.")
-  model                String   @default("gemini-2.5-flash")
-  rateLimitPerHour     Int      @default(20)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-
-  @@map("ai_settings")
-}
-
-model AiApiKey {
-  id         Int      @id @default(autoincrement())
-  name       String?
-  apiKey     String
-  keyPreview String
-  isActive   Boolean  @default(true)
-  lastUsedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  chatLogs AiChatLog[]
-
-  @@index([isActive])
-  @@map("ai_api_keys")
-}
-
-model AiChatLog {
-  id         Int          @id @default(autoincrement())
-  userId     Int?
-  telegramId BigInt?
-  message    String
-  response   String?
-  status     AiChatStatus @default(SUCCESS)
-  source     String       @default("API")
-  error      String?
-  aiApiKeyId Int?
-  createdAt  DateTime     @default(now())
-
-  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  aiApiKey AiApiKey? @relation(fields: [aiApiKeyId], references: [id], onDelete: SetNull)
-
-  @@index([userId])
-  @@index([telegramId])
-  @@index([status])
-  @@index([createdAt])
-  @@map("ai_chat_logs")
 }
 
 enum AiChatStatus {
@@ -746,85 +835,6 @@ enum AiChatStatus {
   RATE_LIMITED
   ERROR
 }
-
-model SystemSetting {
-  id        Int      @id @default(autoincrement())
-  key       String   @unique
-  value     Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("system_settings")
-}
-
-model ForcedMembershipSettings {
-  id                Int      @id @default(1)
-  enabled           Boolean  @default(true)
-  channelId         String   @default("")
-  notJoinedMessage  String   @default("⚠️ برای استفاده از ربات باید ابتدا در کانال زیر عضو شوید.")
-  leaveWarningMessage String @default("❌ شما کانال را ترک کردید. لطفاً دوباره عضو شوید.")
-  helpMessage       String   @default("برای استفاده از ربات باید عضو کانال ما باشید.\n\nلطفاً در کانال زیر عضو شده و دکمه بررسی را بزنید.")
-  joinButtonText    String   @default("عضویت در کانال")
-  checkButtonText   String   @default("✅ عضو شدم، بررسی کن")
-  instructionText   String   @default("لطفاً در کانال(های) زیر عضو شده و دکمه بررسی را بزنید.")
-  welcomeBackMessage String  @default("✅ خوش آمدید! عضویت شما تایید شد و اکنون می‌توانید از ربات استفاده کنید.")
-  checkingMessage   String   @default("در حال بررسی عضویت شما...")
-  verifiedMessage   String   @default("✅ عضویت شما تایید شد. حالا می‌توانید از امکانات ربات استفاده کنید.")
-  updatedAt         DateTime @updatedAt
-  createdAt         DateTime @default(now())
-
-  @@map("forced_membership_settings")
-}
-
-
-model ForceJoinSettings {
-  id                          Int      @id @default(1)
-  title                       String   @default("عضویت اجباری")
-  welcomeMessage              String   @default("برای استفاده از ربات ابتدا در کانال‌های زیر عضو شوید")
-  notJoinedMessage            String   @default("هنوز در همه کانال‌ها عضو نشده‌اید")
-  joinButtonText              String   @default("عضویت")
-  checkMembershipButtonText   String   @default("بررسی عضویت")
-  successJoinMessage          String   @default("عضویت شما تایید شد ✅")
-  errorMessage                String   @default("خطا در بررسی عضویت")
-  retryMessage                String   @default("دوباره تلاش کنید")
-  emptyChannelsMessage        String   @default("فعلاً کانالی تعریف نشده است")
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
-
-  @@map("force_join_settings")
-}
-
-model MenuOrder {
-  id        Int      @id @default(autoincrement())
-  key       String   @unique
-  label     String
-  href      String
-  order     Int
-  isActive  Boolean  @default(true)
-  ownerOnly Boolean  @default(false)
-  featureKey String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([order])
-  @@map("menu_orders")
-}
-
-model FeatureToggle {
-  id          Int      @id @default(autoincrement())
-  key         String   @unique
-  label       String
-  description String?
-  isEnabled   Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("feature_toggles")
-}
-
-////////////////////////////////////////////////////////////
-// POSTS / CMS
-////////////////////////////////////////////////////////////
 
 enum PostStatus {
   DRAFT
@@ -842,119 +852,4 @@ enum PostButtonType {
   COPY_TEXT
   SEND_COMMAND
   INTERNAL_NAV
-}
-
-model Post {
-  id            Int        @id @default(autoincrement())
-  title         String
-  slug          String     @unique
-  content       String?
-  caption       String?
-  mediaFileId   String?
-  mediaType     String?
-  albumMediaIds Json?
-  parseMode     String?    @default("Markdown")
-  buttons       Json?
-  command       String?
-  isPublished   Boolean    @default(false)
-  publishedAt   DateTime?
-  scheduledAt   DateTime?
-  unpublishAt   DateTime?
-  sortOrder     Int        @default(0)
-  status        PostStatus @default(DRAFT)
-  rawContent    String?
-  renderedContent String?
-  createdBy     BigInt?
-  updatedBy     BigInt?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-
-  views      PostView[]
-  commands   PostCommand[]
-  clickLogs  PostClickLog[]
-  postButtons PostButton[]
-  versions   PostVersion[]
-
-  @@index([status])
-  @@index([isPublished])
-  @@index([slug])
-  @@index([sortOrder])
-  @@map("posts")
-}
-
-model PostButton {
-  id        Int            @id @default(autoincrement())
-  postId    Int
-  row       Int            @default(0)
-  col       Int            @default(0)
-  text      String
-  type      PostButtonType @default(URL)
-  value     String?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-  @@map("post_buttons")
-}
-
-model PostCommand {
-  id        Int      @id @default(autoincrement())
-  postId    Int
-  command   String   @unique
-  aliases   Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-  @@index([command])
-  @@map("post_commands")
-}
-
-model PostView {
-  id        Int      @id @default(autoincrement())
-  postId    Int
-  userId    Int?
-  telegramId BigInt?
-  action    String   @default("view")
-  metadata  Json?
-  createdAt DateTime @default(now())
-
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-  @@index([userId])
-  @@index([createdAt])
-  @@map("post_views")
-}
-
-model PostClickLog {
-  id        Int      @id @default(autoincrement())
-  postId    Int
-  userId    Int?
-  telegramId BigInt?
-  buttonText String?
-  buttonType String?
-  createdAt DateTime @default(now())
-
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-  @@map("post_click_logs")
-}
-
-model PostVersion {
-  id        Int      @id @default(autoincrement())
-  postId    Int
-  snapshot  Json
-  createdAt DateTime @default(now())
-
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-  @@index([createdAt])
-  @@map("post_versions")
 }

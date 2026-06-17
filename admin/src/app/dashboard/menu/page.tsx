@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Eye, EyeOff, Save, RotateCcw, RefreshCw, GripVertical, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Save, RotateCcw, RefreshCw, GripVertical, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -52,15 +52,19 @@ function SortableRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isRowDragging ? 0.5 : undefined,
+    opacity: isRowDragging ? 0.4 : undefined,
   };
 
   return (
-    <Card ref={setNodeRef} style={style}>
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={`border-l-4 ${isRowDragging ? "border-l-primary shadow-lg scale-[1.01]" : "border-l-border"}`}
+    >
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button className="cursor-grab touch-none" {...attributes} {...listeners}>
+            <button className="cursor-grab touch-none rounded p-1 hover:bg-accent" {...attributes} {...listeners}>
               <GripVertical className="h-4 w-4 text-muted-foreground" />
             </button>
             <h3 className="text-sm font-semibold">ردیف {rowIndex + 1}</h3>
@@ -114,7 +118,6 @@ function SortableButton({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isBtnDragging ? 0.5 : undefined,
   };
 
   function isPostRef(ref: string) {
@@ -122,15 +125,24 @@ function SortableButton({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="flex min-w-[120px] flex-1 items-center gap-2 rounded-xl border border-border bg-background/60 p-3">
-      <button className="cursor-grab touch-none" {...attributes} {...listeners}>
-        <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex min-w-[200px] flex-1 items-center gap-3 rounded-xl border bg-background/60 p-3 ${
+        isBtnDragging
+          ? "border-primary/50 shadow-md ring-2 ring-primary/20"
+          : "border-border"
+      }`}
+      title={btn.text}
+    >
+      <button className="cursor-grab touch-none rounded p-1 hover:bg-accent" {...attributes} {...listeners}>
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
       </button>
       <Badge variant={isPostRef(btn.ref) ? "info" : "outline"} className="shrink-0">
         {isPostRef(btn.ref) ? "پست" : "سیستم"}
       </Badge>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{btn.text}</p>
+        <p className="text-sm font-medium leading-tight">{btn.text}</p>
         <p className="truncate text-xs text-muted-foreground" dir="ltr">{btn.ref}</p>
       </div>
       <div className="flex shrink-0 gap-1">
@@ -149,6 +161,16 @@ export default function MenuPage() {
   const [layout, setLayout] = useState<MenuLayoutButton[][]>([]);
   const [version, setVersion] = useState(0);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const layoutRef = useRef(layout);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  layoutRef.current = layout;
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -168,7 +190,7 @@ export default function MenuPage() {
   }, [layoutQuery.data]);
 
   const saveMutation = useMutation({
-    mutationFn: () => menuApi.saveLayout(layout),
+    mutationFn: () => menuApi.saveLayout(layoutRef.current),
     onSuccess: (data) => {
       toast.success("منو ذخیره شد");
       setLayout(data.layout);
@@ -210,7 +232,6 @@ export default function MenuPage() {
     if (!btn) return;
     const buttonId = btn.id;
     if (!buttonId) {
-      // If no ID, remove from layout directly
       setLayout((prev) => {
         const next = prev.map((r) => [...r]);
         next[rowIndex].splice(btnIndex, 1);
@@ -235,6 +256,14 @@ export default function MenuPage() {
     });
   }
 
+  const autoSave = useCallback(() => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (saveMutation.isPending) return;
+      saveMutation.mutate();
+    }, 1500);
+  }, [saveMutation]);
+
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
   }
@@ -247,41 +276,50 @@ export default function MenuPage() {
     const activeIdStr = String(active.id);
     const overIdStr = String(over.id);
 
+    let changed = false;
+
     if (activeIdStr.startsWith("row-")) {
-      // Row reorder
       const oldIndex = parseInt(activeIdStr.replace("row-", ""));
       const newIndex = parseInt(overIdStr.replace("row-", ""));
-      setLayout((prev) => arrayMove(prev, oldIndex, newIndex));
+      setLayout((prev) => {
+        if (oldIndex === newIndex) return prev;
+        changed = true;
+        return arrayMove(prev, oldIndex, newIndex);
+      });
     } else if (activeIdStr.startsWith("btn-") && overIdStr.startsWith("btn-")) {
-      // Button swap within same row
       const [_, aRow, aCol] = activeIdStr.split("-");
       const [__, bRow, bCol] = overIdStr.split("-");
-      if (aRow !== bRow) return; // Only allow within-row for now
+      if (aRow !== bRow) return;
       const rowIdx = parseInt(aRow);
       const fromIdx = parseInt(aCol);
       const toIdx = parseInt(bCol);
+      if (fromIdx === toIdx) return;
       setLayout((prev) => {
         const next = prev.map((row) => [...row]);
         const row = next[rowIdx];
-        const fromItem = row[fromIdx];
-        const toItem = row[toIdx];
-        // Swap in-place
+        const fromItem = { ...row[fromIdx] };
+        const toItem = { ...row[toIdx] };
         row[fromIdx] = toItem;
         row[toIdx] = fromItem;
+        changed = true;
         return next;
       });
+    }
+
+    if (changed) {
+      autoSave();
     }
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="w-full max-w-full space-y-6 lg:max-w-7xl xl:max-w-[1600px]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">مدیریت منو</h1>
           <p className="text-sm text-muted-foreground">ویرایش چیدمان دکمه‌های منوی ربات</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge>نسخه {version}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">نسخه {version}</Badge>
           <Button variant="outline" size="sm" onClick={() => rollbackMutation.mutate()} loading={rollbackMutation.isPending}><RotateCcw className="h-4 w-4" />بازگشت</Button>
           <Button variant="outline" size="sm" onClick={() => syncMutation.mutate()} loading={syncMutation.isPending}><RefreshCw className="h-4 w-4" />همگام‌سازی پست‌ها</Button>
           <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}><Save className="h-4 w-4" />ذخیره تغییرات</Button>
@@ -293,15 +331,15 @@ export default function MenuPage() {
           <Card>
             <CardHeader><h2 className="font-semibold">پیش‌نمایش</h2></CardHeader>
             <CardContent>
-              <div className="overflow-hidden rounded-xl border border-border bg-background/60 p-4 font-mono text-sm" dir="ltr">
+              <div className="overflow-hidden rounded-xl border border-border bg-background/60 p-4 text-sm">
                 {layout.length === 0 ? (
                   <p className="text-center text-muted-foreground">منو خالی است</p>
                 ) : (
                   <div className="space-y-1">
                     {layout.map((row, ri) => (
-                      <div key={ri} className="flex gap-1">
+                      <div key={ri} className="flex flex-wrap gap-1">
                         {row.map((btn, bi) => (
-                          <span key={bi} className={`flex-1 rounded border px-2 py-1 text-center text-xs ${
+                          <span key={bi} className={`min-w-[80px] flex-1 rounded border px-3 py-1.5 text-center text-xs ${
                             (btn.visible ?? true)
                               ? "border-border bg-background"
                               : "border-dashed border-muted-foreground/30 text-muted-foreground/50"
