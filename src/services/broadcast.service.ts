@@ -203,7 +203,7 @@ class BroadcastService {
   private async sendToTelegram(broadcast: Broadcast, telegramId: bigint) {
     if (!this.bot) throw new Error('ربات برای ارسال پیام همگانی آماده نیست');
     const chatId = Number(telegramId);
-    const options = { parse_mode: this.parseMode(broadcast), caption: broadcast.content || undefined, ...this.keyboardMarkup(broadcast) } as any;
+    const options = { parse_mode: this.parseMode(broadcast), caption: broadcast.content || undefined, link_preview_options: { is_disabled: true }, ...this.keyboardMarkup(broadcast) } as any;
     const payload = (broadcast.mediaItems || {}) as any;
     if (payload.sourceChatId && Array.isArray(payload.messageIds)) {
       for (const messageId of payload.messageIds) {
@@ -219,7 +219,7 @@ class BroadcastService {
 
     switch (broadcast.messageType) {
       case BroadcastType.TEXT:
-        return this.bot.telegram.sendMessage(chatId, broadcast.content || '', { parse_mode: this.parseMode(broadcast), ...this.keyboardMarkup(broadcast) } as any);
+        return this.bot.telegram.sendMessage(chatId, broadcast.content || '', { parse_mode: this.parseMode(broadcast), link_preview_options: { is_disabled: true }, ...this.keyboardMarkup(broadcast) } as any);
       case BroadcastType.PHOTO:
         return this.bot.telegram.sendPhoto(chatId, broadcast.mediaFileId || '', options);
       case BroadcastType.VIDEO:

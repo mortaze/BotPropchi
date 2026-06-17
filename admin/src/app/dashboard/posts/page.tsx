@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Eye, Plus, Search, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { Eye, Plus, Search, Trash2, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Pagination, TableRowSkeleton } from "@/components/ui";
 import { getApiError, postsApi } from "@/services/api";
@@ -42,12 +42,6 @@ export default function PostsPage() {
     onSuccess: () => { toast.success("پست از انتشار خارج شد"); qc.invalidateQueries({ queryKey: ["posts"] }); },
     onError: (e) => toast.error(getApiError(e)),
   });
-  const duplicateMutation = useMutation({
-    mutationFn: postsApi.duplicate,
-    onSuccess: () => { toast.success("پست کپی شد"); qc.invalidateQueries({ queryKey: ["posts"] }); },
-    onError: (e) => toast.error(getApiError(e)),
-  });
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -116,7 +110,6 @@ export default function PostsPage() {
                       <Link href={`/dashboard/posts/${post.id}`}>
                         <Button size="sm" variant="ghost"><Eye className="h-4 w-4" /></Button>
                       </Link>
-                      <Button size="sm" variant="ghost" onClick={() => duplicateMutation.mutate(post.id)} loading={duplicateMutation.isPending}><Copy className="h-4 w-4" /></Button>
                       {post.status === "PUBLISHED" ? (
                         <Button size="sm" variant="ghost" onClick={() => unpublishMutation.mutate(post.id)} loading={unpublishMutation.isPending}><XCircle className="h-4 w-4" /></Button>
                       ) : (

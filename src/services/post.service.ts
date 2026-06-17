@@ -86,8 +86,14 @@ export const postService = {
   async delete(id: number) {
     const post = await postRepository.findById(id);
     if (!post) return null;
-    await postRepository.delete(id);
+    // Remove all menu references before deletion
+    await settingsService.removePostFromMenu(id).catch(err => {
+      logger.warn(`[Post] Failed to remove post ${id} from menu:`, err);
+    });
+    // Invalidate caches before deletion
     this.invalidateCache();
+    // Prisma cascade deletes: PostCommand, PostButton, PostView, PostClickLog, PostVersion
+    await postRepository.delete(id);
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
       message: `Post Deleted: "${post.title}"`,

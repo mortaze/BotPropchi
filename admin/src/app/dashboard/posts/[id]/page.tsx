@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { Copy, Plus, Trash2, EyeOff, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Trash2, EyeOff, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input } from "@/components/ui";
 import PostForm from "@/components/forms/PostForm";
@@ -61,12 +61,6 @@ export default function PostDetailPage() {
     onError: (e) => toast.error(getApiError(e)),
   });
 
-  const duplicateMutation = useMutation({
-    mutationFn: () => postsApi.duplicate(id),
-    onSuccess: (data) => { toast.success("پست کپی شد"); router.push(`/dashboard/posts/${data.id}`); },
-    onError: (e) => toast.error(getApiError(e)),
-  });
-
   const deleteMutation = useMutation({
     mutationFn: () => postsApi.delete(id),
     onSuccess: () => { toast.success("پست حذف شد"); router.push("/dashboard/posts"); },
@@ -115,7 +109,6 @@ export default function PostDetailPage() {
           <Button onClick={() => publishMutation.mutate()} loading={publishMutation.isPending}><CheckCircle className="h-4 w-4" />انتشار</Button>
         )}
         <Button variant="outline" onClick={() => hideMutation.mutate()} loading={hideMutation.isPending}><EyeOff className="h-4 w-4" />مخفی کردن</Button>
-        <Button variant="outline" onClick={() => duplicateMutation.mutate()} loading={duplicateMutation.isPending}><Copy className="h-4 w-4" />کپی</Button>
         <Button variant="danger" onClick={() => { if (confirm("آیا از حذف این پست اطمینان دارید؟")) deleteMutation.mutate(); }} loading={deleteMutation.isPending}><Trash2 className="h-4 w-4" />حذف</Button>
       </div>
 

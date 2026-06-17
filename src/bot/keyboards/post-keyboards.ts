@@ -8,7 +8,6 @@ export const postMainMenuKeyboard = () =>
     ['👁 پیش‌نمایش', '📤 انتشار'],
     ['🔎 جستجو', '📊 آمار پست'],
     ['📊 آمار کلی', '🔍 بررسی سلامت'],
-    ['⚙ تنظیمات پست'],
     ['↩️ بازگشت به پنل ادمین'],
   ]).resize().persistent();
 
@@ -20,14 +19,7 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
     ],
     [
       Markup.button.callback('🖼 تغییر رسانه', `post:edit:${postId}:media`),
-      Markup.button.callback('📝 ویرایش کپشن', `post:edit:${postId}:caption`),
-    ],
-    [
       Markup.button.callback('⌨ ویرایش دکمه‌ها', `post:edit:${postId}:buttons`),
-      Markup.button.callback('🔤 حالت نمایش', `post:edit:${postId}:parsemode`),
-    ],
-    [
-      Markup.button.callback('🗂 تغییر ترتیب', `post:reorder:${postId}`),
     ],
     [
       Markup.button.callback('🧪 پیش‌نمایش', `post:preview:${postId}`),
@@ -35,10 +27,6 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
     ],
     [
       Markup.button.callback('🔗 افزودن دستور', `post:cmd:add:${postId}`),
-      Markup.button.callback('📋 کپی کردن', `post:duplicate:${postId}`),
-    ],
-    [
-      Markup.button.callback('🏗 نمای ساختمانی', `post:builder:${postId}`),
     ],
     [
       Markup.button.callback('📜 تاریخچه نسخه‌ها', `post:version:list:${postId}`),
@@ -79,7 +67,6 @@ export const postViewKeyboard = (post: any) => {
       Markup.button.callback(post.isPublished ? '📥 لغو انتشار' : '📤 انتشار', `post:publish:${post.id}`),
     ],
     [
-      Markup.button.callback('📋 کپی کردن', `post:duplicate:${post.id}`),
       Markup.button.callback('📊 آمار', `post:analytics:${post.id}`),
     ],
     [
@@ -186,14 +173,6 @@ export const postAnalyticsKeyboard = (postId: number) => {
   ]);
 };
 
-export const postParseModeKeyboard = (postId: number, currentMode: string) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback(`${currentMode === 'Markdown' ? '✅ ' : ''}Markdown`, `post:parsemode:${postId}:Markdown`)],
-    [Markup.button.callback(`${currentMode === 'HTML' ? '✅ ' : ''}HTML`, `post:parsemode:${postId}:HTML`)],
-    [Markup.button.callback('« بازگشت به ویرایشگر', `post:edit:${postId}:full`)],
-  ]);
-};
-
 export const postScheduleKeyboard = (postId: number) => {
   return Markup.inlineKeyboard([
     [Markup.button.callback('📅 زمان‌بندی انتشار', `post:publish:schedule:${postId}`)],
@@ -254,17 +233,6 @@ export const postSwapTargetKeyboard = (postId: number, sourceRow: number, totalR
   }
   rows.push([Markup.button.callback('« لغو', `post:edit:${postId}:buttons`)]);
   return Markup.inlineKeyboard(rows);
-};
-
-export const postBuilderViewKeyboard = (postId: number) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🔄 تازه‌سازی پیش‌نمایش', `post:builder:refresh:${postId}`)],
-    [Markup.button.callback('✏ ویرایش عنوان', `post:edit:${postId}:title`)],
-    [Markup.button.callback('📝 ویرایش محتوا', `post:edit:${postId}:content`)],
-    [Markup.button.callback('⌨ ویرایش دکمه‌ها', `post:edit:${postId}:buttons`)],
-    [Markup.button.callback('📤 انتشار', `post:publish:${postId}`)],
-    [Markup.button.callback('« بازگشت به ویرایشگر', `post:edit:${postId}:full`)],
-  ]);
 };
 
 export const menuEditorKeyboard = (layout: any[][]) => {

@@ -28,7 +28,8 @@ ${prize}
 برای دریافت جایزه به:
 ${config.notifications.winnerContact}
 
-پیام دهید.`
+پیام دهید.`,
+        { link_preview_options: { is_disabled: true } }
       );
 
       return true;
@@ -40,7 +41,7 @@ ${config.notifications.winnerContact}
 
   async sendAdminMessage(message: string) {
     try {
-      await bot.telegram.sendMessage(Number(config.bot.adminTelegramId), message);
+      await bot.telegram.sendMessage(Number(config.bot.adminTelegramId), message, { link_preview_options: { is_disabled: true } });
       return true;
     } catch (error) {
       logger.error('Failed to send admin notification', error);
@@ -57,7 +58,7 @@ ${config.notifications.winnerContact}
 
     for (const recipient of recipients) {
       try {
-        await bot.telegram.sendMessage(toChatId(recipient), message);
+        await bot.telegram.sendMessage(toChatId(recipient), message, { link_preview_options: { is_disabled: true } });
         result.sent += 1;
       } catch (error) {
         result.failed += 1;

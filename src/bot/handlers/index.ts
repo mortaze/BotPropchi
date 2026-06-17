@@ -107,6 +107,7 @@ async function sendPostToUser(ctx: any, post: any) {
     const mediaConfig: any = {
       caption: textWithoutCopy || post.caption,
       parse_mode: parseMode,
+      link_preview_options: { is_disabled: true },
       ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
     };
     switch (post.mediaType) {
@@ -127,21 +128,24 @@ async function sendPostToUser(ctx: any, post: any) {
     }));
     await ctx.replyWithMediaGroup(media);
     if (inlineButtons.length > 0) {
-      await ctx.reply(':', Markup.inlineKeyboard(inlineButtons));
+      await ctx.reply(':', { link_preview_options: { is_disabled: true }, ...Markup.inlineKeyboard(inlineButtons) });
     }
   } else if (textWithoutCopy) {
     try {
       await ctx.reply(textWithoutCopy, {
         parse_mode: parseMode,
+        link_preview_options: { is_disabled: true },
         ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
       });
     } catch {
       await ctx.reply(textWithoutCopy, {
+        link_preview_options: { is_disabled: true },
         ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
       });
     }
   } else {
     await ctx.reply(post.title, {
+      link_preview_options: { is_disabled: true },
       ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
     });
   }
@@ -322,10 +326,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
               `📈 تعداد کل کاربران: ${totalUsers}`,
               `📅 زمان: ${now}`,
             ].join('\n'),
-            Markup.inlineKeyboard([
-              [Markup.button.callback('👤 مشاهده کاربر', 'noop')],
-              [Markup.button.callback('📊 آمار', 'noop')],
-            ])
+            {
+              link_preview_options: { is_disabled: true },
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback('👤 مشاهده کاربر', 'noop')],
+                [Markup.button.callback('📊 آمار', 'noop')],
+              ]),
+            }
           );
         } catch {}
       }
@@ -334,16 +341,16 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (scoring.isWelcomeMessageEnabled) {
       await ctx.reply(
         scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
-        { parse_mode: 'Markdown', ...(await adminReplyOptions(ctx.from?.id)) }
+        { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
       );
       const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
       if (scoring.startPoints > 0 && isFirstEntrance) {
-        await ctx.reply(scoringService.formatTemplate(scoring.initialPointsMessageText, { name, points: scoring.startPoints }));
+        await ctx.reply(scoringService.formatTemplate(scoring.initialPointsMessageText, { name, points: scoring.startPoints }), { link_preview_options: { is_disabled: true } });
       }
       return;
     }
 
-    await ctx.reply('از منوی زیر انتخاب کنید:', await adminReplyOptions(ctx.from?.id));
+    await ctx.reply('از منوی زیر انتخاب کنید:', { link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) });
   });
 
 
@@ -560,7 +567,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       '➕ ایجاد پست', '📋 مدیریت پست‌ها', '📦 پیش‌نویس‌ها',
       '👻 پست‌های مخفی', '👁 پیش‌نمایش', '📤 انتشار',
       '🔎 جستجو', '📊 آمار پست', '📊 آمار کلی', '🔍 بررسی سلامت',
-      '⚙ تنظیمات پست', '↩️ بازگشت به پنل ادمین',
+      '↩️ بازگشت به پنل ادمین',
     ];
     if (knownTexts.includes(text)) return next();
     try {
@@ -896,7 +903,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return ctx.reply('❌ هنوز پراپ فرمی ثبت نشده.');
     }
 
-    await ctx.reply('📋 *پراپ فرم‌های موجود:*', { parse_mode: 'Markdown' });
+    await ctx.reply('📋 *پراپ فرم‌های موجود:*', { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
 
     const propFirmCheckEnabled = await settingsService.isFeatureEnabled('prop_firm_check');
     for (const firm of firms) {
@@ -907,6 +914,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
       await ctx.reply(`🏢 *${firm.name}* — ${firm._count?.discountCodes || 0} کد تخفیف`, {
         parse_mode: 'Markdown',
+        link_preview_options: { is_disabled: true },
         ...Markup.inlineKeyboard(buttons),
       });
     }
@@ -919,7 +927,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const firm = firms.find((item) => item.id === firmId);
     if (!firm?.reviewLink) return ctx.answerCbQuery('لینک بررسی برای این پراپ ثبت نشده است.');
     await ctx.answerCbQuery();
-    return ctx.reply(`🔎 لینک بررسی ${firm.name}:\n${firm.reviewLink}`);
+    return ctx.reply(`🔎 لینک بررسی ${firm.name}:\n${firm.reviewLink}`, { link_preview_options: { is_disabled: true } });
   });
 
   bot.hears('🔍 جستجو', async (ctx) => {
@@ -965,10 +973,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
           },
         });
         cache.set(`ai_mode:${ctx.from.id}`, true, 600);
-        return ctx.reply(result.response);
+        return ctx.reply(result.response, { link_preview_options: { is_disabled: true } });
       } catch (error) {
         const message = error instanceof WordPressApiClientError ? error.message : 'این سوال خارج از محدوده سیستم است.';
-        return ctx.reply(message);
+        return ctx.reply(message, { link_preview_options: { is_disabled: true } });
       }
     }
 
@@ -989,7 +997,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     const text = result.items.map((d: any, i: number) => formatDiscount(d, i)).join('\n\n─────────\n\n');
 
-    await ctx.reply(`🔍 نتایج جستجو برای "*${query}*":\n\n${text}`, { parse_mode: 'Markdown' });
+    await ctx.reply(`🔍 نتایج جستجو برای "*${query}*":\n\n${text}`, { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
   });
 
   bot.hears('🎰 قرعه‌کشی', async (ctx) => {
@@ -1161,7 +1169,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
         `✅ پاداش هر دعوت موفق: ${rewardPoints} امتیاز`,
         `👤 دعوت‌شدگان تا کنون: ${totalReferrals} نفر`,
         `🎁 مجموع امتیاز دعوت‌ها: ${totalRewardPoints}`,
-      ].join('\n')
+      ].join('\n'),
+      { link_preview_options: { is_disabled: true } }
     );
   } catch (error) {
     logger.error(

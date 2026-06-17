@@ -16,13 +16,11 @@ import {
   postRowResizeKeyboard,
   postPublishOptionsKeyboard,
   postAnalyticsKeyboard,
-  postParseModeKeyboard,
   postCommandListKeyboard,
   postCommandEditKeyboard,
   postVersionHistoryKeyboard,
   postIntegrityKeyboard,
   postGlobalAnalyticsKeyboard,
-  postBuilderViewKeyboard,
   postSwapTargetKeyboard,
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
@@ -350,10 +348,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     try {
       await ctx.reply(preview, {
         parse_mode: 'Markdown',
+        link_preview_options: { is_disabled: true },
         ...postEditorKeyboard(postId, hasContent),
       });
     } catch {
-      await ctx.reply(preview, postEditorKeyboard(postId, hasContent));
+      await ctx.reply(preview, { link_preview_options: { is_disabled: true }, ...postEditorKeyboard(postId, hasContent) });
     }
   }
 
@@ -392,17 +391,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         postButtonsEditorKeyboard(postId, buttons));
       return;
     }
-    if (action === 'caption') {
-      cache.set(pendingKey(ctx.from.id, 'editing_field'), 'caption', 300);
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-      return ctx.reply(`📝 کپشن فعلی: ${post.caption || '(ندارد)'}\n\nکپشن جدید را ارسال کنید:`);
-    }
-    if (action === 'parsemode') {
-      return ctx.reply(`🔤 حالت نمایش فعلی: *${post.parseMode || 'Markdown'}*\n\nحالت نمایش را انتخاب کنید:`, {
-        parse_mode: 'Markdown',
-        ...postParseModeKeyboard(postId, post.parseMode || 'Markdown'),
-      });
-    }
   });
 
   // ─── View Post ──────────────────────────────────────────
@@ -418,19 +406,21 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (ctx.callbackQuery?.message) {
         await ctx.editMessageText(preview, {
           parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
           ...postViewKeyboard(post as any),
         });
       } else {
         await ctx.reply(preview, {
           parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
           ...postViewKeyboard(post as any),
         });
       }
     } catch {
       if (ctx.callbackQuery?.message) {
-        await ctx.editMessageText(preview, postViewKeyboard(post as any));
+        await ctx.editMessageText(preview, { link_preview_options: { is_disabled: true }, ...postViewKeyboard(post as any) });
       } else {
-        await ctx.reply(preview, postViewKeyboard(post as any));
+        await ctx.reply(preview, { link_preview_options: { is_disabled: true }, ...postViewKeyboard(post as any) });
       }
     }
   });
@@ -588,18 +578,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await showPostEditor(ctx, postId);
   });
 
-  // ─── Parse Mode ──────────────────────────────────────────
-  bot.action(/^post:parsemode:(\d+):(.+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const mode = ctx.match[2];
-    await postService.update(postId, { parseMode: mode, updatedBy: BigInt(ctx.from.id) } as any);
-    await ctx.reply(`✅ حالت نمایش به ${mode} تغییر یافت.`);
-    await showPostEditor(ctx, postId);
-  });
-
   // ─── Archive ─────────────────────────────────────────────
   bot.action(/^post:archive:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
@@ -714,41 +692,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await postService.unpublish(postId);
     await ctx.reply('📥 انتشار پست لغو شد.');
     await showPostEditor(ctx, postId);
-  });
-
-  // ─── Reorder ────────────────────────────────────────────
-  bot.action(/^post:reorder:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    cache.set(pendingKey(ctx.from.id, 'reorder'), postId, 120);
-    await ctx.reply('🗂 شماره ترتیب جدید را وارد کنید:');
-  });
-
-  bot.on('text', async (ctx: any, next) => {
-    if (!ctx.from) return next();
-    const reorderPostId = cache.get<number>(pendingKey(ctx.from.id, 'reorder'));
-    if (!reorderPostId) return next();
-    cache.del(pendingKey(ctx.from.id, 'reorder'));
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return next();
-    const order = parseInt(ctx.message.text);
-    if (isNaN(order)) return ctx.reply('❌ عدد نامعتبر.');
-    await postService.reorder(reorderPostId, order);
-    await ctx.reply(`✅ ترتیب به ${order} تغییر یافت.`);
-  });
-
-  // ─── Duplicate ──────────────────────────────────────────
-  bot.action(/^post:duplicate:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const dup = await postService.duplicate(postId, BigInt(ctx.from.id));
-    if (!dup) return ctx.reply('❌ پست یافت نشد.');
-    await ctx.reply(`✅ کپی ایجاد شد: "${dup.title}"`);
-    await showPostEditor(ctx, dup.id);
   });
 
   // ─── Delete ─────────────────────────────────────────────
@@ -1006,27 +949,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.reply(text, { parse_mode: 'Markdown', ...postAnalyticsKeyboard(postId) });
   });
 
-  // ─── Post Settings ─────────────────────────────────────
-  bot.hears('⚙ تنظیمات پست', async (ctx: any) => {
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const text = [
-      '⚙ *تنظیمات پست*',
-      '',
-      'از ویرایشگر پست برای تنظیم موارد زیر استفاده کنید:',
-      '• حالت نمایش (Markdown / HTML)',
-      '• ترتیب',
-      '• دستورات و نام‌های مستعار',
-      '• نوع رسانه',
-    ].join('\n');
-    await ctx.reply(text, {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('« بازگشت به منوی پست', 'post:menu')],
-      ]),
-    });
-  });
-
   // ─── Back to Posts Menu ─────────────────────────────────
   bot.action('post:menu', async (ctx: any) => {
     await ctx.answerCbQuery();
@@ -1133,29 +1055,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const text = '🏆 *پست‌های برتر بر اساس بازدید*\n\n' +
       topPosts.map((p: any, i: number) => `${i + 1}. ${p.title} — ${(p as any).views || 0} بازدید`).join('\n');
     await ctx.reply(text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
-  });
-
-  // ─── Builder View ───────────────────────────────────────
-  bot.action(/^post:builder:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const preview = formatPostPreview(post);
-    await ctx.reply(`🏗 *پیش‌نمایش زنده*\n\n${preview}`, { parse_mode: 'Markdown', ...postBuilderViewKeyboard(postId) });
-  });
-
-  bot.action(/^post:builder:refresh:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const preview = formatPostPreview(post);
-    await ctx.editMessageText(`🏗 *پیش‌نمایش زنده*\n\n${preview}`, { parse_mode: 'Markdown', ...postBuilderViewKeyboard(postId) }).catch(() => {});
   });
 
   // ─── Button Row Management ──────────────────────────────
@@ -1291,7 +1190,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const textWithoutCopy = segments.filter(s => s.type === 'text').map(s => s.content).join('').trim();
 
     if (post.mediaFileId && post.mediaType) {
-      const mediaConfig: any = { caption: textWithoutCopy || post.caption, parse_mode: parseMode, ...(inlineButtons ? Markup.inlineKeyboard(inlineButtons) : {}) };
+      const mediaConfig: any = { caption: textWithoutCopy || post.caption, parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(inlineButtons ? Markup.inlineKeyboard(inlineButtons) : {}) };
       switch (post.mediaType) {
         case 'photo': await ctx.replyWithPhoto(post.mediaFileId, mediaConfig); break;
         case 'video': await ctx.replyWithVideo(post.mediaFileId, mediaConfig); break;
@@ -1314,12 +1213,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }
     } else if (textWithoutCopy) {
       try {
-        await ctx.reply(textWithoutCopy, { parse_mode: parseMode, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
+        await ctx.reply(textWithoutCopy, { parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
       } catch {
-        await ctx.reply(textWithoutCopy, { ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
+        await ctx.reply(textWithoutCopy, { link_preview_options: { is_disabled: true }, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
       }
     } else {
-      await ctx.reply('(پست خالی)', { ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
+      await ctx.reply('(پست خالی)', { link_preview_options: { is_disabled: true }, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
     }
 
     if (hasCopyBlocks) {

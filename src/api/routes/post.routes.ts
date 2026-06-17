@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { PostStatus } from '@prisma/client';
 import { postService } from '../../services/post.service';
-import { settingsService } from '../../services/settings.service';
 
 export const postRouter = Router();
 
@@ -102,7 +101,6 @@ postRouter.put('/:id', async (req, res) => {
 postRouter.delete('/:id', async (req, res) => {
   const post = await postService.delete(Number(req.params.id));
   if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
-  await settingsService.removePostFromMenu(Number(req.params.id));
   res.json({ success: true, message: 'پست حذف شد' });
 });
 
