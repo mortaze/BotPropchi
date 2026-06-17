@@ -71,7 +71,8 @@ function formatDuration(ms: number) {
 async function adminReplyOptions(telegramId?: number) {
   const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
   const features = await settingsService.getFeatureMap();
-  const menuLayout = await settingsService.getMenuLayout().catch(() => []);
+  // Resolve live post titles from DB (single source of truth)
+  const menuLayout = await settingsService.getResolvedMenuLayout(true).catch(() => []);
   const displayMode = await settingsService.getMenuDisplayMode().catch(() => 'always_open' as const);
   return buildMainMenuKeyboard(Boolean(admin), features, menuLayout, displayMode);
 }
@@ -446,7 +447,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('🎛 ویرایش منو', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const layout = await settingsService.getMenuLayout();
+    // Editor mode: resolve titles from DB but show all entries (including unpublished)
+    const layout = await settingsService.getResolvedMenuLayout(false);
     await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
   });
 
@@ -454,7 +456,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const layout = await settingsService.getMenuLayout();
+    const layout = await settingsService.getResolvedMenuLayout(false);
     try {
       await ctx.editMessageText('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
     } catch {
@@ -650,7 +652,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
     ];
     if (knownTexts.includes(text)) return next();
     try {
-      const layout = await settingsService.getMenuLayout();
+      // Resolve layout from DB so post titles are current (single source of truth)
+      const layout = await settingsService.getResolvedMenuLayout(false);
       const textMap = settingsService.getMenuButtonTextMap(layout);
       const match = textMap.get(text);
       if (match && match.ref.startsWith('post:')) {

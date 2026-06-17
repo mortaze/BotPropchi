@@ -14,7 +14,8 @@ const layoutSchema = z.array(z.array(z.object({
 })));
 
 menuRouter.get('/layout', async (_req, res) => {
-  const layout = await settingsService.getMenuLayout();
+  // Return resolved layout with current post titles from DB (admin mode: show all entries)
+  const layout = await settingsService.getResolvedMenuLayout(false);
   const version = await settingsService.getSetting('menu_layout_version') || 0;
   res.json({ success: true, layout, version: Number(version) });
 });

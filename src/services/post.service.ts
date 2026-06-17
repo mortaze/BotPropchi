@@ -74,10 +74,10 @@ export const postService = {
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     this.invalidateCache();
 
-    // Auto-sync menu title for published posts (single source of truth = post database)
+    // Auto-sync published posts to menu (single source of truth = post database — title resolved at render time)
     if (post.status === 'PUBLISHED' && post.isPublished) {
-      settingsService.addPostToMenu(post.id, post.title, true).catch(err => {
-        logger.warn(`[Post] Menu title sync failed for post ${id}:`, err);
+      settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
+        logger.warn(`[Post] Menu sync failed for post ${id}:`, err);
       });
     }
 
@@ -120,8 +120,8 @@ export const postService = {
       updatedBy: publishedBy ?? undefined,
     });
     this.invalidateCache();
-    // Auto-add to menu_layout (visible by default for published posts)
-    await settingsService.addPostToMenu(post.id, post.title, true).catch(err => {
+    // Auto-add to menu_layout (visible by default for published posts — title resolved from DB at render time)
+    await settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
       logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
     });
     await systemLogService.log({
@@ -216,7 +216,7 @@ export const postService = {
       isPublished: true,
     });
     this.invalidateCache();
-    await settingsService.addPostToMenu(post.id, post.title).catch(err => {
+    await settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
       logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
     });
     logger.info(`[Post] Shown (restored): "${post.title}"`);

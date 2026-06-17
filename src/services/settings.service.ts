@@ -217,6 +217,12 @@ class SettingsService {
     return layout;
   }
 
+  // Get layout with live post titles resolved from DB (single source of truth)
+  async getResolvedMenuLayout(live = true): Promise<any[][]> {
+    const layout = await this.getMenuLayout();
+    return this.resolveMenuLayout(layout, live);
+  }
+
   async saveMenuLayout(layout: any[][], preserveVersion?: number) {
     const oldLayout = this.menuLayoutCache?.layout || [];
 
@@ -319,8 +325,56 @@ class SettingsService {
     return map;
   }
 
+  // ─── Resolve: replace stored (stale) post text with live DB data ───
+  // Posts database is the SINGLE SOURCE OF TRUTH for titles & status.
+  // Menu layout only stores structural data (refs, ordering, visibility hints).
+  async resolveMenuLayout(layout: any[][], live = true): Promise<any[][]> {
+    // Collect all post refs
+    const postIds = new Set<number>();
+    for (const row of layout) {
+      for (const btn of row) {
+        if (btn.ref && btn.ref.startsWith('post:')) {
+          postIds.add(Number(btn.ref.replace('post:', '')));
+        }
+      }
+    }
+
+    // Batch-load all referenced posts from DB (single source of truth)
+    const posts = postIds.size > 0
+      ? await prisma.post.findMany({
+          where: { id: { in: [...postIds] } },
+          select: { id: true, title: true, status: true, isPublished: true },
+        })
+      : [];
+    const postMap = new Map(posts.map(p => [p.id, p]));
+
+    const resolved: any[][] = [];
+    for (const row of layout) {
+      const resolvedRow: any[] = [];
+      for (const btn of row) {
+        if (btn.ref && btn.ref.startsWith('post:')) {
+          const postId = Number(btn.ref.replace('post:', ''));
+          const post = postMap.get(postId);
+          if (!post) continue; // Post deleted — skip entirely
+          if (live && post.status !== 'PUBLISHED') continue; // Not published — skip in live mode
+          resolvedRow.push({
+            ...btn,
+            text: post.title, // Always use current title from DB
+            _postStatus: post.status,
+            _isPublished: post.isPublished,
+          });
+        } else {
+          // Non-post button: use stored text as-is (system buttons)
+          resolvedRow.push(btn);
+        }
+      }
+      if (resolvedRow.length > 0) resolved.push(resolvedRow);
+    }
+    return resolved;
+  }
+
   // ─── Post ↔ Menu auto-linking ─────────────────────────
-  async addPostToMenu(postId: number, title: string, visible = false): Promise<void> {
+  async addPostToMenu(postId: number, title?: string, visible = false): Promise<void> {
     const layout = await this.getMenuLayout();
     const ref = `post:${postId}`;
 
@@ -330,10 +384,6 @@ class SettingsService {
       for (const btn of row) {
         if (btn.ref === ref) {
           exists = true;
-          // Update title if changed
-          if (btn.text !== title) {
-            btn.text = title;
-          }
           break;
         }
       }
@@ -341,15 +391,15 @@ class SettingsService {
     }
     if (exists) {
       await this.saveMenuLayout(layout);
-      logger.debug(`[MenuLayout] Post already in menu: "${title}" (${ref}) — updated`);
+      logger.debug(`[MenuLayout] Post already in menu: ref=${ref}`);
       return;
     }
 
-    // Add as a new row with visibility controlled by param
+    // Add as a new row — title is NOT stored (resolved from DB at render time)
     this.ensureButtonIds(layout);
-    layout.push([{ id: `btn_${this.nextButtonId++}`, ref, text: title, visible }]);
+    layout.push([{ id: `btn_${this.nextButtonId++}`, ref, text: '', visible }]);
     await this.saveMenuLayout(layout);
-    logger.info(`[MenuLayout] Added post to menu: "${title}" (ref: ${ref}, visible: ${visible})`);
+    logger.info(`[MenuLayout] Added post to menu: ref=${ref}, visible: ${visible}`);
   }
 
   async removePostFromMenu(postId: number): Promise<void> {
@@ -410,12 +460,11 @@ class SettingsService {
         status: { in: ['PUBLISHED', 'SCHEDULED'] },
         isPublished: true,
       },
-      select: { id: true, title: true },
+      select: { id: true },
     });
 
     // Build ref set of valid posts
     const validRefs = new Set(posts.map(p => `post:${p.id}`));
-    const postMap = new Map(posts.map(p => [`post:${p.id}`, p.title]));
 
     // 2. Scan layout — remove invalid refs, identify missing posts
     const existingRefs = new Set<string>();
@@ -424,12 +473,10 @@ class SettingsService {
         const btn = row[c];
         if (btn.ref && btn.ref.startsWith('post:')) {
           if (!validRefs.has(btn.ref)) {
-            // Remove invalid reference (post was deleted / unpublished / archived)
             row.splice(c, 1);
             removed++;
           } else {
             existingRefs.add(btn.ref);
-            // Make visible if it's a published/scheduled post that was hidden
             if (!btn.visible) {
               btn.visible = true;
               madeVisible++;
@@ -439,12 +486,11 @@ class SettingsService {
       }
     }
 
-    // 3. Add missing publishable posts
+    // 3. Add missing publishable posts (title is NOT stored — resolved from DB at render time)
     this.ensureButtonIds(layout);
     for (const ref of validRefs) {
       if (!existingRefs.has(ref)) {
-        const title = postMap.get(ref) || 'Post';
-        layout.push([{ id: `btn_${this.nextButtonId++}`, ref, text: title, visible: true }]);
+        layout.push([{ id: `btn_${this.nextButtonId++}`, ref, text: '', visible: true }]);
         added.push(Number(ref.replace('post:', '')));
       }
     }
