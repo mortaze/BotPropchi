@@ -25,7 +25,7 @@ import { config } from '../../config';
 import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
-import { buildPostDebugSnapshot, renderPostToTelegram } from '../../services/post-renderer.service';
+import { buildPostDebugSnapshot, comparePostNativeRoundtrip, renderPostToTelegram } from '../../services/post-renderer.service';
 import { sanitizeTelegramText, sanitizeTelegramExtra } from '../../utils/unicode';
 import {
   propFirmDiscountKeyboard,
@@ -116,7 +116,7 @@ function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; con
 
 async function sendPostToUser(ctx: any, post: any) {
   await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-  if ((post as any).telegramPayload) return renderPostToTelegram(ctx, post);
+  if ((post as any).telegramPayload || (post as any).telegramMessageSnapshot || (post as any).entities) return renderPostToTelegram(ctx, post);
   const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
   const parseMode = post.parseMode || 'Markdown';
   const rawText = post.content || post.caption || '';
@@ -772,6 +772,26 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const body = JSON.stringify(debug, (_, value) => typeof value === 'bigint' ? value.toString() : value, 2);
     const chunks = body.match(/[\s\S]{1,3500}/g) || ['{}'];
     await ctx.reply(`🧪 debug_post_render ${postId}`);
+    for (const chunk of chunks) await ctx.reply(`<pre>${chunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { parse_mode: 'HTML' });
+  });
+
+
+  bot.command('debug_compare_post', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const [, rawPostId] = ctx.message.text.split(/\s+/);
+    const postId = Number(rawPostId);
+    if (!Number.isInteger(postId)) return ctx.reply('فرمت صحیح: /debug_compare_post <postId>');
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const comparison = comparePostNativeRoundtrip(post);
+    logger.info(`[PostRender] compare command requested by ${ctx.from.id} for post ${postId}`);
+    logger.info(`[TelegramSnapshot] compare post=${postId} ${JSON.stringify(comparison.originalTelegramSnapshot)}`);
+    logger.info(`[TelegramSend] compare post=${postId} ${JSON.stringify(comparison.renderedOutput)}`);
+    logger.info(`[TelegramEntities] compare post=${postId} ${JSON.stringify(comparison.differences)}`);
+    const body = JSON.stringify(comparison, (_, value) => typeof value === 'bigint' ? value.toString() : value, 2);
+    const chunks = body.match(/[\s\S]{1,3500}/g) || ['{}'];
+    await ctx.reply(`🧪 debug_compare_post ${postId}`);
     for (const chunk of chunks) await ctx.reply(`<pre>${chunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { parse_mode: 'HTML' });
   });
 

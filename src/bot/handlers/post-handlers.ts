@@ -1231,7 +1231,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   async function sendPostToChat(ctx: any, post: any) {
     await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
     const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
-    if ((post as any).telegramPayload) return renderPostToTelegram(ctx, post);
+    if ((post as any).telegramPayload || (post as any).telegramMessageSnapshot || (post as any).entities) return renderPostToTelegram(ctx, post);
     const parseMode = post.parseMode || 'Markdown';
     const rawText = post.content || post.caption || '';
     const { segments } = parseCopyBlocks(rawText);
