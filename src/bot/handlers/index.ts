@@ -25,7 +25,7 @@ import { config } from '../../config';
 import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
-import { renderPostToTelegram } from '../../services/post-renderer.service';
+import { buildPostDebugSnapshot, renderPostToTelegram } from '../../services/post-renderer.service';
 import { sanitizeTelegramText, sanitizeTelegramExtra } from '../../utils/unicode';
 import {
   propFirmDiscountKeyboard,
@@ -754,6 +754,25 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const admins = await botAdminService.list();
     const text = admins.map((item) => `${item.status === 'ACTIVE' ? '✅' : '⏸'} ${item.role} — ${item.telegramId.toString()} ${item.username ? '@' + item.username : ''}`).join('\n') || 'ادمینی ثبت نشده است.';
     await ctx.reply(`👥 مدیریت ادمین‌ها\n\nبرای افزودن ادمین پیام را به شکل زیر ارسال کنید:\n/admin_add TELEGRAM_ID ROLE\nمثال: /admin_add 123456 ADMIN\n\n${text}`);
+  });
+
+  bot.command('debug_post_render', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const [, rawPostId] = ctx.message.text.split(/\s+/);
+    const postId = Number(rawPostId);
+    if (!Number.isInteger(postId)) return ctx.reply('فرمت صحیح: /debug_post_render <postId>');
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const debug = buildPostDebugSnapshot(post);
+    logger.info(`[PostRender] debug command requested by ${ctx.from.id} for post ${postId}`);
+    logger.info(`[TelegramPayload] debug post=${postId} ${JSON.stringify(debug.telegramPayload)}`);
+    logger.info(`[TelegramEntities] debug post=${postId} ${JSON.stringify(debug.entities)}`);
+    logger.info(`[TelegramSend] debug post=${postId} ${JSON.stringify(debug.finalTelegramApiRequest)}`);
+    const body = JSON.stringify(debug, (_, value) => typeof value === 'bigint' ? value.toString() : value, 2);
+    const chunks = body.match(/[\s\S]{1,3500}/g) || ['{}'];
+    await ctx.reply(`🧪 debug_post_render ${postId}`);
+    for (const chunk of chunks) await ctx.reply(`<pre>${chunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('admin_add', async (ctx: any) => {
