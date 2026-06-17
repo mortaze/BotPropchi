@@ -1,0 +1,256 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`TelegramNativeRenderer > roundtrips bold native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 4,
+      "offset": 0,
+      "type": "bold",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "bold",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips code native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 4,
+      "offset": 0,
+      "type": "code",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "code",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips custom emoji native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "custom_emoji_id": "123",
+      "length": 2,
+      "offset": 0,
+      "type": "custom_emoji",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "🙂",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips expandable blockquote native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 9,
+      "offset": 0,
+      "type": "expandable_blockquote",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "expand me",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips italic native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 6,
+      "offset": 0,
+      "type": "italic",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "italic",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips link native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 7,
+      "offset": 0,
+      "type": "text_link",
+      "url": "https://example.com",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "example",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips mixed entities native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 4,
+      "offset": 0,
+      "type": "bold",
+    },
+    {
+      "length": 6,
+      "offset": 5,
+      "type": "italic",
+    },
+    {
+      "length": 4,
+      "offset": 12,
+      "type": "hashtag",
+    },
+    {
+      "length": 5,
+      "offset": 17,
+      "type": "mention",
+    },
+    {
+      "length": 14,
+      "offset": 23,
+      "type": "url",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "bold italic #tag @name https://x.test",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips nested quote native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 10,
+      "offset": 0,
+      "type": "blockquote",
+    },
+    {
+      "length": 4,
+      "offset": 6,
+      "type": "bold",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "quote bold",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips pre native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "language": "ts",
+      "length": 11,
+      "offset": 0,
+      "type": "pre",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "const a = 1",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips quote + link native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 10,
+      "offset": 0,
+      "type": "blockquote",
+    },
+    {
+      "length": 4,
+      "offset": 6,
+      "type": "text_link",
+      "url": "https://example.com",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "quote link",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips quote native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 11,
+      "offset": 0,
+      "type": "blockquote",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "quoted text",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips spoiler native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 7,
+      "offset": 0,
+      "type": "spoiler",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "spoiler",
+}
+`;
+
+exports[`TelegramNativeRenderer > roundtrips underline native entities without parse_mode 1`] = `
+{
+  "entities": [
+    {
+      "length": 9,
+      "offset": 0,
+      "type": "underline",
+    },
+  ],
+  "link_preview_options": {
+    "is_disabled": true,
+  },
+  "method": "sendMessage",
+  "text": "underline",
+}
+`;

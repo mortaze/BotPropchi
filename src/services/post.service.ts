@@ -311,14 +311,15 @@ export const postService = {
     const caption = message.caption || undefined;
     const media = snapshot.media;
     const entities = snapshot.entities || [];
+    const captionEntities = snapshot.captionEntities || [];
     const keyboard = snapshot.keyboard || [];
-    const validation = this.validateNativePostInput({ content: content || caption, caption, entities, buttons: keyboard, media, contentFormat: 'entities' });
+    const validation = this.validateNativePostInput({ content: content || caption, caption, entities: caption ? captionEntities : entities, buttons: keyboard, media, contentFormat: 'entities' });
     if (!validation.valid) logger.warn(`[PostImport] Validation warnings for post ${postId}: ${validation.issues.join('; ')}`);
-    const payload = { text: content || caption || '', caption, entities, media, keyboard };
+    const payload = { text: content || '', caption, entities, captionEntities, media, keyboard, rawMessage: snapshot.rawMessage };
     const update: any = {
       content: content || undefined,
       caption,
-      entities,
+      entities: caption ? captionEntities : entities,
       telegramPayload: payload,
       telegramMessageSnapshot: snapshot.message,
       contentFormat: 'telegram_entities',
@@ -330,7 +331,7 @@ export const postService = {
       parseMode: null,
       updatedBy,
     };
-    logger.info(`[PostImport] Importing Telegram message into post ${postId} entities=${entities.length} media=${media.length} buttons=${keyboard.length}`);
+    logger.info(`[PostImport] Importing Telegram message into post ${postId} entities=${entities.length} captionEntities=${captionEntities.length} media=${media.length} buttons=${keyboard.length}`);
     const post = await postRepository.update(postId, update);
     await prisma.$transaction([
       prisma.postMedia.deleteMany({ where: { postId } }),
@@ -338,7 +339,8 @@ export const postService = {
       prisma.postKeyboard.deleteMany({ where: { postId } }),
     ]);
     for (let i = 0; i < media.length; i++) await prisma.postMedia.create({ data: { postId, ...media[i], order: i } as any });
-    for (let i = 0; i < entities.length; i++) await prisma.postEntity.create({ data: { postId, source: caption ? 'caption' : 'text', type: entities[i].type, offset: entities[i].offset, length: entities[i].length, url: entities[i].url, user: entities[i].user, language: entities[i].language, customEmojiId: entities[i].custom_emoji_id, payload: entities[i] } as any });
+    for (let i = 0; i < entities.length; i++) await prisma.postEntity.create({ data: { postId, source: 'text', type: entities[i].type, offset: entities[i].offset, length: entities[i].length, url: entities[i].url, user: entities[i].user, language: entities[i].language, customEmojiId: entities[i].custom_emoji_id, payload: entities[i] } as any });
+    for (let i = 0; i < captionEntities.length; i++) await prisma.postEntity.create({ data: { postId, source: 'caption', type: captionEntities[i].type, offset: captionEntities[i].offset, length: captionEntities[i].length, url: captionEntities[i].url, user: captionEntities[i].user, language: captionEntities[i].language, customEmojiId: captionEntities[i].custom_emoji_id, payload: captionEntities[i] } as any });
     for (let r = 0; r < keyboard.length; r++) for (let c = 0; c < keyboard[r].length; c++) await prisma.postKeyboard.create({ data: { postId, row: r, col: c, text: keyboard[r][c].text, type: keyboard[r][c].url ? 'URL' : keyboard[r][c].callback_data ? 'CALLBACK' : 'NATIVE', value: keyboard[r][c].url || keyboard[r][c].callback_data, payload: keyboard[r][c] } as any });
     this.invalidateCache();
     return post;
