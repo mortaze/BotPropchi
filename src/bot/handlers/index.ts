@@ -44,6 +44,22 @@ import {
 
 type PaginatedResult<T> = { items: T[]; total: number; pages: number };
 
+
+async function editMenuEditor(ctx: any, message: string) {
+  const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+  logger.info(`[MenuEditor] Rendering editor keyboard rows=${resolvedLayout.length}`);
+  return safeEdit(ctx, message, menuEditorKeyboard(resolvedLayout));
+}
+
+function assertMenuTextPreserved(before: any[][], after: any[][], operation: string) {
+  const beforeTexts = before.flat().map((button: any) => button?.text || button?.label || button?.title || button?.ref || '');
+  const afterTexts = after.flat().map((button: any) => button?.text || button?.label || button?.title || button?.ref || '');
+  if (beforeTexts.some((text: string) => text.includes('???')) || afterTexts.some((text: string) => text.includes('???'))) {
+    logger.error(`[MenuEditor] Corrupted placeholder detected during ${operation}`, { beforeTexts, afterTexts });
+  }
+  logger.info(`[MenuEditor] ${operation}: before=${beforeTexts.length} after=${afterTexts.length}`);
+}
+
 function formatDiscount(d: any, index?: number): string {
   const prefix = index !== undefined ? `${index + 1}. ` : '';
   const expired = d.expiresAt ? `\n⏳ انقضا: ${new Date(d.expiresAt).toLocaleDateString('fa-IR')}` : '';
@@ -506,15 +522,18 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
+    const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
     const button = layout[row]?.[col];
+    const resolvedButton = resolvedLayout[row]?.[col] || button;
     if (!button) {
-      await safeEdit(ctx, 'دکمه‌ای یافت نشد.', menuEditorKeyboard(layout));
+      await editMenuEditor(ctx, 'دکمه‌ای یافت نشد.');
       return;
     }
     const ref = button.ref || '';
     const isPost = ref.startsWith('post:');
     const postId = isPost ? parseInt(ref.replace('post:', '')) : null;
-    const label = isPost ? `📄 ${button.text || 'پست'}` : `${button.text || 'دکمه'}`;
+    const displayText = resolvedButton?.text || button.text || button.label || button.title || button.ref || 'دکمه';
+    const label = isPost ? `📄 ${displayText}` : `${displayText}`;
     await safeEdit(
       ctx,
       `${label}\n${isPost ? `🆔 پست: ${postId}` : `🔗 ارجاع: ${ref}`}\n${button.visible !== false ? '👁 قابل مشاهده' : '🙈 مخفی'}`,
@@ -530,10 +549,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const col = parseInt(ctx.match[2]);
     if (col === 0) return safeEdit(ctx, 'هم‌اکنون در چپ‌ترین است.');
     const layout = await settingsService.getMenuLayout();
+    const before = await settingsService.getResolvedMenuLayout(false);
     if (!layout[row]) return;
     [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
     await settingsService.saveMenuLayout(layout);
-    await safeEdit(ctx, '✅ دکمه به چپ منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-left');
+    await editMenuEditor(ctx, '✅ دکمه به چپ منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
   });
 
   bot.action(/^menu:btnright:(\d+):(\d+)$/, async (ctx: any) => {
@@ -543,10 +564,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
+    const before = await settingsService.getResolvedMenuLayout(false);
     if (!layout[row] || col >= layout[row].length - 1) return safeEdit(ctx, 'هم‌اکنون در راست‌ترین است.');
     [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
     await settingsService.saveMenuLayout(layout);
-    await safeEdit(ctx, '✅ دکمه به راست منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-right');
+    await editMenuEditor(ctx, '✅ دکمه به راست منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
   });
 
   bot.action(/^menu:rowup:(\d+)$/, async (ctx: any) => {
@@ -556,9 +579,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[1]);
     if (row === 0) return safeEdit(ctx, 'هم‌اکنون در بالاست.');
     const layout = await settingsService.getMenuLayout();
+    const before = await settingsService.getResolvedMenuLayout(false);
     [layout[row - 1], layout[row]] = [layout[row], layout[row - 1]];
     await settingsService.saveMenuLayout(layout);
-    await safeEdit(ctx, '✅ سطر به بالا منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'row-up');
+    await editMenuEditor(ctx, '✅ سطر به بالا منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
   });
 
   bot.action(/^menu:rowdown:(\d+)$/, async (ctx: any) => {
@@ -567,10 +592,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const layout = await settingsService.getMenuLayout();
+    const before = await settingsService.getResolvedMenuLayout(false);
     if (row >= layout.length - 1) return safeEdit(ctx, 'هم‌اکنون در پایین‌ترین جایگاه است.');
     [layout[row], layout[row + 1]] = [layout[row + 1], layout[row]];
     await settingsService.saveMenuLayout(layout);
-    await safeEdit(ctx, '✅ سطر به پایین منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'row-down');
+    await editMenuEditor(ctx, '✅ سطر به پایین منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
   });
 
   bot.action(/^menu:swap:(\d+)$/, async (ctx: any) => {
@@ -590,9 +617,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const rowB = parseInt(ctx.match[2]);
     if (rowA === rowB) return;
     const layout = await settingsService.getMenuLayout();
+    const before = await settingsService.getResolvedMenuLayout(false);
     [layout[rowA], layout[rowB]] = [layout[rowB], layout[rowA]];
     await settingsService.saveMenuLayout(layout);
-    await safeEdit(ctx, '🔄 سطرها جابجا شدند.\n\n🎛 ویرایشگر منوی اصلی:', menuEditorKeyboard(layout));
+    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'row-swap');
+    await editMenuEditor(ctx, '🔄 سطرها جابجا شدند.\n\n🎛 ویرایشگر منوی اصلی:');
   });
 
   bot.action(/^menu:btnup:(\d+):(\d+)$/, async (ctx: any) => {
@@ -602,12 +631,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
+    const before = await settingsService.getResolvedMenuLayout(false);
     if (row === 0) return safeEdit(ctx, 'هم‌اکنون در بالاترین سطر است.');
     const button = layout[row]?.splice(col, 1)[0];
     if (button) {
       layout[row - 1].push(button);
       await settingsService.saveMenuLayout(layout);
-      await safeEdit(ctx, `✅ دکمه به سطر ${row} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`, menuEditorKeyboard(layout));
+      assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-up');
+      await editMenuEditor(ctx, `✅ دکمه به سطر ${row} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`);
     }
   });
 
@@ -618,6 +649,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
+    const before = await settingsService.getResolvedMenuLayout(false);
     const button = layout[row]?.splice(col, 1)[0];
     if (button) {
       const targetRow = row + 1;
@@ -626,7 +658,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
       }
       layout[targetRow].push(button);
       await settingsService.saveMenuLayout(layout);
-      await safeEdit(ctx, `✅ دکمه به سطر ${targetRow + 1} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`, menuEditorKeyboard(layout));
+      assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-down');
+      await editMenuEditor(ctx, `✅ دکمه به سطر ${targetRow + 1} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`);
     }
   });
 
@@ -637,11 +670,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
+    const before = await settingsService.getResolvedMenuLayout(false);
     if (layout[row]?.[col]) {
       layout[row][col].visible = layout[row][col].visible === false ? true : false;
       await settingsService.saveMenuLayout(layout);
+      assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-toggle');
       const status = layout[row][col].visible !== false ? 'نمایش داده می‌شود' : 'مخفی شد';
-      await safeEdit(ctx, `👁 دکمه ${status}.\n\n🎛 ویرایشگر منوی اصلی:`, menuEditorKeyboard(layout));
+      await editMenuEditor(ctx, `👁 دکمه ${status}.\n\n🎛 ویرایشگر منوی اصلی:`);
     }
   });
 

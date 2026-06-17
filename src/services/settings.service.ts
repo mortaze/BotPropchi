@@ -207,6 +207,7 @@ class SettingsService {
             if (Array.isArray(snapParsed)) snapshot = snapParsed;
           }
           logger.debug(`[MenuLayout] Loaded layout version ${version}, ${layout.length} rows, snapshot available: ${snapshot !== null}`);
+          logger.info(`[MenuLayout] DB read summary: ${this.menuTextSummary(layout)}`);
         }
       }
     } catch (err) {
@@ -304,6 +305,7 @@ class SettingsService {
     // Log diff
     const oldSerialized = JSON.stringify(oldLayout);
     const newSerialized = JSON.stringify(layout);
+    logger.info(`[MenuLayout] Post-save summary: ${this.menuTextSummary(layout)}`);
     if (oldSerialized !== newSerialized) {
       logger.info(`[MenuLayout] Saved version ${newVersion} (${layout.length} rows). Changed: ${oldSerialized !== newSerialized}`);
     } else {

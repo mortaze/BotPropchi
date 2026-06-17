@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { ChangeEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Plus, SquareStack, Trophy } from "lucide-react";
 import { toast } from "sonner";
@@ -65,9 +65,9 @@ export default function SeasonsPage() {
           <CardHeader><h2 className="font-semibold">ایجاد فصل جدید</h2></CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
-              <Input label="نام فصل" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="مثال: Summer 2026" />
-              <Input label="تاریخ شروع" type="date" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
-              <Input label="تاریخ پایان" type="date" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} />
+              <Input label="نام فصل" value={newName} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)} placeholder="مثال: Summer 2026" />
+              <Input label="تاریخ شروع" type="date" value={newStart} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewStart(e.target.value)} />
+              <Input label="تاریخ پایان" type="date" value={newEnd} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewEnd(e.target.value)} />
               <div className="flex items-end gap-2">
                 <Button onClick={() => createMutation.mutate()} loading={createMutation.isPending}>ذخیره</Button>
                 <Button variant="outline" onClick={() => setShowCreate(false)}>لغو</Button>
