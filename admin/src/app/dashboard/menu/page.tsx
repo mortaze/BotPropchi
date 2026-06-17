@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Eye, EyeOff, Save, RotateCcw, RefreshCw, GripVertical } from "lucide-react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, Save, RotateCcw, RefreshCw, GripVertical, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -31,11 +31,13 @@ function SortableRow({
   row,
   rowIndex,
   onToggleVisibility,
+  onDelete,
   isDragging,
 }: {
   row: MenuLayoutButton[];
   rowIndex: number;
   onToggleVisibility: (ri: number, bi: number) => void;
+  onDelete: (ri: number, bi: number) => void;
   isDragging: boolean;
 }) {
   const {
@@ -75,6 +77,7 @@ function SortableRow({
                 rowIndex={rowIndex}
                 btnIndex={bi}
                 onToggleVisibility={onToggleVisibility}
+                onDelete={onDelete}
                 isDragging={isDragging}
               />
             ))}
@@ -90,11 +93,13 @@ function SortableButton({
   rowIndex,
   btnIndex,
   onToggleVisibility,
+  onDelete,
 }: {
   btn: MenuLayoutButton;
   rowIndex: number;
   btnIndex: number;
   onToggleVisibility: (ri: number, bi: number) => void;
+  onDelete: (ri: number, bi: number) => void;
   isDragging: boolean;
 }) {
   const {
@@ -131,6 +136,9 @@ function SortableButton({
       <div className="flex shrink-0 gap-1">
         <Button size="sm" variant="ghost" onClick={() => onToggleVisibility(rowIndex, btnIndex)}>
           {(btn.visible ?? true) ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+        </Button>
+        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => onDelete(rowIndex, btnIndex)}>
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
@@ -186,6 +194,35 @@ export default function MenuPage() {
     },
     onError: (e) => toast.error(getApiError(e)),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (buttonId: string) => menuApi.deleteButton(buttonId),
+    onSuccess: (data) => {
+      toast.success("دکمه حذف شد");
+      setLayout(data.layout);
+      setVersion(data.version);
+    },
+    onError: (e) => toast.error(getApiError(e)),
+  });
+
+  function handleDelete(rowIndex: number, btnIndex: number) {
+    const btn = layout[rowIndex]?.[btnIndex];
+    if (!btn) return;
+    const buttonId = btn.id;
+    if (!buttonId) {
+      // If no ID, remove from layout directly
+      setLayout((prev) => {
+        const next = prev.map((r) => [...r]);
+        next[rowIndex].splice(btnIndex, 1);
+        return next.filter((r) => r.length > 0);
+      });
+      toast.success("دکمه حذف شد (محلی)");
+      return;
+    }
+    const confirmed = window.confirm(`آیا از حذف دکمه "${btn.text}" اطمینان دارید؟`);
+    if (!confirmed) return;
+    deleteMutation.mutate(buttonId);
+  }
 
   function toggleVisibility(rowIndex: number, btnIndex: number) {
     setLayout((prev) => {
@@ -294,6 +331,7 @@ export default function MenuPage() {
                     row={row}
                     rowIndex={ri}
                     onToggleVisibility={toggleVisibility}
+                    onDelete={handleDelete}
                     isDragging={activeId === `row-${ri}`}
                   />
                 ))}

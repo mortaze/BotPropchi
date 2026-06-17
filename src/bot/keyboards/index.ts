@@ -15,7 +15,8 @@ type DiscountWithFirm = DiscountCode & {
 export function buildMainMenuKeyboard(
   isAdmin = false,
   _features: Record<string, boolean> = {},
-  menuLayout?: any[][]
+  menuLayout?: any[][],
+  displayMode: 'always_open' | 'toggle_allowed' = 'always_open'
 ) {
   if (menuLayout && menuLayout.length > 0) {
     const visibleRows = menuLayout
@@ -32,6 +33,10 @@ export function buildMainMenuKeyboard(
       if (!allTexts.includes('👨‍💼 پنل ادمین')) {
         visibleRows.push(['👨‍💼 پنل ادمین']);
       }
+    }
+
+    if (displayMode === 'toggle_allowed') {
+      visibleRows.push(['🗕 بستن منو']);
     }
 
     return Markup.keyboard(visibleRows).resize().persistent();

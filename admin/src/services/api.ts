@@ -358,6 +358,14 @@ export const settingsApi = {
     const { data } = await api.patch("/api/settings/mini-app", payload);
     return data;
   },
+  async getMenuDisplayMode(): Promise<{ success: boolean; mode: 'always_open' | 'toggle_allowed' }> {
+    const { data } = await api.get("/api/settings/menu-display-mode");
+    return data;
+  },
+  async setMenuDisplayMode(mode: 'always_open' | 'toggle_allowed'): Promise<{ success: boolean; mode: string }> {
+    const { data } = await api.put("/api/settings/menu-display-mode", { mode });
+    return data;
+  },
 };
 
 
@@ -521,6 +529,10 @@ export const menuApi = {
   },
   async getVersion(): Promise<{ success: boolean; currentVersion: number }> {
     const { data } = await api.get("/api/menu/undo-history");
+    return data;
+  },
+  async deleteButton(buttonId: string): Promise<{ success: boolean; message: string; layout: MenuLayoutButton[][]; version: number }> {
+    const { data } = await api.post("/api/menu/delete-button", { buttonId });
     return data;
   },
 };

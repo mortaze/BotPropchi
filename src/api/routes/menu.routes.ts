@@ -35,25 +35,32 @@ menuRouter.put('/layout', async (req, res) => {
 
 menuRouter.post('/sync-posts', async (_req, res) => {
   try {
-    const posts = await postService.getPublished();
-    let added = 0;
-    for (const post of posts) {
-      const layout = await settingsService.getMenuLayout();
-      const ref = `post:${post.id}`;
-      const exists = layout.some(row => row.some((btn: any) => btn.ref === ref));
-      if (!exists) {
-        layout.push([{ ref, text: post.title, visible: false }]);
-        added++;
-      }
-    }
-    if (added > 0) {
-      await settingsService.saveMenuLayout(await settingsService.getMenuLayout());
-    }
+    const result = await settingsService.syncMenuWithPosts();
     const version = await settingsService.getSetting('menu_layout_version') || 0;
-    res.json({ success: true, message: `${added} پست به منو اضافه شد`, version: Number(version) });
+    res.json({
+      success: true,
+      message: `${result.added} پست اضافه شد، ${result.removed} ارجاع نامعتبر حذف شد، ${result.madeVisible} پست قابل مشاهده شد`,
+      version: Number(version),
+      result,
+    });
   } catch (err) {
     logger.error('[MenuRouter] sync-posts error:', err);
     res.status(500).json({ success: false, error: 'خطا در همگام‌سازی' });
+  }
+});
+
+menuRouter.post('/delete-button', async (req, res) => {
+  const schema = z.object({ buttonId: z.string() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+  try {
+    await settingsService.removeButtonFromLayout(parsed.data.buttonId);
+    const layout = await settingsService.getMenuLayout();
+    const version = await settingsService.getSetting('menu_layout_version') || 0;
+    res.json({ success: true, message: 'دکمه حذف شد', layout, version: Number(version) });
+  } catch (err) {
+    logger.error('[MenuRouter] delete-button error:', err);
+    res.status(500).json({ success: false, error: 'خطا در حذف دکمه' });
   }
 });
 

@@ -49,3 +49,15 @@ settingsRouter.patch('/services/:key', requireOwner, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
   res.json({ success: true, item: await settingsService.setFeature(req.params.key, parsed.data.isEnabled) });
 });
+
+settingsRouter.get('/menu-display-mode', requireOwner, async (_req, res) => {
+  const mode = await settingsService.getMenuDisplayMode();
+  res.json({ success: true, mode });
+});
+
+settingsRouter.put('/menu-display-mode', requireOwner, async (req, res) => {
+  const parsed = z.object({ mode: z.enum(['always_open', 'toggle_allowed']) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+  await settingsService.setMenuDisplayMode(parsed.data.mode);
+  res.json({ success: true, mode: parsed.data.mode });
+});

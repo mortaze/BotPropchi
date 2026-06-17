@@ -72,7 +72,8 @@ async function adminReplyOptions(telegramId?: number) {
   const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
   const features = await settingsService.getFeatureMap();
   const menuLayout = await settingsService.getMenuLayout().catch(() => []);
-  return buildMainMenuKeyboard(Boolean(admin), features, menuLayout);
+  const displayMode = await settingsService.getMenuDisplayMode().catch(() => 'always_open' as const);
+  return buildMainMenuKeyboard(Boolean(admin), features, menuLayout, displayMode);
 }
 
 function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; content: string }[] } {
@@ -329,8 +330,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
             {
               link_preview_options: { is_disabled: true },
               ...Markup.inlineKeyboard([
-                [Markup.button.callback('👤 مشاهده کاربر', 'noop')],
-                [Markup.button.callback('📊 آمار', 'noop')],
+                [Markup.button.callback('📊 آمار', `admin:stats:${ctx.from?.id}`)],
               ]),
             }
           );
@@ -360,6 +360,85 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
     await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+  });
+
+  // ─── Admin: Statistics (from new user notification) ─────────────
+  bot.action(/^admin:stats:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+
+    try {
+      const now = new Date();
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const startMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalUsers,
+        usersToday,
+        usersThisWeek,
+        usersThisMonth,
+        activeUsers,
+        blockedUsers,
+        returningUsers,
+        totalReferrals,
+        totalPosts,
+        publishedPosts,
+      ] = await Promise.all([
+        prisma.user.count(),
+        prisma.user.count({ where: { createdAt: { gte: startToday } } }),
+        prisma.user.count({ where: { createdAt: { gte: startWeek } } }),
+        prisma.user.count({ where: { createdAt: { gte: startMonth } } }),
+        prisma.user.count({ where: { updatedAt: { gte: startWeek } } }),
+        prisma.user.count({ where: { isBlocked: true } }),
+        prisma.user.count({ where: { updatedAt: { gte: startMonth }, createdAt: { lt: startMonth } } }),
+        prisma.referral.count(),
+        prisma.post.count(),
+        prisma.post.count({ where: { status: 'PUBLISHED', isPublished: true } }),
+      ]);
+
+      const growthPercent = totalUsers > 0 ? ((usersThisMonth / totalUsers) * 100).toFixed(1) : '0.0';
+
+      const message = [
+        '📊 *آمار جامع سیستم*',
+        '',
+        '👥 *کاربران*',
+        `• کل کاربران: ${totalUsers.toLocaleString('fa-IR')}`,
+        `• امروز: ${usersToday.toLocaleString('fa-IR')}`,
+        `• این هفته: ${usersThisWeek.toLocaleString('fa-IR')}`,
+        `• این ماه: ${usersThisMonth.toLocaleString('fa-IR')}`,
+        `• کاربران فعال (هفته): ${activeUsers.toLocaleString('fa-IR')}`,
+        `• کاربران مسدود: ${blockedUsers.toLocaleString('fa-IR')}`,
+        `• بازگشتی‌ها (ماه): ${returningUsers.toLocaleString('fa-IR')}`,
+        `• نرخ رشد ماهانه: ${growthPercent}%`,
+        '',
+        '📄 *محتوا*',
+        `• کل پست‌ها: ${totalPosts.toLocaleString('fa-IR')}`,
+        `• پست‌های منتشر شده: ${publishedPosts.toLocaleString('fa-IR')}`,
+        '',
+        '🔗 *دعوت دوستان*',
+        `• کل دعوت‌ها: ${totalReferrals.toLocaleString('fa-IR')}`,
+      ].join('\n');
+
+      const userId = Number(ctx.match[1]);
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🔄 بروزرسانی', `admin:stats:${userId}`)],
+      ]);
+
+      if (ctx.callbackQuery?.message) {
+        try {
+          await ctx.editMessageText(message, { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...keyboard });
+        } catch {
+          await ctx.reply(message, { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...keyboard });
+        }
+      } else {
+        await ctx.reply(message, { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...keyboard });
+      }
+    } catch (err) {
+      logger.error('[AdminStats] Error:', err);
+      await ctx.reply('❌ خطا در دریافت آمار').catch(() => {});
+    }
   });
 
   // ─── Menu Builder (only rearrange, no creation, no auto-sync) ───
@@ -584,6 +663,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
       }
     } catch {}
     return next();
+  });
+
+  // ─── Close main menu (toggle_allowed mode) ──────────────────
+  bot.hears('🗕 بستن منو', async (ctx) => {
+    await ctx.reply('✅ منو بسته شد. برای نمایش دوباره منو، /start را بزنید.', Markup.removeKeyboard());
   });
 
   bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {

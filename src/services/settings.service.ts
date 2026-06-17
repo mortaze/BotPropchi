@@ -320,22 +320,36 @@ class SettingsService {
   }
 
   // ─── Post ↔ Menu auto-linking ─────────────────────────
-  async addPostToMenu(postId: number, title: string): Promise<void> {
+  async addPostToMenu(postId: number, title: string, visible = false): Promise<void> {
     const layout = await this.getMenuLayout();
     const ref = `post:${postId}`;
 
     // Check if already exists in layout
-    const exists = layout.some(row => row.some(btn => btn.ref === ref));
+    let exists = false;
+    for (const row of layout) {
+      for (const btn of row) {
+        if (btn.ref === ref) {
+          exists = true;
+          // Update title if changed
+          if (btn.text !== title) {
+            btn.text = title;
+          }
+          break;
+        }
+      }
+      if (exists) break;
+    }
     if (exists) {
-      logger.debug(`[MenuLayout] Post already in menu: "${title}" (${ref})`);
+      await this.saveMenuLayout(layout);
+      logger.debug(`[MenuLayout] Post already in menu: "${title}" (${ref}) — updated`);
       return;
     }
 
-    // Add as a new row with visibility=false (hidden by default)
+    // Add as a new row with visibility controlled by param
     this.ensureButtonIds(layout);
-    layout.push([{ id: `btn_${this.nextButtonId++}`, ref, text: title, visible: false }]);
+    layout.push([{ id: `btn_${this.nextButtonId++}`, ref, text: title, visible }]);
     await this.saveMenuLayout(layout);
-    logger.info(`[MenuLayout] Added post to menu: "${title}" (ref: ${ref})`);
+    logger.info(`[MenuLayout] Added post to menu: "${title}" (ref: ${ref}, visible: ${visible})`);
   }
 
   async removePostFromMenu(postId: number): Promise<void> {
@@ -354,6 +368,104 @@ class SettingsService {
     const cleaned = layout.filter(row => row.length > 0);
     await this.saveMenuLayout(cleaned);
     logger.info(`[MenuLayout] Removed post from menu: ref=${ref}`);
+  }
+
+  // ─── Individual button removal ─────────────────────────
+  async removeButtonFromLayout(buttonId: string): Promise<void> {
+    const layout = await this.getMenuLayout();
+    let removed = false;
+
+    for (const row of layout) {
+      for (let c = row.length - 1; c >= 0; c--) {
+        if (row[c].id === buttonId) {
+          row.splice(c, 1);
+          removed = true;
+        }
+      }
+    }
+
+    if (!removed) {
+      logger.warn(`[MenuLayout] Button ${buttonId} not found in layout`);
+      return;
+    }
+
+    // Remove empty rows
+    const cleaned = layout.filter(row => row.length > 0);
+    await this.saveMenuLayout(cleaned);
+    logger.info(`[MenuLayout] Removed button: ${buttonId}`);
+  }
+
+  // ─── Full menu synchronisation ─────────────────────────
+  // Scans all posts, adds missing publishable ones, removes invalid refs.
+  // Safe and idempotent — running multiple times never creates duplicates.
+  async syncMenuWithPosts(): Promise<{ added: number; removed: number; madeVisible: number }> {
+    const layout = await this.getMenuLayout();
+    const added: number[] = [];
+    let removed = 0;
+    let madeVisible = 0;
+
+    // 1. Scan all publishable posts
+    const posts = await prisma.post.findMany({
+      where: {
+        status: { in: ['PUBLISHED', 'SCHEDULED'] },
+        isPublished: true,
+      },
+      select: { id: true, title: true },
+    });
+
+    // Build ref set of valid posts
+    const validRefs = new Set(posts.map(p => `post:${p.id}`));
+    const postMap = new Map(posts.map(p => [`post:${p.id}`, p.title]));
+
+    // 2. Scan layout — remove invalid refs, identify missing posts
+    const existingRefs = new Set<string>();
+    for (const row of layout) {
+      for (let c = row.length - 1; c >= 0; c--) {
+        const btn = row[c];
+        if (btn.ref && btn.ref.startsWith('post:')) {
+          if (!validRefs.has(btn.ref)) {
+            // Remove invalid reference (post was deleted / unpublished / archived)
+            row.splice(c, 1);
+            removed++;
+          } else {
+            existingRefs.add(btn.ref);
+            // Make visible if it's a published/scheduled post that was hidden
+            if (!btn.visible) {
+              btn.visible = true;
+              madeVisible++;
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Add missing publishable posts
+    this.ensureButtonIds(layout);
+    for (const ref of validRefs) {
+      if (!existingRefs.has(ref)) {
+        const title = postMap.get(ref) || 'Post';
+        layout.push([{ id: `btn_${this.nextButtonId++}`, ref, text: title, visible: true }]);
+        added.push(Number(ref.replace('post:', '')));
+      }
+    }
+
+    // 4. Clean empty rows and save
+    const cleaned = layout.filter(row => row.length > 0);
+    await this.saveMenuLayout(cleaned);
+    logger.info(`[MenuLayout] Sync complete: ${added.length} added, ${removed} removed, ${madeVisible} made visible`);
+    return { added: added.length, removed, madeVisible };
+  }
+
+  // ─── Menu Display Mode ────────────────────────────────
+  async getMenuDisplayMode(): Promise<'always_open' | 'toggle_allowed'> {
+    const mode = await this.getSetting('menu_display_mode');
+    if (mode === 'toggle_allowed') return 'toggle_allowed';
+    return 'always_open';
+  }
+
+  async setMenuDisplayMode(mode: 'always_open' | 'toggle_allowed'): Promise<void> {
+    await this.setSetting('menu_display_mode', mode);
+    logger.info(`[MenuDisplay] Display mode set to: ${mode}`);
   }
 
 }

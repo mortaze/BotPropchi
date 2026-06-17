@@ -112,8 +112,8 @@ export const postService = {
       updatedBy: publishedBy ?? undefined,
     });
     this.invalidateCache();
-    // Auto-add to menu_layout (hidden by default)
-    await settingsService.addPostToMenu(post.id, post.title).catch(err => {
+    // Auto-add to menu_layout (visible by default for published posts)
+    await settingsService.addPostToMenu(post.id, post.title, true).catch(err => {
       logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
     });
     await systemLogService.log({
@@ -133,7 +133,11 @@ export const postService = {
       updatedBy: undefined,
     });
     this.invalidateCache();
-    // Don't remove from menu - keep the button reference, it just won't resolve
+    // Remove from menu (unpublished posts should not appear)
+    await settingsService.removePostFromMenu(post.id).catch(err => {
+      logger.warn(`[Post] Failed to remove unpublished post from menu:`, err);
+    });
+    eventBus.emit(Events.POST_UNPUBLISHED, { postId: id, title: post.title });
     logger.info(`[Post] Unpublished: "${post.title}"`);
     return post;
   },
@@ -144,6 +148,12 @@ export const postService = {
       isPublished: false,
     });
     this.invalidateCache();
+    // Remove from menu (archived posts should not appear)
+    await settingsService.removePostFromMenu(post.id).catch(err => {
+      logger.warn(`[Post] Failed to remove archived post from menu:`, err);
+    });
+    eventBus.emit(Events.POST_UNPUBLISHED, { postId: id, title: post.title });
+    logger.info(`[Post] Archived: "${post.title}"`);
     return post;
   },
 
