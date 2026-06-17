@@ -6,13 +6,28 @@ import { logger } from '../../utils/logger';
 
 export const menuRouter = Router();
 
-const layoutSchema = z.array(z.array(z.object({
+const menuButtonSchema = z.object({
   id: z.string().optional(),
-  ref: z.string(),
-  text: z.string(),
+  ref: z.string().min(1),
+  text: z.string().default(''),
+  title: z.string().optional(),
+  label: z.string().optional(),
   type: z.string().optional(),
   visible: z.boolean().optional(),
-})));
+  rowIndex: z.number().optional(),
+  position: z.number().optional(),
+}).passthrough().superRefine((button, ctx) => {
+  const displayText = button.text || button.label || button.title;
+  const isPostRef = button.ref.startsWith('post:') || button.ref.startsWith('post_');
+  if (!isPostRef && (!displayText || !displayText.trim())) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['text'], message: 'Button text is required for system buttons' });
+  }
+  if ([button.text, button.label, button.title].some((value) => typeof value === 'string' && value.includes('???'))) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['text'], message: 'Malformed button text is not accepted' });
+  }
+});
+
+const layoutSchema = z.array(z.array(menuButtonSchema).max(8)).max(20);
 
 menuRouter.get('/layout', async (_req, res) => {
   // Return resolved layout with current post titles from DB (admin mode: show all entries)
@@ -31,8 +46,9 @@ menuRouter.put('/layout', async (req, res) => {
     return res.status(400).json({ success: false, error: validation.reason });
   }
   await settingsService.saveMenuLayout(parsed.data);
+  const layout = await settingsService.getResolvedMenuLayout(false);
   const version = await settingsService.getSetting('menu_layout_version') || 0;
-  res.json({ success: true, layout: parsed.data, version: Number(version) });
+  res.json({ success: true, layout, version: Number(version) });
 });
 
 menuRouter.post('/sync-posts', async (_req, res) => {

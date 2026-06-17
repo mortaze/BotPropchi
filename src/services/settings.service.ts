@@ -3,7 +3,7 @@ import { prisma } from '../prisma/client';
 import { BRAND_NAME } from '../constants';
 import { logger } from '../utils/logger';
 import { eventBus, Events } from '../utils/events';
-import { sanitizeTelegramText, ensureTelegramSafe, validateUnicode, logUnicodeIssue } from '../utils/unicode';
+import { sanitizeTelegramText, validateUnicode, sanitizeJsonStrings, validateTelegramButton } from '../utils/unicode';
 
 export const DEFAULT_MENU_ITEMS = [
   { key: 'dashboard', label: 'داشبورد', href: '/dashboard', order: 10, ownerOnly: false, featureKey: null },
@@ -155,6 +155,12 @@ class SettingsService {
   private nextButtonId = 1;
 
   private ensureButtonIds(layout: any[][]): any[][] {
+    for (const row of layout) {
+      for (const btn of row) {
+        const idNumber = Number(String(btn?.id || '').replace('btn_', ''));
+        if (Number.isFinite(idNumber) && idNumber >= this.nextButtonId) this.nextButtonId = idNumber + 1;
+      }
+    }
     return layout.map(row =>
       row.map(btn => {
         if (!btn.id) {
@@ -163,6 +169,15 @@ class SettingsService {
         return btn;
       })
     );
+  }
+
+  private normalizeMenuButton(btn: any, rowIndex: number, colIndex: number): any {
+    const normalized = { ...btn, rowIndex, position: colIndex };
+    const label = normalized.text ?? normalized.label ?? normalized.title ?? '';
+    normalized.text = typeof label === 'string' ? sanitizeTelegramText(label) : '';
+    if (typeof normalized.label === 'string') normalized.label = sanitizeTelegramText(normalized.label);
+    if (typeof normalized.title === 'string') normalized.title = sanitizeTelegramText(normalized.title);
+    return normalized;
   }
 
   async getMenuLayout(): Promise<any[][]> {
@@ -235,32 +250,49 @@ class SettingsService {
   async saveMenuLayout(layout: any[][], preserveVersion?: number) {
     const oldLayout = this.menuLayoutCache?.layout || [];
 
-    // Ensure all buttons have stable IDs
-    layout = this.ensureButtonIds(layout);
+    // Ensure all buttons have stable IDs and preserve every metadata field while normalizing text fields.
+    layout = this.ensureButtonIds(layout).map((row, rowIndex) =>
+      row.map((btn, colIndex) => this.normalizeMenuButton(btn, rowIndex, colIndex))
+    );
 
-    // Only sanitize the text field — never touch ref, id, or other fields
-    for (const row of layout) {
-      for (const btn of row) {
-        if (btn.text && typeof btn.text === 'string') {
-          btn.text = sanitizeTelegramText(btn.text);
-        }
+    const validation = this.validateMenuLayout(layout);
+    if (!validation.valid) {
+      logger.warn(`[MenuLayout] Refusing to save invalid layout: ${validation.reason}`);
+      throw new Error(validation.reason || 'Invalid menu layout');
+    }
+
+    // Save layout to DB as JSONB through Prisma; PostgreSQL stores UTF-8 natively.
+    await prisma.$transaction(async (tx) => {
+      await tx.systemSetting.upsert({
+        where: { key: this.MENU_LAYOUT_KEY },
+        update: { value: layout },
+        create: { key: this.MENU_LAYOUT_KEY, value: layout },
+      });
+
+      // Save snapshot of previous valid layout
+      if (this.menuLayoutCache?.layout && this.menuLayoutCache.layout.length > 0) {
+        await tx.systemSetting.upsert({
+          where: { key: this.MENU_LAYOUT_SNAPSHOT_KEY },
+          update: { value: this.menuLayoutCache.layout },
+          create: { key: this.MENU_LAYOUT_SNAPSHOT_KEY, value: this.menuLayoutCache.layout },
+        });
       }
-    }
 
-    // Save layout to DB
-    await this.setSetting(this.MENU_LAYOUT_KEY, layout);
+      await tx.systemSetting.upsert({
+        where: { key: 'menu_layout_next_id' },
+        update: { value: this.nextButtonId },
+        create: { key: 'menu_layout_next_id', value: this.nextButtonId },
+      });
 
-    // Save snapshot of previous valid layout
-    if (this.menuLayoutCache?.layout && this.menuLayoutCache.layout.length > 0) {
-      await this.setSetting(this.MENU_LAYOUT_SNAPSHOT_KEY, this.menuLayoutCache.layout);
-    }
+      const newVersion = preserveVersion ?? ((this.menuLayoutCache?.version ?? 0) + 1);
+      await tx.systemSetting.upsert({
+        where: { key: this.MENU_LAYOUT_VERSION_KEY },
+        update: { value: newVersion },
+        create: { key: this.MENU_LAYOUT_VERSION_KEY, value: newVersion },
+      });
+    });
 
-    // Persist next ID for stable IDs across restarts
-    await this.setSetting('menu_layout_next_id', this.nextButtonId);
-
-    // Increment version
     const newVersion = preserveVersion ?? ((this.menuLayoutCache?.version ?? 0) + 1);
-    await this.setSetting(this.MENU_LAYOUT_VERSION_KEY, newVersion);
 
     // Update cache
     this.menuLayoutCache = {
@@ -286,7 +318,18 @@ class SettingsService {
       for (let c = 0; c < layout[r].length; c++) {
         const btn = layout[r][c];
         if (!btn || typeof btn !== 'object') return { valid: false, reason: `Button [${r}][${c}] is not an object` };
-        if (!btn.text && !btn.ref) return { valid: false, reason: `Button [${r}][${c}] has no text or ref` };
+        const text = typeof btn.text === 'string' ? btn.text : '';
+        const label = typeof btn.label === 'string' ? btn.label : '';
+        const title = typeof btn.title === 'string' ? btn.title : '';
+        const ref = typeof btn.ref === 'string' ? btn.ref : '';
+        if (!ref) return { valid: false, reason: `Button [${r}][${c}] has no ref` };
+        const isPostRef = ref.startsWith('post:') || ref.startsWith('post_');
+        if (!isPostRef && !(text || label || title).trim()) return { valid: false, reason: `Button [${r}][${c}] has empty text` };
+        for (const value of [text, label, title]) {
+          if (value.includes('???')) return { valid: false, reason: `Button [${r}][${c}] contains corrupted text` };
+          const check = validateTelegramButton(value);
+          if (!check.valid) return { valid: false, reason: `Button [${r}][${c}] has malformed Unicode` };
+        }
         if (layout[r].length > 8) return { valid: false, reason: `Row ${r} exceeds 8 buttons` };
       }
     }

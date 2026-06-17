@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { MouseEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { Eye, Plus, Search, Trash2, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Pagination, TableRowSkeleton } from "@/components/ui";
@@ -23,9 +24,20 @@ export default function PostsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const qc = useQueryClient();
+  const router = useRouter();
+
+  const openPost = (postId: number) => {
+    router.push(`/dashboard/posts/${postId}`);
+  };
+
+  const stopRowClick = (event: MouseEvent) => {
+    event.stopPropagation();
+  };
   const query = useQuery({
     queryKey: ["posts", page, status, search],
     queryFn: () => postsApi.getAll({ page, limit: 20, status: status || undefined, search: search || undefined }),
+    staleTime: 0,
+    retry: 2,
   });
   const deleteMutation = useMutation({
     mutationFn: postsApi.delete,
@@ -84,17 +96,18 @@ export default function PostsPage() {
             </thead>
             <tbody>
               {query.isLoading && Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} cols={6} />)}
+              {query.isFetching && !query.isLoading ? (
+                <tr><td colSpan={6} className="py-2 text-center text-xs text-muted-foreground">در حال به‌روزرسانی فهرست...</td></tr>
+              ) : null}
               {(query.data?.items ?? []).map((post) => (
-                <tr key={post.id}>
+                <tr key={post.id} className="cursor-pointer transition-colors hover:bg-muted/50" tabIndex={0} role="button" onClick={() => openPost(post.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openPost(post.id); }} onMouseEnter={() => qc.prefetchQuery({ queryKey: ["post", post.id], queryFn: () => postsApi.getById(post.id), staleTime: 10_000 })}>
                   <td>
                     <Badge variant={statusConfig[post.status].variant}>
                       {statusConfig[post.status].icon} {statusConfig[post.status].label}
                     </Badge>
                   </td>
                   <td>
-                    <Link href={`/dashboard/posts/${post.id}`} className="font-medium hover:text-primary">
-                      {post.title}
-                    </Link>
+                    <span className="font-medium hover:text-primary">{post.title}</span>
                   </td>
                   <td>
                     {post.commands?.length
@@ -105,11 +118,9 @@ export default function PostsPage() {
                   </td>
                   <td>{formatNumber(post._count?.views ?? 0)}</td>
                   <td className="text-sm text-muted-foreground">{safeDateFormat(post.publishedAt, undefined, "هنوز منتشر نشده")}</td>
-                  <td>
+                  <td onClick={stopRowClick}>
                     <div className="flex gap-1">
-                      <Link href={`/dashboard/posts/${post.id}`}>
-                        <Button size="sm" variant="ghost"><Eye className="h-4 w-4" /></Button>
-                      </Link>
+                      <Button size="sm" variant="ghost" onClick={() => openPost(post.id)}><Eye className="h-4 w-4" /></Button>
                       {post.status === "PUBLISHED" ? (
                         <Button size="sm" variant="ghost" onClick={() => unpublishMutation.mutate(post.id)} loading={unpublishMutation.isPending}><XCircle className="h-4 w-4" /></Button>
                       ) : (
