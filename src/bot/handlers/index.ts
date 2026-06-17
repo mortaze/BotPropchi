@@ -24,6 +24,7 @@ import { config } from '../../config';
 import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
+import { sanitizeTelegramText, sanitizeTelegramExtra } from '../../utils/unicode';
 import {
   propFirmDiscountKeyboard,
   lotteryHistoryKeyboard,
@@ -103,7 +104,7 @@ async function sendPostToUser(ctx: any, post: any) {
   const { segments } = parseCopyBlocks(rawText);
   const hasCopyBlocks = segments.some(s => s.type === 'copy');
 
-  const textWithoutCopy = segments.filter(s => s.type === 'text').map(s => s.content).join('').trim();
+  const textWithoutCopy = sanitizeTelegramText(segments.filter(s => s.type === 'text').map(s => s.content).join('').trim(), 4096);
 
   if (post.mediaFileId && post.mediaType) {
     const mediaConfig: any = {
@@ -171,17 +172,18 @@ function buildPostInlineKeyboard(buttons: any[], postId?: number): any[][] {
   return buttons.map((row: any[]) =>
     row.map((btn: any) => {
       if (!btn) return null;
+      const safeText = sanitizeTelegramText(btn.text || 'Link', 128);
       switch (btn.type) {
-        case 'URL': return Markup.button.url(btn.text || 'Link', btn.value || '');
+        case 'URL': return Markup.button.url(safeText, btn.value || '');
         case 'CALLBACK': {
           const clickData = JSON.stringify({ postId, text: btn.text, type: btn.type });
-          return Markup.button.callback(btn.text || 'Button', `post:user:click:${clickData}`);
+          return Markup.button.callback(safeText, `post:user:click:${clickData}`);
         }
-        case 'OPEN_MINI_APP': return Markup.button.webApp(btn.text || 'Open', btn.value || '');
-        case 'COPY_TEXT': return Markup.button.callback(btn.text || 'Copy', `post:user:copy:${btn.value || ''}`);
-        case 'SEND_COMMAND': return Markup.button.switchToChat(btn.text || 'Send', btn.value || '');
-        case 'INTERNAL_NAV': return Markup.button.callback(btn.text || 'Nav', btn.value || 'noop');
-        default: return Markup.button.url(btn.text || 'Link', btn.value || '');
+        case 'OPEN_MINI_APP': return Markup.button.webApp(safeText, btn.value || '');
+        case 'COPY_TEXT': return Markup.button.callback(safeText, `post:user:copy:${sanitizeTelegramText(btn.value || '', 64)}`);
+        case 'SEND_COMMAND': return Markup.button.switchToChat(safeText, btn.value || '');
+        case 'INTERNAL_NAV': return Markup.button.callback(safeText, `post:user:nav:${sanitizeTelegramText(btn.value || 'noop', 64)}`);
+        default: return Markup.button.url(safeText, btn.value || '');
       }
     }).filter(Boolean)
   );
@@ -283,16 +285,18 @@ async function finalizeBotBroadcast(ctx: any, pending: PendingBroadcast) {
 
 // ─── Single-message editing: edit if possible, reply as fallback ───
 async function safeEdit(ctx: any, text: string, extra?: any): Promise<void> {
+  const safeText = sanitizeTelegramText(text, 4096);
+  const safeExtra = sanitizeTelegramExtra(extra);
   if (ctx.callbackQuery?.message) {
     try {
-      await ctx.editMessageText(text, extra);
+      await ctx.editMessageText(safeText, safeExtra);
       return;
     } catch (e: any) {
       // EditMessage might fail if message is media, too old, or content unchanged
       logger.debug('[safeEdit] Fallback to reply:', e.description || e.message);
     }
   }
-  await ctx.reply(text, extra).catch(() => {});
+  await ctx.reply(safeText, safeExtra).catch(() => {});
 }
 
 export function registerHandlers(bot: Telegraf<Context>) {

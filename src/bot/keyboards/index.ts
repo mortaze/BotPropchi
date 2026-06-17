@@ -4,6 +4,7 @@
 import { Markup } from 'telegraf';
 import { DiscountCode, PropFirm } from '@prisma/client';
 import { config } from '../../config';
+import { sanitizeTelegramText, sanitizeTextArray } from '../../utils/unicode';
 
 type DiscountWithFirm = DiscountCode & {
   propFirm: PropFirm;
@@ -23,7 +24,7 @@ export function buildMainMenuKeyboard(
       .map(row =>
         row
           .filter((btn: any) => btn.visible !== false)
-          .map((btn: any) => btn.text || '')
+          .map((btn: any) => sanitizeTelegramText(btn.text || '', 128))
           .filter(Boolean)
       )
       .filter((row: string[]) => row.length > 0);
@@ -91,7 +92,7 @@ export function discountCardKeyboard(
   // دکمه کپی کد
   buttons.push([
     Markup.button.callback(
-      `📋 کپی کد: ${discount.code}`,
+      `📋 کپی کد: ${sanitizeTelegramText(discount.code, 64)}`,
       `copy:${discount.id}`
     ),
   ]);

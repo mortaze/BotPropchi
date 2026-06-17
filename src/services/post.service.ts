@@ -6,6 +6,7 @@ import { systemLogService } from './system-log.service';
 import { settingsService } from './settings.service';
 import { eventBus, Events } from '../utils/events';
 import { logger } from '../utils/logger';
+import { sanitizeTelegramText, sanitizeJsonStrings, validateDbInput } from '../utils/unicode';
 
 const CACHE_KEY_PUBLISHED = 'posts:published';
 const CACHE_KEY_COMMANDS = 'posts:commands';
@@ -27,21 +28,22 @@ export const postService = {
     sortOrder?: number;
     createdBy?: bigint;
   }) {
-    const post = await postRepository.create({
-      title: data.title,
+    const sanitized = {
+      title: validateDbInput(data.title, 'post.title'),
       slug: data.slug,
-      content: data.content,
-      caption: data.caption,
+      content: data.content ? sanitizeTelegramText(data.content) : undefined,
+      caption: data.caption ? sanitizeTelegramText(data.caption) : undefined,
       mediaFileId: data.mediaFileId,
       mediaType: data.mediaType,
       albumMediaIds: data.albumMediaIds ? JSON.parse(JSON.stringify(data.albumMediaIds)) : undefined,
       parseMode: data.parseMode ?? 'Markdown',
-      buttons: data.buttons ? JSON.parse(JSON.stringify(data.buttons)) : undefined,
+      buttons: data.buttons ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
       command: data.command,
       status: data.status ?? PostStatus.DRAFT,
       sortOrder: data.sortOrder ?? 0,
       createdBy: data.createdBy,
-    });
+    };
+    const post = await postRepository.create(sanitized);
     this.invalidateCache();
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
@@ -71,6 +73,11 @@ export const postService = {
       status: existing.status,
       sortOrder: existing.sortOrder,
     });
+    // Sanitize text fields before update
+    if (typeof data.title === 'string') data.title = validateDbInput(data.title, 'post.title');
+    if (typeof data.content === 'string') data.content = sanitizeTelegramText(data.content);
+    if (typeof data.caption === 'string') data.caption = sanitizeTelegramText(data.caption);
+    if (data.buttons) data.buttons = sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons)));
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     this.invalidateCache();
 

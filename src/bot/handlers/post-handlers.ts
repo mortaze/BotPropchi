@@ -5,6 +5,7 @@ import { postService } from '../../services/post.service';
 import { systemLogService } from '../../services/system-log.service';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
+import { sanitizeTelegramText, sanitizeTelegramExtra } from '../../utils/unicode';
 import {
   postMainMenuKeyboard,
   postEditorKeyboard,
@@ -89,15 +90,17 @@ function formatPostPreview(post: any): string {
 
 // ─── Single-message editing: edit if possible, reply as fallback ───
 async function safeEdit(ctx: any, text: string, extra?: any): Promise<void> {
+  const safeText = sanitizeTelegramText(text, 4096);
+  const safeExtra = sanitizeTelegramExtra(extra);
   if (ctx.callbackQuery?.message) {
     try {
-      await ctx.editMessageText(text, extra);
+      await ctx.editMessageText(safeText, safeExtra);
       return;
     } catch (e: any) {
       logger.debug('[safeEdit] Fallback to reply:', e.description || e.message);
     }
   }
-  await ctx.reply(text, extra).catch(() => {});
+  await ctx.reply(safeText, safeExtra).catch(() => {});
 }
 
 export function registerPostHandlers(bot: Telegraf<Context>) {
@@ -358,24 +361,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const hasContent = !!(post.content || post.mediaFileId);
     const preview = formatPostPreview(post);
-    // Auto-detect: if called from callback, edit existing message; otherwise reply
-    if (ctx.callbackQuery?.message) {
-      await safeEdit(ctx, preview, {
-        parse_mode: 'Markdown',
-        link_preview_options: { is_disabled: true },
-        ...postEditorKeyboard(postId, hasContent),
-      });
-    } else {
-      try {
-        await ctx.reply(preview, {
-          parse_mode: 'Markdown',
-          link_preview_options: { is_disabled: true },
-          ...postEditorKeyboard(postId, hasContent),
-        });
-      } catch {
-        await ctx.reply(preview, { link_preview_options: { is_disabled: true }, ...postEditorKeyboard(postId, hasContent) });
-      }
-    }
+    await safeEdit(ctx, preview, {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postEditorKeyboard(postId, hasContent),
+    });
   }
 
   // ─── Edit Post Actions ───────────────────────────────────
@@ -424,27 +414,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const preview = formatPostPreview(post);
-    try {
-      if (ctx.callbackQuery?.message) {
-        await ctx.editMessageText(preview, {
-          parse_mode: 'Markdown',
-          link_preview_options: { is_disabled: true },
-          ...postViewKeyboard(post as any),
-        });
-      } else {
-        await ctx.reply(preview, {
-          parse_mode: 'Markdown',
-          link_preview_options: { is_disabled: true },
-          ...postViewKeyboard(post as any),
-        });
-      }
-    } catch {
-      if (ctx.callbackQuery?.message) {
-        await ctx.editMessageText(preview, { link_preview_options: { is_disabled: true }, ...postViewKeyboard(post as any) });
-      } else {
-        await ctx.reply(preview, { link_preview_options: { is_disabled: true }, ...postViewKeyboard(post as any) });
-      }
-    }
+    await safeEdit(ctx, preview, {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postViewKeyboard(post as any),
+    });
   });
 
   // ─── List Posts ─────────────────────────────────────────
@@ -1223,7 +1197,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const rawText = post.content || post.caption || '';
     const { segments } = parseCopyBlocks(rawText);
     const hasCopyBlocks = segments.some(s => s.type === 'copy');
-    const textWithoutCopy = segments.filter(s => s.type === 'text').map(s => s.content).join('').trim();
+    const textWithoutCopy = sanitizeTelegramText(segments.filter(s => s.type === 'text').map(s => s.content).join('').trim(), 4096);
 
     if (post.mediaFileId && post.mediaType) {
       const mediaConfig: any = { caption: textWithoutCopy || post.caption, parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(inlineButtons ? Markup.inlineKeyboard(inlineButtons) : {}) };
@@ -1283,17 +1257,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     return buttons.map((row: any[]) =>
       row.map((btn: any) => {
         if (!btn) return null;
+        const safeText = sanitizeTelegramText(btn.text || 'Link', 128);
         switch (btn.type) {
-          case 'URL': return Markup.button.url(btn.text || 'Link', btn.value || '');
+          case 'URL': return Markup.button.url(safeText, btn.value || '');
           case 'CALLBACK': {
             const clickData = JSON.stringify({ postId, text: btn.text, type: btn.type });
-            return Markup.button.callback(btn.text || 'Button', `post:user:click:${clickData}`);
+            return Markup.button.callback(safeText, `post:user:click:${clickData}`);
           }
-          case 'OPEN_MINI_APP': return Markup.button.webApp(btn.text || 'Open', btn.value || '');
-          case 'COPY_TEXT': return Markup.button.callback(btn.text || 'Copy', `post:user:copy:${btn.value || ''}`);
-          case 'SEND_COMMAND': return Markup.button.switchToChat(btn.text || 'Send', btn.value || '');
-          case 'INTERNAL_NAV': return Markup.button.callback(btn.text || 'Nav', btn.value || 'noop');
-          default: return Markup.button.url(btn.text || 'Link', btn.value || '');
+          case 'OPEN_MINI_APP': return Markup.button.webApp(safeText, btn.value || '');
+          case 'COPY_TEXT': return Markup.button.callback(safeText, `post:user:copy:${sanitizeTelegramText(btn.value || '', 64)}`);
+          case 'SEND_COMMAND': return Markup.button.switchToChat(safeText, btn.value || '');
+          case 'INTERNAL_NAV': return Markup.button.callback(safeText, `post:user:nav:${sanitizeTelegramText(btn.value || 'noop', 64)}`);
+          default: return Markup.button.url(safeText, btn.value || '');
         }
       }).filter(Boolean)
     );

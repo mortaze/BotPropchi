@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../prisma/client';
+import { sanitizeTelegramText } from '../../utils/unicode';
 
 export const adminUserRouter = Router();
 
@@ -29,7 +30,15 @@ adminUserRouter.post('/', async (req, res) => {
   const ownerCount = await prisma.admin.count({ where: { role: AdminRole.OWNER } });
   if (parsed.data.role === 'OWNER' && ownerCount > 0) return res.status(409).json({ success: false, error: 'Owner فقط یک نفر می‌تواند باشد' });
   const { password, ...data } = parsed.data;
-  const item = await prisma.admin.create({ data: { ...data, passwordHash: await bcrypt.hash(password, 12) } as any, select });
+  const sanitizedData = {
+    ...data,
+    firstName: data.firstName ? sanitizeTelegramText(data.firstName) : data.firstName,
+    lastName: data.lastName ? sanitizeTelegramText(data.lastName) : data.lastName,
+    username: data.username ? sanitizeTelegramText(data.username) : data.username,
+    email: data.email ? sanitizeTelegramText(data.email) : data.email,
+    passwordHash: await bcrypt.hash(password, 12),
+  };
+  const item = await prisma.admin.create({ data: sanitizedData as any, select });
   res.status(201).json({ success: true, item });
 });
 
@@ -44,7 +53,13 @@ adminUserRouter.patch('/:id', async (req, res) => {
     if (owner) return res.status(409).json({ success: false, error: 'Owner فقط یک نفر می‌تواند باشد' });
   }
   const { password, ...rest } = parsed.data;
-  const data: any = { ...rest };
+  const data: any = {
+    ...rest,
+    ...(rest.firstName !== undefined ? { firstName: sanitizeTelegramText(rest.firstName) } : {}),
+    ...(rest.lastName !== undefined ? { lastName: sanitizeTelegramText(rest.lastName) } : {}),
+    ...(rest.username !== undefined ? { username: sanitizeTelegramText(rest.username) } : {}),
+    ...(rest.email !== undefined ? { email: sanitizeTelegramText(rest.email) } : {}),
+  };
   if (password) data.passwordHash = await bcrypt.hash(password, 12);
   const item = await prisma.admin.update({ where: { id }, data, select });
   res.json({ success: true, item });

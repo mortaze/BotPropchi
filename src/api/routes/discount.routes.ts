@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { prisma } from '../../prisma/client';
 import { discountService } from '../../services/discount.service';
 import { settingsService } from '../../services/settings.service';
+import { sanitizeJsonStrings } from '../../utils/unicode';
 
 export const discountRouter = Router();
 
@@ -74,10 +75,9 @@ discountRouter.post('/prop-firms', requireService('prop_firms'), async (req, res
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
 
-  const firm = await prisma.propFirm.create({ data: parsed.data as any });
+  const firm = await prisma.propFirm.create({ data: sanitizeJsonStrings(parsed.data) as any });
   res.status(201).json(serializeBigInts(firm));
 });
-
 
 
 discountRouter.patch('/prop-firms/:id', requireService('prop_firms'), async (req, res) => {
@@ -94,7 +94,7 @@ discountRouter.patch('/prop-firms/:id', requireService('prop_firms'), async (req
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
 
-  const firm = await prisma.propFirm.update({ where: { id: Number(req.params.id) }, data: parsed.data as any });
+  const firm = await prisma.propFirm.update({ where: { id: Number(req.params.id) }, data: sanitizeJsonStrings(parsed.data) as any });
   res.json(serializeBigInts(firm));
 });
 

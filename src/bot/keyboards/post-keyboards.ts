@@ -1,4 +1,5 @@
 import { Markup } from 'telegraf';
+import { sanitizeTelegramText } from '../../utils/unicode';
 
 export const postMainMenuKeyboard = () =>
   Markup.keyboard([
@@ -47,7 +48,7 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
 export const postListKeyboard = (posts: any[], page: number, totalPages: number) => {
   const rows: any[][] = posts.map((p: any) => [
     Markup.button.callback(
-      `${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : p.status === 'SCHEDULED' ? '⏰' : p.status === 'HIDDEN' ? '👻' : '📦'} ${p.title.substring(0, 30)}`,
+      `${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : p.status === 'SCHEDULED' ? '⏰' : p.status === 'HIDDEN' ? '👻' : '📦'} ${sanitizeTelegramText(p.title).substring(0, 30)}`,
       `post:view:${p.id}`
     ),
   ]);
@@ -91,7 +92,7 @@ export const postButtonsEditorKeyboard = (postId: number, buttons: any[], editin
         const btn = row[c];
         rowButtons.push(
           Markup.button.callback(
-            `${btn.text?.substring(0, 15) || '???'}`,
+            `${sanitizeTelegramText(btn.text?.substring(0, 15) || '???')}`,
             `post:btn:edit:${postId}:${r}:${c}`
           )
         );
@@ -246,7 +247,7 @@ export const menuEditorKeyboard = (layout: any[][]) => {
         const prefix = btn.visible === false ? '🙈 ' : '';
         rowButtons.push(
           Markup.button.callback(
-            `${prefix}${btn.text?.substring(0, 10) || '???'}`,
+            `${prefix}${sanitizeTelegramText(btn.text?.substring(0, 10) || '???')}`,
             `menu:edit:${r}:${c}`
           )
         );

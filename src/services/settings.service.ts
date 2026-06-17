@@ -3,6 +3,7 @@ import { prisma } from '../prisma/client';
 import { BRAND_NAME } from '../constants';
 import { logger } from '../utils/logger';
 import { eventBus, Events } from '../utils/events';
+import { sanitizeTelegramText, sanitizeJsonStrings, ensureTelegramSafe, validateUnicode, logUnicodeIssue } from '../utils/unicode';
 
 export const DEFAULT_MENU_ITEMS = [
   { key: 'dashboard', label: 'داشبورد', href: '/dashboard', order: 10, ownerOnly: false, featureKey: null },
@@ -198,7 +199,15 @@ class SettingsService {
       layout = [];
     }
 
-    // Validate layout integrity
+    // Validate & sanitize layout integrity
+    if (layout.length > 0) {
+      const unicodeCheck = validateUnicode(JSON.stringify(layout));
+      if (!unicodeCheck.valid) {
+        logger.warn(`[MenuLayout] Unicode validation failed on stored layout — sanitizing`);
+        layout = sanitizeJsonStrings(layout) as any[][];
+      }
+    }
+
     const validation = this.validateMenuLayout(layout);
     if (!validation.valid) {
       logger.warn(`[MenuLayout] Validation failed: ${validation.reason}. Trying snapshot.`);
@@ -228,6 +237,9 @@ class SettingsService {
 
     // Ensure all buttons have stable IDs
     layout = this.ensureButtonIds(layout);
+
+    // Sanitize all button text before saving
+    layout = sanitizeJsonStrings(layout) as any[][];
 
     // Save layout to DB
     await this.setSetting(this.MENU_LAYOUT_KEY, layout);
