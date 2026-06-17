@@ -29,18 +29,28 @@ export default function PostDetailPage() {
     queryKey: ["post", id],
     queryFn: () => postsApi.getById(id),
     enabled: Number.isFinite(id),
+    staleTime: 0,
+    retry: 3,
   });
 
   const versionsQuery = useQuery({
     queryKey: ["post-versions", id],
     queryFn: () => postsApi.getVersions(id),
     enabled: Number.isFinite(id),
+    staleTime: 0,
+    retry: 3,
   });
 
   const updateMutation = useMutation({
     mutationFn: (payload: Parameters<typeof postsApi.update>[1]) => postsApi.update(id, payload),
-    onSuccess: () => { toast.success("پست ذخیره شد"); qc.invalidateQueries({ queryKey: ["post", id] }); },
-    onError: (e: unknown) => toast.error(getApiError(e)),
+    onMutate: async (payload) => {
+      await qc.cancelQueries({ queryKey: ["post", id] });
+      const previous = qc.getQueryData(["post", id]);
+      qc.setQueryData(["post", id], (old: any) => old ? { ...old, ...payload } : old);
+      return { previous };
+    },
+    onSuccess: (updated) => { toast.success("پست ذخیره شد"); qc.setQueryData(["post", id], updated); qc.invalidateQueries({ queryKey: ["posts"] }); qc.invalidateQueries({ queryKey: ["post", id] }); },
+    onError: (e: unknown, _payload, context) => { if (context?.previous) qc.setQueryData(["post", id], context.previous); toast.error(getApiError(e)); },
   });
 
   const publishMutation = useMutation({
@@ -86,7 +96,20 @@ export default function PostDetailPage() {
   });
 
   if (query.isLoading) return <div className="skeleton h-96" />;
-  if (!query.data) return <EmptyState title="پست یافت نشد" />;
+  if (query.isError) {
+    return (
+      <div className="space-y-4">
+        <EmptyState title="خطا در بارگذاری پست" description={getApiError(query.error)} />
+        <div className="flex justify-center"><Button onClick={() => query.refetch()} loading={query.isFetching}>تلاش دوباره</Button></div>
+      </div>
+    );
+  }
+  if (!query.data) return (
+    <div className="space-y-4">
+      <EmptyState title="پست یافت نشد" />
+      <div className="flex justify-center"><Button onClick={() => query.refetch()} loading={query.isFetching}>تلاش دوباره</Button></div>
+    </div>
+  );
 
   const post = query.data;
 

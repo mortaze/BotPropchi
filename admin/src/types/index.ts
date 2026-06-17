@@ -425,7 +425,11 @@ export interface MenuLayoutButton {
   id?: string;
   ref: string;
   text: string;
+  label?: string;
+  title?: string;
   type?: string;
+  rowIndex?: number;
+  position?: number;
   visible?: boolean;
 }
 

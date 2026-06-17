@@ -5,6 +5,7 @@ import { Markup } from 'telegraf';
 import { DiscountCode, PropFirm } from '@prisma/client';
 import { config } from '../../config';
 import { buildSafeTelegramButton, sanitizeTelegramText, sanitizeTextArray } from '../../utils/unicode';
+import { logger } from '../../utils/logger';
 
 type DiscountWithFirm = DiscountCode & {
   propFirm: PropFirm;
@@ -20,11 +21,12 @@ export function buildMainMenuKeyboard(
   displayMode: 'always_open' | 'toggle_allowed' = 'always_open'
 ) {
   if (menuLayout && menuLayout.length > 0) {
+    logger.debug(`[MenuKeyboard] Generating main keyboard rows=${menuLayout.length} admin=${isAdmin} displayMode=${displayMode}`);
     const visibleRows = menuLayout
       .map(row =>
         row
           .filter((btn: any) => btn.visible !== false)
-          .map((btn: any) => buildSafeTelegramButton(btn.text || '', 128))
+          .map((btn: any) => buildSafeTelegramButton(btn.text || btn.label || btn.title || btn.ref || '', 128))
           .filter(Boolean)
       )
       .filter((row: string[]) => row.length > 0);

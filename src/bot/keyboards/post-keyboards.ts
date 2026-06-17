@@ -1,6 +1,12 @@
 import { Markup } from 'telegraf';
 import { sanitizeTelegramText, buildSafeTelegramButton } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
+import { logger } from '../../utils/logger';
+
+function buttonDisplayText(btn: any, fallback: string): string {
+  const text = btn?.text || btn?.label || btn?.title || btn?.ref || fallback;
+  return typeof text === 'string' && text.trim() ? text : fallback;
+}
 
 export const postMainMenuKeyboard = () =>
   Markup.keyboard([
@@ -93,7 +99,7 @@ export const postButtonsEditorKeyboard = (postId: number, buttons: any[], editin
         const btn = row[c];
         rowButtons.push(
           Markup.button.callback(
-            `${buildSafeTelegramButton(graphemeTruncate(btn.text || '???', 15))}`,
+            `${buildSafeTelegramButton(graphemeTruncate(buttonDisplayText(btn, 'بدون عنوان'), 15))}`,
             `post:btn:edit:${postId}:${r}:${c}`
           )
         );
@@ -239,6 +245,7 @@ export const postSwapTargetKeyboard = (postId: number, sourceRow: number, totalR
 
 export const menuEditorKeyboard = (layout: any[][]) => {
   const rows: any[][] = [];
+  logger.debug(`[MenuKeyboard] Generating editor keyboard rows=${layout?.length ?? 0}`);
   if (layout && layout.length > 0) {
     for (let r = 0; r < layout.length; r++) {
       const row = layout[r];
@@ -248,7 +255,7 @@ export const menuEditorKeyboard = (layout: any[][]) => {
         const prefix = btn.visible === false ? '🙈 ' : '';
         rowButtons.push(
           Markup.button.callback(
-            `${prefix}${buildSafeTelegramButton(graphemeTruncate(btn.text || '???', 10))}`,
+            `${prefix}${buildSafeTelegramButton(graphemeTruncate(buttonDisplayText(btn, 'بدون عنوان'), 10))}`,
             `menu:edit:${r}:${c}`
           )
         );

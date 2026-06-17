@@ -64,6 +64,7 @@ class RedisClient {
       try {
         const raw = await this.client!.get(key);
         if (raw === null) return undefined;
+        if (raw.includes('???')) logger.warn(`[Redis] Possible corrupted placeholder read key=${key}`);
         return JSON.parse(raw) as T;
       } catch {
         return this.fallbackGet<T>(key);
@@ -76,6 +77,7 @@ class RedisClient {
     if (this.isConnected()) {
       try {
         const serialized = JSON.stringify(value);
+        if (serialized.includes('???')) logger.warn(`[Redis] Possible corrupted placeholder write key=${key}`);
         if (ttlSeconds > 0) {
           await this.client!.setex(key, ttlSeconds, serialized);
         } else {
