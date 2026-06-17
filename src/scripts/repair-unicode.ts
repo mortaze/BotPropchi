@@ -14,6 +14,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { sanitizeUnicode, normalizeUnicode, validateUnicode, logUnicodeIssue } from '../utils/unicode';
+import { cache } from '../utils/cache';
 
 const prisma = new PrismaClient();
 const isDryRun = process.argv.includes('--dry-run');
@@ -127,6 +128,15 @@ async function main() {
   } else {
     console.log('✅ No corrupted Unicode found!');
   }
+  // ─── Cache invalidation ─────────────────────────────────
+  if (!isDryRun && results.length > 0) {
+    console.log('\n🧹 Invalidating caches...');
+    cache.del('posts:published');
+    cache.del('posts:commands');
+    cache.del('posts:menu');
+    console.log('✅ Caches cleared');
+  }
+
   console.log('═══════════════════════════════════════════════\n');
 }
 

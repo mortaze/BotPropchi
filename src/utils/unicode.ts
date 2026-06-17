@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { graphemeTruncate, graphemeCount, graphemeSafeLength } from './grapheme';
 
 /**
  * Centralized Unicode Pipeline — single source of truth for all text
@@ -8,6 +9,9 @@ import { logger } from './logger';
  *   - Persian / Arabic / English / Turkish / Russian / CJK / Mixed RTL-LTR
  *   - Emojis, ZWJ sequences, skin-tone modifiers, country flags
  *   - All current and future Unicode codepoints
+ *
+ * CRITICAL: All truncation uses grapheme-aware operations.
+ * NEVER use .substring(), .slice(), .substr() on user text — they split UTF-16 surrogate pairs.
  */
 
 // ─── Constants ─────────────────────────────────────────────
@@ -125,12 +129,12 @@ export function validateUnicode(text: string): {
  *
  * For use: message text, button labels, captions, callback data
  */
-export function sanitizeTelegramText(text: string, maxLength?: number): string {
+export function sanitizeTelegramText(text: string, maxGraphemes?: number): string {
   if (!text) return text;
   let result = normalizeUnicode(text);
   result = sanitizeUnicode(result);
-  if (maxLength && result.length > maxLength) {
-    result = result.slice(0, maxLength);
+  if (maxGraphemes && graphemeCount(result) > maxGraphemes) {
+    result = graphemeTruncate(result, maxGraphemes);
   }
   return result;
 }
@@ -152,17 +156,18 @@ export function validateTelegramButton(text: string): {
 /**
  * Validate Telegram message length constraints.
  */
-export function validateTelegramLength(text: string, maxLength: number): {
+export function validateTelegramLength(text: string, maxGraphemes: number): {
   valid: boolean;
   truncated: string;
   originalLength: number;
 } {
   const normalized = normalizeUnicode(text);
   const sanitized = sanitizeUnicode(normalized);
-  if (sanitized.length <= maxLength) {
-    return { valid: true, truncated: sanitized, originalLength: sanitized.length };
+  const len = graphemeCount(sanitized);
+  if (len <= maxGraphemes) {
+    return { valid: true, truncated: sanitized, originalLength: len };
   }
-  return { valid: false, truncated: sanitized.slice(0, maxLength), originalLength: sanitized.length };
+  return { valid: false, truncated: graphemeTruncate(sanitized, maxGraphemes), originalLength: len };
 }
 
 /**
@@ -301,19 +306,163 @@ export function sanitizeTextArray(arr: string[]): string[] {
  * Deep-sanitize a parsed JSON object's string fields recursively.
  * Useful for menu_layout saved as JSON.
  */
-export function sanitizeJsonStrings(obj: any, maxLength?: number): any {
+export function sanitizeJsonStrings(obj: any, maxGraphemes?: number): any {
   if (typeof obj === 'string') {
-    return sanitizeTelegramText(obj, maxLength);
+    return sanitizeTelegramText(obj, maxGraphemes);
   }
   if (Array.isArray(obj)) {
-    return obj.map(item => sanitizeJsonStrings(item, maxLength));
+    return obj.map(item => sanitizeJsonStrings(item, maxGraphemes));
   }
   if (obj && typeof obj === 'object') {
     const result: any = {};
     for (const key of Object.keys(obj)) {
-      result[key] = sanitizeJsonStrings(obj[key], maxLength);
+      result[key] = sanitizeJsonStrings(obj[key], maxGraphemes);
     }
     return result;
   }
   return obj;
+}
+
+// ─── Safe Button Builder ───────────────────────────────────
+// NEVER split a surrogate pair. Always truncate by grapheme cluster.
+
+export interface SafeButton {
+  text: string;
+  callback_data?: string;
+  url?: string;
+  web_app?: { url: string };
+  switch_inline_query?: string;
+  callback_game?: any;
+  pay?: boolean;
+}
+
+/**
+ * Build a safe Telegram button text.
+ * Normalizes, sanitizes, then truncates by grapheme cluster (never by UTF-16 code unit).
+ */
+export function buildSafeTelegramButton(
+  text: string,
+  maxGraphemes: number = TELEGRAM_BUTTON_TEXT_MAX,
+): string {
+  if (!text) return '';
+  const clean = sanitizeTelegramText(text, maxGraphemes);
+  const validated = validateUnicode(clean);
+  if (!validated.valid) {
+    // If sanitization left corruption (shouldn't happen), strip surrogates
+    logUnicodeIssue('SAFE_BUTTON', 'pipeline', text, clean, 'post-sanitize validation failed');
+    return sanitizeUnicode(clean);
+  }
+  return clean;
+}
+
+/**
+ * Validate a full button payload before sending to Telegram.
+ * Logs exact failing button for debugging.
+ * Returns { valid, errors }.
+ */
+export function validateButtonPayload(buttons: any[][]): {
+  valid: boolean;
+  errors: { row: number; col: number; field: string; text: string }[];
+} {
+  const errors: { row: number; col: number; field: string; text: string }[] = [];
+  if (!Array.isArray(buttons)) {
+    return { valid: false, errors: [{ row: -1, col: -1, field: 'buttons', text: 'not an array' }] };
+  }
+  for (let r = 0; r < buttons.length; r++) {
+    const row = buttons[r];
+    if (!Array.isArray(row)) {
+      errors.push({ row: r, col: -1, field: 'row', text: 'row is not an array' });
+      continue;
+    }
+    for (let c = 0; c < row.length; c++) {
+      const btn = row[c];
+      if (!btn) {
+        errors.push({ row: r, col: c, field: 'button', text: 'null/undefined button' });
+        continue;
+      }
+      if (btn.text && typeof btn.text === 'string') {
+        const v = validateUnicode(btn.text);
+        if (!v.valid) {
+          const preview = btn.text.length > 50 ? btn.text.slice(0, 50) + '...' : btn.text;
+          errors.push({ row: r, col: c, field: 'text', text: `Invalid Unicode at ${JSON.stringify(v.issues)} text="${preview}"` });
+        }
+        if (graphemeCount(btn.text) > TELEGRAM_BUTTON_TEXT_MAX) {
+          const preview = btn.text.length > 50 ? btn.text.slice(0, 50) + '...' : btn.text;
+          errors.push({ row: r, col: c, field: 'text', text: `Exceeds ${TELEGRAM_BUTTON_TEXT_MAX} graphemes: "${preview}"` });
+        }
+      }
+      if (btn.callback_data && typeof btn.callback_data === 'string') {
+        const v = validateUnicode(btn.callback_data);
+        if (!v.valid) {
+          errors.push({ row: r, col: c, field: 'callback_data', text: `Invalid Unicode in callback_data` });
+        }
+        if (btn.callback_data.length > TELEGRAM_CALLBACK_DATA_MAX) {
+          errors.push({ row: r, col: c, field: 'callback_data', text: `Exceeds ${TELEGRAM_CALLBACK_DATA_MAX} chars` });
+        }
+      }
+    }
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+// ─── Safe Telegram Send/Edit Wrappers ──────────────────────
+
+export type SafeSendResult = { ok: boolean; error?: string };
+
+/**
+ * Safely validate and send a message with inline keyboard.
+ * Validates ALL button text before sending — never sends corrupted payload.
+ */
+export async function safeTelegramSend(
+  sendFn: (text: string, extra: any) => Promise<any>,
+  text: string,
+  keyboard?: any[][],
+  extra?: any,
+): Promise<SafeSendResult> {
+  const safeText = sanitizeTelegramText(text, TELEGRAM_MESSAGE_TEXT_MAX);
+  const safeExtra = { ...extra };
+
+  if (keyboard && keyboard.length > 0) {
+    const validation = validateButtonPayload(keyboard);
+    if (!validation.valid) {
+      for (const err of validation.errors) {
+        logger.error('[SafeSend] Invalid button payload', err);
+      }
+      return { ok: false, error: `Button validation failed: ${validation.errors[0]?.text || 'unknown'}` };
+    }
+    // Sanitize each button text
+    const safeKeyboard = keyboard.map((row: any[], r: number) =>
+      row.map((btn: any, c: number) => {
+        if (!btn) return btn;
+        const cleaned = { ...btn };
+        if (cleaned.text) cleaned.text = buildSafeTelegramButton(cleaned.text);
+        if (cleaned.callback_data) cleaned.callback_data = sanitizeTelegramText(cleaned.callback_data, TELEGRAM_CALLBACK_DATA_MAX);
+        return cleaned;
+      })
+    );
+    safeExtra.reply_markup = { inline_keyboard: safeKeyboard };
+  }
+
+  try {
+    await sendFn(safeText, safeExtra);
+    return { ok: true };
+  } catch (err: any) {
+    const errMsg = err?.description || err?.message || String(err);
+    logger.error('[SafeSend] Send failed', { error: errMsg, textPreview: safeText.slice(0, 100) });
+    return { ok: false, error: errMsg };
+  }
+}
+
+/**
+ * Safe inline keyboard validator — validates ALL button text in an inline keyboard.
+ * Use before any ctx.reply / ctx.editMessageText call.
+ */
+export function validateInlineKeyboard(buttons: any[][]): boolean {
+  const result = validateButtonPayload(buttons);
+  if (!result.valid) {
+    for (const err of result.errors) {
+      logger.warn('[Keyboard] Validation error', err);
+    }
+  }
+  return result.valid;
 }

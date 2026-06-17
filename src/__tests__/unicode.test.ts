@@ -10,9 +10,12 @@ import {
   validateDbInput,
   sanitizeTextArray,
   ensureTelegramSafe,
+  buildSafeTelegramButton,
+  validateButtonPayload,
   TELEGRAM_BUTTON_TEXT_MAX,
   TELEGRAM_CALLBACK_DATA_MAX,
 } from '../utils/unicode';
+import { graphemeCount } from '../utils/grapheme';
 
 describe('normalizeUnicode', () => {
   it('returns empty string for empty input', () => {
@@ -300,6 +303,132 @@ describe('ensureTelegramSafe', () => {
 });
 
 // ─── Integration-Style Tests ──────────────────────────────
+
+// ─── buildSafeTelegramButton Tests ─────────────────────────
+
+describe('buildSafeTelegramButton', () => {
+  it('returns empty string for empty input', () => {
+    expect(buildSafeTelegramButton('')).toBe('');
+    expect(buildSafeTelegramButton(null as any)).toBe('');
+    expect(buildSafeTelegramButton(undefined as any)).toBe('');
+  });
+
+  it('preserves clean text', () => {
+    expect(buildSafeTelegramButton('Hello World')).toBe('Hello World');
+  });
+
+  it('removes lone surrogates', () => {
+    expect(buildSafeTelegramButton('Hello\uD800World')).toBe('HelloWorld');
+  });
+
+  it('never splits emoji (📊)', () => {
+    const text = '✅ جدول مقایسه و بررسی پراپ ها⚖️📊';
+    const result = buildSafeTelegramButton(text);
+    expect(validateUnicode(result).valid).toBe(true);
+    expect(result).toBe(text);
+  });
+
+  it('preserves all types of emoji', () => {
+    const emojis = [
+      '😀', '🎉', '🚀', '💯', '🔥', '🌟', '⭐',
+      '⚖️📊', '👨‍💻', '👨🏽‍💻', '🇮🇷', '🇺🇸', '🏳️‍🌈',
+      '👨‍👩‍👧‍👦', '👍🏻',
+    ];
+    for (const emoji of emojis) {
+      const result = buildSafeTelegramButton(emoji);
+      expect(validateUnicode(result).valid).toBe(true);
+    }
+  });
+
+  it('truncates by grapheme cluster, not code unit', () => {
+    const manyEmojis = '😀'.repeat(200); // 200 graphemes
+    const result = buildSafeTelegramButton(manyEmojis);
+    expect(graphemeCount(result)).toBeLessThanOrEqual(TELEGRAM_BUTTON_TEXT_MAX);
+    expect(validateUnicode(result).valid).toBe(true);
+  });
+
+  it('preserves ZWJ sequences', () => {
+    const family = '👨‍👩‍👧‍👦';
+    expect(buildSafeTelegramButton(family)).toBe(family);
+  });
+
+  it('preserves skin-tone modifiers', () => {
+    const withTone = '👍🏻👍🏼👍🏽👍🏾👍🏿';
+    const result = buildSafeTelegramButton(withTone);
+    expect(result).toBe(withTone);
+  });
+
+  it('preserves country flags', () => {
+    const flags = '🇮🇷🇺🇸🇬🇧🇩🇪🇫🇷';
+    expect(buildSafeTelegramButton(flags)).toBe(flags);
+  });
+
+  it('handles Persian text with emoji', () => {
+    const text = '🔥 تخفیف ویژه پراپ فرم FTMO';
+    expect(buildSafeTelegramButton(text)).toBe(text);
+  });
+
+  it('handles RTL + LTR mixed text', () => {
+    const text = 'Hello سلام 123 😀';
+    expect(buildSafeTelegramButton(text)).toBe(text);
+  });
+
+  it('custom max grapheme limit', () => {
+    const text = 'hello😀world';
+    const result = buildSafeTelegramButton(text, 6);
+    expect(graphemeCount(result)).toBeLessThanOrEqual(6);
+    expect(validateUnicode(result).valid).toBe(true);
+  });
+});
+
+// ─── validateButtonPayload Tests ───────────────────────────
+
+describe('validateButtonPayload', () => {
+  it('validates clean keyboard', () => {
+    const keyboard = [[{ text: 'Click', callback_data: 'data' }]];
+    const result = validateButtonPayload(keyboard);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('rejects button with lone surrogate', () => {
+    const keyboard = [[{ text: 'Click\uD800', callback_data: 'data' }]];
+    const result = validateButtonPayload(keyboard);
+    expect(result.valid).toBe(false);
+  });
+
+  it('rejects null button', () => {
+    const keyboard = [[null]];
+    const result = validateButtonPayload(keyboard);
+    expect(result.valid).toBe(false);
+  });
+
+  it('rejects non-array rows', () => {
+    const keyboard = ['notarray' as any];
+    const result = validateButtonPayload(keyboard);
+    expect(result.valid).toBe(false);
+  });
+
+  it('validates callback_data length', () => {
+    const keyboard = [[{ text: 'Click', callback_data: 'x'.repeat(65) }]];
+    const result = validateButtonPayload(keyboard);
+    expect(result.valid).toBe(false);
+  });
+
+  it('accepts emoji-filled buttons', () => {
+    const keyboard = [
+      [{ text: '✅ جدول مقایسه و بررسی پراپ ها⚖️📊', callback_data: 'post:1' }],
+      [{ text: '🔥 تخفیف ویژه', callback_data: 'post:2' }],
+    ];
+    const result = validateButtonPayload(keyboard);
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects null/undefined input', () => {
+    expect(validateButtonPayload(null as any).valid).toBe(false);
+    expect(validateButtonPayload(undefined as any).valid).toBe(false);
+  });
+});
 
 describe('Full pipeline integration', () => {
   it('handles Persian button text with zero-width non-joiner', () => {

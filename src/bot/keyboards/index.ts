@@ -4,7 +4,7 @@
 import { Markup } from 'telegraf';
 import { DiscountCode, PropFirm } from '@prisma/client';
 import { config } from '../../config';
-import { sanitizeTelegramText, sanitizeTextArray } from '../../utils/unicode';
+import { buildSafeTelegramButton, sanitizeTelegramText, sanitizeTextArray } from '../../utils/unicode';
 
 type DiscountWithFirm = DiscountCode & {
   propFirm: PropFirm;
@@ -24,7 +24,7 @@ export function buildMainMenuKeyboard(
       .map(row =>
         row
           .filter((btn: any) => btn.visible !== false)
-          .map((btn: any) => sanitizeTelegramText(btn.text || '', 128))
+          .map((btn: any) => buildSafeTelegramButton(btn.text || '', 128))
           .filter(Boolean)
       )
       .filter((row: string[]) => row.length > 0);

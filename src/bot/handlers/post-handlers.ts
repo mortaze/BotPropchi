@@ -5,7 +5,8 @@ import { postService } from '../../services/post.service';
 import { systemLogService } from '../../services/system-log.service';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
-import { sanitizeTelegramText, sanitizeTelegramExtra } from '../../utils/unicode';
+import { sanitizeTelegramText, sanitizeTelegramExtra, buildSafeTelegramButton } from '../../utils/unicode';
+import { graphemeTruncate } from '../../utils/grapheme';
 import {
   postMainMenuKeyboard,
   postEditorKeyboard,
@@ -83,7 +84,7 @@ function formatPostPreview(post: any): string {
     post.mediaType ? `🖼 رسانه: ${post.mediaType}` : '',
     `📊 بازدید: ${(post as any)._count?.views || 0} | کلیک: ${(post as any)._count?.clickLogs || 0}`,
     '',
-    post.content ? post.content.substring(0, 200) : '(بدون محتوا)',
+    post.content ? graphemeTruncate(post.content, 200) : '(بدون محتوا)',
   ].filter(Boolean).join('\n');
   return lines;
 }
@@ -389,7 +390,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (action === 'content') {
       cache.set(pendingKey(ctx.from.id, 'editing_field'), 'content', 300);
       cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-      const current = post.content ? `محتوا فعلی:\n${post.content.substring(0, 200)}` : '(بدون محتوا)';
+      const current = post.content ? `محتوا فعلی:\n${graphemeTruncate(post.content, 200)}` : '(بدون محتوا)';
       return safeEdit(ctx, `📝 ${current}\n\nمحتوای جدید را ارسال کنید (Markdown پشتیبانی می‌شود):`);
     }
     if (action === 'media') {
