@@ -72,11 +72,11 @@ function SortableRow({
         </div>
       </CardHeader>
       <CardContent>
-        <SortableContext items={row.map((_, bi) => `btn-${rowIndex}-${bi}`)} strategy={horizontalListSortingStrategy}>
-          <div className="flex flex-wrap gap-3">
+        <SortableContext items={row.map((btn, bi) => `btn-${btn.id ?? `${rowIndex}-${bi}`}`)} strategy={horizontalListSortingStrategy}>
+          <div className="flex min-w-max flex-nowrap gap-3 overflow-x-auto pb-2">
             {row.map((btn, bi) => (
               <SortableButton
-                key={`btn-${rowIndex}-${bi}`}
+                key={btn.id ?? `btn-${rowIndex}-${bi}`}
                 btn={btn}
                 rowIndex={rowIndex}
                 btnIndex={bi}
@@ -113,7 +113,7 @@ function SortableButton({
     transform,
     transition,
     isDragging: isBtnDragging,
-  } = useSortable({ id: `btn-${rowIndex}-${btnIndex}` });
+  } = useSortable({ id: `btn-${btn.id ?? `${rowIndex}-${btnIndex}`}` });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -121,19 +121,21 @@ function SortableButton({
   };
 
   function isPostRef(ref: string) {
-    return ref.startsWith("post_");
+    return ref.startsWith("post:") || ref.startsWith("post_");
   }
+
+  const displayText = btn.text || btn.label || btn.title || btn.ref;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex min-w-[200px] flex-1 items-center gap-3 rounded-xl border bg-background/60 p-3 ${
+      className={`flex min-w-[280px] max-w-none flex-[1_0_280px] items-start gap-3 rounded-xl border bg-background/60 p-3 ${
         isBtnDragging
           ? "border-primary/50 shadow-md ring-2 ring-primary/20"
           : "border-border"
       }`}
-      title={btn.text}
+      title={displayText}
     >
       <button className="cursor-grab touch-none rounded p-1 hover:bg-accent" {...attributes} {...listeners}>
         <GripVertical className="h-4 w-4 text-muted-foreground" />
@@ -142,8 +144,8 @@ function SortableButton({
         {isPostRef(btn.ref) ? "پست" : "سیستم"}
       </Badge>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-tight">{btn.text}</p>
-        <p className="truncate text-xs text-muted-foreground" dir="ltr">{btn.ref}</p>
+        <p className="whitespace-normal break-words text-sm font-medium leading-6">{displayText}</p>
+        <p className="break-all text-xs text-muted-foreground" dir="ltr">{btn.ref}</p>
       </div>
       <div className="flex shrink-0 gap-1">
         <Button size="sm" variant="ghost" onClick={() => onToggleVisibility(rowIndex, btnIndex)}>
@@ -287,20 +289,18 @@ export default function MenuPage() {
         return arrayMove(prev, oldIndex, newIndex);
       });
     } else if (activeIdStr.startsWith("btn-") && overIdStr.startsWith("btn-")) {
-      const [_, aRow, aCol] = activeIdStr.split("-");
-      const [__, bRow, bCol] = overIdStr.split("-");
-      if (aRow !== bRow) return;
-      const rowIdx = parseInt(aRow);
-      const fromIdx = parseInt(aCol);
-      const toIdx = parseInt(bCol);
+      const activeButtonId = activeIdStr.replace("btn-", "");
+      const overButtonId = overIdStr.replace("btn-", "");
+      const rowIdx = layoutRef.current.findIndex((row, ri) => row.some((btn, index) => (btn.id ?? `${ri}-${index}`) === activeButtonId));
+      const overRowIdx = layoutRef.current.findIndex((row, ri) => row.some((btn, index) => (btn.id ?? `${ri}-${index}`) === overButtonId));
+      if (rowIdx < 0 || rowIdx !== overRowIdx) return;
+      const fromIdx = layoutRef.current[rowIdx].findIndex((btn, index) => (btn.id ?? `${rowIdx}-${index}`) === activeButtonId);
+      const toIdx = layoutRef.current[rowIdx].findIndex((btn, index) => (btn.id ?? `${rowIdx}-${index}`) === overButtonId);
       if (fromIdx === toIdx) return;
       setLayout((prev) => {
         const next = prev.map((row) => [...row]);
         const row = next[rowIdx];
-        const fromItem = { ...row[fromIdx] };
-        const toItem = { ...row[toIdx] };
-        row[fromIdx] = toItem;
-        row[toIdx] = fromItem;
+        next[rowIdx] = arrayMove(row, fromIdx, toIdx);
         changed = true;
         return next;
       });
@@ -312,7 +312,7 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="w-full max-w-full space-y-6 lg:max-w-7xl xl:max-w-[1600px]">
+    <div className="w-full max-w-full space-y-6 px-1 lg:max-w-none xl:max-w-none">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">مدیریت منو</h1>
@@ -331,20 +331,20 @@ export default function MenuPage() {
           <Card>
             <CardHeader><h2 className="font-semibold">پیش‌نمایش</h2></CardHeader>
             <CardContent>
-              <div className="overflow-hidden rounded-xl border border-border bg-background/60 p-4 text-sm">
+              <div className="overflow-x-auto rounded-xl border border-border bg-background/60 p-4 text-sm">
                 {layout.length === 0 ? (
                   <p className="text-center text-muted-foreground">منو خالی است</p>
                 ) : (
                   <div className="space-y-1">
                     {layout.map((row, ri) => (
-                      <div key={ri} className="flex flex-wrap gap-1">
+                      <div key={ri} className="flex min-w-max flex-nowrap gap-2">
                         {row.map((btn, bi) => (
-                          <span key={bi} className={`min-w-[80px] flex-1 rounded border px-3 py-1.5 text-center text-xs ${
+                          <span key={bi} className={`min-w-[120px] max-w-[360px] flex-1 whitespace-normal break-words rounded border px-3 py-1.5 text-center text-xs ${
                             (btn.visible ?? true)
                               ? "border-border bg-background"
                               : "border-dashed border-muted-foreground/30 text-muted-foreground/50"
                           }`}>
-                            {(btn.visible ?? true) ? btn.text : "🙈"}
+                            {(btn.visible ?? true) ? (btn.text || btn.label || btn.title || btn.ref) : "🙈"}
                           </span>
                         ))}
                       </div>
