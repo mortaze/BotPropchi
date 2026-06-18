@@ -114,8 +114,8 @@ export const postTitleOnlyListKeyboard = (posts: any[]) => {
 
 // ─── Inline Keyboard: Post Info Actions ───────────────────────
 // Displayed ON the post info message itself.
-// Row 1: Edit, Publish/Unpublish, Stats, Hide/Show, Archive, Delete, Back
-// Row 2: Add, Remove, Replace
+// Row 1-3: 7 main action buttons → Edit, Publish/Unpublish, Stats, Hide/Show, Archive, Delete, Back
+// Row 4: Secondary actions → Add, Remove, Replace
 export const postInfoActionKeyboard = (post: any) => {
   const postId = post.id;
   const isHidden = post.status === 'HIDDEN';
@@ -123,11 +123,15 @@ export const postInfoActionKeyboard = (post: any) => {
   return Markup.inlineKeyboard([
     [
       Markup.button.callback('✏️ ویرایش', `post:manager:edit:${postId}`),
-      Markup.button.callback(isPublished ? '🚀 لغو انتشار' : '🚀 انتشار', `post:manager:unpublish:${postId}`),
+      Markup.button.callback(isPublished ? '🚫 لغو انتشار' : '✅ انتشار', `post:manager:unpublish:${postId}`),
       Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`),
-      Markup.button.callback(isHidden ? '👻 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
+    ],
+    [
+      Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
       Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
       Markup.button.callback('🗑 حذف', `post:manager:delete:${postId}`),
+    ],
+    [
       Markup.button.callback('🔙 بازگشت', `post:manager:back:${postId}`),
     ],
     [

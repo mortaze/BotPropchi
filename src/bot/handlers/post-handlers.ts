@@ -660,41 +660,23 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     });
   });
 
-  // ─── List Posts ─────────────────────────────────────────
-  bot.hears('📋 مدیریت پست‌ها', async (ctx: any) => {
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    return showPostList(ctx, 1);
-  });
-
+  // ─── List Posts (paginated inline — used by post:list actions) ──
   bot.action(/^post:list:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const page = parseInt(ctx.match[1]);
-    return showPostList(ctx, page, true);
-  });
-
-  async function showPostList(ctx: any, page: number, edit = false) {
     const result = await postService.findAll({ page, limit: 5 });
     if (result.items.length === 0) {
-      if (edit) {
-        await ctx.editMessageText('📋 پستی یافت نشد.', postListKeyboard([], page, 1));
-      } else {
-        await ctx.reply('📋 پستی یافت نشد.', postListKeyboard([], page, 1));
-      }
+      await ctx.editMessageText('📋 پستی یافت نشد.', postListKeyboard([], page, 1));
       return;
     }
     const text = `📋 پست‌ها (صفحه ${page}/${result.pages})\n\n` +
       result.items.map((p: any) =>
         `${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : '📦'} ${p.title} (شناسه: ${p.id})`
       ).join('\n');
-    if (edit) {
-      await ctx.editMessageText(text, postListKeyboard(result.items, page, result.pages));
-    } else {
-      await ctx.reply(text, postListKeyboard(result.items, page, result.pages));
-    }
-  }
+    await ctx.editMessageText(text, postListKeyboard(result.items, page, result.pages));
+  })
 
   // ─── Drafts ─────────────────────────────────────────────
   bot.hears('📦 پیش‌نویس‌ها', async (ctx: any) => {
