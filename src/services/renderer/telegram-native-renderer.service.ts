@@ -29,11 +29,12 @@ function cloneJson<T>(value: T): T {
 
 function cleanEntities(entities: any[] | null | undefined) {
   if (!Array.isArray(entities)) return undefined;
-  return cloneJson(entities).map((e: any) => {
+  const result = cloneJson(entities).map((e: any) => {
     const out = { ...e, custom_emoji_id: e.custom_emoji_id ?? e.customEmojiId };
     if (out.custom_emoji_id === undefined) delete out.custom_emoji_id;
     return out;
   }).filter((e: any) => ENTITY_TYPES.has(e.type));
+  return result.length > 0 ? result : undefined;
 }
 
 function nonEmptyEntities(entities: any[] | null | undefined) {
@@ -85,7 +86,8 @@ export function extractTelegramSnapshot(message: any) {
 
 function entitiesFromRows(rows: any[] | undefined, source: 'text' | 'caption') {
   if (!Array.isArray(rows)) return undefined;
-  return cleanEntities(rows.filter((r: any) => !r.source || r.source === source).map((r: any) => r.payload || r));
+  const result = cleanEntities(rows.filter((r: any) => !r.source || r.source === source).map((r: any) => r.payload || r));
+  return result && result.length > 0 ? result : undefined;
 }
 
 export class TelegramNativeRenderer {
@@ -94,8 +96,8 @@ export class TelegramNativeRenderer {
     const payload = post.telegramPayload || {};
     const text = snapshot.text ?? payload.text ?? post.contentText ?? post.content ?? post.caption ?? post.title ?? '';
     const caption = snapshot.caption ?? payload.caption ?? post.caption ?? undefined;
-    const textEntities = nonEmptyEntities(snapshot.entities) || nonEmptyEntities(payload.entities) || entitiesFromRows(post.postEntities || post.richEntities, 'text') || cleanEntities(post.contentEntities) || cleanEntities(post.entities);
-    const captionEntities = nonEmptyEntities(snapshot.caption_entities) || nonEmptyEntities(payload.captionEntities) || entitiesFromRows(post.postEntities || post.richEntities, 'caption') || (caption ? cleanEntities(post.contentEntities) || cleanEntities(post.entities) : undefined);
+    const textEntities = nonEmptyEntities(snapshot.entities) || nonEmptyEntities(payload.entities) || nonEmptyEntities(entitiesFromRows(post.postEntities || post.richEntities, 'text')) || nonEmptyEntities(cleanEntities(post.contentEntities)) || nonEmptyEntities(cleanEntities(post.entities));
+    const captionEntities = nonEmptyEntities(snapshot.caption_entities) || nonEmptyEntities(payload.captionEntities) || nonEmptyEntities(entitiesFromRows(post.postEntities || post.richEntities, 'caption')) || (caption ? nonEmptyEntities(cleanEntities(post.contentEntities)) || nonEmptyEntities(cleanEntities(post.entities)) : undefined);
     const media = Array.isArray(payload.media) && payload.media.length ? cloneJson(payload.media) : extractTelegramSnapshot(snapshot).media;
     const keyboard = payload.keyboard || snapshot.reply_markup?.inline_keyboard || post.buttons || [];
     const buttons = buildTelegramKeyboard(keyboard, post.id);
@@ -107,6 +109,13 @@ export class TelegramNativeRenderer {
     else if (post.contentEntities) detectedRenderer = 'contentEntities';
     else if (post.contentFormat === 'telegram_entities') detectedRenderer = 'contentFormat=telegram_entities';
     else if (textEntities || captionEntities) detectedRenderer = 'entities table';
+
+    if (textEntities && textEntities.length === 0) {
+      logger.warn(`[Renderer] post=${post.id} textEntities is empty array — will be dropped before Telegram API call`);
+    }
+    if (Array.isArray(post.contentEntities) && post.contentEntities.length > 0 && (!textEntities || textEntities.length === 0)) {
+      logger.warn(`[Renderer] post=${post.id} contentEntities has ${post.contentEntities.length} items but textEntities is empty — OR short-circuit bug`);
+    }
 
     return { text, caption, textEntities, captionEntities, media, buttons, common: { link_preview_options: { is_disabled: true }, ...markup }, renderer: detectedRenderer };
   }
@@ -120,7 +129,7 @@ export class TelegramNativeRenderer {
           type: MEDIA_SENDERS[m.type]?.inputType || m.type,
           media: m.fileId,
           caption: i === 0 ? (m.caption || p.caption || p.text || undefined) : undefined,
-          caption_entities: i === 0 ? nonEmptyEntities(m.captionEntities) || p.captionEntities || p.textEntities : undefined,
+          caption_entities: i === 0 ? nonEmptyEntities(m.captionEntities) || nonEmptyEntities(p.captionEntities) || nonEmptyEntities(p.textEntities) : undefined,
         })),
       };
     }
@@ -133,7 +142,7 @@ export class TelegramNativeRenderer {
         media: m.fileId,
         ...p.common,
         caption: m.caption || p.caption || p.text || undefined,
-        caption_entities: cleanEntities(m.captionEntities) || p.captionEntities || undefined,
+        caption_entities: nonEmptyEntities(cleanEntities(m.captionEntities)) || nonEmptyEntities(p.captionEntities) || undefined,
       };
     }
     const request: any = { method: 'sendMessage', text: p.text || '(پست خالی)', ...p.common, entities: p.textEntities || undefined };
