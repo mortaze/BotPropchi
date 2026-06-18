@@ -14,8 +14,11 @@ import {
   postListKeyboard,
   postViewKeyboard,
   postTitleListKeyboard,
+  postTitleOnlyListKeyboard,
   postEditReplyKeyboard,
   postActionInlineKeyboard,
+  postInfoActionKeyboard,
+  postEditModeKeyboard,
   postButtonsEditorKeyboard,
   postButtonEditKeyboard,
   postButtonTypeKeyboard,
@@ -110,6 +113,7 @@ async function safeEdit(ctx: any, text: string, extra?: any): Promise<void> {
 }
 
 // ─── Persian Post Info Display ────────────────────────────
+// Shows full info for ALL posts regardless of publish status.
 function formatPostInfoPersian(post: any): string {
   const statusMap: Record<string, string> = {
     PUBLISHED: '✅ منتشر شده',
@@ -120,14 +124,18 @@ function formatPostInfoPersian(post: any): string {
   };
   const statusText = statusMap[post.status] || post.status;
   const mediaCount = post.mediaType ? (Array.isArray(post.albumMediaIds) ? post.albumMediaIds.length : 1) : 0;
+  const views = (post as any)._count?.views || 0;
+  const clicks = (post as any)._count?.clickLogs || 0;
+  // Calculate message count: count [[copy]] blocks + 1 base message
+  const copyBlockCount = post.content ? (post.content.match(/\[\[copy\]\]/g) || []).length : 0;
+  const messageCount = post.content ? copyBlockCount + 1 : 0;
+
   const lines = [
     `📝 *عنوان:* ${post.title}`,
     `🚀 *وضعیت:* ${statusText}`,
-    post.isPublished ? `📊 *بازدید:* ${(post as any)._count?.views || 0}` : '',
-    post.status === 'ARCHIVED' ? '📦 *بایگانی شده*' : '',
-    post.status === 'HIDDEN' ? '👻 *مخفی شده*' : '',
+    `👁 *بازدید:* ${views} | 👆 *کلیک:* ${clicks}`,
     mediaCount > 0 ? `📎 *رسانه‌ها:* ${mediaCount}` : '',
-    post.content ? '' : '(بدون محتوا)',
+    messageCount > 0 ? `💬 *پیام‌ها:* ${messageCount}` : '',
   ].filter(Boolean).join('\n');
   return lines;
 }
@@ -140,7 +148,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
   });
 
-  // ─── Post List (Reply Keyboard with Titles) ──────────────
+  // ─── Post List (Reply Keyboard with Titles — NO extra buttons) ──
   bot.hears('📋 مدیریت پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
@@ -148,7 +156,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (result.items.length === 0) {
       return ctx.reply('📋 پستی وجود ندارد.', postMainMenuKeyboard());
     }
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleListKeyboard(result.items));
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
   });
 
   // ─── Text: Post Title Selection / Edit Action / Back ────
@@ -248,18 +256,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       cache.set(pendingKey(ctx.from.id, 'selected_post'), matched.id, 300);
 
-      // Send the post itself
+      // 1. Send the post itself for preview
       await sendPostToChat(ctx, post);
 
-      // Send action inline buttons
-      await ctx.reply('➕ افزودن  |  ➖ حذف  |  🔁 جایگزینی', postActionInlineKeyboard(matched.id));
-
-      // Send post info with edit reply keyboard
+      // 2. Send post info with inline action keyboard (works for ALL posts regardless of status)
       await ctx.reply(formatPostInfoPersian(post), {
         parse_mode: 'Markdown' as any,
         link_preview_options: { is_disabled: true } as any,
-        ...postEditReplyKeyboard(),
+        ...postInfoActionKeyboard(post),
       });
+
+      // 3. Send operation row as separate message (add, remove, replace)
+      await ctx.reply('➕ افزودن  |  ➖ حذف  |  🔁 جایگزینی', postActionInlineKeyboard(matched.id));
       return;
     }
 
@@ -451,8 +459,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           await ctx.reply(formatPostInfoPersian(updated), {
             parse_mode: 'Markdown' as any,
             link_preview_options: { is_disabled: true } as any,
-            ...postEditReplyKeyboard(),
+            ...postInfoActionKeyboard(updated),
           });
+          // Also re-send the operation row
+          await ctx.reply('➕ افزودن  |  ➖ حذف  |  🔁 جایگزینی', postActionInlineKeyboard(postId));
         } else {
           await showPostEditor(ctx, postId);
         }
@@ -1443,6 +1453,206 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     buttons.splice(row, 1);
     await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
     await safeEdit(ctx, '➖ سطر حذف شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // ─── Post Manager Inline Keyboard Callbacks ───────────────
+  // These operate on the post info message using inline keyboards
+  // and work for ALL posts regardless of publish status.
+  // ═══════════════════════════════════════════════════════════
+
+  // Helper: edit or re-show the post info message with action keyboard
+  async function showPostInfo(ctx: any, post: any) {
+    const text = formatPostInfoPersian(post);
+    try {
+      await ctx.editMessageText(text, {
+        parse_mode: 'Markdown' as any,
+        link_preview_options: { is_disabled: true } as any,
+        ...postInfoActionKeyboard(post),
+      });
+    } catch (e: any) {
+      logger.debug('[PostManager] showPostInfo fallback:', e.message);
+      await ctx.reply(text, {
+        parse_mode: 'Markdown' as any,
+        link_preview_options: { is_disabled: true } as any,
+        ...postInfoActionKeyboard(post),
+      });
+    }
+  }
+
+  // ✏️ ویرایش: Change to edit mode (operation buttons on the same message)
+  bot.action(/^post:manager:edit:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    // Edit the same post info message to show operation buttons instead
+    try {
+      await ctx.editMessageText(formatPostInfoPersian(post), {
+        parse_mode: 'Markdown' as any,
+        link_preview_options: { is_disabled: true } as any,
+        ...postEditModeKeyboard(postId),
+      });
+    } catch (e: any) {
+      logger.debug('[PostManager] Edit mode fallback:', e.message);
+      await ctx.reply(formatPostInfoPersian(post), {
+        parse_mode: 'Markdown' as any,
+        link_preview_options: { is_disabled: true } as any,
+        ...postEditModeKeyboard(postId),
+      });
+    }
+  });
+
+  // 📥 لغو انتشار / 📤 انتشار: Toggle publish status, then refresh post info
+  bot.action(/^post:manager:unpublish:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const current = await postService.findById(postId);
+    if (!current) return ctx.reply('❌ پست یافت نشد.');
+    const isPublished = current.isPublished && current.status === 'PUBLISHED';
+    if (isPublished) {
+      await postService.unpublish(postId);
+    } else {
+      await postService.publish(postId);
+    }
+    const post = await postService.findById(postId);
+    if (post) await showPostInfo(ctx, post);
+  });
+
+  // 📊 آمار: Show analytics (reuses existing analytics logic inline)
+  bot.action(/^post:manager:stats:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const analytics = await postService.getAnalytics(postId);
+    const text = [
+      `📊 *آمار: ${post.title}*`,
+      '',
+      `👁 بازدید کل: ${analytics.totalViews}`,
+      `👆 کلیک کل: ${analytics.totalClicks}`,
+      `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
+      '',
+      '📈 بازدید روزانه (۳۰ روز اخیر):',
+      ...analytics.dailyViews.slice(-7).map((d: any) => `  ${d.date}: ${d.count} بازدید`),
+    ].join('\n');
+    try {
+      await ctx.editMessageText(text, {
+        parse_mode: 'Markdown' as any,
+        link_preview_options: { is_disabled: true } as any,
+        ...postAnalyticsKeyboard(postId),
+      });
+    } catch (e: any) {
+      await ctx.reply(text, {
+        parse_mode: 'Markdown' as any,
+        link_preview_options: { is_disabled: true } as any,
+        ...postAnalyticsKeyboard(postId),
+      });
+    }
+  });
+
+  // 🙈 مخفی کردن: Toggle hide/show, then refresh post info
+  bot.action(/^post:manager:hide:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const wasHidden = post.status === 'HIDDEN';
+    if (wasHidden) {
+      await postService.show(postId);
+    } else {
+      await postService.hide(postId);
+    }
+    const updated = await postService.findById(postId);
+    if (updated) await showPostInfo(ctx, updated);
+  });
+
+  // 📦 بایگانی: Archive, then refresh post info
+  bot.action(/^post:manager:archive:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    await postService.archive(postId);
+    const post = await postService.findById(postId);
+    if (post) await showPostInfo(ctx, post);
+  });
+
+  // 🗑 حذف: Ask confirmation, then delete
+  bot.action(/^post:manager:delete:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    try {
+      await ctx.editMessageText(
+        `🗑 آیا از حذف "${post.title}" مطمئن هستید؟`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('✅ بله، حذف شود', `post:manager:delete:confirm:${postId}`)],
+          [Markup.button.callback('❌ انصراف', `post:manager:cancel:${postId}`)],
+        ])
+      );
+    } catch (e: any) {
+      await ctx.reply(
+        `🗑 آیا از حذف "${post.title}" مطمئن هستید؟`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('✅ بله، حذف شود', `post:manager:delete:confirm:${postId}`)],
+          [Markup.button.callback('❌ انصراف', `post:manager:cancel:${postId}`)],
+        ])
+      );
+    }
+  });
+
+  bot.action(/^post:manager:delete:confirm:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    await postService.delete(postId);
+    try {
+      await ctx.editMessageText('🗑 پست حذف شد.');
+    } catch {
+      await ctx.reply('🗑 پست حذف شد.');
+    }
+  });
+
+  // Cancel delete confirmation → show post info again
+  bot.action(/^post:manager:cancel:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (post) await showPostInfo(ctx, post);
+  });
+
+  // ⬅️ بازگشت به عملیات: Go back to normal action keyboard from edit mode
+  bot.action(/^post:manager:backtomain:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (post) await showPostInfo(ctx, post);
+  });
+
+  // ↩️ بازگشت: Go back to post list (reply keyboard, so send as new message)
+  bot.action(/^post:manager:back:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const result = await postService.findAll({ page: 1, limit: 100 });
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
   });
 
   // ─── Back to Admin Panel ───────────────────────────────

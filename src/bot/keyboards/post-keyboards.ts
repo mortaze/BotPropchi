@@ -89,10 +89,16 @@ export const postViewKeyboard = (post: any) => {
   return Markup.inlineKeyboard(rows);
 };
 
-// ─── Reply Keyboard: Post Title List ───────────────────────
+// ─── Reply Keyboard: Post Title List (with back button) ─────
 export const postTitleListKeyboard = (posts: any[]) => {
   const rows: string[][] = posts.map(p => [graphemeTruncate(sanitizeTelegramText(p.title) || 'بدون عنوان', 40)]);
   rows.push(['🔙 بازگشت به منوی پست']);
+  return Markup.keyboard(rows).resize().persistent();
+};
+
+// ─── Reply Keyboard: Post Title List (NO back button, just titles) ──
+export const postTitleOnlyListKeyboard = (posts: any[]) => {
+  const rows: string[][] = posts.map(p => [graphemeTruncate(sanitizeTelegramText(p.title) || 'بدون عنوان', 40)]);
   return Markup.keyboard(rows).resize().persistent();
 };
 
@@ -113,6 +119,43 @@ export const postActionInlineKeyboard = (postId: number) =>
       Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
       Markup.button.callback('➖ حذف', `post:action:remove:${postId}`),
       Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
+    ],
+  ]);
+
+// ─── Inline Keyboard: Post Info Actions (context-aware labels) ──
+// Displayed ON the post info message itself.
+// Button labels adapt to post status.
+export const postInfoActionKeyboard = (post: any) => {
+  const postId = post.id;
+  const isHidden = post.status === 'HIDDEN';
+  const isPublished = post.isPublished && post.status === 'PUBLISHED';
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('✏️ ویرایش', `post:manager:edit:${postId}`),
+      Markup.button.callback(isPublished ? '📥 لغو انتشار' : '📤 انتشار', `post:manager:unpublish:${postId}`),
+      Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`),
+    ],
+    [
+      Markup.button.callback(isHidden ? '👻 نمایش' : '🙈 مخفی کردن', `post:manager:hide:${postId}`),
+      Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
+    ],
+    [
+      Markup.button.callback('🗑 حذف', `post:manager:delete:${postId}`),
+      Markup.button.callback('↩️ بازگشت', `post:manager:back:${postId}`),
+    ],
+  ]);
+};
+
+// ─── Inline Keyboard: Post Edit Mode (operation buttons on post info) ──
+export const postEditModeKeyboard = (postId: number) =>
+  Markup.inlineKeyboard([
+    [
+      Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
+      Markup.button.callback('➖ حذف', `post:action:remove:${postId}`),
+      Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
+    ],
+    [
+      Markup.button.callback('⬅️ بازگشت به عملیات', `post:manager:backtomain:${postId}`),
     ],
   ]);
 
