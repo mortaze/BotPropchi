@@ -318,12 +318,17 @@ export const postSwapTargetKeyboard = (postId: number, sourceRow: number, totalR
 
 // ─── Reply Keyboard: Menu Editor (dynamic from resolved menu layout) ──
 // Shows each menu button as a Reply Keyboard button for tap-to-edit.
+// The selected button (if any) is wrapped in {} without changing the keyboard structure.
 // Updated in real-time after every mutation.
-export const buildMenuEditorReplyKeyboard = (layout: any[][]) => {
-  const rows: string[][] = layout.map(row =>
-    row.map(btn => {
+export const buildMenuEditorReplyKeyboard = (layout: any[][], selectedKey?: { row: number; col: number } | null) => {
+  const rows: string[][] = layout.map((row, r) =>
+    row.map((btn, c) => {
       const prefix = btn.visible === false ? '🙈 ' : '';
-      return graphemeTruncate(`${prefix}${buildSafeTelegramButton(buttonDisplayText(btn, 'بدون عنوان'))}`, 40);
+      const text = `${prefix}${buildSafeTelegramButton(buttonDisplayText(btn, 'بدون عنوان'))}`;
+      if (selectedKey && selectedKey.row === r && selectedKey.col === c) {
+        return `{${text}}`;
+      }
+      return graphemeTruncate(text, 40);
     })
   );
   rows.push(['🔙 بازگشت']);
@@ -413,5 +418,39 @@ export const menuSwapTargetKeyboard = (sourceRow: number, totalRows: number) => 
     }
   }
   rows.push([Markup.button.callback('« لغو', 'menu:editor')]);
+  return Markup.inlineKeyboard(rows);
+};
+
+// ─── Inline Keyboard: Edit Actions for Selected Button ──
+// Sent as a separate message after a button is selected in the menu editor.
+// The reply keyboard remains unchanged below.
+export const buildMenuEditInlineKeyboard = (row: number, col: number, button: any) => {
+  const isHidden = button?.visible === false;
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('⬆️ بالا', `menu:sel:up:${row}:${col}`),
+      Markup.button.callback('⬇️ پایین', `menu:sel:down:${row}:${col}`),
+    ],
+    [
+      Markup.button.callback('⬅️ چپ', `menu:sel:left:${row}:${col}`),
+      Markup.button.callback('➡️ راست', `menu:sel:right:${row}:${col}`),
+    ],
+    [
+      Markup.button.callback('🔄 انتقال به سطر', `menu:sel:torow:${row}:${col}`),
+      Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی کردن', `menu:sel:hide:${row}:${col}`),
+    ],
+  ]);
+};
+
+// ─── Inline Keyboard: Row Selection ──
+// Shows all row numbers for the "move to row" action.
+export const buildMenuRowSelectKeyboard = (totalRows: number, excludeRow: number) => {
+  const rows: any[][] = [];
+  for (let i = 0; i < totalRows; i++) {
+    if (i !== excludeRow) {
+      rows.push([Markup.button.callback(`سطر ${i + 1}`, `menu:sel:moveto:${i}`)]);
+    }
+  }
+  rows.push([Markup.button.callback('« لغو', 'menu:sel:cancel')]);
   return Markup.inlineKeyboard(rows);
 };
