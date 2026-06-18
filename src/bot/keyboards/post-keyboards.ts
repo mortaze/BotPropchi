@@ -10,12 +10,11 @@ function buttonDisplayText(btn: any, fallback: string): string {
 
 export const postMainMenuKeyboard = () =>
   Markup.keyboard([
-    ['➕ ایجاد پست', '📥 Import From Telegram'],
+    ['➕ ایجاد پست'],
     ['📋 مدیریت پست‌ها', '📦 پیش‌نویس‌ها'],
     ['👻 پست‌های مخفی'],
     ['👁 پیش‌نمایش', '📤 انتشار'],
     ['🔎 جستجو', '📊 آمار پست'],
-    ['📊 آمار کلی', '🔍 بررسی سلامت'],
     ['↩️ بازگشت به پنل ادمین'],
   ]).resize().persistent();
 
@@ -99,16 +98,10 @@ export const postEditModeReplyKeyboard = () =>
     ['🔙 بازگشت'],
   ]).resize().persistent();
 
-// ─── Reply Keyboard: Post Title List (with back button) ─────
-export const postTitleListKeyboard = (posts: any[]) => {
-  const rows: string[][] = posts.map(p => [graphemeTruncate(sanitizeTelegramText(p.title) || 'بدون عنوان', 40)]);
-  rows.push(['🔙 بازگشت به منوی پست']);
-  return Markup.keyboard(rows).resize().persistent();
-};
-
-// ─── Reply Keyboard: Post Title List (NO back button, just titles) ──
+// ─── Reply Keyboard: Post Title List (with back button) ──
 export const postTitleOnlyListKeyboard = (posts: any[]) => {
   const rows: string[][] = posts.map(p => [graphemeTruncate(sanitizeTelegramText(p.title) || 'بدون عنوان', 40)]);
+  rows.push(['🔙 بازگشت به منوی پست']);
   return Markup.keyboard(rows).resize().persistent();
 };
 
