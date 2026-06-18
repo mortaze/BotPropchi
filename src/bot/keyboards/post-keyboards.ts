@@ -114,8 +114,11 @@ export const postTitleOnlyListKeyboard = (posts: any[]) => {
 
 // ─── Inline Keyboard: Post Info Actions ───────────────────────
 // Displayed ON the post info message itself.
-// Row 1-3: 7 main action buttons → Edit, Publish/Unpublish, Stats, Hide/Show, Archive, Delete, Back
-// Row 4: Secondary actions → Add, Remove, Replace
+// Row 1: Edit, Publish/Unpublish, Stats
+// Row 2: Hide/Show, Archive, Delete Post
+// Row 3: Permanent Delete (separated as clearly destructive)
+// Row 4: Back to List
+// Row 5: Add, Remove, Replace (content actions)
 export const postInfoActionKeyboard = (post: any) => {
   const postId = post.id;
   const isHidden = post.status === 'HIDDEN';
@@ -129,14 +132,17 @@ export const postInfoActionKeyboard = (post: any) => {
     [
       Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
       Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
-      Markup.button.callback('🗑 حذف', `post:manager:delete:${postId}`),
+      Markup.button.callback('🗑 حذف پست', `post:manager:delete:${postId}`),
     ],
     [
-      Markup.button.callback('🔙 بازگشت', `post:manager:back:${postId}`),
+      Markup.button.callback('🔥 حذف دائمی', `post:manager:harddelete:${postId}`),
+    ],
+    [
+      Markup.button.callback('🔙 بازگشت به لیست', `post:manager:back:${postId}`),
     ],
     [
       Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
-      Markup.button.callback('➖ حذف', `post:action:remove:${postId}`),
+      Markup.button.callback('➖ حذف محتوا', `post:action:remove:${postId}`),
       Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
     ],
   ]);
@@ -151,7 +157,7 @@ export const postEditModeKeyboard = (postId: number) =>
       Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
     ],
     [
-      Markup.button.callback('⬅️ بازگشت به عملیات', `post:manager:backtomain:${postId}`),
+      Markup.button.callback('⬅️ بازگشت به جزئیات', `post:manager:backtomain:${postId}`),
     ],
   ]);
 

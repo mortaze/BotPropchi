@@ -1530,7 +1530,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', { parse_mode: 'Markdown' as any });
   });
 
-  // 🔙 بازگشت: Exit edit mode, show post info with inline keyboard
+  // 🔙 بازگشت: Exit edit mode, return to posts list (one level up)
   // Passes through to next handler if not in edit mode
   bot.hears('🔙 بازگشت', async (ctx: any, next: any) => {
     const admin = await requirePostAdmin(ctx);
@@ -1538,13 +1538,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
     if (!postId) return next();
     cache.del(pendingKey(ctx.from.id, 'edit_mode'));
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    await ctx.reply(formatPostInfoPersian(post), {
-      parse_mode: 'Markdown' as any,
-      link_preview_options: { is_disabled: true } as any,
-      ...postInfoActionKeyboard(post),
-    });
+    // Return to posts list (one level up from edit menu)
+    const result = await postService.findAll({ page: 1, limit: 100 });
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
   });
 
   // 📥 لغو انتشار / 📤 انتشار: Toggle publish status, then refresh post info
@@ -1628,7 +1625,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (post) await showPostInfo(ctx, post);
   });
 
-  // 🗑 حذف: Ask confirmation, then delete
+  // 🗑 حذف پست: Ask confirmation, then delete, return to posts list
   bot.action(/^post:manager:delete:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
@@ -1636,23 +1633,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    try {
-      await ctx.editMessageText(
-        `🗑 آیا از حذف "${post.title}" مطمئن هستید؟`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback('✅ بله، حذف شود', `post:manager:delete:confirm:${postId}`)],
-          [Markup.button.callback('❌ انصراف', `post:manager:cancel:${postId}`)],
-        ])
-      );
-    } catch (e: any) {
-      await ctx.reply(
-        `🗑 آیا از حذف "${post.title}" مطمئن هستید؟`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback('✅ بله، حذف شود', `post:manager:delete:confirm:${postId}`)],
-          [Markup.button.callback('❌ انصراف', `post:manager:cancel:${postId}`)],
-        ])
-      );
-    }
+    const text = `🗑 آیا از حذف "${post.title}" مطمئن هستید؟\n\nاین پست از منو و لیست پست‌ها حذف خواهد شد.`;
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('✅ بله، حذف شود', `post:manager:delete:confirm:${postId}`)],
+      [Markup.button.callback('❌ انصراف', `post:manager:cancel:${postId}`)],
+    ]);
+    try { await ctx.editMessageText(text, keyboard); } catch { await ctx.reply(text, keyboard); }
   });
 
   bot.action(/^post:manager:delete:confirm:(\d+)$/, async (ctx: any) => {
@@ -1661,11 +1647,40 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     await postService.delete(postId);
-    try {
-      await ctx.editMessageText('🗑 پست حذف شد.');
-    } catch {
-      await ctx.reply('🗑 پست حذف شد.');
-    }
+    try { await ctx.editMessageText('🗑 پست حذف شد.'); } catch { await ctx.reply('🗑 پست حذف شد.'); }
+    // Return to posts list
+    const result = await postService.findAll({ page: 1, limit: 100 });
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+  });
+
+  // 🔥 حذف دائمی: Confirm then fully remove post from all tables
+  bot.action(/^post:manager:harddelete:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const text = `⚠️ *حذف دائمی*\n\nآیا از حذف دائمی "${post.title}" مطمئن هستید؟\n\nاین عملیات قابل بازگشت نیست و پست به طور کامل از تمام جداول دیتابیس حذف خواهد شد.`;
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('🔥 بله، حذف دائمی شود', `post:manager:harddelete:confirm:${postId}`)],
+      [Markup.button.callback('❌ انصراف', `post:manager:cancel:${postId}`)],
+    ]);
+    try { await ctx.editMessageText(text, { parse_mode: 'Markdown' as any, ...keyboard }); } catch { await ctx.reply(text, { parse_mode: 'Markdown' as any, ...keyboard }); }
+  });
+
+  bot.action(/^post:manager:harddelete:confirm:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    await postService.delete(postId);
+    try { await ctx.editMessageText('🔥 پست به طور دائمی حذف شد.'); } catch { await ctx.reply('🔥 پست به طور دائمی حذف شد.'); }
+    // Return to posts list
+    const result = await postService.findAll({ page: 1, limit: 100 });
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
   });
 
   // Cancel delete confirmation → show post info again
