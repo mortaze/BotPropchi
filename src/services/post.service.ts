@@ -8,6 +8,7 @@ import { eventBus, Events } from '../utils/events';
 import { logger } from '../utils/logger';
 import { sanitizeTelegramText, sanitizeJsonStrings, validateDbInput } from '../utils/unicode';
 import { extractTelegramSnapshot, validateTelegramEntities, validateTelegramHtml } from './post-renderer.service';
+import { normalizePost } from './post-normalizer.service';
 
 const CACHE_KEY_PUBLISHED = 'posts:published';
 const CACHE_KEY_COMMANDS = 'posts:commands';
@@ -285,7 +286,7 @@ export const postService = {
   },
 
   async getHidden() {
-    return postRepository.getHidden();
+    return (await postRepository.getHidden()).map(normalizePost);
   },
 
   async processScheduled(): Promise<number> {
@@ -393,15 +394,18 @@ export const postService = {
   },
 
   async findById(id: number) {
-    return postRepository.findById(id);
+    const post = await postRepository.findById(id);
+    return post ? normalizePost(post) : null;
   },
 
   async findBySlug(slug: string) {
-    return postRepository.findBySlug(slug);
+    const post = await postRepository.findBySlug(slug);
+    return post ? normalizePost(post) : null;
   },
 
   async findByCommand(command: string) {
-    return postRepository.findByCommand(command);
+    const post = await postRepository.findByCommand(command);
+    return post ? normalizePost(post) : null;
   },
 
   async findAll(params: {
@@ -412,23 +416,28 @@ export const postService = {
     search?: string;
     category?: string;
   }) {
-    return postRepository.findAll(params);
+    const result = await postRepository.findAll(params);
+    return {
+      ...result,
+      items: result.items.map(normalizePost),
+    };
   },
 
   async getPublished() {
     const cached = cache.get<any[]>(CACHE_KEY_PUBLISHED);
     if (cached) return cached;
-    const posts = await postRepository.getPublished();
+    const posts = (await postRepository.getPublished()).map(normalizePost);
     cache.set(CACHE_KEY_PUBLISHED, posts, 10);
     return posts;
   },
 
   async getPublishedByPage(page: number, limit: number = 5) {
-    return postRepository.getPublishedByPage(page, limit);
+    const result = await postRepository.getPublishedByPage(page, limit);
+    return { ...result, items: result.items.map(normalizePost) };
   },
 
   async getDrafts() {
-    return postRepository.getDrafts();
+    return (await postRepository.getDrafts()).map(normalizePost);
   },
 
   async getCommandMap(): Promise<Map<string, any>> {
@@ -492,7 +501,7 @@ export const postService = {
   },
 
   async getTopPosts(limit?: number) {
-    return postRepository.getTopPosts(limit);
+    return (await postRepository.getTopPosts(limit)).map(normalizePost);
   },
 
   async addCommand(postId: number, command: string, aliases?: string[]) {
@@ -614,7 +623,7 @@ export const postService = {
       logger.info(`[CommandResolve] DB fallback found /${command} -> "${dbPost.title}" (id: ${dbPost.id})`);
       // Invalidate cache so next lookup uses fresh data
       this.invalidateCache();
-      return dbPost;
+      return normalizePost(dbPost);
     }
     logger.warn(`[CommandResolve] /${command} not found`);
     return null;
@@ -664,7 +673,7 @@ export const postService = {
   async getAllForMenu(): Promise<any[]> {
     const cached = cache.get<any[]>(CACHE_KEY_MENU);
     if (cached) return cached;
-    const published = await postRepository.getPublished();
+    const published = (await postRepository.getPublished()).map(normalizePost);
     cache.set(CACHE_KEY_MENU, published, 10);
     return published;
   },

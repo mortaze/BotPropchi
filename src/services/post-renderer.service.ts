@@ -1,7 +1,6 @@
 import { Markup } from 'telegraf';
 import { logger } from '../utils/logger';
 import {
-  RendererResolver,
   TelegramNativeRenderer,
   telegramRequestValidator,
   telegramSnapshotComparator,
@@ -14,6 +13,7 @@ import {
   buildTelegramKeyboard,
 } from './renderer';
 import { sendFormattedMessage } from '../shared/message-format';
+import { normalizePost } from './post-normalizer.service';
 
 const MEDIA_SENDERS: Record<string, { inputType: string; method: string; apiMethod: string }> = {
   photo: { inputType: 'photo', method: 'replyWithPhoto', apiMethod: 'sendPhoto' },
@@ -57,16 +57,9 @@ export function comparePostNativeRoundtrip(post: any) {
   return telegramSnapshotComparator.compare(post);
 }
 
-export async function renderPostToTelegram(ctx: any, post: any) {
-  const resolver = new RendererResolver();
-  const rendererChoice = resolver.resolve(post);
-
-  logger.info(`[Pipeline] post=${post.id} resolve=${rendererChoice}`);
-
-  if (rendererChoice === 'legacy') {
-    logger.warn(`[Pipeline] post=${post.id} no native data, cannot render natively`);
-    return false;
-  }
+export async function renderPostToTelegram(ctx: any, rawPost: any) {
+  // Normalize post to unified format before ANY render operation
+  const post = normalizePost(rawPost);
 
   deliveryDebugService.logFullPipeline(post);
 

@@ -7,7 +7,7 @@ import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 import { sanitizeTelegramText, sanitizeTelegramExtra, buildSafeTelegramButton } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
-import { rendererResolver } from '../../services/renderer/renderer-resolver.service';
+import { normalizePost } from '../../services/post-normalizer.service';
 import {
   postMainMenuKeyboard,
   postEditorKeyboard,
@@ -1745,75 +1745,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     return { segments };
   }
 
-  async function sendPostToChat(ctx: any, post: any) {
+  async function sendPostToChat(ctx: any, rawPost: any) {
+    const post = normalizePost(rawPost);
     await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-    logger.info(`[Pipeline] sendPostToChat post=${post.id} title="${post.title}"`);
-    logger.info(`[PipelineDebug] post=${post.id} contentText=${typeof post.contentText} contentEntities=${Array.isArray(post.contentEntities) ? post.contentEntities.length : typeof post.contentEntities} renderMode=${post.renderMode} contentFormat=${post.contentFormat} telegramPayload=${!!post.telegramPayload} telegramMsgSnapshot=${!!post.telegramMessageSnapshot} entities=${Array.isArray(post.entities) ? post.entities.length : typeof post.entities}`);
-    const rendererType = rendererResolver.resolve(post);
-    if (rendererType === 'native') {
-      logger.info(`[Pipeline] sendPostToChat post=${post.id} → native`);
-      await renderPostToTelegram(ctx, post);
-      await systemLogService.log({
-        eventType: 'ADMIN_ACTION' as any,
-        message: `Post Previewed (native): "${post.title}"`,
-        telegramId: ctx.from.id,
-        metadata: { postId: post.id } as any,
-      });
-      return;
-    }
-    logger.info(`[Pipeline] sendPostToChat post=${post.id} → legacy`);
-    const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
-    const parseMode = post.parseMode || 'Markdown';
-    const rawText = post.content || post.caption || '';
-    const { segments } = parseCopyBlocks(rawText);
-    const hasCopyBlocks = segments.some(s => s.type === 'copy');
-    const textWithoutCopy = sanitizeTelegramText(segments.filter(s => s.type === 'text').map(s => s.content).join('').trim(), 4096);
-
-    if (post.mediaFileId && post.mediaType) {
-      const mediaConfig: any = { caption: textWithoutCopy || post.caption, parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(inlineButtons ? Markup.inlineKeyboard(inlineButtons) : {}) };
-      switch (post.mediaType) {
-        case 'photo': await ctx.replyWithPhoto(post.mediaFileId, mediaConfig); break;
-        case 'video': await ctx.replyWithVideo(post.mediaFileId, mediaConfig); break;
-        case 'animation': await ctx.replyWithAnimation(post.mediaFileId, mediaConfig); break;
-        case 'document': await ctx.replyWithDocument(post.mediaFileId, mediaConfig); break;
-        case 'audio': await ctx.replyWithAudio(post.mediaFileId, mediaConfig); break;
-        case 'voice': await ctx.replyWithVoice(post.mediaFileId, mediaConfig); break;
-        default: await ctx.replyWithPhoto(post.mediaFileId, mediaConfig); break;
-      }
-    } else if (post.albumMediaIds && Array.isArray(post.albumMediaIds) && post.albumMediaIds.length > 0) {
-      const media = post.albumMediaIds.map((id: string, i: number) => ({
-        type: 'photo' as const,
-        media: id,
-        caption: i === 0 ? textWithoutCopy : undefined,
-        parse_mode: parseMode,
-      }));
-      await ctx.replyWithMediaGroup(media);
-      if (inlineButtons.length > 0) {
-        await ctx.reply('عملیات:', Markup.inlineKeyboard(inlineButtons));
-      }
-    } else if (textWithoutCopy) {
-      try {
-        await ctx.reply(textWithoutCopy, { parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
-      } catch {
-        await ctx.reply(textWithoutCopy, { link_preview_options: { is_disabled: true }, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
-      }
-    } else {
-      await ctx.reply('(پست خالی)', { link_preview_options: { is_disabled: true }, ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}) });
-    }
-
-    if (hasCopyBlocks) {
-      for (const segment of segments) {
-        if (segment.type === 'copy') {
-          await ctx.reply(
-            '📋 کپی کد',
-            Markup.inlineKeyboard([
-              [Markup.button.callback('📋 برای کپی لمس کنید', `post:user:copyblock:${Buffer.from(segment.content).toString('base64')}`)],
-            ])
-          );
-        }
-      }
-    }
-
+    await renderPostToTelegram(ctx, post);
     await systemLogService.log({
       eventType: 'ADMIN_ACTION' as any,
       message: `Post Previewed: "${post.title}"`,
