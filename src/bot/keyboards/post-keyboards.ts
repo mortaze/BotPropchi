@@ -10,7 +10,7 @@ function buttonDisplayText(btn: any, fallback: string): string {
 
 export const postMainMenuKeyboard = () =>
   Markup.keyboard([
-    ['➕ ایجاد پست'],
+    ['➕ ایجاد پست', '📥 Import From Telegram'],
     ['📋 مدیریت پست‌ها', '📦 پیش‌نویس‌ها'],
     ['👻 پست‌های مخفی'],
     ['👁 پیش‌نمایش', '📤 انتشار'],
