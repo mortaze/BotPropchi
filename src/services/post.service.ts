@@ -49,6 +49,10 @@ export const postService = {
       telegramMessageSnapshot: data.telegramMessageSnapshot ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramMessageSnapshot))) : undefined,
       contentFormat: data.contentFormat,
       contentVersion: data.contentVersion ?? 1,
+      contentText: data.contentText,
+      contentEntities: data.contentEntities ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.contentEntities))) : undefined,
+      renderMode: data.renderMode ?? 'telegram_entities',
+      previewText: data.previewText,
       command: data.command,
       status: data.status ?? PostStatus.DRAFT,
       sortOrder: data.sortOrder ?? 0,
@@ -97,6 +101,7 @@ export const postService = {
     if ((data as any).entities) (data as any).entities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).entities)));
     if ((data as any).telegramPayload) (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
     if ((data as any).telegramMessageSnapshot) (data as any).telegramMessageSnapshot = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramMessageSnapshot)));
+    if ((data as any).contentEntities) (data as any).contentEntities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).contentEntities)));
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     this.invalidateCache();
 
@@ -316,6 +321,9 @@ export const postService = {
     const validation = this.validateNativePostInput({ content: content || caption, caption, entities: caption ? captionEntities : entities, buttons: keyboard, media, contentFormat: 'entities' });
     if (!validation.valid) logger.warn(`[PostImport] Validation warnings for post ${postId}: ${validation.issues.join('; ')}`);
     const payload = { text: content || '', caption, entities, captionEntities, media, keyboard, rawMessage: snapshot.rawMessage };
+    const contentText = content || undefined;
+    const contentEntities = (caption ? captionEntities : entities) || [];
+    const previewText = (content || caption || '').slice(0, 200);
     const update: any = {
       content: content || undefined,
       caption,
@@ -324,6 +332,10 @@ export const postService = {
       telegramMessageSnapshot: snapshot.message,
       contentFormat: 'telegram_entities',
       contentVersion: 2,
+      contentText,
+      contentEntities,
+      renderMode: 'telegram_entities',
+      previewText,
       buttons: keyboard.length ? keyboard.map((row: any[]) => row.map((b: any) => ({ text: b.text, type: b.url ? 'URL' : b.web_app ? 'WEB_APP' : b.login_url ? 'LOGIN_URL' : b.copy_text ? 'COPY_TEXT' : b.switch_inline_query ? 'SWITCH_INLINE' : 'CALLBACK', value: b.url || b.callback_data || b.web_app?.url || b.login_url?.url || b.copy_text?.text || b.switch_inline_query || '', payload: b }))) : undefined,
       mediaFileId: media[0]?.fileId,
       mediaType: media[0]?.type,

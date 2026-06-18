@@ -4,6 +4,7 @@ import { config } from '../config';
 import { broadcastRepository } from '../repositories/broadcast.repository';
 import { logger } from '../utils/logger';
 import { systemLogService } from './system-log.service';
+import { sendFormattedMessageToChat } from '../shared/message-format';
 
 const TELEGRAM_DELAY_MS = Number(process.env.BROADCAST_DELAY_MS || 70);
 const BATCH_SIZE = Number(process.env.BROADCAST_BATCH_SIZE || 25);
@@ -203,8 +204,8 @@ class BroadcastService {
   private async sendToTelegram(broadcast: Broadcast, telegramId: bigint) {
     if (!this.bot) throw new Error('ربات برای ارسال پیام همگانی آماده نیست');
     const chatId = Number(telegramId);
-    const options = { parse_mode: this.parseMode(broadcast), caption: broadcast.content || undefined, link_preview_options: { is_disabled: true }, ...this.keyboardMarkup(broadcast) } as any;
     const payload = (broadcast.mediaItems || {}) as any;
+
     if (payload.sourceChatId && Array.isArray(payload.messageIds)) {
       for (const messageId of payload.messageIds) {
         if (payload.deliveryMethod === 'forward' || broadcast.messageType === BroadcastType.FORWARD_MESSAGE) {
@@ -217,34 +218,46 @@ class BroadcastService {
       return;
     }
 
-    switch (broadcast.messageType) {
-      case BroadcastType.TEXT:
-        return this.bot.telegram.sendMessage(chatId, broadcast.content || '', { parse_mode: this.parseMode(broadcast), link_preview_options: { is_disabled: true }, ...this.keyboardMarkup(broadcast) } as any);
-      case BroadcastType.PHOTO:
-        return this.bot.telegram.sendPhoto(chatId, broadcast.mediaFileId || '', options);
-      case BroadcastType.VIDEO:
-        return this.bot.telegram.sendVideo(chatId, broadcast.mediaFileId || '', options);
-      case BroadcastType.DOCUMENT:
-        return this.bot.telegram.sendDocument(chatId, broadcast.mediaFileId || '', options);
-      case BroadcastType.VOICE:
-        return this.bot.telegram.sendVoice(chatId, broadcast.mediaFileId || '', options);
-      case BroadcastType.AUDIO:
-        return this.bot.telegram.sendAudio(chatId, broadcast.mediaFileId || '', options);
-      case BroadcastType.STICKER:
-        return this.bot.telegram.sendSticker(chatId, broadcast.mediaFileId || '', this.keyboardMarkup(broadcast) as any);
-      case BroadcastType.ANIMATION:
-        return this.bot.telegram.sendAnimation(chatId, broadcast.mediaFileId || '', options);
-      case BroadcastType.MEDIA_GROUP:
-        return this.bot.telegram.sendMediaGroup(chatId, (broadcast.mediaItems as any[]) || []);
-      case BroadcastType.CONTACT:
-      case BroadcastType.LOCATION:
-      case BroadcastType.POLL:
-      case BroadcastType.FORWARD_MESSAGE:
-      case BroadcastType.COPY_MESSAGE:
-        throw new Error('این نوع پیام فقط از طریق پیام ذخیره‌شده تلگرام قابل ارسال است');
-      default:
-        throw new Error('نوع پیام پشتیبانی نمی‌شود');
+    const buttons = broadcast.inlineKeyboard as any[][] | undefined;
+    const content = broadcast.content || undefined;
+    const parseMode = this.parseMode(broadcast);
+    const common = {
+      link_preview: true,
+      parse_mode: parseMode || undefined,
+      buttons,
+    };
+
+    if (parseMode) {
+      switch (broadcast.messageType) {
+        case BroadcastType.TEXT:
+          return this.bot.telegram.sendMessage(chatId, content || '', { parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+        case BroadcastType.PHOTO:
+          return this.bot.telegram.sendPhoto(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+        case BroadcastType.VIDEO:
+          return this.bot.telegram.sendVideo(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+        case BroadcastType.DOCUMENT:
+          return this.bot.telegram.sendDocument(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+        case BroadcastType.VOICE:
+          return this.bot.telegram.sendVoice(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+        case BroadcastType.AUDIO:
+          return this.bot.telegram.sendAudio(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+        case BroadcastType.STICKER:
+          return this.bot.telegram.sendSticker(chatId, broadcast.mediaFileId || '', buttons ? { reply_markup: { inline_keyboard: buttons } } : undefined);
+        case BroadcastType.ANIMATION:
+          return this.bot.telegram.sendAnimation(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+        case BroadcastType.MEDIA_GROUP:
+          return this.bot.telegram.sendMediaGroup(chatId, (broadcast.mediaItems as any[]) || []);
+        default:
+          throw new Error('نوع پیام پشتیبانی نمی‌شود');
+      }
     }
+
+    await sendFormattedMessageToChat(this.bot, chatId, {
+      text: broadcast.content || '',
+      ...(broadcast.mediaFileId ? {
+        caption: broadcast.content || undefined,
+      } : {}),
+    }, common);
   }
 }
 

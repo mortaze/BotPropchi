@@ -92,10 +92,10 @@ export class TelegramNativeRenderer {
   render(post: any) {
     const snapshot = post.telegramMessageSnapshot || {};
     const payload = post.telegramPayload || {};
-    const text = snapshot.text ?? payload.text ?? post.content ?? post.caption ?? post.title ?? '';
+    const text = snapshot.text ?? payload.text ?? post.contentText ?? post.content ?? post.caption ?? post.title ?? '';
     const caption = snapshot.caption ?? payload.caption ?? post.caption ?? undefined;
-    const textEntities = nonEmptyEntities(snapshot.entities) || nonEmptyEntities(payload.entities) || entitiesFromRows(post.postEntities || post.richEntities, 'text') || cleanEntities(post.entities);
-    const captionEntities = nonEmptyEntities(snapshot.caption_entities) || nonEmptyEntities(payload.captionEntities) || entitiesFromRows(post.postEntities || post.richEntities, 'caption') || (caption ? cleanEntities(post.entities) : undefined);
+    const textEntities = nonEmptyEntities(snapshot.entities) || nonEmptyEntities(payload.entities) || entitiesFromRows(post.postEntities || post.richEntities, 'text') || cleanEntities(post.contentEntities) || cleanEntities(post.entities);
+    const captionEntities = nonEmptyEntities(snapshot.caption_entities) || nonEmptyEntities(payload.captionEntities) || entitiesFromRows(post.postEntities || post.richEntities, 'caption') || (caption ? cleanEntities(post.contentEntities) || cleanEntities(post.entities) : undefined);
     const media = Array.isArray(payload.media) && payload.media.length ? cloneJson(payload.media) : extractTelegramSnapshot(snapshot).media;
     const keyboard = payload.keyboard || snapshot.reply_markup?.inline_keyboard || post.buttons || [];
     const buttons = buildTelegramKeyboard(keyboard, post.id);
@@ -104,6 +104,7 @@ export class TelegramNativeRenderer {
     let detectedRenderer = 'raw content';
     if (post.telegramMessageSnapshot) detectedRenderer = 'telegramMessageSnapshot';
     else if (post.telegramPayload) detectedRenderer = 'telegramPayload';
+    else if (post.contentEntities) detectedRenderer = 'contentEntities';
     else if (post.contentFormat === 'telegram_entities') detectedRenderer = 'contentFormat=telegram_entities';
     else if (textEntities || captionEntities) detectedRenderer = 'entities table';
 

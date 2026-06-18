@@ -13,6 +13,7 @@ import {
   cloneJson,
   buildTelegramKeyboard,
 } from './renderer';
+import { sendFormattedMessage } from '../shared/message-format';
 
 const MEDIA_SENDERS: Record<string, { inputType: string; method: string; apiMethod: string }> = {
   photo: { inputType: 'photo', method: 'replyWithPhoto', apiMethod: 'sendPhoto' },
@@ -85,10 +86,12 @@ export async function renderPostToTelegram(ctx: any, post: any) {
     telegramSnapshotComparator.logDifferences(post.id, comparator);
   }
 
+  const buttons = rendered.buttons;
+
   if (rendered.media.length > 1) {
     logger.info(`[TelegramSend] post=${post.id} sendMediaGroup items=${rendered.media.length}`);
     await ctx.replyWithMediaGroup(finalRequest.media);
-    if (rendered.buttons.length) await ctx.reply('عملیات:', Markup.inlineKeyboard(rendered.buttons));
+    if (buttons.length) await ctx.reply('عملیات:', Markup.inlineKeyboard(buttons));
     return true;
   }
 
@@ -96,7 +99,7 @@ export async function renderPostToTelegram(ctx: any, post: any) {
     const m = rendered.media[0];
     if (m.type === 'sticker') {
       logger.info(`[TelegramSend] post=${post.id} sendSticker`);
-      await ctx.replyWithSticker(m.fileId, rendered.buttons.length ? Markup.inlineKeyboard(rendered.buttons) : undefined);
+      await ctx.replyWithSticker(m.fileId, buttons.length ? Markup.inlineKeyboard(buttons) : undefined);
       return true;
     }
     const sender = MEDIA_SENDERS[m.type] || MEDIA_SENDERS.document;
@@ -108,6 +111,12 @@ export async function renderPostToTelegram(ctx: any, post: any) {
 
   const { method, text, ...request } = finalRequest;
   logger.info(`[TelegramSend] post=${post.id} sendMessage textLength=${telegramLength(text || '')} entities=${(request.entities || []).length}`);
-  await ctx.reply(text, request);
+
+  await sendFormattedMessage(ctx, {
+    text: text || '',
+    entities: request.entities,
+  }, {
+    buttons,
+  });
   return true;
 }

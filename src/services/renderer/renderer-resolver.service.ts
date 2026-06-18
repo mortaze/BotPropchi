@@ -39,6 +39,16 @@ export class RendererResolver {
       return 'native';
     }
 
+    if (post.contentEntities && Array.isArray(post.contentEntities) && post.contentEntities.length > 0) {
+      logger.info(`[RendererResolver] post=${post.id} → native (contentEntities[] length=${post.contentEntities.length})`);
+      return 'native';
+    }
+
+    if (post.contentText && post.renderMode === 'telegram_entities') {
+      logger.info(`[RendererResolver] post=${post.id} → native (contentText + renderMode=telegram_entities)`);
+      return 'native';
+    }
+
     logger.info(`[RendererResolver] post=${post.id} → legacy (no native data found)`);
     return 'legacy';
   }

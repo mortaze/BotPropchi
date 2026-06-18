@@ -631,6 +631,10 @@ model Post {
   updatedAt       DateTime       @updatedAt
   rawContent      String?
   renderedContent String?
+  contentText     String?    @map("content_text")
+  contentEntities Json?      @map("content_entities")
+  renderMode      String?    @default("telegram_entities") @map("render_mode")
+  previewText     String?    @map("preview_text")
   postButtons     PostButton[]
   clickLogs       PostClickLog[]
   commands        PostCommand[]
