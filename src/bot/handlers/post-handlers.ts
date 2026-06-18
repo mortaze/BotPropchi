@@ -13,10 +13,7 @@ import {
   postEditorKeyboard,
   postListKeyboard,
   postViewKeyboard,
-  postTitleListKeyboard,
   postTitleOnlyListKeyboard,
-  postEditReplyKeyboard,
-  postActionInlineKeyboard,
   postInfoActionKeyboard,
   postEditModeKeyboard,
   postButtonsEditorKeyboard,
@@ -171,82 +168,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     // Back to post main menu
     if (text === '🔙 بازگشت به منوی پست') {
       return ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
-    }
-
-    // Back to post list (from edit reply keyboard)
-    if (text === '🔙 بازگشت به لیست پست‌ها') {
-      const result = await postService.findAll({ page: 1, limit: 100 });
-      return ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleListKeyboard(result.items));
-    }
-
-    // Edit reply keyboard actions — route to existing handlers via selectedPostId
-    const selectedPostId = cache.get<number>(pendingKey(ctx.from.id, 'selected_post'));
-
-    if (selectedPostId) {
-      if (text === '✏️ ویرایش محتوا') {
-        cache.set(pendingKey(ctx.from.id, 'editing_field'), 'content', 300);
-        cache.set(pendingKey(ctx.from.id, 'editing_post'), selectedPostId, 300);
-        const post = await postService.findById(selectedPostId);
-        const current = post?.content ? `محتوا فعلی:\n${graphemeTruncate(post.content, 200)}` : '(بدون محتوا)';
-        return ctx.reply(`📝 ${current}\n\nمحتوای جدید را ارسال کنید:`);
-      }
-      if (text === '✏️ ویرایش عنوان') {
-        cache.set(pendingKey(ctx.from.id, 'editing_field'), 'title', 300);
-        cache.set(pendingKey(ctx.from.id, 'editing_post'), selectedPostId, 300);
-        const post = await postService.findById(selectedPostId);
-        return ctx.reply(`✏ عنوان فعلی: *${post?.title}*\n\nعنوان جدید را ارسال کنید:`, { parse_mode: 'Markdown' as any });
-      }
-      if (text === '✏️ ویرایش دکمه‌ها') {
-        const post = await postService.findById(selectedPostId);
-        if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const buttons = (post as any).buttons || [];
-        return ctx.reply('⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
-          postButtonsEditorKeyboard(selectedPostId, buttons));
-      }
-      if (text === '🖼 ویرایش رسانه') {
-        cache.set(pendingKey(ctx.from.id, 'editing_field'), 'media', 300);
-        cache.set(pendingKey(ctx.from.id, 'editing_post'), selectedPostId, 300);
-        return ctx.reply('🖼 فایل رسانه ارسال کنید (عکس، ویدیو، گیف، سند، صدا، ویس):');
-      }
-      if (text === '🚀 تغییر وضعیت انتشار') {
-        const post = await postService.findById(selectedPostId);
-        if (!post) return ctx.reply('❌ پست یافت نشد.');
-        return ctx.reply(`📤 گزینه‌های انتشار برای "${post.title}":`, postPublishOptionsKeyboard(selectedPostId));
-      }
-      if (text === '➕ افزودن دستور') {
-        cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
-        cache.set(pendingKey(ctx.from.id, 'editing_post'), selectedPostId, 300);
-        return ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً `sgb/discount/rules`', { parse_mode: 'Markdown' as any });
-      }
-      if (text === '🙈 مخفی کردن') {
-        const post = await postService.findById(selectedPostId);
-        if (!post) return ctx.reply('❌ پست یافت نشد.');
-        if (post.status === 'HIDDEN') {
-          await postService.show(selectedPostId);
-          const updated = await postService.findById(selectedPostId);
-          return ctx.reply(formatPostInfoPersian(updated), {
-            parse_mode: 'Markdown' as any,
-            link_preview_options: { is_disabled: true } as any,
-            ...postEditReplyKeyboard(),
-          });
-        }
-        await postService.hide(selectedPostId);
-        const updated = await postService.findById(selectedPostId);
-        return ctx.reply(formatPostInfoPersian(updated), {
-          parse_mode: 'Markdown' as any,
-          link_preview_options: { is_disabled: true } as any,
-          ...postEditReplyKeyboard(),
-        });
-      }
-      if (text === '📦 بایگانی') {
-        await postService.archive(selectedPostId);
-        const updated = await postService.findById(selectedPostId);
-        return ctx.reply(formatPostInfoPersian(updated), {
-          parse_mode: 'Markdown' as any,
-          link_preview_options: { is_disabled: true } as any,
-          ...postEditReplyKeyboard(),
-        });
-      }
     }
 
     // Match post title → select that post

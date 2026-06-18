@@ -102,26 +102,6 @@ export const postTitleOnlyListKeyboard = (posts: any[]) => {
   return Markup.keyboard(rows).resize().persistent();
 };
 
-// ─── Reply Keyboard: Post Edit Actions ─────────────────────
-export const postEditReplyKeyboard = () =>
-  Markup.keyboard([
-    ['✏️ ویرایش محتوا', '✏️ ویرایش عنوان'],
-    ['✏️ ویرایش دکمه‌ها', '🖼 ویرایش رسانه'],
-    ['🚀 تغییر وضعیت انتشار', '➕ افزودن دستور'],
-    ['🙈 مخفی کردن', '📦 بایگانی'],
-    ['🔙 بازگشت به لیست پست‌ها'],
-  ]).resize().persistent();
-
-// ─── Inline Keyboard: Action Buttons on Post Info ─────────
-export const postActionInlineKeyboard = (postId: number) =>
-  Markup.inlineKeyboard([
-    [
-      Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
-      Markup.button.callback('➖ حذف', `post:action:remove:${postId}`),
-      Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
-    ],
-  ]);
-
 // ─── Inline Keyboard: Post Info Actions (ALL buttons on ONE message) ──
 // Displayed ON the post info message itself.
 // Includes ALL operations: Edit, Unpublish, Stats, Hide, Archive, Add, Remove, Replace, Delete, Back.
