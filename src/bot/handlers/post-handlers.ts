@@ -25,6 +25,7 @@ import {
   postRowResizeKeyboard,
   postPublishOptionsKeyboard,
   postAnalyticsKeyboard,
+  postManagerAnalyticsKeyboard,
   postCommandListKeyboard,
   postCommandEditKeyboard,
   postVersionHistoryKeyboard,
@@ -1523,7 +1524,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (post) await showPostInfo(ctx, post);
   });
 
-  // 📊 آمار: Show analytics (reuses existing analytics logic inline)
+  // 📊 آمار: Show analytics with back button to new action keyboard
   bot.action(/^post:manager:stats:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
@@ -1546,13 +1547,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       await ctx.editMessageText(text, {
         parse_mode: 'Markdown' as any,
         link_preview_options: { is_disabled: true } as any,
-        ...postAnalyticsKeyboard(postId),
+        ...postManagerAnalyticsKeyboard(postId),
       });
     } catch (e: any) {
       await ctx.reply(text, {
         parse_mode: 'Markdown' as any,
         link_preview_options: { is_disabled: true } as any,
-        ...postAnalyticsKeyboard(postId),
+        ...postManagerAnalyticsKeyboard(postId),
       });
     }
   });

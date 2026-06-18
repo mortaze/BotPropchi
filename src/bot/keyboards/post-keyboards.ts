@@ -251,6 +251,14 @@ export const postAnalyticsKeyboard = (postId: number) => {
   ]);
 };
 
+// ─── Analytics Keyboard for Post Manager Flow ────────────
+// Uses the new inline keyboard navigation (backtomain) instead of old post:view.
+export const postManagerAnalyticsKeyboard = (postId: number) =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback('🔄 تازه‌سازی', `post:manager:stats:${postId}`)],
+    [Markup.button.callback('« بازگشت به عملیات', `post:manager:backtomain:${postId}`)],
+  ]);
+
 export const postScheduleKeyboard = (postId: number) => {
   return Markup.inlineKeyboard([
     [Markup.button.callback('📅 زمان‌بندی انتشار', `post:publish:schedule:${postId}`)],
