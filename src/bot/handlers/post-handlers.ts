@@ -257,11 +257,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       cache.set(pendingKey(ctx.from.id, 'selected_post'), matched.id, 300);
 
-      // 1. Send the post itself for preview
-      await sendPostToChat(ctx, post);
-
-      // 2. Send ONE management message: post info + ALL buttons on one inline keyboard
-      //    No separate operation row message. No Reply Keyboards.
+      // Send ONE management message: post info + ALL buttons on one inline keyboard
+      // ⚠️ Public rendering pipeline (sendPostToChat / Pipeline / Renderer) must NEVER be called here.
       await ctx.reply(formatPostInfoPersian(post), {
         parse_mode: 'Markdown' as any,
         link_preview_options: { is_disabled: true } as any,
