@@ -110,7 +110,8 @@ export async function renderPostToTelegram(ctx: any, post: any) {
   }
 
   const { method, text, ...request } = finalRequest;
-  logger.info(`[TelegramSend] post=${post.id} sendMessage textLength=${telegramLength(text || '')} entities=${(request.entities || []).length}`);
+  const entityTypes = (request.entities || []).map((e: any) => `${e.type}@${e.offset}:${e.length}`).join(',');
+  logger.info(`[TelegramSend] post=${post.id} sendMessage textLength=${telegramLength(text || '')} entities=${(request.entities || []).length} entityTypes=[${entityTypes}]`);
 
   await sendFormattedMessage(ctx, {
     text: text || '',

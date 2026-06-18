@@ -193,6 +193,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           updateData.slug = slugify(ctx.message.text);
         } else if (field === 'content') {
           updateData.content = ctx.message.text;
+          updateData.contentText = ctx.message.text;
+          updateData.contentEntities = ctx.message.entities || [];
+          updateData.renderMode = 'telegram_entities';
+          updateData.contentFormat = 'telegram_entities';
+          logger.info(`[PostEdit] content update post=${postId} textLength=${(ctx.message.text || '').length} entities=${(ctx.message.entities || []).length} entityTypes=${(ctx.message.entities || []).map((e: any) => e.type).join(',')}`);
         } else if (field === 'caption') {
           updateData.caption = ctx.message.text;
         } else if (field === 'command') {
@@ -1232,6 +1237,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   async function sendPostToChat(ctx: any, post: any) {
     await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
     logger.info(`[Pipeline] sendPostToChat post=${post.id} title="${post.title}"`);
+    logger.info(`[PipelineDebug] post=${post.id} contentText=${typeof post.contentText} contentEntities=${Array.isArray(post.contentEntities) ? post.contentEntities.length : typeof post.contentEntities} renderMode=${post.renderMode} contentFormat=${post.contentFormat} telegramPayload=${!!post.telegramPayload} telegramMsgSnapshot=${!!post.telegramMessageSnapshot} entities=${Array.isArray(post.entities) ? post.entities.length : typeof post.entities}`);
     const rendererType = rendererResolver.resolve(post);
     if (rendererType === 'native') {
       logger.info(`[Pipeline] sendPostToChat post=${post.id} → native`);

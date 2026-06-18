@@ -119,6 +119,7 @@ function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; con
 async function sendPostToUser(ctx: any, post: any) {
   await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
   logger.info(`[Pipeline] sendPostToUser post=${post.id} title="${post.title}"`);
+  logger.info(`[PipelineDebug] post=${post.id} contentText=${typeof post.contentText} contentEntities=${Array.isArray(post.contentEntities) ? post.contentEntities.length : typeof post.contentEntities} renderMode=${post.renderMode} contentFormat=${post.contentFormat} telegramPayload=${!!post.telegramPayload} telegramMsgSnapshot=${!!post.telegramMessageSnapshot} entities=${Array.isArray(post.entities) ? post.entities.length : typeof post.entities}`);
   const rendererType = rendererResolver.resolve(post);
   if (rendererType === 'native') {
     logger.info(`[Pipeline] sendPostToUser post=${post.id} → native`);
