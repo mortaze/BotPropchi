@@ -260,15 +260,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       // 1. Send the post itself for preview
       await sendPostToChat(ctx, post);
 
-      // 2. Send post info with inline action keyboard (works for ALL posts regardless of status)
+      // 2. Send ONE management message: post info + ALL buttons on one inline keyboard
+      //    No separate operation row message. No Reply Keyboards.
       await ctx.reply(formatPostInfoPersian(post), {
         parse_mode: 'Markdown' as any,
         link_preview_options: { is_disabled: true } as any,
         ...postInfoActionKeyboard(post),
       });
-
-      // 3. Send operation row as separate message (add, remove, replace)
-      await ctx.reply('➕ افزودن  |  ➖ حذف  |  🔁 جایگزینی', postActionInlineKeyboard(matched.id));
       return;
     }
 
@@ -286,7 +284,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await safeEdit(ctx, '➕ پیام جدید را ارسال کنید تا به این پست اضافه شود.\nبه عنوان یک بلاک مجزا ذخیره خواهد شد.');
   });
 
-  // ─── Action: Remove Content ──────────────────────────────
+  // ─── Action: Remove Content (edits same message, no new messages) ──
   bot.action(/^post:action:remove:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
@@ -294,11 +292,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    await ctx.reply(
+    // Edit the same management message to show confirmation
+    await safeEdit(ctx,
       `🗑 محتوای "${post.title}" حذف شود؟`,
       Markup.inlineKeyboard([
         [Markup.button.callback('🗑 بله، حذف شود', `post:action:remove:confirm:${postId}`)],
-        [Markup.button.callback('❌ انصراف', 'post:manage:cancel')],
+        [Markup.button.callback('❌ انصراف', `post:manager:cancel:${postId}`)],
       ])
     );
   });
@@ -318,25 +317,27 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       updatedBy: BigInt(ctx.from.id),
     } as any);
     const post = await postService.findById(postId);
+    // Edit the same message with updated info + ALL inline buttons (no Reply Keyboard)
     await safeEdit(ctx, formatPostInfoPersian(post), {
       parse_mode: 'Markdown' as any,
       link_preview_options: { is_disabled: true } as any,
-      ...postEditReplyKeyboard(),
+      ...postInfoActionKeyboard(post),
     });
   });
 
-  // ─── Action: Replace Content/Media ───────────────────────
+  // ─── Action: Replace Content/Media (edits same message, no new messages) ──
   bot.action(/^post:action:replace:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    await ctx.reply(
+    // Edit the same management message to show options
+    await safeEdit(ctx,
       '🔁 چه چیزی را جایگزین کنیم؟',
       Markup.inlineKeyboard([
         [Markup.button.callback('📝 جایگزینی محتوا', `post:edit:${postId}:content`)],
         [Markup.button.callback('🖼 جایگزینی رسانه', `post:edit:${postId}:media`)],
-        [Markup.button.callback('❌ انصراف', 'post:manage:cancel')],
+        [Markup.button.callback('❌ انصراف', `post:manager:cancel:${postId}`)],
       ])
     );
   });
@@ -457,13 +458,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         }
         if (field === 'add_content') {
           const updated = await postService.findById(postId);
+          // Send ONE message with post info + ALL buttons (no separate operation row)
           await ctx.reply(formatPostInfoPersian(updated), {
             parse_mode: 'Markdown' as any,
             link_preview_options: { is_disabled: true } as any,
             ...postInfoActionKeyboard(updated),
           });
-          // Also re-send the operation row
-          await ctx.reply('➕ افزودن  |  ➖ حذف  |  🔁 جایگزینی', postActionInlineKeyboard(postId));
         } else {
           await showPostEditor(ctx, postId);
         }

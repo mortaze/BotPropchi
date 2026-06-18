@@ -122,9 +122,11 @@ export const postActionInlineKeyboard = (postId: number) =>
     ],
   ]);
 
-// ─── Inline Keyboard: Post Info Actions (context-aware labels) ──
+// ─── Inline Keyboard: Post Info Actions (ALL buttons on ONE message) ──
 // Displayed ON the post info message itself.
+// Includes ALL operations: Edit, Unpublish, Stats, Hide, Archive, Add, Remove, Replace, Delete, Back.
 // Button labels adapt to post status.
+// ⚠️ No Reply Keyboards or separate messages are ever created after this.
 export const postInfoActionKeyboard = (post: any) => {
   const postId = post.id;
   const isHidden = post.status === 'HIDDEN';
@@ -138,6 +140,11 @@ export const postInfoActionKeyboard = (post: any) => {
     [
       Markup.button.callback(isHidden ? '👻 نمایش' : '🙈 مخفی کردن', `post:manager:hide:${postId}`),
       Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
+    ],
+    [
+      Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
+      Markup.button.callback('➖ حذف', `post:action:remove:${postId}`),
+      Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
     ],
     [
       Markup.button.callback('🗑 حذف', `post:manager:delete:${postId}`),
