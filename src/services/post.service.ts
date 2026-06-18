@@ -38,7 +38,7 @@ export const postService = {
     sortOrder?: number;
     createdBy?: bigint;
   }) {
-    const sanitized = {
+    const sanitized: any = {
       title: validateDbInput(data.title, 'post.title'),
       slug: data.slug,
       content: data.content ? sanitizeTelegramText(data.content) : undefined,
@@ -53,10 +53,10 @@ export const postService = {
       telegramMessageSnapshot: data.telegramMessageSnapshot ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramMessageSnapshot))) : undefined,
       contentFormat: data.contentFormat,
       contentVersion: data.contentVersion ?? 1,
-      contentText: data.contentText,
+      contentText: data.contentText ?? (data.content || undefined),
       contentEntities: data.contentEntities ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.contentEntities))) : undefined,
       renderMode: data.renderMode ?? 'telegram_entities',
-      previewText: data.previewText,
+      previewText: data.previewText ?? (data.content ? data.content.slice(0, 200) : undefined),
       command: data.command,
       status: data.status ?? PostStatus.DRAFT,
       sortOrder: data.sortOrder ?? 0,
@@ -93,6 +93,10 @@ export const postService = {
       telegramMessageSnapshot: (existing as any).telegramMessageSnapshot,
       contentFormat: (existing as any).contentFormat,
       contentVersion: (existing as any).contentVersion,
+      contentText: (existing as any).contentText,
+      contentEntities: (existing as any).contentEntities,
+      renderMode: (existing as any).renderMode,
+      previewText: (existing as any).previewText,
       command: existing.command,
       status: existing.status,
       sortOrder: existing.sortOrder,
@@ -106,6 +110,27 @@ export const postService = {
     if ((data as any).telegramPayload) (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
     if ((data as any).telegramMessageSnapshot) (data as any).telegramMessageSnapshot = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramMessageSnapshot)));
     if ((data as any).contentEntities) (data as any).contentEntities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).contentEntities)));
+    // Sync native fields when content is updated without explicit native data
+    if (
+      typeof data.content === 'string'
+      && (data as any).contentText === undefined
+      && (data as any).contentEntities === undefined
+    ) {
+      (data as any).contentText = data.content;
+      if ((data as any).contentEntities === undefined) {
+        (data as any).contentEntities = [];
+      }
+      // If existing post had imported Telegram data and content is being rewritten,
+      // clear the Telegram snapshot/payload since they no longer match.
+      // Also reset contentFormat/renderMode so the resolver can correctly choose
+      // legacy renderer (with parse_mode) instead of native (without entities).
+      if ((existing as any).contentText || (existing as any).telegramPayload || (existing as any).telegramMessageSnapshot) {
+        (data as any).telegramPayload = null;
+        (data as any).telegramMessageSnapshot = null;
+        (data as any).contentFormat = null;
+        (data as any).renderMode = null;
+      }
+    }
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     this.invalidateCache();
 

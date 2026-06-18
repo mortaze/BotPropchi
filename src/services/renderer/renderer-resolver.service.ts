@@ -44,8 +44,8 @@ export class RendererResolver {
       return 'native';
     }
 
-    if (post.contentText && post.renderMode === 'telegram_entities') {
-      logger.info(`[RendererResolver] post=${post.id} → native (contentText + renderMode=telegram_entities)`);
+    if (post.contentText && post.renderMode === 'telegram_entities' && Array.isArray(post.contentEntities) && post.contentEntities.length > 0) {
+      logger.info(`[RendererResolver] post=${post.id} → native (contentText + contentEntities[] + renderMode=telegram_entities)`);
       return 'native';
     }
 
