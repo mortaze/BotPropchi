@@ -709,6 +709,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
       '↩️ بازگشت به پنل ادمین',
     ];
     if (knownTexts.includes(text)) return next();
+    // 🚫 Skip if admin is in Post Management mode — the post-handlers.ts text handler
+    // will match the post title and show the admin edit panel instead.
+    // This prevents menu button routing from calling sendPostToUser() on post titles.
+    if (cache.get(`post_mgmt_mode:${ctx.from.id}`)) {
+      return next();
+    }
     try {
       // Resolve layout from DB so post titles are current (single source of truth)
       const layout = await settingsService.getResolvedMenuLayout(false);

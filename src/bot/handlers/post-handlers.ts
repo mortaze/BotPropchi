@@ -154,6 +154,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (result.items.length === 0) {
       return ctx.reply('📋 پستی وجود ندارد.', postMainMenuKeyboard());
     }
+    // Set flag so the menu button handler in index.ts skips this user's next text
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
     await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
   });
 
@@ -167,6 +169,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // Back to post main menu
     if (text === '🔙 بازگشت به منوی پست') {
+      cache.del(`post_mgmt_mode:${ctx.from.id}`);
       return ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
     }
 
@@ -177,6 +180,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const post = await postService.findById(matched.id);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       cache.set(pendingKey(ctx.from.id, 'selected_post'), matched.id, 300);
+      // Clear post management mode flag — post selected, no longer in list mode
+      cache.del(`post_mgmt_mode:${ctx.from.id}`);
 
       // Send ONE management message: post info + ALL buttons on one inline keyboard
       // ⚠️ Public rendering pipeline (sendPostToChat / Pipeline / Renderer) must NEVER be called here.
@@ -1571,6 +1576,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const result = await postService.findAll({ page: 1, limit: 100 });
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
     await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
   });
 
