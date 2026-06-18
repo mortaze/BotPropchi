@@ -29,6 +29,10 @@ export const postService = {
     telegramMessageSnapshot?: any;
     contentFormat?: string;
     contentVersion?: number;
+    contentText?: string;
+    contentEntities?: any[];
+    renderMode?: string;
+    previewText?: string;
     command?: string;
     status?: PostStatus;
     sortOrder?: number;

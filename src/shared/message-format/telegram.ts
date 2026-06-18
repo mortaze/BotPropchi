@@ -41,7 +41,7 @@ function buildKeyboard(buttons?: any[][]): any {
   );
 }
 
-export function prepareTelegramPayload(
+export function buildTelegramRequests(
   msg: FormattedMessage,
   options?: SendOptions,
 ): TelegramApiRequest[] {
@@ -81,7 +81,7 @@ export async function sendFormattedMessage(
   const senderId = ctx?.from?.id || ctx?.chat?.id || 'unknown';
   logger.info(`[sendFormattedMessage] chat=${senderId} textLen=${telegramLength(msg.text || msg.caption || '')}`);
 
-  const requests = prepareTelegramPayload(msg, options);
+  const requests = buildTelegramRequests(msg, options);
 
   for (const req of requests) {
     const { method, ...params } = req;
@@ -132,7 +132,7 @@ export async function sendFormattedMessageToChat(
 ): Promise<boolean> {
   logger.info(`[sendFormattedMessageToChat] chatId=${chatId} textLen=${telegramLength(msg.text || msg.caption || '')}`);
 
-  const requests = prepareTelegramPayload(msg, options);
+  const requests = buildTelegramRequests(msg, options);
 
   for (const req of requests) {
     const { method, ...params } = req;
