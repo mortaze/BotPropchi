@@ -13,6 +13,9 @@ import {
   postEditorKeyboard,
   postListKeyboard,
   postViewKeyboard,
+  postSelectKeyboard,
+  postManageKeyboard,
+  postEditModeKeyboard,
   postButtonsEditorKeyboard,
   postButtonEditKeyboard,
   postButtonTypeKeyboard,
@@ -106,12 +109,162 @@ async function safeEdit(ctx: any, text: string, extra?: any): Promise<void> {
   await ctx.reply(safeText, safeExtra).catch(() => {});
 }
 
+// ─── Post Management Info Display ─────────────────────────
+function formatPostManageInfo(post: any): string {
+  const statusMap: Record<string, string> = {
+    PUBLISHED: '✅ Published',
+    DRAFT: '📝 Draft',
+    SCHEDULED: '⏰ Scheduled',
+    ARCHIVED: '📦 Archived',
+    HIDDEN: '👻 Hidden',
+  };
+  const statusText = statusMap[post.status] || post.status;
+  const mediaCount = post.mediaType ? (Array.isArray(post.albumMediaIds) ? post.albumMediaIds.length : 1) : 0;
+  const copyBlockCount = (post.content?.match(/\[\[copy\]\]/g) || []).length;
+  const linkedMsgCount = 1 + copyBlockCount + (mediaCount > 1 ? 1 : 0);
+  const lines = [
+    `📝 *Title:* ${post.title}`,
+    `🚀 *Status:* ${statusText}`,
+    post.isPublished ? `📊 *Views:* ${(post as any)._count?.views || 0}` : '',
+    post.status === 'ARCHIVED' ? '📦 *Archived*' : '',
+    post.status === 'HIDDEN' ? '👻 *Hidden*' : '',
+    mediaCount > 0 ? `📎 *Media Items:* ${mediaCount}` : '',
+    linkedMsgCount > 1 ? `💬 *Linked Messages:* ${linkedMsgCount}` : '',
+    '',
+    post.content ? graphemeTruncate(post.content, 300) : '(no content)',
+  ].filter(Boolean).join('\n');
+  return lines;
+}
+
 export function registerPostHandlers(bot: Telegraf<Context>) {
   // ─── Post Admin Menu ─────────────────────────────────────
   bot.hears('📝 پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+  });
+
+  // ─── Edit Post Entry (Post Selection) ────────────────────
+  bot.hears('✏️ Edit Post', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const result = await postService.findAll({ page: 1, limit: 100 });
+    await ctx.reply(
+      '✏️ Select a post to manage:',
+      postSelectKeyboard(result.items)
+    );
+  });
+
+  // ─── Post Selection Handler ──────────────────────────────
+  bot.action(/^post:select:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ Post not found.');
+    await safeEdit(ctx, formatPostManageInfo(post), {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postManageKeyboard(postId),
+    });
+  });
+
+  // ─── Manage: Back to Management Menu ─────────────────────
+  bot.action(/^post:manage:back:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ Post not found.');
+    await safeEdit(ctx, formatPostManageInfo(post), {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postManageKeyboard(postId),
+    });
+  });
+
+  // ─── Manage: Edit Mode Submenu ──────────────────────────
+  bot.action(/^post:manage:edit:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ Post not found.');
+    await safeEdit(ctx, `✏️ *Edit Mode* — ${post.title}\n\nSelect what to edit:`, {
+      parse_mode: 'Markdown',
+      ...postEditModeKeyboard(postId),
+    });
+  });
+
+  // ─── Action: Add Content (Multi-Message Support) ─────────
+  bot.action(/^post:action:add:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    cache.set(pendingKey(ctx.from.id, 'editing_field'), 'add_content', 300);
+    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    await safeEdit(ctx, '➕ Send the message/content to add to this post.\nIt will be appended as an additional message block.');
+  });
+
+  // ─── Action: Remove Content ──────────────────────────────
+  bot.action(/^post:action:remove:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ Post not found.');
+    await ctx.reply(
+      `🗑 Remove content from "${post.title}"?`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('🗑 Remove Content', `post:action:remove:confirm:${postId}`)],
+        [Markup.button.callback('❌ Cancel', `post:select:${postId}`)],
+      ])
+    );
+  });
+
+  bot.action(/^post:action:remove:confirm:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    await postService.update(postId, {
+      content: null,
+      contentText: null,
+      contentEntities: [],
+      mediaFileId: null,
+      mediaType: null,
+      albumMediaIds: null,
+      updatedBy: BigInt(ctx.from.id),
+    } as any);
+    const post = await postService.findById(postId);
+    await safeEdit(ctx, formatPostManageInfo(post), {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postManageKeyboard(postId),
+    });
+  });
+
+  // ─── Action: Replace Content/Media ───────────────────────
+  bot.action(/^post:action:replace:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ Post not found.');
+    await ctx.reply(
+      '🔁 What would you like to replace?',
+      Markup.inlineKeyboard([
+        [Markup.button.callback('📝 Replace Content', `post:edit:${postId}:content`)],
+        [Markup.button.callback('🖼 Replace Media', `post:edit:${postId}:media`)],
+        [Markup.button.callback('❌ Cancel', `post:select:${postId}`)],
+      ])
+    );
   });
 
   // ─── Create Post ─────────────────────────────────────────
@@ -198,6 +351,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           updateData.renderMode = 'telegram_entities';
           updateData.contentFormat = 'telegram_entities';
           logger.info(`[PostEdit] content update post=${postId} textLength=${(ctx.message.text || '').length} entities=${(ctx.message.entities || []).length} entityTypes=${(ctx.message.entities || []).map((e: any) => e.type).join(',')}`);
+        } else if (field === 'add_content') {
+          const post = await postService.findById(postId);
+          const existingContent = post?.content || '';
+          const newBlock = `[[copy]]\n${ctx.message.text}\n[[/copy]]`;
+          updateData.content = existingContent + '\n\n' + newBlock;
+          updateData.contentText = updateData.content;
+          logger.info(`[PostEdit] add_content post=${postId} — appended copy block`);
         } else if (field === 'caption') {
           updateData.caption = ctx.message.text;
         } else if (field === 'command') {
@@ -213,9 +373,19 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
         if (Object.keys(updateData).length > 0) {
           await postService.update(postId, { ...updateData, updatedBy: BigInt(ctx.from.id) });
-          await ctx.reply(`✅ ${field === 'title' ? 'عنوان' : field === 'content' ? 'محتوا' : field === 'caption' ? 'کپشن' : 'دستور'} به‌روز شد!`);
+          const fieldNames: Record<string, string> = { title: 'Title', content: 'Content', add_content: 'Content Added', caption: 'Caption', command: 'Command' };
+          await ctx.reply(`✅ ${fieldNames[field] || field} updated!`);
         }
-        await showPostEditor(ctx, postId);
+        if (field === 'add_content') {
+          const updated = await postService.findById(postId);
+          await safeEdit(ctx, formatPostManageInfo(updated), {
+            parse_mode: 'Markdown',
+            link_preview_options: { is_disabled: true },
+            ...postManageKeyboard(postId),
+          });
+        } else {
+          await showPostEditor(ctx, postId);
+        }
       } catch (err: any) {
         logger.error('[Post] Edit error:', err);
         await ctx.reply(`❌ به‌روزرسانی ${field} ناموفق بود.`);
