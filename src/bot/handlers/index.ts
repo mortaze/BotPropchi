@@ -40,6 +40,8 @@ import {
   buildForceJoinKeyboard,
 } from '../keyboards';
 import {
+  buildMenuEditorReplyKeyboard,
+  buildMenuButtonEditReplyKeyboard,
   menuEditorKeyboard,
   menuButtonEditKeyboard,
   menuSwapTargetKeyboard,
@@ -52,6 +54,13 @@ async function editMenuEditor(ctx: any, message: string) {
   const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
   logger.info(`[MenuEditor] Rendering editor keyboard rows=${resolvedLayout.length}`);
   return safeEdit(ctx, message, menuEditorKeyboard(resolvedLayout));
+}
+
+async function showMenuEditor(ctx: any, message: string) {
+  const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+  logger.info(`[MenuEditor] Rendering Reply Keyboard rows=${resolvedLayout.length}`);
+  cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
+  await ctx.reply(message, buildMenuEditorReplyKeyboard(resolvedLayout));
 }
 
 function assertMenuTextPreserved(before: any[][], after: any[][], operation: string) {
@@ -422,7 +431,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     // Editor mode: resolve titles from DB but show all entries (including unpublished)
     const layout = await settingsService.getResolvedMenuLayout(false);
-    await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
+    cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
+    await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', buildMenuEditorReplyKeyboard(layout));
   });
 
   bot.action('menu:editor', async (ctx: any) => {
@@ -618,11 +628,140 @@ export function registerHandlers(bot: Telegraf<Context>) {
     }
   });
 
-  // ─── Dynamic Post Button Routing ──────────────────────────
-  // Uses menu_layout text → ref mapping, NEVER queries published posts by title.
+  // ─── Menu Editor (Reply Keyboard) ─────────────────────────
+  // Handles Reply Keyboard interactions for the menu editor.
+  // Runs before Dynamic Post Button Routing so menu edit texts are intercepted first.
   bot.on('text', async (ctx: any, next) => {
     if (!ctx.from || ctx.chat?.type !== 'private') return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return next();
     const text = ctx.message.text;
+    if (!text || text.startsWith('/')) return next();
+
+    // ── Check if user is editing a specific button ────────────
+    const editingButton = cache.get<{row: number; col: number}>(`menu:editing:${ctx.from.id}`);
+    if (editingButton) {
+      const { row, col } = editingButton;
+      const layout = await settingsService.getMenuLayout();
+      const before = await settingsService.getResolvedMenuLayout(false);
+      const button = layout[row]?.[col];
+
+      if (text === '🙈 مخفی' || text === '👁 نمایش') {
+        if (button) {
+          button.visible = button.visible === false ? true : false;
+          await settingsService.saveMenuLayout(layout);
+          assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-toggle');
+          const status = button.visible !== false ? 'نمایش داده می‌شود' : 'مخفی شد';
+          cache.del(`menu:editing:${ctx.from.id}`);
+          await showMenuEditor(ctx, `👁 دکمه ${status}.\n\n🎛 ویرایشگر منوی اصلی:`);
+          return;
+        }
+      }
+
+      if (text === '⬆ سطر قبل') {
+        if (row === 0) {
+          await ctx.reply('هم‌اکنون در بالاترین سطر است.');
+          return;
+        }
+        const btn = layout[row]?.splice(col, 1)[0];
+        if (btn) {
+          layout[row - 1].push(btn);
+          await settingsService.saveMenuLayout(layout);
+          assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-up');
+          cache.del(`menu:editing:${ctx.from.id}`);
+          await showMenuEditor(ctx, `✅ دکمه به سطر ${row} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`);
+          return;
+        }
+      }
+
+      if (text === '⬇ سطر بعد') {
+        const btn = layout[row]?.splice(col, 1)[0];
+        if (btn) {
+          const targetRow = row + 1;
+          if (targetRow >= layout.length) layout.push([]);
+          layout[targetRow].push(btn);
+          await settingsService.saveMenuLayout(layout);
+          assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-down');
+          cache.del(`menu:editing:${ctx.from.id}`);
+          await showMenuEditor(ctx, `✅ دکمه به سطر ${targetRow + 1} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`);
+          return;
+        }
+      }
+
+      if (text === '◀ چپ') {
+        if (col === 0) {
+          await ctx.reply('هم‌اکنون در چپ‌ترین است.');
+          return;
+        }
+        if (layout[row]) {
+          [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
+          await settingsService.saveMenuLayout(layout);
+          assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-left');
+          cache.del(`menu:editing:${ctx.from.id}`);
+          await showMenuEditor(ctx, '✅ دکمه به چپ منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
+          return;
+        }
+      }
+
+      if (text === '▶ راست') {
+        if (!layout[row] || col >= layout[row].length - 1) {
+          await ctx.reply('هم‌اکنون در راست‌ترین است.');
+          return;
+        }
+        [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
+        await settingsService.saveMenuLayout(layout);
+        assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-right');
+        cache.del(`menu:editing:${ctx.from.id}`);
+        await showMenuEditor(ctx, '✅ دکمه به راست منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
+        return;
+      }
+
+      if (text === '🔙 بازگشت') {
+        cache.del(`menu:editing:${ctx.from.id}`);
+        await showMenuEditor(ctx, '🎛 ویرایشگر منوی اصلی:');
+        return;
+      }
+
+      // Unknown text in edit mode — ignore
+      return;
+    }
+
+    // ── Check if user is in main menu editor mode ────────────
+    const inMenuEditor = cache.get<boolean>(`menu:edit_mode:${ctx.from.id}`);
+    if (inMenuEditor) {
+      if (text === '🔙 بازگشت') {
+        cache.del(`menu:edit_mode:${ctx.from.id}`);
+        const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
+        await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+        return;
+      }
+
+      // Match text to a menu button → enter button-edit mode
+      const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+      const rawLayout = await settingsService.getMenuLayout();
+      let matched = false;
+      for (let r = 0; r < resolvedLayout.length; r++) {
+        for (let c = 0; c < resolvedLayout[r].length; c++) {
+          const btn = resolvedLayout[r][c];
+          const btnText = btn?.text || btn?.label || btn?.title || btn?.ref || 'بدون عنوان';
+          const prefix = btn.visible === false ? '🙈 ' : '';
+          const displayText = `${prefix}${btnText}`;
+          if (displayText === text) {
+            const rawButton = rawLayout[r]?.[c];
+            cache.set(`menu:editing:${ctx.from.id}`, { row: r, col: c }, 300);
+            await ctx.reply(`در حال ویرایش دکمه: {${btnText}}`, buildMenuButtonEditReplyKeyboard(r, c, rawButton || btn));
+            matched = true;
+            break;
+          }
+        }
+        if (matched) break;
+      }
+      if (matched) return;
+      // Text didn't match any button — forward to next handler
+      return next();
+    }
+
+    // ─── Dynamic Post Button Routing ──────────────────────────
     if (!text || text.startsWith('/')) return next();
     const knownTexts = [
       '🎯 کدهای تخفیف', '🏢 پراپ فرم‌ها', '🎰 قرعه‌کشی', '⭐️ امتیاز من',
@@ -638,12 +777,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (knownTexts.includes(text)) return next();
     // 🚫 Skip if admin is in Post Management mode — the post-handlers.ts text handler
     // will match the post title and show the admin edit panel instead.
-    // This prevents menu button routing from calling sendPostToUser() on post titles.
     if (cache.get(`post_mgmt_mode:${ctx.from.id}`)) {
       return next();
     }
     try {
-      // Resolve layout from DB so post titles are current (single source of truth)
       const layout = await settingsService.getResolvedMenuLayout(false);
       const textMap = settingsService.getMenuButtonTextMap(layout);
       const match = textMap.get(text);

@@ -316,6 +316,32 @@ export const postSwapTargetKeyboard = (postId: number, sourceRow: number, totalR
   return Markup.inlineKeyboard(rows);
 };
 
+// ─── Reply Keyboard: Menu Editor (dynamic from resolved menu layout) ──
+// Shows each menu button as a Reply Keyboard button for tap-to-edit.
+// Updated in real-time after every mutation.
+export const buildMenuEditorReplyKeyboard = (layout: any[][]) => {
+  const rows: string[][] = layout.map(row =>
+    row.map(btn => {
+      const prefix = btn.visible === false ? '🙈 ' : '';
+      return graphemeTruncate(`${prefix}${buildSafeTelegramButton(buttonDisplayText(btn, 'بدون عنوان'))}`, 40);
+    })
+  );
+  rows.push(['🔙 بازگشت']);
+  return Markup.keyboard(rows).resize().persistent();
+};
+
+// ─── Reply Keyboard: Button Edit Actions ──
+// Shown after user taps a specific menu button to edit it.
+export const buildMenuButtonEditReplyKeyboard = (row: number, col: number, button: any) => {
+  const isHidden = button.visible === false;
+  return Markup.keyboard([
+    [isHidden ? '👁 نمایش' : '🙈 مخفی'],
+    ['⬆ سطر قبل', '⬇ سطر بعد'],
+    ['◀ چپ', '▶ راست'],
+    ['🔙 بازگشت'],
+  ]).resize().persistent();
+};
+
 export const menuEditorKeyboard = (layout: any[][]) => {
   const rows: any[][] = [];
   logger.debug(`[MenuKeyboard] Generating editor keyboard rows=${layout?.length ?? 0}`);
