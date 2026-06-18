@@ -7,6 +7,7 @@ import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 import { sanitizeTelegramText, sanitizeTelegramExtra, buildSafeTelegramButton } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
+import { rendererResolver } from '../../services/renderer/renderer-resolver.service';
 import {
   postMainMenuKeyboard,
   postEditorKeyboard,
@@ -1230,8 +1231,21 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
   async function sendPostToChat(ctx: any, post: any) {
     await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+    logger.info(`[Pipeline] sendPostToChat post=${post.id} title="${post.title}"`);
+    const rendererType = rendererResolver.resolve(post);
+    if (rendererType === 'native') {
+      logger.info(`[Pipeline] sendPostToChat post=${post.id} → native`);
+      await renderPostToTelegram(ctx, post);
+      await systemLogService.log({
+        eventType: 'ADMIN_ACTION' as any,
+        message: `Post Previewed (native): "${post.title}"`,
+        telegramId: ctx.from.id,
+        metadata: { postId: post.id } as any,
+      });
+      return;
+    }
+    logger.info(`[Pipeline] sendPostToChat post=${post.id} → legacy`);
     const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
-    if ((post as any).telegramPayload || (post as any).telegramMessageSnapshot || (post as any).entities) return renderPostToTelegram(ctx, post);
     const parseMode = post.parseMode || 'Markdown';
     const rawText = post.content || post.caption || '';
     const { segments } = parseCopyBlocks(rawText);

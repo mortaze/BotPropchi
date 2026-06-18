@@ -26,6 +26,8 @@ import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 import { buildPostDebugSnapshot, comparePostNativeRoundtrip, renderPostToTelegram } from '../../services/post-renderer.service';
+import { rendererResolver } from '../../services/renderer/renderer-resolver.service';
+import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { sanitizeTelegramText, sanitizeTelegramExtra } from '../../utils/unicode';
 import {
   propFirmDiscountKeyboard,
@@ -116,7 +118,13 @@ function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; con
 
 async function sendPostToUser(ctx: any, post: any) {
   await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-  if ((post as any).telegramPayload || (post as any).telegramMessageSnapshot || (post as any).entities) return renderPostToTelegram(ctx, post);
+  logger.info(`[Pipeline] sendPostToUser post=${post.id} title="${post.title}"`);
+  const rendererType = rendererResolver.resolve(post);
+  if (rendererType === 'native') {
+    logger.info(`[Pipeline] sendPostToUser post=${post.id} → native`);
+    return renderPostToTelegram(ctx, post);
+  }
+  logger.info(`[Pipeline] sendPostToUser post=${post.id} → legacy`);
   const inlineButtons = buildPostInlineKeyboard((post as any).buttons || [], post.id);
   const parseMode = post.parseMode || 'Markdown';
   const rawText = post.content || post.caption || '';
@@ -795,6 +803,23 @@ export function registerHandlers(bot: Telegraf<Context>) {
     for (const chunk of chunks) await ctx.reply(`<pre>${chunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { parse_mode: 'HTML' });
   });
 
+  bot.command('debug_delivery', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const [, rawPostId] = ctx.message.text.split(/\s+/);
+    const postId = Number(rawPostId);
+    if (!Number.isInteger(postId)) return ctx.reply('فرمت صحیح: /debug_delivery <postId>');
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const debug = deliveryDebugService.getFullPipelineDebug(post);
+    logger.info(`[DebugDelivery] post=${postId} full pipeline requested`);
+    for (const line of debug.pipeline) logger.info(line);
+    const body = JSON.stringify(debug, (_, value) => typeof value === 'bigint' ? value.toString() : value, 2);
+    const chunks = body.match(/[\s\S]{1,3500}/g) || ['{}'];
+    await ctx.reply(`🧪 debug_delivery ${postId}`);
+    for (const chunk of chunks) await ctx.reply(`<pre>${chunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { parse_mode: 'HTML' });
+  });
+
   bot.command('admin_add', async (ctx: any) => {
     if (!(await botAdminService.canManage(ctx.from.id))) return;
     const [, telegramId, role = 'ADMIN'] = ctx.message.text.split(/\s+/);
@@ -887,7 +912,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const text = ctx.message.text;
     if (!text.startsWith('/')) return next();
     const cmd = text.slice(1).split(' ')[0].toLowerCase();
-    if (['start', 'admin_add', 'admin_suspend', 'admin_activate', 'admin_delete'].includes(cmd)) return next();
+    if (['start', 'admin_add', 'admin_suspend', 'admin_activate', 'admin_delete', 'debug_post_render', 'debug_compare_post', 'debug_delivery'].includes(cmd)) return next();
     try {
       const post = await postService.resolveCommand(cmd);
       if (post && post.status === 'PUBLISHED' && post.isPublished) {
