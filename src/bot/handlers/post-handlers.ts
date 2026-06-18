@@ -13,9 +13,9 @@ import {
   postEditorKeyboard,
   postListKeyboard,
   postViewKeyboard,
-  postSelectKeyboard,
-  postManageKeyboard,
-  postEditModeKeyboard,
+  postTitleListKeyboard,
+  postEditReplyKeyboard,
+  postActionInlineKeyboard,
   postButtonsEditorKeyboard,
   postButtonEditKeyboard,
   postButtonTypeKeyboard,
@@ -109,29 +109,25 @@ async function safeEdit(ctx: any, text: string, extra?: any): Promise<void> {
   await ctx.reply(safeText, safeExtra).catch(() => {});
 }
 
-// ─── Post Management Info Display ─────────────────────────
-function formatPostManageInfo(post: any): string {
+// ─── Persian Post Info Display ────────────────────────────
+function formatPostInfoPersian(post: any): string {
   const statusMap: Record<string, string> = {
-    PUBLISHED: '✅ Published',
-    DRAFT: '📝 Draft',
-    SCHEDULED: '⏰ Scheduled',
-    ARCHIVED: '📦 Archived',
-    HIDDEN: '👻 Hidden',
+    PUBLISHED: '✅ منتشر شده',
+    DRAFT: '📝 پیش‌نویس',
+    SCHEDULED: '⏰ زمان‌بندی شده',
+    ARCHIVED: '📦 بایگانی شده',
+    HIDDEN: '👻 مخفی',
   };
   const statusText = statusMap[post.status] || post.status;
   const mediaCount = post.mediaType ? (Array.isArray(post.albumMediaIds) ? post.albumMediaIds.length : 1) : 0;
-  const copyBlockCount = (post.content?.match(/\[\[copy\]\]/g) || []).length;
-  const linkedMsgCount = 1 + copyBlockCount + (mediaCount > 1 ? 1 : 0);
   const lines = [
-    `📝 *Title:* ${post.title}`,
-    `🚀 *Status:* ${statusText}`,
-    post.isPublished ? `📊 *Views:* ${(post as any)._count?.views || 0}` : '',
-    post.status === 'ARCHIVED' ? '📦 *Archived*' : '',
-    post.status === 'HIDDEN' ? '👻 *Hidden*' : '',
-    mediaCount > 0 ? `📎 *Media Items:* ${mediaCount}` : '',
-    linkedMsgCount > 1 ? `💬 *Linked Messages:* ${linkedMsgCount}` : '',
-    '',
-    post.content ? graphemeTruncate(post.content, 300) : '(no content)',
+    `📝 *عنوان:* ${post.title}`,
+    `🚀 *وضعیت:* ${statusText}`,
+    post.isPublished ? `📊 *بازدید:* ${(post as any)._count?.views || 0}` : '',
+    post.status === 'ARCHIVED' ? '📦 *بایگانی شده*' : '',
+    post.status === 'HIDDEN' ? '👻 *مخفی شده*' : '',
+    mediaCount > 0 ? `📎 *رسانه‌ها:* ${mediaCount}` : '',
+    post.content ? '' : '(بدون محتوا)',
   ].filter(Boolean).join('\n');
   return lines;
 }
@@ -144,62 +140,133 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
   });
 
-  // ─── Edit Post Entry (Post Selection) ────────────────────
-  bot.hears('✏️ Edit Post', async (ctx: any) => {
+  // ─── Post List (Reply Keyboard with Titles) ──────────────
+  bot.hears('📋 مدیریت پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const result = await postService.findAll({ page: 1, limit: 100 });
-    await ctx.reply(
-      '✏️ Select a post to manage:',
-      postSelectKeyboard(result.items)
-    );
+    if (result.items.length === 0) {
+      return ctx.reply('📋 پستی وجود ندارد.', postMainMenuKeyboard());
+    }
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleListKeyboard(result.items));
   });
 
-  // ─── Post Selection Handler ──────────────────────────────
-  bot.action(/^post:select:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ Post not found.');
-    await safeEdit(ctx, formatPostManageInfo(post), {
-      parse_mode: 'Markdown',
-      link_preview_options: { is_disabled: true },
-      ...postManageKeyboard(postId),
-    });
+  // ─── Text: Post Title Selection / Edit Action / Back ────
+  bot.on('text', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
+
+    const text = ctx.message.text;
+
+    // Back to post main menu
+    if (text === '🔙 بازگشت به منوی پست') {
+      return ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+    }
+
+    // Back to post list (from edit reply keyboard)
+    if (text === '🔙 بازگشت به لیست پست‌ها') {
+      const result = await postService.findAll({ page: 1, limit: 100 });
+      return ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleListKeyboard(result.items));
+    }
+
+    // Edit reply keyboard actions — route to existing handlers via selectedPostId
+    const selectedPostId = cache.get<number>(pendingKey(ctx.from.id, 'selected_post'));
+
+    if (selectedPostId) {
+      if (text === '✏️ ویرایش محتوا') {
+        cache.set(pendingKey(ctx.from.id, 'editing_field'), 'content', 300);
+        cache.set(pendingKey(ctx.from.id, 'editing_post'), selectedPostId, 300);
+        const post = await postService.findById(selectedPostId);
+        const current = post?.content ? `محتوا فعلی:\n${graphemeTruncate(post.content, 200)}` : '(بدون محتوا)';
+        return ctx.reply(`📝 ${current}\n\nمحتوای جدید را ارسال کنید:`);
+      }
+      if (text === '✏️ ویرایش عنوان') {
+        cache.set(pendingKey(ctx.from.id, 'editing_field'), 'title', 300);
+        cache.set(pendingKey(ctx.from.id, 'editing_post'), selectedPostId, 300);
+        const post = await postService.findById(selectedPostId);
+        return ctx.reply(`✏ عنوان فعلی: *${post?.title}*\n\nعنوان جدید را ارسال کنید:`, { parse_mode: 'Markdown' as any });
+      }
+      if (text === '✏️ ویرایش دکمه‌ها') {
+        const post = await postService.findById(selectedPostId);
+        if (!post) return ctx.reply('❌ پست یافت نشد.');
+        const buttons = (post as any).buttons || [];
+        return ctx.reply('⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
+          postButtonsEditorKeyboard(selectedPostId, buttons));
+      }
+      if (text === '🖼 ویرایش رسانه') {
+        cache.set(pendingKey(ctx.from.id, 'editing_field'), 'media', 300);
+        cache.set(pendingKey(ctx.from.id, 'editing_post'), selectedPostId, 300);
+        return ctx.reply('🖼 فایل رسانه ارسال کنید (عکس، ویدیو، گیف، سند، صدا، ویس):');
+      }
+      if (text === '🚀 تغییر وضعیت انتشار') {
+        const post = await postService.findById(selectedPostId);
+        if (!post) return ctx.reply('❌ پست یافت نشد.');
+        return ctx.reply(`📤 گزینه‌های انتشار برای "${post.title}":`, postPublishOptionsKeyboard(selectedPostId));
+      }
+      if (text === '➕ افزودن دستور') {
+        cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
+        cache.set(pendingKey(ctx.from.id, 'editing_post'), selectedPostId, 300);
+        return ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً `sgb/discount/rules`', { parse_mode: 'Markdown' as any });
+      }
+      if (text === '🙈 مخفی کردن') {
+        const post = await postService.findById(selectedPostId);
+        if (!post) return ctx.reply('❌ پست یافت نشد.');
+        if (post.status === 'HIDDEN') {
+          await postService.show(selectedPostId);
+          const updated = await postService.findById(selectedPostId);
+          return ctx.reply(formatPostInfoPersian(updated), {
+            parse_mode: 'Markdown' as any,
+            link_preview_options: { is_disabled: true } as any,
+            ...postEditReplyKeyboard(),
+          });
+        }
+        await postService.hide(selectedPostId);
+        const updated = await postService.findById(selectedPostId);
+        return ctx.reply(formatPostInfoPersian(updated), {
+          parse_mode: 'Markdown' as any,
+          link_preview_options: { is_disabled: true } as any,
+          ...postEditReplyKeyboard(),
+        });
+      }
+      if (text === '📦 بایگانی') {
+        await postService.archive(selectedPostId);
+        const updated = await postService.findById(selectedPostId);
+        return ctx.reply(formatPostInfoPersian(updated), {
+          parse_mode: 'Markdown' as any,
+          link_preview_options: { is_disabled: true } as any,
+          ...postEditReplyKeyboard(),
+        });
+      }
+    }
+
+    // Match post title → select that post
+    const result = await postService.findAll({ page: 1, limit: 100 });
+    const matched = result.items.find((p: any) => p.title === text);
+    if (matched) {
+      const post = await postService.findById(matched.id);
+      if (!post) return ctx.reply('❌ پست یافت نشد.');
+      cache.set(pendingKey(ctx.from.id, 'selected_post'), matched.id, 300);
+
+      // Send the post itself
+      await sendPostToChat(ctx, post);
+
+      // Send action inline buttons
+      await ctx.reply('➕ افزودن  |  ➖ حذف  |  🔁 جایگزینی', postActionInlineKeyboard(matched.id));
+
+      // Send post info with edit reply keyboard
+      await ctx.reply(formatPostInfoPersian(post), {
+        parse_mode: 'Markdown' as any,
+        link_preview_options: { is_disabled: true } as any,
+        ...postEditReplyKeyboard(),
+      });
+      return;
+    }
+
+    return next();
   });
 
-  // ─── Manage: Back to Management Menu ─────────────────────
-  bot.action(/^post:manage:back:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ Post not found.');
-    await safeEdit(ctx, formatPostManageInfo(post), {
-      parse_mode: 'Markdown',
-      link_preview_options: { is_disabled: true },
-      ...postManageKeyboard(postId),
-    });
-  });
-
-  // ─── Manage: Edit Mode Submenu ──────────────────────────
-  bot.action(/^post:manage:edit:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ Post not found.');
-    await safeEdit(ctx, `✏️ *Edit Mode* — ${post.title}\n\nSelect what to edit:`, {
-      parse_mode: 'Markdown',
-      ...postEditModeKeyboard(postId),
-    });
-  });
-
-  // ─── Action: Add Content (Multi-Message Support) ─────────
+  // ─── Action: Add Content (Multi-Message) ─────────────────
   bot.action(/^post:action:add:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
@@ -207,7 +274,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     cache.set(pendingKey(ctx.from.id, 'editing_field'), 'add_content', 300);
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await safeEdit(ctx, '➕ Send the message/content to add to this post.\nIt will be appended as an additional message block.');
+    await safeEdit(ctx, '➕ پیام جدید را ارسال کنید تا به این پست اضافه شود.\nبه عنوان یک بلاک مجزا ذخیره خواهد شد.');
   });
 
   // ─── Action: Remove Content ──────────────────────────────
@@ -217,12 +284,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ Post not found.');
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     await ctx.reply(
-      `🗑 Remove content from "${post.title}"?`,
+      `🗑 محتوای "${post.title}" حذف شود؟`,
       Markup.inlineKeyboard([
-        [Markup.button.callback('🗑 Remove Content', `post:action:remove:confirm:${postId}`)],
-        [Markup.button.callback('❌ Cancel', `post:select:${postId}`)],
+        [Markup.button.callback('🗑 بله، حذف شود', `post:action:remove:confirm:${postId}`)],
+        [Markup.button.callback('❌ انصراف', 'post:manage:cancel')],
       ])
     );
   });
@@ -242,10 +309,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       updatedBy: BigInt(ctx.from.id),
     } as any);
     const post = await postService.findById(postId);
-    await safeEdit(ctx, formatPostManageInfo(post), {
-      parse_mode: 'Markdown',
-      link_preview_options: { is_disabled: true },
-      ...postManageKeyboard(postId),
+    await safeEdit(ctx, formatPostInfoPersian(post), {
+      parse_mode: 'Markdown' as any,
+      link_preview_options: { is_disabled: true } as any,
+      ...postEditReplyKeyboard(),
     });
   });
 
@@ -255,16 +322,19 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ Post not found.');
     await ctx.reply(
-      '🔁 What would you like to replace?',
+      '🔁 چه چیزی را جایگزین کنیم؟',
       Markup.inlineKeyboard([
-        [Markup.button.callback('📝 Replace Content', `post:edit:${postId}:content`)],
-        [Markup.button.callback('🖼 Replace Media', `post:edit:${postId}:media`)],
-        [Markup.button.callback('❌ Cancel', `post:select:${postId}`)],
+        [Markup.button.callback('📝 جایگزینی محتوا', `post:edit:${postId}:content`)],
+        [Markup.button.callback('🖼 جایگزینی رسانه', `post:edit:${postId}:media`)],
+        [Markup.button.callback('❌ انصراف', 'post:manage:cancel')],
       ])
     );
+  });
+
+  // ─── Cancel placeholder (silent ack) ─────────────────────
+  bot.action('post:manage:cancel', async (ctx: any) => {
+    await ctx.answerCbQuery();
   });
 
   // ─── Create Post ─────────────────────────────────────────
@@ -373,15 +443,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
         if (Object.keys(updateData).length > 0) {
           await postService.update(postId, { ...updateData, updatedBy: BigInt(ctx.from.id) });
-          const fieldNames: Record<string, string> = { title: 'Title', content: 'Content', add_content: 'Content Added', caption: 'Caption', command: 'Command' };
-          await ctx.reply(`✅ ${fieldNames[field] || field} updated!`);
+          const fieldNames: Record<string, string> = { title: 'عنوان', content: 'محتوا', add_content: 'محتوای جدید اضافه شد', caption: 'کپشن', command: 'دستور' };
+          await ctx.reply(`✅ ${fieldNames[field] || field} به‌روز شد!`);
         }
         if (field === 'add_content') {
           const updated = await postService.findById(postId);
-          await safeEdit(ctx, formatPostManageInfo(updated), {
-            parse_mode: 'Markdown',
-            link_preview_options: { is_disabled: true },
-            ...postManageKeyboard(postId),
+          await ctx.reply(formatPostInfoPersian(updated), {
+            parse_mode: 'Markdown' as any,
+            link_preview_options: { is_disabled: true } as any,
+            ...postEditReplyKeyboard(),
           });
         } else {
           await showPostEditor(ctx, postId);

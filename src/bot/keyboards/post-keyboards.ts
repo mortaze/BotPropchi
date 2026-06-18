@@ -10,7 +10,7 @@ function buttonDisplayText(btn: any, fallback: string): string {
 
 export const postMainMenuKeyboard = () =>
   Markup.keyboard([
-    ['➕ ایجاد پست', '✏️ Edit Post'],
+    ['➕ ایجاد پست'],
     ['📋 مدیریت پست‌ها', '📦 پیش‌نویس‌ها'],
     ['👻 پست‌های مخفی'],
     ['👁 پیش‌نمایش', '📤 انتشار'],
@@ -89,55 +89,32 @@ export const postViewKeyboard = (post: any) => {
   return Markup.inlineKeyboard(rows);
 };
 
-// ─── Post Selection List (Edit Post entry point) ──────────
-export const postSelectKeyboard = (posts: any[]) => {
-  const rows: any[][] = posts.map((p: any) => [
-    Markup.button.callback(
-      `${p.status === 'PUBLISHED' ? '✅' : p.status === 'DRAFT' ? '📝' : p.status === 'SCHEDULED' ? '⏰' : p.status === 'HIDDEN' ? '👻' : '📦'} ${graphemeTruncate(sanitizeTelegramText(p.title) || 'بدون عنوان', 30)}`,
-      `post:select:${p.id}`
-    ),
-  ]);
-  rows.push([Markup.button.callback('« بازگشت به منوی پست', 'post:menu')]);
-  return Markup.inlineKeyboard(rows);
+// ─── Reply Keyboard: Post Title List ───────────────────────
+export const postTitleListKeyboard = (posts: any[]) => {
+  const rows: string[][] = posts.map(p => [graphemeTruncate(sanitizeTelegramText(p.title) || 'بدون عنوان', 40)]);
+  rows.push(['🔙 بازگشت به منوی پست']);
+  return Markup.keyboard(rows).resize().persistent();
 };
 
-// ─── Post Management Menu (Main Actions + Action Panel) ───
-export const postManageKeyboard = (postId: number) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('✏️ Edit', `post:manage:edit:${postId}`)],
-    [
-      Markup.button.callback('🚫 Unpublish', `post:unpublish:${postId}`),
-      Markup.button.callback('📊 Statistics', `post:analytics:${postId}`),
-    ],
-    [
-      Markup.button.callback('🙈 Hide', `post:hide:${postId}`),
-      Markup.button.callback('📦 Archive', `post:archive:${postId}`),
-    ],
-    [Markup.button.callback('🗑 Delete', `post:delete:${postId}`)],
-    // Action Panel
-    [
-      Markup.button.callback('➕ Add', `post:action:add:${postId}`),
-      Markup.button.callback('➖ Remove', `post:action:remove:${postId}`),
-      Markup.button.callback('🔁 Replace', `post:action:replace:${postId}`),
-    ],
-    [Markup.button.callback('🔙 Back', `post:list:1`)],
-  ]);
-};
+// ─── Reply Keyboard: Post Edit Actions ─────────────────────
+export const postEditReplyKeyboard = () =>
+  Markup.keyboard([
+    ['✏️ ویرایش محتوا', '✏️ ویرایش عنوان'],
+    ['✏️ ویرایش دکمه‌ها', '🖼 ویرایش رسانه'],
+    ['🚀 تغییر وضعیت انتشار', '➕ افزودن دستور'],
+    ['🙈 مخفی کردن', '📦 بایگانی'],
+    ['🔙 بازگشت به لیست پست‌ها'],
+  ]).resize().persistent();
 
-// ─── Edit Mode Submenu ─────────────────────────────────────
-export const postEditModeKeyboard = (postId: number) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('✏️ Edit Content', `post:edit:${postId}:content`)],
+// ─── Inline Keyboard: Action Buttons on Post Info ─────────
+export const postActionInlineKeyboard = (postId: number) =>
+  Markup.inlineKeyboard([
     [
-      Markup.button.callback('✏️ Edit Title', `post:edit:${postId}:title`),
-      Markup.button.callback('✏️ Edit Buttons', `post:edit:${postId}:buttons`),
+      Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
+      Markup.button.callback('➖ حذف', `post:action:remove:${postId}`),
+      Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
     ],
-    [Markup.button.callback('🖼 Edit Media', `post:edit:${postId}:media`)],
-    [Markup.button.callback('🚀 Change Publication Status', `post:publish:${postId}`)],
-    [Markup.button.callback('➕ Add Command', `post:cmd:add:${postId}`)],
-    [Markup.button.callback('🔙 Back', `post:manage:back:${postId}`)],
   ]);
-};
 
 export const postButtonsEditorKeyboard = (postId: number, buttons: any[], editingRow?: number, editingCol?: number) => {
   const rows: any[][] = [];
