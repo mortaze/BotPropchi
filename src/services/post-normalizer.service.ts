@@ -1,7 +1,11 @@
 import { logger } from '../utils/logger';
 
 function cloneJson<T>(value: T): T {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
+  return value == null
+    ? value
+    : JSON.parse(
+        JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? v.toString() : v)),
+      );
 }
 
 function extractEntities(post: any): any[] | undefined {
