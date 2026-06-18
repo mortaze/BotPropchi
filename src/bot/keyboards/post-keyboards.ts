@@ -89,6 +89,16 @@ export const postViewKeyboard = (post: any) => {
   return Markup.inlineKeyboard(rows);
 };
 
+// ─── Reply Keyboard: Post Edit Mode ──────────────────────────
+export const postEditModeReplyKeyboard = () =>
+  Markup.keyboard([
+    ['📝 ویرایش محتوا', '🏷 ویرایش عنوان'],
+    ['🔘 ویرایش دکمه‌ها', '🖼 ویرایش رسانه'],
+    ['🚀 تغییر وضعیت انتشار'],
+    ['➕ افزودن دستور'],
+    ['🔙 بازگشت'],
+  ]).resize().persistent();
+
 // ─── Reply Keyboard: Post Title List (with back button) ─────
 export const postTitleListKeyboard = (posts: any[]) => {
   const rows: string[][] = posts.map(p => [graphemeTruncate(sanitizeTelegramText(p.title) || 'بدون عنوان', 40)]);
@@ -102,11 +112,10 @@ export const postTitleOnlyListKeyboard = (posts: any[]) => {
   return Markup.keyboard(rows).resize().persistent();
 };
 
-// ─── Inline Keyboard: Post Info Actions (ALL buttons on ONE message) ──
+// ─── Inline Keyboard: Post Info Actions ───────────────────────
 // Displayed ON the post info message itself.
-// Includes ALL operations: Edit, Unpublish, Stats, Hide, Archive, Add, Remove, Replace, Delete, Back.
-// Button labels adapt to post status.
-// ⚠️ No Reply Keyboards or separate messages are ever created after this.
+// Row 1: Edit, Publish/Unpublish, Stats, Hide/Show, Archive, Delete, Back
+// Row 2: Add, Remove, Replace
 export const postInfoActionKeyboard = (post: any) => {
   const postId = post.id;
   const isHidden = post.status === 'HIDDEN';
@@ -114,21 +123,17 @@ export const postInfoActionKeyboard = (post: any) => {
   return Markup.inlineKeyboard([
     [
       Markup.button.callback('✏️ ویرایش', `post:manager:edit:${postId}`),
-      Markup.button.callback(isPublished ? '📥 لغو انتشار' : '📤 انتشار', `post:manager:unpublish:${postId}`),
+      Markup.button.callback(isPublished ? '🚀 لغو انتشار' : '🚀 انتشار', `post:manager:unpublish:${postId}`),
       Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`),
-    ],
-    [
-      Markup.button.callback(isHidden ? '👻 نمایش' : '🙈 مخفی کردن', `post:manager:hide:${postId}`),
+      Markup.button.callback(isHidden ? '👻 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
       Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
+      Markup.button.callback('🗑 حذف', `post:manager:delete:${postId}`),
+      Markup.button.callback('🔙 بازگشت', `post:manager:back:${postId}`),
     ],
     [
       Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
       Markup.button.callback('➖ حذف', `post:action:remove:${postId}`),
       Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
-    ],
-    [
-      Markup.button.callback('🗑 حذف', `post:manager:delete:${postId}`),
-      Markup.button.callback('↩️ بازگشت', `post:manager:back:${postId}`),
     ],
   ]);
 };

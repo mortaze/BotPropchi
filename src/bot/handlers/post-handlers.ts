@@ -15,7 +15,7 @@ import {
   postViewKeyboard,
   postTitleOnlyListKeyboard,
   postInfoActionKeyboard,
-  postEditModeKeyboard,
+  postEditModeReplyKeyboard,
   postButtonsEditorKeyboard,
   postButtonEditKeyboard,
   postButtonTypeKeyboard,
@@ -127,6 +127,8 @@ function formatPostInfoPersian(post: any): string {
   // Calculate message count: count [[copy]] blocks + 1 base message
   const copyBlockCount = post.content ? (post.content.match(/\[\[copy\]\]/g) || []).length : 0;
   const messageCount = post.content ? copyBlockCount + 1 : 0;
+  const createdDate = post.createdAt ? new Date(post.createdAt).toLocaleDateString('fa-IR') : '';
+  const updatedDate = post.updatedAt ? new Date(post.updatedAt).toLocaleDateString('fa-IR') : '';
 
   const lines = [
     `📝 *عنوان:* ${post.title}`,
@@ -134,16 +136,24 @@ function formatPostInfoPersian(post: any): string {
     `👁 *بازدید:* ${views} | 👆 *کلیک:* ${clicks}`,
     mediaCount > 0 ? `📎 *رسانه‌ها:* ${mediaCount}` : '',
     messageCount > 0 ? `💬 *پیام‌ها:* ${messageCount}` : '',
+    createdDate ? `📅 *ایجاد:* ${createdDate}` : '',
+    updatedDate ? `📅 *به‌روزرسانی:* ${updatedDate}` : '',
   ].filter(Boolean).join('\n');
   return lines;
 }
 
 export function registerPostHandlers(bot: Telegraf<Context>) {
-  // ─── Post Admin Menu ─────────────────────────────────────
+  // ─── Post List (Entry Point) ────────────────────────────
+  // Shows all posts as ReplyKeyboard buttons sorted by sortOrder, no extra system buttons.
   bot.hears('📝 پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+    const result = await postService.findAll({ page: 1, limit: 200 });
+    if (result.items.length === 0) {
+      return ctx.reply('📋 پستی وجود ندارد.', postMainMenuKeyboard());
+    }
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
   });
 
   // ─── Post List (Reply Keyboard with Titles — NO extra buttons) ──
@@ -180,8 +190,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const post = await postService.findById(matched.id);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       cache.set(pendingKey(ctx.from.id, 'selected_post'), matched.id, 300);
-      // Clear post management mode flag — post selected, no longer in list mode
+      // Clear all state flags — post selected, no longer in list/edit mode
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
+      cache.del(pendingKey(ctx.from.id, 'edit_mode'));
 
       // Send ONE management message: post info + ALL buttons on one inline keyboard
       // ⚠️ Public rendering pipeline (sendPostToChat / Pipeline / Renderer) must NEVER be called here.
@@ -381,12 +392,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         }
         if (field === 'add_content') {
           const updated = await postService.findById(postId);
-          // Send ONE message with post info + ALL buttons (no separate operation row)
           await ctx.reply(formatPostInfoPersian(updated), {
             parse_mode: 'Markdown' as any,
             link_preview_options: { is_disabled: true } as any,
             ...postInfoActionKeyboard(updated),
           });
+        } else if (cache.get(pendingKey(ctx.from.id, 'edit_mode'))) {
+          const updated = await postService.findById(postId);
+          await ctx.reply(formatPostInfoPersian(updated), {
+            parse_mode: 'Markdown' as any,
+            link_preview_options: { is_disabled: true } as any,
+          });
+          await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
         } else {
           await showPostEditor(ctx, postId);
         }
@@ -435,7 +452,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       } catch (err: any) {
         await ctx.reply(`❌ ${err.message || 'افزودن دستور ناموفق بود.'}`);
       }
-      await showPostEditor(ctx, editingPostId);
+      if (cache.get(pendingKey(ctx.from.id, 'edit_mode'))) {
+        await showEditMode(ctx, editingPostId);
+      } else {
+        await showPostEditor(ctx, editingPostId);
+      }
       return;
     }
 
@@ -1404,7 +1425,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
   }
 
-  // ✏️ ویرایش: Change to edit mode (operation buttons on the same message)
+  // ✏️ ویرایش: Switch to edit mode (ReplyKeyboard)
+  // Works for ALL posts regardless of status (Published, Draft, Archived, Hidden, Scheduled)
   bot.action(/^post:manager:edit:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
@@ -1412,21 +1434,135 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    // Edit the same post info message to show operation buttons instead
+    cache.set(pendingKey(ctx.from.id, 'edit_mode'), postId, 300);
+    const text = formatPostInfoPersian(post) + '\n\n✏️ در حالت ویرایش. گزینه مورد نظر را انتخاب کنید:';
     try {
-      await ctx.editMessageText(formatPostInfoPersian(post), {
+      await ctx.editMessageText(text, {
         parse_mode: 'Markdown' as any,
         link_preview_options: { is_disabled: true } as any,
-        ...postEditModeKeyboard(postId),
       });
     } catch (e: any) {
       logger.debug('[PostManager] Edit mode fallback:', e.message);
-      await ctx.reply(formatPostInfoPersian(post), {
-        parse_mode: 'Markdown' as any,
-        link_preview_options: { is_disabled: true } as any,
-        ...postEditModeKeyboard(postId),
-      });
     }
+    await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // ─── Edit Mode ReplyKeyboard Handlers ─────────────────────
+  // These hears handlers fire when user is in edit mode and clicks an option.
+  // ═══════════════════════════════════════════════════════════
+
+  async function showEditMode(ctx: any, postId: number) {
+    const post = await postService.findById(postId);
+    if (!post) {
+      await ctx.reply('❌ پست یافت نشد.');
+      return;
+    }
+    cache.set(pendingKey(ctx.from.id, 'edit_mode'), postId, 300);
+    await ctx.reply(formatPostInfoPersian(post), {
+      parse_mode: 'Markdown' as any,
+      link_preview_options: { is_disabled: true } as any,
+    });
+    await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
+  }
+
+  // 📝 ویرایش محتوا
+  bot.hears('📝 ویرایش محتوا', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return;
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    cache.set(pendingKey(ctx.from.id, 'editing_field'), 'content', 300);
+    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    const current = post.content ? `محتوا فعلی:\n${graphemeTruncate(post.content, 200)}` : '(بدون محتوا)';
+    await ctx.reply(`📝 ${current}\n\nمحتوای جدید را ارسال کنید (Markdown پشتیبانی می‌شود):`);
+  });
+
+  // 🏷 ویرایش عنوان
+  bot.hears('🏷 ویرایش عنوان', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return;
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    cache.set(pendingKey(ctx.from.id, 'editing_field'), 'title', 300);
+    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    await ctx.reply(`✏ عنوان فعلی: *${post.title}*\n\nعنوان جدید را ارسال کنید:`, { parse_mode: 'Markdown' as any });
+  });
+
+  // 🔘 ویرایش دکمه‌ها
+  bot.hears('🔘 ویرایش دکمه‌ها', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return;
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+    const buttons = (post as any).buttons || [];
+    await ctx.reply('⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
+      postButtonsEditorKeyboard(postId, buttons));
+  });
+
+  // 🖼 ویرایش رسانه
+  bot.hears('🖼 ویرایش رسانه', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return;
+    cache.set(pendingKey(ctx.from.id, 'editing_field'), 'media', 300);
+    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    await ctx.reply('🖼 فایل رسانه ارسال کنید (عکس، ویدیو، گیف، سند، صدا، ویس):');
+  });
+
+  // 🚀 تغییر وضعیت انتشار (toggle between Published and Draft)
+  bot.hears('🚀 تغییر وضعیت انتشار', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return;
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const isPublished = post.status === 'PUBLISHED' && post.isPublished;
+    if (isPublished) {
+      await postService.unpublish(postId);
+      await ctx.reply('📥 انتشار پست لغو شد. به حالت پیش‌نویس برگشت.');
+    } else {
+      await postService.publish(postId, BigInt(ctx.from.id));
+      await ctx.reply('✅ پست با موفقیت منتشر شد.');
+    }
+    await showEditMode(ctx, postId);
+  });
+
+  // ➕ افزودن دستور
+  bot.hears('➕ افزودن دستور', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return;
+    cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
+    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', { parse_mode: 'Markdown' as any });
+  });
+
+  // 🔙 بازگشت: Exit edit mode, show post info with inline keyboard
+  // Passes through to next handler if not in edit mode
+  bot.hears('🔙 بازگشت', async (ctx: any, next: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return next();
+    cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    await ctx.reply(formatPostInfoPersian(post), {
+      parse_mode: 'Markdown' as any,
+      link_preview_options: { is_disabled: true } as any,
+      ...postInfoActionKeyboard(post),
+    });
   });
 
   // 📥 لغو انتشار / 📤 انتشار: Toggle publish status, then refresh post info
