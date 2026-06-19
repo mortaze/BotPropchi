@@ -190,6 +190,10 @@ function buildPostInlineKeyboard(buttons: any[], postId?: number): any[][] {
       switch (btn.type) {
         case 'URL': return Markup.button.url(safeText, btn.value || '');
         case 'CALLBACK': {
+          if (typeof btn.value === 'string' && btn.value.startsWith('cmd:')) {
+            const cmdName = btn.value.slice(4);
+            return Markup.button.callback(safeText, `post:user:cmd:${sanitizeTelegramText(cmdName, 64)}`);
+          }
           const clickData = JSON.stringify({ postId, text: btn.text, type: btn.type });
           return Markup.button.callback(safeText, `post:user:click:${clickData}`);
         }
@@ -1319,6 +1323,24 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return ctx.reply('❌ Post not found.');
     }
     await sendPostToUser(ctx, post);
+  });
+
+  // ─── Post Command Button routing ─────────────────────────
+  bot.action(/^post:user:cmd:(.+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    if (!(await settingsService.isFeatureEnabled('posts'))) return;
+    const cmdName = ctx.match[1].toLowerCase().trim();
+    try {
+      const post = await postService.resolveCommand(cmdName);
+      if (post && post.status === 'PUBLISHED' && post.isPublished) {
+        await sendPostToUser(ctx, post);
+      } else {
+        await ctx.reply('❌ پست مورد نظر یافت نشد.');
+      }
+    } catch (err) {
+      logger.error(`[PostCmdBtn] Failed to execute command "${cmdName}":`, err);
+      await ctx.reply('❌ خطا در اجرای دستور.');
+    }
   });
 
   bot.action('broadcast:confirm', async (ctx: any) => {

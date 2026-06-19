@@ -57,10 +57,56 @@ export function comparePostNativeRoundtrip(post: any) {
   return telegramSnapshotComparator.compare(post);
 }
 
-export async function renderPostToTelegram(ctx: any, rawPost: any) {
-  // Normalize post to unified format before ANY render operation
-  const post = normalizePost(rawPost);
+function splitContentMessages(content: string): string[] {
+  if (!content || !content.trim()) return [];
+  const messages: string[] = [];
+  const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const before = content.slice(lastIndex, match.index).trim();
+      if (before) messages.push(before);
+    }
+    messages.push(match[1].trim());
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    const remaining = content.slice(lastIndex).trim();
+    if (remaining) messages.push(remaining);
+  }
+  if (messages.length === 0 && content.trim()) messages.push(content.trim());
+  return messages;
+}
 
+export async function renderPostToTelegram(ctx: any, rawPost: any) {
+  const post = normalizePost(rawPost);
+  deliveryDebugService.logFullPipeline(post);
+
+  const messages = splitContentMessages(post.content || '');
+
+  if (messages.length > 1) {
+    let lastResult = false;
+    for (let i = 0; i < messages.length; i++) {
+      const msgPost = { ...post, content: messages[i] };
+      if (i === 0) {
+        lastResult = await renderSinglePost(ctx, msgPost);
+      } else {
+        try {
+          await sendFormattedMessage(ctx, { text: messages[i] }, {});
+          lastResult = true;
+        } catch (e) {
+          logger.warn(`[Pipeline] post=${post.id} extra message ${i + 1} failed: ${e}`);
+        }
+      }
+    }
+    return lastResult;
+  }
+
+  return renderSinglePost(ctx, post);
+}
+
+async function renderSinglePost(ctx: any, post: any) {
   deliveryDebugService.logFullPipeline(post);
 
   const nativeRenderer = new TelegramNativeRenderer();

@@ -517,13 +517,69 @@ export const buildMenuEditInlineKeyboard = (row: number, col: number, button: an
 
 // ─── Inline Keyboard: Row Selection ──
 // Shows all row numbers for the "move to row" action.
-export const buildMenuRowSelectKeyboard = (totalRows: number, excludeRow: number) => {
+export const buildMenuRowSelectKeyboard = (totalRows: number, sourceRow: number) => {
   const rows: any[][] = [];
   for (let i = 0; i < totalRows; i++) {
-    if (i !== excludeRow) {
-      rows.push([Markup.button.callback(`سطر ${i + 1}`, `menu:sel:moveto:${i}`)]);
+    if (i !== sourceRow) {
+      rows.push([Markup.button.callback(`↔ جابجایی با سطر ${i + 1}`, `menu:swapto:${sourceRow}:${i}`)]);
     }
   }
-  rows.push([Markup.button.callback('« لغو', 'menu:sel:cancel')]);
+  rows.push([Markup.button.callback('« لغو', 'menu:editor')]);
+  return Markup.inlineKeyboard(rows);
+};
+
+// ─── Button Editor (New Design) ──────────────────────────────
+
+export const buildButtonEditorReplyKeyboard = (buttons: any[], selectedRow?: number, selectedCol?: number) => {
+  const rows: string[][] = [];
+  if (buttons && buttons.length > 0) {
+    for (let r = 0; r < buttons.length; r++) {
+      const row = buttons[r];
+      if (!Array.isArray(row)) continue;
+      const rowTexts: string[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const btn = row[c];
+        const text = btn?.text || 'بدون عنوان';
+        const safe = graphemeTruncate(sanitizeTelegramText(text), 20);
+        if (selectedRow === r && selectedCol === c) {
+          rowTexts.push(`{${safe}}`);
+        } else {
+          rowTexts.push(safe);
+        }
+      }
+      if (rowTexts.length > 0) rows.push(rowTexts);
+    }
+  }
+  rows.push(['➕ افزودن سطر']);
+  rows.push(['🔙 بازگشت به ویرایشگر']);
+  return Markup.keyboard(rows).resize().persistent();
+};
+
+export const buildButtonRowAddInlineKeyboard = (postId: number, rowIndex: number) => {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('➕ اضافه کردن دکمه', `post:btn:addtrow:${postId}:${rowIndex}`)],
+  ]);
+};
+
+export const buildNewButtonEditInlineKeyboard = (postId: number, row: number, col: number) => {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('✏️ تغییر متن', `post:newbtn:text:${postId}:${row}:${col}`),
+      Markup.button.callback('⚡ افزودن دستور', `post:newbtn:cmd:${postId}:${row}:${col}`),
+    ],
+    [
+      Markup.button.callback('⬆️ بالا', `post:newbtn:up:${postId}:${row}:${col}`),
+      Markup.button.callback('⬇️ پایین', `post:newbtn:down:${postId}:${row}:${col}`),
+      Markup.button.callback('⬅️ چپ', `post:newbtn:left:${postId}:${row}:${col}`),
+      Markup.button.callback('➡️ راست', `post:newbtn:right:${postId}:${row}:${col}`),
+    ],
+  ]);
+};
+
+export const buildCommandSelectInlineKeyboard = (postId: number, row: number, col: number, commands: any[]) => {
+  const rows: any[][] = commands.map((cmd: any) => [
+    Markup.button.callback(`/${cmd.command}`, `post:newbtn:setcmd:${postId}:${row}:${col}:${cmd.command}`),
+  ]);
+  rows.push([Markup.button.callback('« لغو', `post:newbtn:cancelcmd:${postId}:${row}:${col}`)]);
   return Markup.inlineKeyboard(rows);
 };
