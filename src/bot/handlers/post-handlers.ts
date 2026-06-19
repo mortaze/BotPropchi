@@ -442,7 +442,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         await postService.update(editingPostId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
         await ctx.reply('✅ مقدار دکمه به‌روز شد!');
       }
-      await showPostEditor(ctx, editingPostId);
+      // Stay in button editor — refresh with latest buttons
+      const updatedPost = await postService.findById(editingPostId);
+      const updatedButtons = (updatedPost as any).buttons || [];
+      await safeEdit(ctx, '⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
+        postButtonsEditorKeyboard(editingPostId, updatedButtons));
       return;
     }
 
