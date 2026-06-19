@@ -14,6 +14,7 @@ import {
   postListKeyboard,
   postViewKeyboard,
   postTitleOnlyListKeyboard,
+  buildPostListFromMenuLayout,
   postInfoActionKeyboard,
   postEditModeReplyKeyboard,
   postButtonsEditorKeyboard,
@@ -144,29 +145,32 @@ function formatPostInfoPersian(post: any): string {
 
 export function registerPostHandlers(bot: Telegraf<Context>) {
   // ─── Post List (Entry Point) ────────────────────────────
-  // Shows all posts as ReplyKeyboard buttons sorted by sortOrder, no extra system buttons.
+  // Builds the Reply Keyboard from the menu layout (single source of truth).
+  // Only post-ref buttons are shown, preserving the exact row/column structure.
   bot.hears('📝 پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    const result = await postService.findAll({ page: 1, limit: 200 });
-    if (result.items.length === 0) {
-      return ctx.reply('📋 پستی وجود ندارد.', postMainMenuKeyboard());
+    const layout = await settingsService.getResolvedMenuLayout(false);
+    const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
+    if (postButtons.length === 0) {
+      return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
     cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
   });
 
-  // ─── Post List (Reply Keyboard with Titles — NO extra buttons) ──
+  // ─── Post List (Reply Keyboard with Titles — built from menu layout) ──
   bot.hears('📋 مدیریت پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    const result = await postService.findAll({ page: 1, limit: 100 });
-    if (result.items.length === 0) {
-      return ctx.reply('📋 پستی وجود ندارد.', postMainMenuKeyboard());
+    const layout = await settingsService.getResolvedMenuLayout(false);
+    const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
+    if (postButtons.length === 0) {
+      return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
     // Set flag so the menu button handler in index.ts skips this user's next text
     cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
   });
 
   // ─── Text: Post Title Selection / Edit Action / Back ────
@@ -178,7 +182,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const text = ctx.message.text;
 
     // Back to post main menu
-    if (text === '🔙 بازگشت به منوی پست') {
+    if (text === '🔙 بازگشت به منوی پست' || text === '🔙 بازگشت به منوی پست‌ها') {
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
       return ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
     }

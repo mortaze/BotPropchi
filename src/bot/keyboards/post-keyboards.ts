@@ -106,6 +106,26 @@ export const postTitleOnlyListKeyboard = (posts: any[]) => {
   return Markup.keyboard(rows).resize().persistent();
 };
 
+// ─── Reply Keyboard: Post List from Menu Layout ──
+// Builds the post selection keyboard directly from the menu layout.
+// Only post-ref buttons are included, preserving the exact row/column structure.
+// The back button is always appended as the last row.
+export const buildPostListFromMenuLayout = (layout: any[][]) => {
+  const rows: string[][] = layout
+    .filter(row => Array.isArray(row))
+    .map(row =>
+      row
+        .filter((btn: any) => btn && btn.ref && btn.ref.startsWith('post:'))
+        .map((btn: any) => {
+          const text = btn.text || btn.label || btn.title || btn.ref || 'بدون عنوان';
+          return graphemeTruncate(sanitizeTelegramText(text), 40);
+        })
+    )
+    .filter((row: string[]) => row.length > 0);
+  rows.push(['🔙 بازگشت به منوی پست‌ها']);
+  return Markup.keyboard(rows).resize().persistent();
+};
+
 // ─── Inline Keyboard: Post Info Actions ───────────────────────
 // Displayed ON the post info message itself.
 // Row 1: Edit, Publish/Unpublish, Stats
