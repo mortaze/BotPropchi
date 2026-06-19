@@ -164,4 +164,165 @@ describe('Menu button movement (no DB)', () => {
     const result = ensureButtonIds(layoutWithIds);
     expect(result[0][0].id).toBe('btn_42');
   });
+
+  // ─── Normalize: no undefined in any row ───
+  function normalizeLayout(layout: Layout): Layout {
+    return layout
+      .map(row => Array.isArray(row) ? row.filter(btn => btn != null) : [])
+      .filter(row => row.length > 0);
+  }
+
+  it('normalizeLayout: removes undefined from rows', () => {
+    const dirty: Layout = [[undefined as any, { ref: 'a', text: 'A' }, undefined as any]];
+    const clean = normalizeLayout(dirty);
+    expect(clean.length).toBe(1);
+    expect(clean[0].length).toBe(1);
+    expect(clean[0][0].ref).toBe('a');
+    expect(clean[0].every(b => b !== undefined)).toBe(true);
+  });
+
+  it('normalizeLayout: removes null from rows', () => {
+    const dirty: Layout = [[null as any, { ref: 'a', text: 'A' }]];
+    const clean = normalizeLayout(dirty);
+    expect(clean[0].length).toBe(1);
+    expect(clean[0][0].ref).toBe('a');
+  });
+
+  it('normalizeLayout: removes empty rows', () => {
+    const dirty: Layout = [[], [{ ref: 'a', text: 'A' }], []];
+    const clean = normalizeLayout(dirty);
+    expect(clean.length).toBe(1);
+    expect(clean[0][0].ref).toBe('a');
+  });
+
+  it('normalizeLayout: handles top-level undefined rows', () => {
+    const dirty: Layout = [undefined as any, [{ ref: 'a', text: 'A' }], undefined as any];
+    const clean = normalizeLayout(dirty);
+    expect(clean.length).toBe(1);
+    expect(clean[0][0].ref).toBe('a');
+  });
+
+  it('normalizeLayout: handles completely empty layout', () => {
+    expect(normalizeLayout([])).toEqual([]);
+    expect(normalizeLayout([[], []])).toEqual([]);
+    expect(normalizeLayout([undefined as any])).toEqual([]);
+  });
+
+  it('normalizeLayout: preserves valid dense layout', () => {
+    const layout = ensureButtonIds([
+      [{ ref: 'a', text: 'A' }, { ref: 'b', text: 'B' }],
+      [{ ref: 'c', text: 'C' }],
+    ]);
+    const clean = normalizeLayout(layout);
+    expect(clean.length).toBe(2);
+    expect(clean[0].length).toBe(2);
+    expect(clean[1].length).toBe(1);
+    expect(clean.flat().every(b => b !== undefined && b !== null)).toBe(true);
+  });
+
+  // ─── JSON serialization: no undefined ───
+  it('JSON.stringify layout contains no undefined', () => {
+    const layout = ensureButtonIds([
+      [{ ref: 'a', text: 'A' }, { ref: 'b', text: 'B' }],
+    ]);
+    const json = JSON.stringify(layout);
+    expect(json).not.toContain('undefined');
+    const parsed = JSON.parse(json);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed[0].length).toBe(2);
+  });
+
+  // ─── moveDown: no undefined in result ───
+  it('moveDown: no undefined values in result', () => {
+    const result = moveDown(layout, 0, 0);
+    expect(result.moved).toBe(true);
+    const allRows = result.layout.flat();
+    expect(allRows.every(b => b !== undefined && b !== null)).toBe(true);
+  });
+
+  // ─── moveUp: no undefined in result ───
+  it('moveUp: no undefined values in result', () => {
+    const result = moveUp(layout, 1, 0);
+    expect(result.moved).toBe(true);
+    const allRows = result.layout.flat();
+    expect(allRows.every(b => b !== undefined && b !== null)).toBe(true);
+  });
+
+  // ─── swapLeft: no undefined ───
+  it('swapLeft: no undefined values in result', () => {
+    const swapped = swapLeft(layout, 0, 1);
+    const allRows = swapped.flat();
+    expect(allRows.every(b => b !== undefined && b !== null)).toBe(true);
+  });
+
+  // ─── swapRight: no undefined ───
+  it('swapRight: no undefined values in result', () => {
+    const swapped = swapRight(layout, 0, 0);
+    const allRows = swapped.flat();
+    expect(allRows.every(b => b !== undefined && b !== null)).toBe(true);
+  });
+
+  // ─── Single button row: moveRight should no-op ───
+  it('swapRight: single button row stays unchanged with no undefined', () => {
+    const single: Layout = ensureButtonIds([[{ ref: 'a', text: 'A' }]]);
+    const swapped = swapRight(single, 0, 0);
+    expect(swapped[0].length).toBe(1);
+    expect(swapped[0][0].ref).toBe('a');
+    expect(swapped.flat().every(b => b !== undefined)).toBe(true);
+  });
+
+  it('swapLeft: single button row stays unchanged with no undefined', () => {
+    const single: Layout = ensureButtonIds([[{ ref: 'a', text: 'A' }]]);
+    const swapped = swapLeft(single, 0, 0);
+    expect(swapped[0].length).toBe(1);
+    expect(swapped[0][0].ref).toBe('a');
+    expect(swapped.flat().every(b => b !== undefined)).toBe(true);
+  });
+
+  // ─── moveDown: preserve all buttons, no duplicate ───
+  it('moveDown: preserves all buttons with no undefined', () => {
+    const threeRows: Layout = ensureButtonIds([
+      [{ ref: 'a', text: 'A' }, { ref: 'b', text: 'B' }],
+      [{ ref: 'c', text: 'C' }],
+      [{ ref: 'd', text: 'D' }],
+    ]);
+    const result = moveDown(threeRows, 0, 0);
+    expect(result.moved).toBe(true);
+    const allRefs = result.layout.flat().map(b => b?.ref).filter(Boolean);
+    expect(allRefs).toContain('a');
+    expect(allRefs).toContain('b');
+    expect(allRefs).toContain('c');
+    expect(allRefs).toContain('d');
+    expect(allRefs.length).toBe(4);
+    expect(result.layout.flat().every(b => b !== undefined && b !== null)).toBe(true);
+  });
+
+  // ─── moveUp: preserve all buttons ───
+  it('moveUp: preserves all buttons with no undefined', () => {
+    const result = moveUp(layout, 1, 0);
+    expect(result.moved).toBe(true);
+    const allRefs = result.layout.flat().map(b => b?.ref).filter(Boolean);
+    expect(allRefs).toContain('post1');
+    expect(allRefs).toContain('post2');
+    expect(allRefs).toContain('post3');
+    expect(allRefs.length).toBe(3);
+    expect(result.layout.flat().every(b => b !== undefined && b !== null)).toBe(true);
+  });
+
+  // ─── Every row is an actual array ───
+  it('every row is an array after any movement', () => {
+    const ops = [
+      () => moveDown(layout, 0, 0).layout,
+      () => moveUp(layout, 1, 0).layout,
+      () => swapLeft(layout, 0, 1),
+      () => swapRight(layout, 0, 0),
+    ];
+    for (const op of ops) {
+      const result = op();
+      expect(Array.isArray(result)).toBe(true);
+      for (const row of result) {
+        expect(Array.isArray(row)).toBe(true);
+      }
+    }
+  });
 });

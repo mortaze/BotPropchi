@@ -4,7 +4,8 @@ import { graphemeTruncate } from '../../utils/grapheme';
 import { logger } from '../../utils/logger';
 
 function buttonDisplayText(btn: any, fallback: string): string {
-  const text = btn?.text || btn?.label || btn?.title || btn?.ref || fallback;
+  if (!btn) return fallback;
+  const text = btn.text || btn.label || btn.title || btn.ref || fallback;
   return typeof text === 'string' && text.trim() ? text : fallback;
 }
 
@@ -321,21 +322,23 @@ export const postSwapTargetKeyboard = (postId: number, sourceRow: number, totalR
 // The selected button (if any) is wrapped in {} without changing the keyboard structure.
 // Updated in real-time after every mutation.
 export const buildMenuEditorReplyKeyboard = (layout: any[][], selectedKey?: { row: number; col: number } | null) => {
-  const rows: string[][] = layout.map((row, r) => {
-    const resultRow: string[] = [];
-    for (let c = 0; c < row.length; c++) {
-      const btn = row[c];
-      if (!btn) continue;
-      const prefix = btn.visible === false ? '🙈 ' : '';
-      const text = `${prefix}${buildSafeTelegramButton(buttonDisplayText(btn, 'بدون عنوان'))}`;
-      if (selectedKey && selectedKey.row === r && selectedKey.col === c) {
-        resultRow.push(`{${text}}`);
-      } else {
-        resultRow.push(graphemeTruncate(text, 40));
+  const rows: string[][] = layout
+    .filter(row => Array.isArray(row))
+    .map((row, r) => {
+      const resultRow: string[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const btn = row[c];
+        if (!btn) continue;
+        const prefix = btn.visible === false ? '🙈 ' : '';
+        const text = `${prefix}${buildSafeTelegramButton(buttonDisplayText(btn, 'بدون عنوان'))}`;
+        if (selectedKey && selectedKey.row === r && selectedKey.col === c) {
+          resultRow.push(`{${text}}`);
+        } else {
+          resultRow.push(graphemeTruncate(text, 40));
+        }
       }
-    }
-    return resultRow;
-  });
+      return resultRow;
+    });
   rows.push(['🔙 بازگشت']);
   return Markup.keyboard(rows).resize().persistent();
 };
@@ -343,7 +346,7 @@ export const buildMenuEditorReplyKeyboard = (layout: any[][], selectedKey?: { ro
 // ─── Reply Keyboard: Button Edit Actions ──
 // Shown after user taps a specific menu button to edit it.
 export const buildMenuButtonEditReplyKeyboard = (row: number, col: number, button: any) => {
-  const isHidden = button.visible === false;
+  const isHidden = button?.visible === false;
   return Markup.keyboard([
     [isHidden ? '👁 نمایش' : '🙈 مخفی'],
     ['⬆ سطر قبل', '⬇ سطر بعد'],
@@ -358,6 +361,7 @@ export const menuEditorKeyboard = (layout: any[][]) => {
   if (layout && layout.length > 0) {
     for (let r = 0; r < layout.length; r++) {
       const row = layout[r];
+      if (!Array.isArray(row)) continue;
       const rowButtons: any[] = [];
       for (let c = 0; c < row.length; c++) {
         const btn = row[c];

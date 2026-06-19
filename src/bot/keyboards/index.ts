@@ -23,9 +23,10 @@ export function buildMainMenuKeyboard(
   if (menuLayout && menuLayout.length > 0) {
     logger.debug(`[MenuKeyboard] Generating main keyboard rows=${menuLayout.length} admin=${isAdmin} displayMode=${displayMode}`);
     const visibleRows = menuLayout
+      .filter((row: any) => Array.isArray(row))
       .map(row =>
         row
-          .filter((btn: any) => btn.visible !== false)
+          .filter((btn: any) => btn && btn.visible !== false)
           .map((btn: any) => buildSafeTelegramButton(btn.text || btn.label || btn.title || btn.ref || '', 128))
           .filter(Boolean)
       )

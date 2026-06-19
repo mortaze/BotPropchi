@@ -154,6 +154,25 @@ class SettingsService {
   private readonly MENU_LAYOUT_SNAPSHOT_KEY = 'menu_layout_snapshot';
   private nextButtonId = 1;
 
+  private normalizeLayout(layout: any[][]): any[][] {
+    return layout
+      .map(row => Array.isArray(row) ? row.filter(btn => btn != null) : [])
+      .filter(row => row.length > 0);
+  }
+
+  private validateLayoutSafe(layout: any[][]): void {
+    for (const row of layout) {
+      if (!Array.isArray(row)) {
+        throw new Error('Invalid menu layout: row is not an array');
+      }
+      for (const btn of row) {
+        if (btn === undefined || btn === null) {
+          throw new Error('Invalid menu layout: undefined/ null button detected');
+        }
+      }
+    }
+  }
+
   private ensureButtonIds(layout: any[][]): any[][] {
     for (const row of layout) {
       for (const btn of row) {
@@ -246,10 +265,17 @@ class SettingsService {
     const validation = this.validateMenuLayout(layout);
     if (!validation.valid) {
       logger.warn(`[MenuLayout] Validation failed: ${validation.reason}. Trying snapshot.`);
-      if (snapshot && this.validateMenuLayout(snapshot).valid) {
-        logger.info('[MenuLayout] Restoring from snapshot');
-        layout = snapshot;
-        await this.saveMenuLayout(layout, version);
+      if (snapshot) {
+        const normalizedSnapshot = this.normalizeLayout(snapshot);
+        if (this.validateMenuLayout(normalizedSnapshot).valid) {
+          logger.info('[MenuLayout] Restoring from snapshot');
+          layout = normalizedSnapshot;
+          await this.saveMenuLayout(layout, version);
+        } else {
+          logger.warn('[MenuLayout] Snapshot also invalid or missing. Starting fresh layout.');
+          layout = [];
+          await this.saveMenuLayout(layout, 0);
+        }
       } else {
         logger.warn('[MenuLayout] Snapshot also invalid or missing. Starting fresh layout.');
         layout = [];
@@ -257,8 +283,8 @@ class SettingsService {
       }
     }
 
-    this.menuLayoutCache = { layout, snapshot, version };
-    return layout;
+    this.menuLayoutCache = { layout: this.normalizeLayout(layout), snapshot: snapshot ? this.normalizeLayout(snapshot) : null, version };
+    return this.menuLayoutCache.layout;
   }
 
   // Get layout with live post titles resolved from DB (single source of truth)
@@ -269,6 +295,12 @@ class SettingsService {
 
   async saveMenuLayout(layout: any[][], preserveVersion?: number) {
     const oldLayout = this.menuLayoutCache?.layout || [];
+
+    // Normalize FIRST: remove undefined/null from all rows and empty rows
+    layout = this.normalizeLayout(layout);
+
+    // Validate normalised layout before any operation
+    this.validateLayoutSafe(layout);
 
     // Ensure all buttons have stable IDs and preserve every metadata field while normalizing text fields.
     layout = this.ensureButtonIds(layout).map((row, rowIndex) =>
@@ -281,6 +313,9 @@ class SettingsService {
       throw new Error(validation.reason || 'Invalid menu layout');
     }
 
+    // Final safety: ensure no undefined leaks into Prisma
+    this.validateLayoutSafe(layout);
+
     // Save layout to DB as JSONB through Prisma; PostgreSQL stores UTF-8 natively.
     await prisma.$transaction(async (tx) => {
       await tx.systemSetting.upsert({
@@ -289,12 +324,13 @@ class SettingsService {
         create: { key: this.MENU_LAYOUT_KEY, value: layout },
       });
 
-      // Save snapshot of previous valid layout
+      // Save snapshot of previous valid layout (normalized)
       if (this.menuLayoutCache?.layout && this.menuLayoutCache.layout.length > 0) {
+        const normalizedSnapshotLayout = this.normalizeLayout(this.menuLayoutCache.layout);
         await tx.systemSetting.upsert({
           where: { key: this.MENU_LAYOUT_SNAPSHOT_KEY },
-          update: { value: this.menuLayoutCache.layout },
-          create: { key: this.MENU_LAYOUT_SNAPSHOT_KEY, value: this.menuLayoutCache.layout },
+          update: { value: normalizedSnapshotLayout },
+          create: { key: this.MENU_LAYOUT_SNAPSHOT_KEY, value: normalizedSnapshotLayout },
         });
       }
 
@@ -314,10 +350,10 @@ class SettingsService {
 
     const newVersion = preserveVersion ?? ((this.menuLayoutCache?.version ?? 0) + 1);
 
-    // Update cache
+    // Update cache (normalize snapshot too)
     this.menuLayoutCache = {
       layout,
-      snapshot: this.menuLayoutCache?.layout || null,
+      snapshot: this.menuLayoutCache?.layout ? this.normalizeLayout(this.menuLayoutCache.layout) : null,
       version: newVersion,
     };
 
@@ -411,6 +447,9 @@ class SettingsService {
   // Posts database is the SINGLE SOURCE OF TRUTH for titles & status.
   // Menu layout only stores structural data (refs, ordering, visibility hints).
   async resolveMenuLayout(layout: any[][], live = true): Promise<any[][]> {
+    // Normalize input layout first
+    layout = this.normalizeLayout(layout);
+
     // Collect all post refs
     const postIds = new Set<number>();
     for (const row of layout) {

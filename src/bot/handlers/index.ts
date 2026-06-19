@@ -479,6 +479,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('🎛 ویرایش منو', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    // Clear any stale state from previous sessions (e.g., after deploy)
+    cache.del(`menu:selected:${ctx.from.id}`);
     // Editor mode: resolve titles from DB but show all entries (including unpublished)
     const layout = await settingsService.getResolvedMenuLayout(false);
     cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
@@ -489,6 +491,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    cache.del(`menu:selected:${ctx.from.id}`);
+    cache.del(`menu:edit_mode:${ctx.from.id}`);
     const layout = await settingsService.getResolvedMenuLayout(false);
     try {
       await ctx.editMessageText('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
