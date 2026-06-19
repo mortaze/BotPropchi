@@ -1595,7 +1595,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const editorPostId = cache.get<number>(editorKey(ctx.from.id, 'active'));
     if (editorPostId) {
       const mode = cache.get<string>(editorKey(ctx.from.id, 'mode')) || 'main';
-      if (mode === 'add_message' || mode === 'edit_message' || mode === 'edit_content' || mode === 'edit_title') {
+      if (mode === 'add_message' || mode === 'add_command' || mode === 'edit_message' || mode === 'edit_content' || mode === 'edit_title') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'main');
         cache.del(editorKey(ctx.from.id, 'msg_idx'));
         const post = await postService.findById(editorPostId);
@@ -1607,18 +1607,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(editorKey(ctx.from.id, 'mode'));
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       cache.del(editorKey(ctx.from.id, 'message_ids'));
-      const result = await postService.findAll({ page: 1, limit: 100 });
-      cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-      await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+      await showPostListFromLayout(ctx);
       return;
     }
 
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
     if (!postId) return next();
     cache.del(pendingKey(ctx.from.id, 'edit_mode'));
-    const result = await postService.findAll({ page: 1, limit: 100 });
-    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+    await showPostListFromLayout(ctx);
   });
 
   // 📥 لغو انتشار / 📤 انتشار: Toggle publish status, then refresh post info
@@ -1725,10 +1721,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     await postService.delete(postId);
     try { await ctx.editMessageText('🗑 پست حذف شد.'); } catch { await ctx.reply('🗑 پست حذف شد.'); }
-    // Return to posts list
-    const result = await postService.findAll({ page: 1, limit: 100 });
-    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+    await showPostListFromLayout(ctx);
   });
 
   // 🔥 حذف دائمی: Confirm then fully remove post from all tables
@@ -1754,10 +1747,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     await postService.delete(postId);
     try { await ctx.editMessageText('🔥 پست به طور دائمی حذف شد.'); } catch { await ctx.reply('🔥 پست به طور دائمی حذف شد.'); }
-    // Return to posts list
-    const result = await postService.findAll({ page: 1, limit: 100 });
-    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+    await showPostListFromLayout(ctx);
   });
 
   // Cancel delete confirmation → show post info again
@@ -1785,9 +1775,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    const result = await postService.findAll({ page: 1, limit: 100 });
-    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+    await showPostListFromLayout(ctx);
   });
 
   // ─── Back to Admin Panel ───────────────────────────────
@@ -1857,8 +1845,31 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   // ─── Multi-Message Editor ─────────────────────────────────
   // ═══════════════════════════════════════════════════════════
 
+  // ─── Helper: Show post list from menu layout ────────────
+  async function showPostListFromLayout(ctx: any) {
+    const layout = await settingsService.getResolvedMenuLayout(false);
+    const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
+    if (postButtons.length === 0) {
+      return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
+    }
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
+  }
+
+  // ─── Clear all waiting states ───────────────────────────
+  function clearAllWaitingStates(userId: number) {
+    const keys = [
+      'editing_cmd', 'editing_post', 'editing_field', 'editing_button',
+      'schedule_publish', 'schedule_unpublish', 'alias_cmd_id',
+      'searching', 'preview_id', 'publish_id', 'analytics_id',
+      'import_title', 'import_post', 'creating', 'edit_mode',
+    ];
+    for (const k of keys) cache.del(pendingKey(userId, k));
+  }
+
   async function enterPostEditor(ctx: any, post: any) {
     const postId = post.id;
+    clearAllWaitingStates(ctx.from.id);
     cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
     cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
@@ -2037,9 +2048,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           return;
         }
         case 'افزودن دستور': {
-          cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
-          cache.set(pendingKey(ctx.from.id, 'editing_post'), editorPostId, 300);
-          await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', { parse_mode: 'Markdown' as any });
+          cache.set(editorKey(ctx.from.id, 'mode'), 'add_command', 600);
+          await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', {
+            parse_mode: 'Markdown' as any,
+            ...postCancelOnlyReplyKeyboard(),
+          });
           return;
         }
         case '📊 آمار': {
@@ -2070,9 +2083,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           cache.del(editorKey(ctx.from.id, 'mode'));
           cache.del(editorKey(ctx.from.id, 'msg_idx'));
           cache.del(editorKey(ctx.from.id, 'message_ids'));
-          const result = await postService.findAll({ page: 1, limit: 100 });
-          cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-          await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+          await showPostListFromLayout(ctx);
           return;
         }
         case '🏠 منو اصلی': {
@@ -2130,6 +2141,38 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      const updated = await postService.findById(editorPostId);
+      if (updated) await refreshEditorMessages(ctx, updated);
+      return;
+    }
+
+    // ─── ADD COMMAND MODE ────────────────────────────────
+    if (mode === 'add_command') {
+      if (text === '❌ لغو') {
+        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        const post = await postService.findById(editorPostId);
+        if (post) await refreshEditorMessages(ctx, post);
+        return;
+      }
+
+      // Regular text = command name
+      const cmdText = text.replace(/^\//, '').trim();
+      if (!cmdText) {
+        await ctx.reply('❌ دستور نامعتبر. لطفاً یک نام معتبر ارسال کنید.', {
+          ...postCancelOnlyReplyKeyboard(),
+        });
+        return;
+      }
+      try {
+        await postService.addCommand(editorPostId, cmdText);
+        await ctx.reply(`✅ دستور /${cmdText} اضافه شد!`);
+      } catch (err: any) {
+        await ctx.reply(`❌ ${err.message || 'افزودن دستور ناموفق بود.'}`, {
+          ...postCancelOnlyReplyKeyboard(),
+        });
+        return;
+      }
+      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       const updated = await postService.findById(editorPostId);
       if (updated) await refreshEditorMessages(ctx, updated);
       return;
