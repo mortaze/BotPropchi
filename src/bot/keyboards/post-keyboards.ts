@@ -321,16 +321,21 @@ export const postSwapTargetKeyboard = (postId: number, sourceRow: number, totalR
 // The selected button (if any) is wrapped in {} without changing the keyboard structure.
 // Updated in real-time after every mutation.
 export const buildMenuEditorReplyKeyboard = (layout: any[][], selectedKey?: { row: number; col: number } | null) => {
-  const rows: string[][] = layout.map((row, r) =>
-    row.map((btn, c) => {
+  const rows: string[][] = layout.map((row, r) => {
+    const resultRow: string[] = [];
+    for (let c = 0; c < row.length; c++) {
+      const btn = row[c];
+      if (!btn) continue;
       const prefix = btn.visible === false ? '🙈 ' : '';
       const text = `${prefix}${buildSafeTelegramButton(buttonDisplayText(btn, 'بدون عنوان'))}`;
       if (selectedKey && selectedKey.row === r && selectedKey.col === c) {
-        return `{${text}}`;
+        resultRow.push(`{${text}}`);
+      } else {
+        resultRow.push(graphemeTruncate(text, 40));
       }
-      return graphemeTruncate(text, 40);
-    })
-  );
+    }
+    return resultRow;
+  });
   rows.push(['🔙 بازگشت']);
   return Markup.keyboard(rows).resize().persistent();
 };
@@ -356,6 +361,7 @@ export const menuEditorKeyboard = (layout: any[][]) => {
       const rowButtons: any[] = [];
       for (let c = 0; c < row.length; c++) {
         const btn = row[c];
+        if (!btn) continue;
         const prefix = btn.visible === false ? '🙈 ' : '';
         rowButtons.push(
           Markup.button.callback(

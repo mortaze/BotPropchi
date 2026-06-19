@@ -157,12 +157,13 @@ class SettingsService {
   private ensureButtonIds(layout: any[][]): any[][] {
     for (const row of layout) {
       for (const btn of row) {
-        const idNumber = Number(String(btn?.id || '').replace('btn_', ''));
+        if (!btn) continue;
+        const idNumber = Number(String(btn.id || '').replace('btn_', ''));
         if (Number.isFinite(idNumber) && idNumber >= this.nextButtonId) this.nextButtonId = idNumber + 1;
       }
     }
     return layout.map(row =>
-      row.map(btn => {
+      row.filter(btn => btn != null).map(btn => {
         if (!btn.id) {
           btn.id = `btn_${this.nextButtonId++}`;
         }
@@ -178,17 +179,17 @@ class SettingsService {
     if (typeof normalized.label === 'string') normalized.label = sanitizeTelegramText(normalized.label);
     if (typeof normalized.title === 'string') normalized.title = sanitizeTelegramText(normalized.title);
     return normalized;
-  }
-private menuTextSummary(layout: any[][]): string {
+  }  private menuTextSummary(layout: any[][]): string {
   try {
     return layout
       .flat()
       .map(btn => {
+        if (!btn) return '[empty]';
         const txt =
-          btn?.text ||
-          btn?.label ||
-          btn?.title ||
-          btn?.ref ||
+          btn.text ||
+          btn.label ||
+          btn.title ||
+          btn.ref ||
           '[empty]';
 
         return String(txt).substring(0, 30);
@@ -414,7 +415,7 @@ private menuTextSummary(layout: any[][]): string {
     const postIds = new Set<number>();
     for (const row of layout) {
       for (const btn of row) {
-        if (btn.ref && btn.ref.startsWith('post:')) {
+        if (btn?.ref && btn.ref.startsWith('post:')) {
           postIds.add(Number(btn.ref.replace('post:', '')));
         }
       }
@@ -433,6 +434,7 @@ private menuTextSummary(layout: any[][]): string {
     for (const row of layout) {
       const resolvedRow: any[] = [];
       for (const btn of row) {
+        if (!btn) continue;
         if (btn.ref && btn.ref.startsWith('post:')) {
           const postId = Number(btn.ref.replace('post:', ''));
           const post = postMap.get(postId);
@@ -463,7 +465,7 @@ private menuTextSummary(layout: any[][]): string {
     let exists = false;
     for (const row of layout) {
       for (const btn of row) {
-        if (btn.ref === ref) {
+        if (btn?.ref === ref) {
           exists = true;
           break;
         }
@@ -489,7 +491,7 @@ private menuTextSummary(layout: any[][]): string {
 
     for (const row of layout) {
       for (let c = row.length - 1; c >= 0; c--) {
-        if (row[c].ref === ref) {
+        if (row[c]?.ref === ref) {
           row.splice(c, 1);
         }
       }
@@ -508,7 +510,7 @@ private menuTextSummary(layout: any[][]): string {
 
     for (const row of layout) {
       for (let c = row.length - 1; c >= 0; c--) {
-        if (row[c].id === buttonId) {
+        if (row[c]?.id === buttonId) {
           row.splice(c, 1);
           removed = true;
         }
@@ -552,6 +554,7 @@ private menuTextSummary(layout: any[][]): string {
     for (const row of layout) {
       for (let c = row.length - 1; c >= 0; c--) {
         const btn = row[c];
+        if (!btn) continue;
         if (btn.ref && btn.ref.startsWith('post:')) {
           if (!validRefs.has(btn.ref)) {
             row.splice(c, 1);

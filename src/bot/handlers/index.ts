@@ -61,13 +61,34 @@ function findButtonNewPosition(layout: any[][], buttonId: string): { row: number
   return null;
 }
 
+function isSelectedKeyValid(layout: any[][], key: { row: number; col: number }): boolean {
+  return (
+    key.row >= 0 &&
+    key.row < layout.length &&
+    layout[key.row] != null &&
+    key.col >= 0 &&
+    key.col < layout[key.row].length &&
+    layout[key.row][key.col] != null
+  );
+}
+
+function buildSafeMenuEditorKeyboard(layout: any[][], selectedKey?: { row: number; col: number } | null) {
+  try {
+    const keyboard = buildMenuEditorReplyKeyboard(layout, selectedKey);
+    return keyboard;
+  } catch (error) {
+    logger.error('[MenuEditor] Failed to build Reply Keyboard, using fallback', error);
+    return Markup.keyboard([['🔙 بازگشت']]).resize().persistent();
+  }
+}
+
 async function updateMenuEditorAfterAction(ctx: any, buttonId: string) {
   const layout = await settingsService.getMenuLayout();
   const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
   const newPos = findButtonNewPosition(layout, buttonId);
   if (!newPos) {
     cache.del(`menu:selected:${ctx.from.id}`);
-    await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildMenuEditorReplyKeyboard(resolvedLayout));
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
     return;
   }
   cache.set(`menu:selected:${ctx.from.id}`, newPos, 300);
@@ -76,7 +97,7 @@ async function updateMenuEditorAfterAction(ctx: any, buttonId: string) {
   try {
     await ctx.editMessageText(`ویرایش دکمه: ${btnText}`, buildMenuEditInlineKeyboard(newPos.row, newPos.col, button));
   } catch {}
-  await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildMenuEditorReplyKeyboard(resolvedLayout, newPos));
+  await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
 }
 
 async function editMenuEditor(ctx: any, message: string) {
@@ -89,7 +110,7 @@ async function showMenuEditor(ctx: any, message: string) {
   const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
   logger.info(`[MenuEditor] Rendering Reply Keyboard rows=${resolvedLayout.length}`);
   cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
-  await ctx.reply(message, buildMenuEditorReplyKeyboard(resolvedLayout));
+  await ctx.reply(message, buildSafeMenuEditorKeyboard(resolvedLayout));
 }
 
 function assertMenuTextPreserved(before: any[][], after: any[][], operation: string) {
@@ -800,8 +821,17 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return;
     }
     const layout = await settingsService.getMenuLayout();
+    // Validate selectedKey is still valid
+    if (!isSelectedKeyValid(layout, selectedKey)) {
+      logger.warn(`[MenuEditor] Stale selectedKey in moveto for user ${ctx.from.id}, clearing`);
+      cache.del(`menu:selected:${ctx.from.id}`);
+      try { await ctx.editMessageText('دکمه‌ای که انتخاب کرده بودید دیگر وجود ندارد.', { reply_markup: undefined }); } catch {}
+      const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
+      return;
+    }
     const before = await settingsService.getResolvedMenuLayout(false);
-    const button = layout[selectedKey.row]?.splice(selectedKey.col, 1)[0];
+    const button = layout[selectedKey.row].splice(selectedKey.col, 1)[0];
     if (!button) return;
     const btnId = button.id;
 
@@ -834,11 +864,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
       try {
         await ctx.editMessageText(`ویرایش دکمه: ${button.text || button.label || button.title || button.ref || 'دکمه'}`, buildMenuEditInlineKeyboard(newPos.row, newPos.col, button));
       } catch {}
-      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildMenuEditorReplyKeyboard(resolvedLayout, newPos));
+      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
     } else {
       cache.del(`menu:selected:${ctx.from.id}`);
       const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildMenuEditorReplyKeyboard(resolvedLayout));
+      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
     }
   });
 
@@ -852,8 +882,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return;
     }
     const layout = await settingsService.getMenuLayout();
-    const button = layout[selectedKey.row]?.[selectedKey.col];
-    const btnText = button?.text || button?.label || button?.title || button?.ref || 'دکمه';
+    // Validate selectedKey is still valid
+    if (!isSelectedKeyValid(layout, selectedKey)) {
+      cache.del(`menu:selected:${ctx.from.id}`);
+      try { await ctx.editMessageText('لغو شد. (دکمه انتخاب شده دیگر وجود ندارد)', { reply_markup: undefined }); } catch {}
+      return;
+    }
+    const button = layout[selectedKey.row][selectedKey.col];
+    const btnText = button.text || button.label || button.title || button.ref || 'دکمه';
     try {
       await ctx.editMessageText(`ویرایش دکمه: ${btnText}`, buildMenuEditInlineKeyboard(selectedKey.row, selectedKey.col, button));
     } catch {}
@@ -960,13 +996,23 @@ export function registerHandlers(bot: Telegraf<Context>) {
     // ── Check if user is in main menu editor mode ────────────
     const inMenuEditor = cache.get<boolean>(`menu:edit_mode:${ctx.from.id}`);
     if (inMenuEditor) {
-      const selectedKey = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
+      let selectedKey = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
+
+      // Validate selectedKey after possible deploy — if indices are stale, clear them
+      if (selectedKey) {
+        const validationLayout = await settingsService.getMenuLayout();
+        if (!isSelectedKeyValid(validationLayout, selectedKey)) {
+          logger.warn(`[MenuEditor] Stale selectedKey detected for user ${ctx.from.id}, clearing`);
+          cache.del(`menu:selected:${ctx.from.id}`);
+          selectedKey = undefined;
+        }
+      }
 
       if (text === '🔙 بازگشت') {
         if (selectedKey) {
           cache.del(`menu:selected:${ctx.from.id}`);
           const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-          await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildMenuEditorReplyKeyboard(resolvedLayout));
+          await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
           return;
         }
         cache.del(`menu:edit_mode:${ctx.from.id}`);
@@ -985,13 +1031,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
       for (let r = 0; r < resolvedLayout.length; r++) {
         for (let c = 0; c < resolvedLayout[r].length; c++) {
           const btn = resolvedLayout[r][c];
-          const btnText = btn?.text || btn?.label || btn?.title || btn?.ref || 'بدون عنوان';
+          if (!btn) continue;
+          const btnText = btn.text || btn.label || btn.title || btn.ref || 'بدون عنوان';
           const prefix = btn.visible === false ? '🙈 ' : '';
           const displayText = `${prefix}${btnText}`;
           if (displayText === matchText) {
             const rawButton = rawLayout[r]?.[c];
             cache.set(`menu:selected:${ctx.from.id}`, { row: r, col: c }, 300);
-            await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildMenuEditorReplyKeyboard(resolvedLayout, { row: r, col: c }));
+            await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, { row: r, col: c }));
             await ctx.reply(`ویرایش دکمه: ${btnText}`, buildMenuEditInlineKeyboard(r, c, rawButton || btn));
             matched = true;
             break;
