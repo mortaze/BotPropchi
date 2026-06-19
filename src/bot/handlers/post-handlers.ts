@@ -30,6 +30,11 @@ import {
   postIntegrityKeyboard,
   postGlobalAnalyticsKeyboard,
   postSwapTargetKeyboard,
+  postMultiMessageEditorReplyKeyboard,
+  postAddMessageReplyKeyboard,
+  postEditMessageReplyKeyboard,
+  postCancelOnlyReplyKeyboard,
+  postSingleMessageInlineKeyboard,
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
@@ -55,6 +60,50 @@ const PENDING_POST_STATE = 'post:pending:';
 
 function pendingKey(telegramId: number, field: string) {
   return `${PENDING_POST_STATE}${telegramId}:${field}`;
+}
+
+// ─── Multi-Message Editor State Keys ──────────────────────
+const EDITOR_PREFIX = 'post:editor:';
+function editorKey(userId: number, field: string) {
+  return `${EDITOR_PREFIX}${userId}:${field}`;
+}
+
+// ─── Parse content into message segments ──────────────────
+function parsePostMessages(content: string | null | undefined): string[] {
+  if (!content || !content.trim()) return [''];
+  const messages: string[] = [];
+  const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const before = content.slice(lastIndex, match.index).trim();
+      if (before) messages.push(before);
+    }
+    messages.push(match[1].trim());
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    const remaining = content.slice(lastIndex).trim();
+    if (remaining) messages.push(remaining);
+  }
+  if (messages.length === 0) messages.push(content.trim() || '');
+  return messages;
+}
+
+// ─── Serialize message segments back to content ──────────
+function serializePostMessages(messages: string[]): string {
+  if (messages.length === 0) return '';
+  if (messages.length === 1) return messages[0] || '';
+  while (messages.length > 1 && messages[messages.length - 1].trim() === '') {
+    messages.pop();
+  }
+  if (messages.length === 1) return messages[0] || '';
+  const segments = messages.map((msg, i) => {
+    if (i === 0) return msg;
+    return `[[copy]]\n${msg}\n[[/copy]]`;
+  });
+  return segments.join('\n\n');
 }
 
 function slugify(text: string): string {
@@ -179,6 +228,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || !isPostAdmin(admin)) return next();
 
+    // Skip if multi-message editor is active
+    if (cache.get<number>(editorKey(ctx.from.id, 'active'))) return next();
+
     const text = ctx.message.text;
 
     // Back to post main menu
@@ -194,17 +246,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const post = await postService.findById(matched.id);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       cache.set(pendingKey(ctx.from.id, 'selected_post'), matched.id, 300);
-      // Clear all state flags — post selected, no longer in list/edit mode
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
       cache.del(pendingKey(ctx.from.id, 'edit_mode'));
 
-      // Send ONE management message: post info + ALL buttons on one inline keyboard
-      // ⚠️ Public rendering pipeline (sendPostToChat / Pipeline / Renderer) must NEVER be called here.
-      await ctx.reply(formatPostInfoPersian(post), {
-        parse_mode: 'Markdown' as any,
-        link_preview_options: { is_disabled: true } as any,
-        ...postInfoActionKeyboard(post),
-      });
+      await enterPostEditor(ctx, post);
       return;
     }
 
@@ -305,6 +350,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!ctx.from) return next();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || !isPostAdmin(admin)) return next();
+
+    // Skip if multi-message editor is active
+    if (cache.get<number>(editorKey(ctx.from.id, 'active'))) return next();
 
     const importTitle = cache.get<boolean>(pendingKey(ctx.from.id, 'import_title'));
     const importingPostId = cache.get<number>(pendingKey(ctx.from.id, 'import_post'));
@@ -1538,15 +1586,36 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', { parse_mode: 'Markdown' as any });
   });
 
-  // 🔙 بازگشت: Exit edit mode, return to posts list (one level up)
-  // Passes through to next handler if not in edit mode
+  // 🔙 بازگشت: Handle back in both editor mode and edit mode
   bot.hears('🔙 بازگشت', async (ctx: any, next: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
+
+    // Check if in multi-message editor
+    const editorPostId = cache.get<number>(editorKey(ctx.from.id, 'active'));
+    if (editorPostId) {
+      const mode = cache.get<string>(editorKey(ctx.from.id, 'mode')) || 'main';
+      if (mode === 'add_message' || mode === 'edit_message' || mode === 'edit_content' || mode === 'edit_title') {
+        cache.set(editorKey(ctx.from.id, 'mode'), 'main');
+        cache.del(editorKey(ctx.from.id, 'msg_idx'));
+        const post = await postService.findById(editorPostId);
+        if (post) await refreshEditorMessages(ctx, post);
+        return;
+      }
+      // In main editor mode → back exits to post list
+      cache.del(editorKey(ctx.from.id, 'active'));
+      cache.del(editorKey(ctx.from.id, 'mode'));
+      cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      cache.del(editorKey(ctx.from.id, 'message_ids'));
+      const result = await postService.findAll({ page: 1, limit: 100 });
+      cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+      await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+      return;
+    }
+
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
     if (!postId) return next();
     cache.del(pendingKey(ctx.from.id, 'edit_mode'));
-    // Return to posts list (one level up from edit menu)
     const result = await postService.findAll({ page: 1, limit: 100 });
     cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
     await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
@@ -1783,6 +1852,411 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }).filter(Boolean)
     );
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // ─── Multi-Message Editor ─────────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+
+  async function enterPostEditor(ctx: any, post: any) {
+    const postId = post.id;
+    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
+    cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+    cache.del(editorKey(ctx.from.id, 'msg_idx'));
+    cache.del(editorKey(ctx.from.id, 'message_ids'));
+    cache.del(editorKey(ctx.from.id, 'forward_on'));
+
+    await refreshEditorMessages(ctx, post);
+  }
+
+  async function refreshEditorMessages(ctx: any, post: any) {
+    const postId = post.id;
+    const content = post.content || '';
+    const messages = parsePostMessages(content);
+
+    const oldMsgIds = cache.get<number[]>(editorKey(ctx.from.id, 'message_ids')) || [];
+    for (const msgId of oldMsgIds) {
+      try { await ctx.deleteMessage(msgId); } catch (e) {}
+    }
+
+    await ctx.reply(`📝 *${post.title}* | ✏️ ویرایشگر (${messages.length} پیام)`, {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postMultiMessageEditorReplyKeyboard(),
+    });
+
+    const newMsgIds: number[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const msgText = messages[i];
+      const label = `📨 *پیام ${i + 1} از ${messages.length}*`;
+      try {
+        const sent = await ctx.reply(`${label}\n\n${msgText}`, {
+          parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
+          ...postSingleMessageInlineKeyboard(postId, i, messages.length),
+        });
+        if (sent) newMsgIds.push(sent.message_id);
+      } catch (e) {
+        const sent = await ctx.reply(`${label}\n\n${msgText}`, {
+          ...postSingleMessageInlineKeyboard(postId, i, messages.length),
+        });
+        if (sent) newMsgIds.push(sent.message_id);
+      }
+    }
+    cache.set(editorKey(ctx.from.id, 'message_ids'), newMsgIds, 600);
+  }
+
+  async function deleteAllEditorMessages(ctx: any) {
+    const oldMsgIds = cache.get<number[]>(editorKey(ctx.from.id, 'message_ids')) || [];
+    for (const msgId of oldMsgIds) {
+      try { await ctx.deleteMessage(msgId); } catch (e) {}
+    }
+    cache.del(editorKey(ctx.from.id, 'active'));
+    cache.del(editorKey(ctx.from.id, 'mode'));
+    cache.del(editorKey(ctx.from.id, 'msg_idx'));
+    cache.del(editorKey(ctx.from.id, 'message_ids'));
+    cache.del(editorKey(ctx.from.id, 'forward_on'));
+  }
+
+  // ─── Per-Message Callbacks ─────────────────────────────
+
+  bot.action(/^post:msg:edit:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const msgIdx = parseInt(ctx.match[2]);
+    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
+    cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
+    cache.set(editorKey(ctx.from.id, 'msg_idx'), msgIdx, 600);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const messages = parsePostMessages(post.content || '');
+    const msgText = messages[msgIdx] || '(بدون محتوا)';
+    await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
+      ...postEditMessageReplyKeyboard(),
+    });
+  });
+
+  bot.action(/^post:msg:delete:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const msgIdx = parseInt(ctx.match[2]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const messages = parsePostMessages(post.content || '');
+    if (msgIdx < 0 || msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
+    if (messages.length <= 1) {
+      await postService.update(postId, { content: '', updatedBy: BigInt(ctx.from.id) } as any);
+    } else {
+      messages.splice(msgIdx, 1);
+      const newContent = serializePostMessages(messages);
+      await postService.update(postId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+    }
+    const updated = await postService.findById(postId);
+    if (updated) await refreshEditorMessages(ctx, updated);
+  });
+
+  bot.action(/^post:msg:up:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const msgIdx = parseInt(ctx.match[2]);
+    if (msgIdx <= 0) return;
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const messages = parsePostMessages(post.content || '');
+    if (msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
+    [messages[msgIdx - 1], messages[msgIdx]] = [messages[msgIdx], messages[msgIdx - 1]];
+    const newContent = serializePostMessages(messages);
+    await postService.update(postId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+    const updated = await postService.findById(postId);
+    if (updated) await refreshEditorMessages(ctx, updated);
+  });
+
+  bot.action(/^post:msg:down:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const msgIdx = parseInt(ctx.match[2]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const messages = parsePostMessages(post.content || '');
+    if (msgIdx < 0 || msgIdx >= messages.length - 1) return ctx.reply('❌ در پایین‌ترین موقعیت.');
+    [messages[msgIdx], messages[msgIdx + 1]] = [messages[msgIdx + 1], messages[msgIdx]];
+    const newContent = serializePostMessages(messages);
+    await postService.update(postId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+    const updated = await postService.findById(postId);
+    if (updated) await refreshEditorMessages(ctx, updated);
+  });
+
+  bot.action(/^post:msg:add:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const msgIdx = parseInt(ctx.match[2]);
+    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
+    cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
+    cache.set(editorKey(ctx.from.id, 'msg_idx'), msgIdx, 600);
+    const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
+    await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
+      ...postAddMessageReplyKeyboard(forwardOn),
+    });
+  });
+
+  // ─── Editor Text Handler ───────────────────────────────
+  // Handles all text input while the multi-message editor is active.
+  bot.on('text', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const editorPostId = cache.get<number>(editorKey(ctx.from.id, 'active'));
+    if (!editorPostId) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
+
+    const mode = cache.get<string>(editorKey(ctx.from.id, 'mode')) || 'main';
+    const text = ctx.message.text;
+
+    // ─── MAIN MODE ───────────────────────────────────────
+    if (mode === 'main') {
+      switch (text) {
+        case '➕ افزودن پیام': {
+          const post = await postService.findById(editorPostId);
+          if (!post) return ctx.reply('❌ پست یافت نشد.');
+          const messages = parsePostMessages(post.content || '');
+          const addAfter = messages.length - 1;
+          cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
+          cache.set(editorKey(ctx.from.id, 'msg_idx'), addAfter, 600);
+          const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
+          await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
+            ...postAddMessageReplyKeyboard(forwardOn),
+          });
+          return;
+        }
+        case 'افزودن دستور': {
+          cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
+          cache.set(pendingKey(ctx.from.id, 'editing_post'), editorPostId, 300);
+          await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', { parse_mode: 'Markdown' as any });
+          return;
+        }
+        case '📊 آمار': {
+          const post = await postService.findById(editorPostId);
+          if (!post) return ctx.reply('❌ پست یافت نشد.');
+          const analytics = await postService.getAnalytics(editorPostId);
+          const text = [
+            `📊 *آمار: ${post.title}*`,
+            '',
+            `👁 بازدید کل: ${analytics.totalViews}`,
+            `👆 کلیک کل: ${analytics.totalClicks}`,
+            `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
+            '',
+            '📈 بازدید روزانه (۳۰ روز اخیر):',
+            ...analytics.dailyViews.slice(-7).map((d: any) => `  ${d.date}: ${d.count} بازدید`),
+          ].join('\n');
+          await ctx.reply(text, { parse_mode: 'Markdown' as any });
+          return;
+        }
+        case '📤 لغو انتشار': {
+          await postService.unpublish(editorPostId);
+          const post = await postService.findById(editorPostId);
+          if (post) await refreshEditorMessages(ctx, post);
+          return;
+        }
+        case '🗂 بازگشت به لیست': {
+          cache.del(editorKey(ctx.from.id, 'active'));
+          cache.del(editorKey(ctx.from.id, 'mode'));
+          cache.del(editorKey(ctx.from.id, 'msg_idx'));
+          cache.del(editorKey(ctx.from.id, 'message_ids'));
+          const result = await postService.findAll({ page: 1, limit: 100 });
+          cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+          await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', postTitleOnlyListKeyboard(result.items));
+          return;
+        }
+        case '🏠 منو اصلی': {
+          await postService.invalidateCache();
+          cache.del(editorKey(ctx.from.id, 'active'));
+          cache.del(editorKey(ctx.from.id, 'mode'));
+          cache.del(editorKey(ctx.from.id, 'msg_idx'));
+          cache.del(editorKey(ctx.from.id, 'message_ids'));
+          await adminMainMenu(ctx);
+          return;
+        }
+        case '🔙 بازگشت':
+        case '⛔ توقف ویرایش': {
+          cache.del(editorKey(ctx.from.id, 'active'));
+          cache.del(editorKey(ctx.from.id, 'mode'));
+          cache.del(editorKey(ctx.from.id, 'msg_idx'));
+          cache.del(editorKey(ctx.from.id, 'message_ids'));
+          await adminMainMenu(ctx);
+          return;
+        }
+        default:
+          return next();
+      }
+      return;
+    }
+
+    // ─── ADD MESSAGE MODE ────────────────────────────────
+    if (mode === 'add_message') {
+      const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+
+      if (text === '↪️ ارسال به عنوان فوروارد (خاموش)' || text === '✅ ارسال به عنوان فوروارد (روشن)') {
+        const current = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
+        cache.set(editorKey(ctx.from.id, 'forward_on'), !current, 600);
+        await ctx.reply(`🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.`, {
+          ...postAddMessageReplyKeyboard(!current),
+        });
+        return;
+      }
+
+      if (text === '❌ لغو') {
+        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        cache.del(editorKey(ctx.from.id, 'msg_idx'));
+        const post = await postService.findById(editorPostId);
+        if (post) await refreshEditorMessages(ctx, post);
+        return;
+      }
+
+      // Regular text = new message content
+      const post = await postService.findById(editorPostId);
+      if (!post) return ctx.reply('❌ پست یافت نشد.');
+      const messages = parsePostMessages(post.content || '');
+      const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
+      messages.splice(insertAt, 0, text);
+      const newContent = serializePostMessages(messages);
+      await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      const updated = await postService.findById(editorPostId);
+      if (updated) await refreshEditorMessages(ctx, updated);
+      return;
+    }
+
+    // ─── EDIT MESSAGE MODE ───────────────────────────────
+    if (mode === 'edit_message') {
+      if (text === '✏️ ویرایش محتوا') {
+        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_content', 600);
+        const post = await postService.findById(editorPostId);
+        const messages = post ? parsePostMessages(post.content || '') : [];
+        const current = messages[msgIdx] || '(بدون محتوا)';
+        await ctx.reply(`✏️ پیام ${msgIdx + 1} - محتوای جدید را ارسال کنید:\n\nمتن فعلی: ${current}`, {
+          ...postCancelOnlyReplyKeyboard(),
+        });
+        return;
+      }
+      if (text === '📝 ویرایش عنوان') {
+        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_title', 600);
+        const post = await postService.findById(editorPostId);
+        await ctx.reply(`✏️ عنوان جدید را ارسال کنید:\n\nعنوان فعلی: *${post?.title || ''}*`, {
+          parse_mode: 'Markdown' as any,
+          ...postCancelOnlyReplyKeyboard(),
+        });
+        return;
+      }
+      if (text === 'ویرایش دکمه ها') {
+        const post = await postService.findById(editorPostId);
+        if (!post) return ctx.reply('❌ پست یافت نشد.');
+        const buttons = (post as any).buttons || [];
+        cache.del(editorKey(ctx.from.id, 'active'));
+        cache.del(editorKey(ctx.from.id, 'mode'));
+        cache.del(editorKey(ctx.from.id, 'msg_idx'));
+        cache.del(editorKey(ctx.from.id, 'message_ids'));
+        await ctx.reply('⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
+          postButtonsEditorKeyboard(editorPostId, buttons));
+        return;
+      }
+      if (text === '🔙 بازگشت') {
+        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        cache.del(editorKey(ctx.from.id, 'msg_idx'));
+        const post = await postService.findById(editorPostId);
+        if (post) await refreshEditorMessages(ctx, post);
+        return;
+      }
+      return;
+    }
+
+    // ─── EDIT CONTENT MODE ───────────────────────────────
+    if (mode === 'edit_content') {
+      if (text === '❌ لغو') {
+        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
+        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+        const post = await postService.findById(editorPostId);
+        const messages = post ? parsePostMessages(post.content || '') : [];
+        const msgText = messages[msgIdx] || '(بدون محتوا)';
+        await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
+          ...postEditMessageReplyKeyboard(),
+        });
+        return;
+      }
+      const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+      const post = await postService.findById(editorPostId);
+      if (!post) return ctx.reply('❌ پست یافت نشد.');
+      const messages = parsePostMessages(post.content || '');
+      if (msgIdx >= 0 && msgIdx < messages.length) {
+        messages[msgIdx] = text;
+        const newContent = serializePostMessages(messages);
+        await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+      }
+      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      const updated = await postService.findById(editorPostId);
+      if (updated) await refreshEditorMessages(ctx, updated);
+      return;
+    }
+
+    // ─── EDIT TITLE MODE ─────────────────────────────────
+    if (mode === 'edit_title') {
+      if (text === '❌ لغو') {
+        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
+        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+        const post = await postService.findById(editorPostId);
+        const messages = post ? parsePostMessages(post.content || '') : [];
+        const msgText = messages[msgIdx] || '(بدون محتوا)';
+        await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
+          ...postEditMessageReplyKeyboard(),
+        });
+        return;
+      }
+      await postService.update(editorPostId, { title: text, updatedBy: BigInt(ctx.from.id) } as any);
+      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      const updated = await postService.findById(editorPostId);
+      if (updated) await refreshEditorMessages(ctx, updated);
+      return;
+    }
+
+    return next();
+  });
+
+  // ─── Handle forwarded / media messages in add_message mode ──
+  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice'], async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const editorPostId = cache.get<number>(editorKey(ctx.from.id, 'active'));
+    if (!editorPostId) return next();
+    const mode = cache.get<string>(editorKey(ctx.from.id, 'mode'));
+    if (mode !== 'add_message') return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
+
+    const msg = ctx.message;
+    const caption = msg.caption || '';
+    const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+    const post = await postService.findById(editorPostId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const messages = parsePostMessages(post.content || '');
+    const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
+    messages.splice(insertAt, 0, caption || '(رسانه)');
+    const newContent = serializePostMessages(messages);
+    await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+    cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+    cache.del(editorKey(ctx.from.id, 'msg_idx'));
+    const updated = await postService.findById(editorPostId);
+    if (updated) await refreshEditorMessages(ctx, updated);
+  });
 }
 
 // Export the helper for main menu integration

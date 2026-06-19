@@ -440,6 +440,49 @@ export const menuRowResizeKeyboard = (row: number) => {
   ]);
 };
 
+// ─── Multi-Message Editor Keyboards ────────────────────────
+
+export const postMultiMessageEditorReplyKeyboard = () =>
+  Markup.keyboard([
+    ['➕ افزودن پیام', 'افزودن دستور'],
+    ['📊 آمار', '📤 لغو انتشار'],
+    ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
+    ['🔙 بازگشت', '⛔ توقف ویرایش'],
+  ]).resize().persistent();
+
+export const postAddMessageReplyKeyboard = (forwardOn: boolean) =>
+  Markup.keyboard([
+    [forwardOn ? '✅ ارسال به عنوان فوروارد (روشن)' : '↪️ ارسال به عنوان فوروارد (خاموش)'],
+    ['❌ لغو'],
+  ]).resize().persistent();
+
+export const postEditMessageReplyKeyboard = () =>
+  Markup.keyboard([
+    ['✏️ ویرایش محتوا', '📝 ویرایش عنوان'],
+    ['ویرایش دکمه ها'],
+    ['🔙 بازگشت'],
+  ]).resize().persistent();
+
+export const postCancelOnlyReplyKeyboard = () =>
+  Markup.keyboard([
+    ['❌ لغو'],
+  ]).resize().persistent();
+
+export const postSingleMessageInlineKeyboard = (postId: number, msgIdx: number, totalMsgs: number) => {
+  const rows: any[][] = [
+    [
+      Markup.button.callback('✏️ ویرایش', `post:msg:edit:${postId}:${msgIdx}`),
+      Markup.button.callback('🗑 حذف پیام', `post:msg:delete:${postId}:${msgIdx}`),
+    ],
+  ];
+  const moveRow: any[] = [];
+  if (msgIdx > 0) moveRow.push(Markup.button.callback('⬆️ بالا', `post:msg:up:${postId}:${msgIdx}`));
+  if (msgIdx < totalMsgs - 1) moveRow.push(Markup.button.callback('⬇️ پایین', `post:msg:down:${postId}:${msgIdx}`));
+  if (moveRow.length > 0) rows.push(moveRow);
+  rows.push([Markup.button.callback('➕ افزودن پیام', `post:msg:add:${postId}:${msgIdx}`)]);
+  return Markup.inlineKeyboard(rows);
+};
+
 export const menuSwapTargetKeyboard = (sourceRow: number, totalRows: number) => {
   const rows: any[][] = [];
   for (let i = 0; i < totalRows; i++) {
