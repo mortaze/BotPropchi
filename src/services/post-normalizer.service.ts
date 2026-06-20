@@ -23,6 +23,34 @@ function extractEntities(post: any): any[] | undefined {
   return undefined;
 }
 
+/**
+ * Find a button by its stable buttonId across the entire buttons structure.
+ * Supports both old array format (shared) and new object format (per-message).
+ */
+export function findButtonById(buttons: any, buttonId: string): any | null {
+  if (!buttons || !buttonId) return null;
+  if (Array.isArray(buttons)) {
+    for (const row of buttons) {
+      if (!Array.isArray(row)) continue;
+      for (const btn of row) {
+        if (btn && (btn.buttonId === buttonId || btn.id === buttonId)) return btn;
+      }
+    }
+  } else if (typeof buttons === 'object' && !Array.isArray(buttons) && buttons.messages) {
+    for (const msgKey of Object.keys(buttons.messages)) {
+      const msgButtons: any[][] = buttons.messages[msgKey];
+      if (!Array.isArray(msgButtons)) continue;
+      for (const row of msgButtons) {
+        if (!Array.isArray(row)) continue;
+        for (const btn of row) {
+          if (btn && (btn.buttonId === buttonId || btn.id === buttonId)) return btn;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function extractButtons(post: any): any {
   if (Array.isArray(post.buttons) && post.buttons.length > 0) return cloneJson(post.buttons);
   if (post.buttons && typeof post.buttons === 'object' && !Array.isArray(post.buttons) && post.buttons.messages) {

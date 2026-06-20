@@ -59,7 +59,7 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number)
     case 'SWITCH_INLINE':
     case 'SEND_COMMAND': return Markup.button.switchToChat(text, value);
     case 'SWITCH_INLINE_CURRENT_CHAT': return Markup.button.switchToCurrentChat(text, value);
-    case 'POPUP': return Markup.button.callback(text, `post:user:popup:${postId}:${row}:${col}`);
+    case 'POPUP': return Markup.button.callback(text, `post:user:popup:${postId}:id:${btn.buttonId || `${row}:${col}`}`);
     case 'COMMAND': return Markup.button.callback(text, `post:user:cmd:${value}`);
     case 'INTERNAL_NAV': return Markup.button.callback(text, `post:user:nav:${sanitizeTelegramText(value || 'noop', 64)}`);
     default: return value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop');
