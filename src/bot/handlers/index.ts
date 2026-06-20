@@ -1860,5 +1860,23 @@ export function registerHandlers(bot: Telegraf<Context>) {
   const { registerPostHandlers } = require('./post-handlers');
   registerPostHandlers(bot);
 
+  // ─── Catch-all for Unknown Messages ────────────────────
+  bot.use(async (ctx, next) => {
+    if (!ctx.message) return next();
+    if (ctx.chat?.type !== 'private') return next();
+
+    try {
+      const unknownPost = await postService.findSystemPost('UNKNOWN' as any);
+      if (unknownPost) {
+        await sendPostToUser(ctx, unknownPost);
+        return;
+      }
+    } catch (err) {
+      logger.error('[UnknownHandler] Error sending unknown post:', err);
+    }
+
+    return next();
+  });
+
   logger.info('✅ تمام هندلرهای ربات ثبت شدند');
 }
