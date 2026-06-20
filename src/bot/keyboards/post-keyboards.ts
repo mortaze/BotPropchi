@@ -176,81 +176,6 @@ export const postEditModeKeyboard = (postId: number) =>
     ],
   ]);
 
-export const postButtonsEditorKeyboard = (postId: number, buttons: any[], editingRow?: number, editingCol?: number) => {
-  const rows: any[][] = [];
-  if (buttons && buttons.length > 0) {
-    for (let r = 0; r < buttons.length; r++) {
-      const row = buttons[r];
-      const rowButtons: any[] = [];
-      for (let c = 0; c < row.length; c++) {
-        const btn = row[c];
-        rowButtons.push(
-          Markup.button.callback(
-            `${buildSafeTelegramButton(graphemeTruncate(buttonDisplayText(btn, 'بدون عنوان'), 15))}`,
-            `post:btn:edit:${postId}:${r}:${c}`
-          )
-        );
-      }
-      rowButtons.push(Markup.button.callback('✏️', `post:btn:edit:${postId}:${r}:${row.length}`));
-      rows.push(rowButtons);
-      rows.push([
-        Markup.button.callback('⬆', `post:btn:rowup:${postId}:${r}`),
-        Markup.button.callback('⬇', `post:btn:rowdown:${postId}:${r}`),
-        Markup.button.callback('🔄 جابجایی', `post:btn:swap:${postId}:${r}`),
-        Markup.button.callback('📋 کپی سطر', `post:btn:duprow:${postId}:${r}`),
-        Markup.button.callback('➖ حذف سطر', `post:btn:delrow:${postId}:${r}`),
-      ]);
-    }
-  }
-  rows.push([
-    Markup.button.callback('➕ افزودن سطر دکمه', `post:btn:addrow:${postId}`),
-  ]);
-  rows.push([
-    Markup.button.callback('🔙 بازگشت به ویرایشگر', `post:edit:${postId}:full`),
-  ]);
-  return Markup.inlineKeyboard(rows);
-};
-
-export const postButtonEditKeyboard = (postId: number, row: number, col: number, button: any) => {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('🎨 تغییر متن', `post:btn:text:${postId}:${row}:${col}`),
-      Markup.button.callback('🔗 تغییر آدرس/مقدار', `post:btn:value:${postId}:${row}:${col}`),
-    ],
-    [
-      Markup.button.callback('🧭 انتقال بالا', `post:btn:up:${postId}:${row}:${col}`),
-      Markup.button.callback('🧭 انتقال پایین', `post:btn:down:${postId}:${row}:${col}`),
-    ],
-    [
-      Markup.button.callback('📐 تغییر اندازه سطر', `post:btn:resize:${postId}:${row}`),
-      Markup.button.callback('➖ حذف دکمه', `post:btn:del:${postId}:${row}:${col}`),
-    ],
-    [Markup.button.callback('« بازگشت به دکمه‌ها', `post:edit:${postId}:buttons`)],
-  ]);
-};
-
-export const postButtonTypeKeyboard = (postId: number, row: number, col: number) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🔗 لینک', `post:btn:settype:${postId}:${row}:${col}:URL`)],
-    [Markup.button.callback('📞 بازگشت (Callback)', `post:btn:settype:${postId}:${row}:${col}:CALLBACK`)],
-    [Markup.button.callback('📱 مینی اپ', `post:btn:settype:${postId}:${row}:${col}:OPEN_MINI_APP`)],
-    [Markup.button.callback('🌐 باز کردن وب', `post:btn:settype:${postId}:${row}:${col}:OPEN_WEB`)],
-    [Markup.button.callback('📋 کپی متن', `post:btn:settype:${postId}:${row}:${col}:COPY_TEXT`)],
-    [Markup.button.callback('📤 ارسال دستور', `post:btn:settype:${postId}:${row}:${col}:SEND_COMMAND`)],
-    [Markup.button.callback('🧭 ناوبری داخلی', `post:btn:settype:${postId}:${row}:${col}:INTERNAL_NAV`)],
-    [Markup.button.callback('« بازگشت', `post:edit:${postId}:buttons`)],
-  ]);
-};
-
-export const postRowResizeKeyboard = (postId: number, row: number) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('۱ دکمه در سطر', `post:btn:rowsize:${postId}:${row}:1`)],
-    [Markup.button.callback('۲ دکمه در سطر', `post:btn:rowsize:${postId}:${row}:2`)],
-    [Markup.button.callback('۳ دکمه در سطر', `post:btn:rowsize:${postId}:${row}:3`)],
-    [Markup.button.callback('« بازگشت', `post:edit:${postId}:buttons`)],
-  ]);
-};
-
 export const postPublishOptionsKeyboard = (postId: number) => {
   return Markup.inlineKeyboard([
     [Markup.button.callback('📤 انتشار الآن', `post:publish:now:${postId}`)],
@@ -325,17 +250,6 @@ export const postGlobalAnalyticsKeyboard = () => {
     [Markup.button.callback('🏆 پست‌های برتر', 'post:analytics:top')],
     [Markup.button.callback('« بازگشت به منوی پست', 'post:menu')],
   ]);
-};
-
-export const postSwapTargetKeyboard = (postId: number, sourceRow: number, totalRows: number) => {
-  const rows: any[][] = [];
-  for (let i = 0; i < totalRows; i++) {
-    if (i !== sourceRow) {
-      rows.push([Markup.button.callback(`↔ جابجایی با سطر ${i + 1}`, `post:btn:swap:${postId}:${sourceRow}:${i}`)]);
-    }
-  }
-  rows.push([Markup.button.callback('« لغو', `post:edit:${postId}:buttons`)]);
-  return Markup.inlineKeyboard(rows);
 };
 
 // ─── Reply Keyboard: Menu Editor (dynamic from resolved menu layout) ──
@@ -534,7 +448,7 @@ export const buildMenuRowSelectKeyboard = (totalRows: number, sourceRow: number)
 // Reply keyboard when NO buttons exist
 export const buildNoButtonsReplyKeyboard = () =>
   Markup.keyboard([
-    ['➕ ایجاد دکمه'],
+    ['➕ اضافه کردن دکمه جدید'],
     ['❌ لغو'],
   ]).resize().persistent();
 

@@ -15,10 +15,6 @@ import {
   buildPostListFromMenuLayout,
   postInfoActionKeyboard,
   postEditModeReplyKeyboard,
-  postButtonsEditorKeyboard,
-  postButtonEditKeyboard,
-  postButtonTypeKeyboard,
-  postRowResizeKeyboard,
   postPublishOptionsKeyboard,
   postAnalyticsKeyboard,
   postManagerAnalyticsKeyboard,
@@ -27,7 +23,6 @@ import {
   postVersionHistoryKeyboard,
   postIntegrityKeyboard,
   postGlobalAnalyticsKeyboard,
-  postSwapTargetKeyboard,
   postMultiMessageEditorReplyKeyboard,
   postAddMessageReplyKeyboard,
   postEditMessageReplyKeyboard,
@@ -530,8 +525,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       // Stay in button editor — refresh with latest buttons
       const updatedPost = await postService.findById(editingPostId);
       const updatedButtons = (updatedPost as any).buttons || [];
-      await safeEdit(ctx, '⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
-        postButtonsEditorKeyboard(editingPostId, updatedButtons));
+      cache.set(pendingKey(ctx.from.id, 'editing_post'), editingPostId, 600);
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+      if (!updatedButtons.length || updatedButtons.every((r: any[]) => !r || !r.length)) {
+        await safeEdit(ctx, '⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد.', buildNoButtonsReplyKeyboard());
+      } else {
+        await ctx.reply('⌨ ویرایشگر دکمه:', {
+          ...buildButtonEditorExitKeyboard(),
+          ...buildButtonListInlineKeyboard(editingPostId, updatedButtons),
+        });
+      }
       return;
     }
 
@@ -1083,421 +1086,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await safeEdit(ctx, '🗑 پست حذف شد.');
   });
 
-  // ─── Buttons Editor ─────────────────────────────────────
-  bot.action(/^post:btn:edit:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    const button = buttons[row]?.[col];
-    if (!button) {
-      return safeEdit(ctx, 'نوع دکمه را انتخاب کنید:', postButtonTypeKeyboard(postId, row, col));
-    }
-    await safeEdit(ctx,
-      `دکمه: "${button.text}"\nنوع: ${button.type || 'URL'}\nمقدار: ${button.value || '-'}`,
-      postButtonEditKeyboard(postId, row, col, button)
-    );
-  });
-
-  bot.action(/^post:btn:text:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    cache.set(pendingKey(ctx.from.id, 'editing_button'), `text:${row}:${col}`, 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await safeEdit(ctx, '🎨 متن جدید دکمه را ارسال کنید:');
-  });
-
-  bot.action(/^post:btn:value:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    cache.set(pendingKey(ctx.from.id, 'editing_button'), `value:${row}:${col}`, 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await safeEdit(ctx, '🔗 آدرس/مقدار جدید دکمه را ارسال کنید:');
-  });
-
-  bot.action(/^post:btn:up:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    if (row === 0) return safeEdit(ctx, 'هم‌اکنون در بالاست.');
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    [buttons[row - 1], buttons[row]] = [buttons[row], buttons[row - 1]];
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '✅ دکمه به بالا منتقل شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:down:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    if (row >= buttons.length - 1) return safeEdit(ctx, 'هم‌اکنون در پایین‌ترین است.');
-    [buttons[row], buttons[row + 1]] = [buttons[row + 1], buttons[row]];
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '✅ دکمه به پایین منتقل شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:del:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    if (buttons[row]) {
-      buttons[row].splice(col, 1);
-      if (buttons[row].length === 0) buttons.splice(row, 1);
-    }
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '➖ دکمه حذف شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:addrow:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '➕ سطر دکمه جدید اضافه شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:resize:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    await safeEdit(ctx, '📐 تعداد دکمه در سطر را انتخاب کنید:', postRowResizeKeyboard(postId, row));
-  });
-
-  bot.action(/^post:btn:rowsize:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const size = parseInt(ctx.match[3]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    const currentRow = buttons[row] || [];
-    const newRow: any[] = [];
-    for (let i = 0; i < size; i++) {
-      newRow.push(currentRow[i] || { text: `دکمه ${i + 1}`, type: 'URL', value: '' });
-    }
-    buttons[row] = newRow;
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, `✅ سطر ${row + 1} به ${size} دکمه تغییر اندازه یافت.\n\n⌨ ویرایشگر دکمه:`, postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:settype:(\d+):(\d+):(\d+):(.+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    const btnType = ctx.match[4];
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    if (!buttons[row]) buttons[row] = [];
-    if (!buttons[row][col]) buttons[row][col] = {};
-    buttons[row][col].type = btnType;
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, `✅ نوع دکمه به ${btnType} تغییر یافت. اکنون مقدار را تنظیم کنید:`);
-    cache.set(pendingKey(ctx.from.id, 'editing_button'), `value:${row}:${col}`, 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-  });
-
-  // ─── Command Add ────────────────────────────────────────
-  bot.action(/^post:cmd:add:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await safeEdit(ctx, '🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً `sgb/discount/rules`', { parse_mode: 'Markdown' });
-  });
-
-  // ─── Analytics ──────────────────────────────────────────
-  bot.hears('📊 آمار پست', async (ctx: any) => {
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    cache.set(pendingKey(ctx.from.id, 'analytics_id'), true, 120);
-    await ctx.reply('📊 شناسه پست را برای مشاهده آمار وارد کنید:');
-  });
-
-  bot.action(/^post:analytics:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const analytics = await postService.getAnalytics(postId);
-    const text = [
-      `📊 *آمار: ${post.title}*`,
-      '',
-      `👁 بازدید کل: ${analytics.totalViews}`,
-      `👆 کلیک کل: ${analytics.totalClicks}`,
-      `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
-      '',
-      '📈 بازدید روزانه (۳۰ روز اخیر):',
-      ...analytics.dailyViews.slice(-7).map((d: any) => `  ${d.date}: ${d.count} بازدید`),
-    ].join('\n');
-    await safeEdit(ctx, text, { parse_mode: 'Markdown', ...postAnalyticsKeyboard(postId) });
-  });
-
-  bot.on('text', async (ctx: any, next) => {
-    if (!ctx.from) return next();
-    const analyticsId = cache.get<boolean>(pendingKey(ctx.from.id, 'analytics_id'));
-    if (!analyticsId) return next();
-    cache.del(pendingKey(ctx.from.id, 'analytics_id'));
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return next();
-    const postId = parseInt(ctx.message.text);
-    if (isNaN(postId)) return ctx.reply('❌ شناسه نامعتبر.');
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const analytics = await postService.getAnalytics(postId);
-    const text = [
-      `📊 *آمار: ${post.title}*`,
-      '',
-      `👁 بازدید کل: ${analytics.totalViews}`,
-      `👆 کلیک کل: ${analytics.totalClicks}`,
-      `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
-      '',
-      '📈 بازدید روزانه (۳۰ روز اخیر):',
-      ...analytics.dailyViews.slice(-7).map((d: any) => `  ${d.date}: ${d.count} بازدید`),
-    ].join('\n');
-    await ctx.reply(text, { parse_mode: 'Markdown', ...postAnalyticsKeyboard(postId) });
-  });
-
-  // ─── Back to Posts Menu ─────────────────────────────────
-  bot.action('post:menu', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    await safeEdit(ctx, '📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
-  });
-
-  // ─── Version History ────────────────────────────────────
-  bot.action(/^post:version:list:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const versions = await postService.getVersions(postId);
-    if (versions.length === 0) return safeEdit(ctx, '📜 نسخه‌ای ذخیره نشده است.');
-    await safeEdit(ctx,
-      `📜 تاریخچه نسخه‌ها (${versions.length}):\nبرای بازیابی روی نسخه ضربه بزنید.`,
-      postVersionHistoryKeyboard(versions, postId)
-    );
-  });
-
-  bot.action(/^post:version:restore:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const versionId = parseInt(ctx.match[1]);
-    try {
-      const restored = await postService.restoreVersion(versionId);
-      if (!restored) return safeEdit(ctx, '❌ نسخه یافت نشد.');
-      await showPostEditor(ctx, restored.id);
-    } catch (err: any) {
-      await safeEdit(ctx, `❌ ${err.message}`);
-    }
-  });
-
-  // ─── Integrity Check ────────────────────────────────────
-  bot.hears('🔍 بررسی سلامت', async (ctx: any) => {
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    await ctx.reply('🔍 بررسی سلامت', postIntegrityKeyboard());
-  });
-
-  bot.action('post:integrity:run', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const issues = await postService.integrityCheck();
-    if (issues.length === 0) {
-      await safeEdit(ctx, '✅ همه پست‌ها سالم هستند.');
-    } else {
-      await safeEdit(ctx, `⚠ مشکلات یافت شد:\n\n${issues.join('\n')}`);
-    }
-  });
-
-  // ─── Global Analytics ───────────────────────────────────
-  bot.hears('📊 آمار کلی', async (ctx: any) => {
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const analytics = await postService.getGlobalAnalytics();
-    const text = [
-      '📊 *آمار کلی*',
-      '',
-      `📝 کل پست‌ها: ${analytics.totalPosts}`,
-      `✅ منتشر شده: ${analytics.published}`,
-      `📝 پیش‌نویس: ${analytics.drafts}`,
-      `📦 بایگانی: ${analytics.archived}`,
-      `👻 مخفی: ${analytics.hidden}`,
-      `⏰ زمان‌بندی: ${analytics.scheduled}`,
-      `👁 بازدید کل: ${analytics.totalViews}`,
-      `👆 کلیک کل: ${analytics.totalClicks}`,
-      `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
-    ].join('\n');
-    await ctx.reply(text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
-  });
-
-  bot.action('post:analytics:global', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const analytics = await postService.getGlobalAnalytics();
-    const text = [
-      '📊 *آمار کلی*',
-      '',
-      `📝 کل پست‌ها: ${analytics.totalPosts}`,
-      `✅ منتشر شده: ${analytics.published}`,
-      `📝 پیش‌نویس: ${analytics.drafts}`,
-      `📦 بایگانی: ${analytics.archived}`,
-      `👻 مخفی: ${analytics.hidden}`,
-      `⏰ زمان‌بندی: ${analytics.scheduled}`,
-      `👁 بازدید کل: ${analytics.totalViews}`,
-      `👆 کلیک کل: ${analytics.totalClicks}`,
-      `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
-    ].join('\n');
-    await safeEdit(ctx, text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
-  });
-
-  bot.action('post:analytics:top', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const topPosts = await postService.getTopPosts(10);
-    if (topPosts.length === 0) return safeEdit(ctx, '🏆 پستی وجود ندارد.');
-    const text = '🏆 *پست‌های برتر بر اساس بازدید*\n\n' +
-      topPosts.map((p: any, i: number) => `${i + 1}. ${p.title} — ${(p as any).views || 0} بازدید`).join('\n');
-    await safeEdit(ctx, text, { parse_mode: 'Markdown', ...postGlobalAnalyticsKeyboard() });
-  });
-
-  // ─── Button Row Management ──────────────────────────────
-  bot.action(/^post:btn:rowup:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    if (row === 0) return safeEdit(ctx, 'هم‌اکنون در بالاست.');
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    [buttons[row - 1], buttons[row]] = [buttons[row], buttons[row - 1]];
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '✅ سطر به بالا منتقل شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:rowdown:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    if (row >= buttons.length - 1) return safeEdit(ctx, 'هم‌اکنون در پایین‌ترین جایگاه است.');
-    [buttons[row], buttons[row + 1]] = [buttons[row + 1], buttons[row]];
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '✅ سطر به پایین منتقل شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:swap:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    await safeEdit(ctx, '🔄 سطر مقصد را برای جابجایی انتخاب کنید:', postSwapTargetKeyboard(postId, row, buttons.length));
-  });
-
-  bot.action(/^post:btn:swap:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const rowA = parseInt(ctx.match[2]);
-    const rowB = parseInt(ctx.match[3]);
-    if (rowA === rowB) return;
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    [buttons[rowA], buttons[rowB]] = [buttons[rowB], buttons[rowA]];
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '🔄 سطرها جابجا شدند.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:duprow:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    if (!buttons[row]) return safeEdit(ctx, '❌ سطر یافت نشد.');
-    const duplicated = buttons[row].map((b: any) => ({ ...b }));
-    buttons.splice(row + 1, 0, duplicated);
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '📋 سطر کپی شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
-  bot.action(/^post:btn:delrow:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const post = await postService.findById(postId);
-    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const buttons = (post as any).buttons || [];
-    buttons.splice(row, 1);
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    await safeEdit(ctx, '➖ سطر حذف شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
-  });
-
   // ─── ❌ لغو in button editor (all states) ──────────────
   bot.hears('❌ لغو', async (ctx: any, next: any) => {
     if (!ctx.from) return next();
@@ -1533,7 +1121,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   }
 
   // ─── Handler: "➕ ایجاد دکمه" (from reply keyboard when no buttons) ──
-  bot.hears('➕ ایجاد دکمه', async (ctx: any) => {
+  bot.hears('➕ اضافه کردن دکمه جدید', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
@@ -1824,6 +1412,25 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await refreshButtonListView(ctx, postId, '⌨️ عملیات لغو شد.');
   });
 
+  // ─── Handler: Add new row (from pbedit:addrow inline button) ──
+  bot.action(/^pbedit:addrow:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const realPostId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post')) || postId;
+    const post = await postService.findById(realPostId);
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
+    const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+    buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
+    await postService.update(realPostId, { buttons } as any);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_row'), buttons.length - 1, 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_col'), 0, 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await ctx.reply('✅ ردیف جدید اضافه شد.\n❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
+  });
+
   // ─── Handler: Exit button editor ───────────────────────
   bot.hears('🚪 خروج از تنظیمات پیام', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
@@ -1949,9 +1556,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+    clearButtonEditorState(ctx.from.id);
+    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+    cache.set(pendingKey(ctx.from.id, 'edit_mode'), postId, 300);
     const buttons = (post as any).buttons || [];
-    await ctx.reply('⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
-      postButtonsEditorKeyboard(postId, buttons));
+    if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+      await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
+    } else {
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+      await ctx.reply('⌨ ویرایشگر دکمه:', {
+        ...buildButtonEditorExitKeyboard(),
+        ...buildButtonListInlineKeyboard(postId, buttons),
+      });
+    }
   });
 
   // 🖼 ویرایش رسانه
@@ -2387,124 +2005,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(editorKey(ctx.from.id, 'forward_on'));
   }
 
-  // ─── Button Editor Helpers ─────────────────────────────
-
-  // Inline stubs for backward-compatible keyboard functions.
-  // These are kept so old `post:*` inline keyboards already sent to users continue to work.
-  function buildButtonEditorReplyKeyboard(buttons: any[][], selRow?: number, selCol?: number) {
-    const rows: any[] = [];
-    for (let r = 0; r < buttons.length; r++) {
-      const btnRow: any[] = [];
-      for (let c = 0; c < (buttons[r] || []).length; c++) {
-        const b = buttons[r][c];
-        const selected = (selRow === r && selCol === c);
-        btnRow.push({
-          text: selected ? `👉 ${b?.text || ''}` : (b?.text || '□'),
-          callback_data: `pbedit:click:0:${r}:${c}`,
-        });
-      }
-      btnRow.push({ text: `➕ سطر ${r + 1}`, callback_data: `post:btn:addtrow:0:${r}` });
-      rows.push(btnRow);
-    }
-    rows.push([{ text: '➕ ردیف جدید', callback_data: 'pbedit:addrow:0' }]);
-    rows.push([{ text: '🚪 خروج از تنظیمات پیام', callback_data: 'pbedit:exit:0' }]);
-    return { reply_markup: { inline_keyboard: rows } };
-  }
-
-  function buildButtonRowAddInlineKeyboard(postId: number, row: number) {
-    return { reply_markup: { inline_keyboard: [[{ text: `➕ افزودن دکمه به سطر ${row + 1}`, callback_data: `post:btn:addtrow:${postId}:${row}` }]] } };
-  }
-
-  function buildCommandSelectInlineKeyboard(postId: number, row: number, col: number, commands: any[]) {
-    const rows: any[][] = [];
-    for (const cmd of commands) {
-      rows.push([{ text: `/${cmd.name}`, callback_data: `post:newbtn:setcmd:${postId}:${row}:${col}:${cmd.name}` }]);
-    }
-    rows.push([{ text: '❌ لغو', callback_data: `post:newbtn:cancelcmd:${postId}:${row}:${col}` }]);
-    return { reply_markup: { inline_keyboard: rows } };
-  }
-
-  function buildAddButtonPositionRelativeKeyboard(postId: number, refRow: number, refCol: number) {
-    return {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'بعد از دکمه مرجع', callback_data: `post:addbtn:after:${postId}:${refRow}:${refCol}` }],
-          [{ text: 'قبل از دکمه مرجع', callback_data: `post:addbtn:before:${postId}:${refRow}:${refCol}` }],
-          [{ text: 'انتهای سطر', callback_data: `post:addbtn:endrow:${postId}:${refRow}:${refCol}` }],
-          [{ text: 'ابتدای سطر', callback_data: `post:addbtn:startrow:${postId}:${refRow}:${refCol}` }],
-          [{ text: 'ردیف جدید در بالا', callback_data: `post:addbtn:newrowtop:${postId}` }],
-          [{ text: 'ردیف جدید در پایین', callback_data: `post:addbtn:newrowbottom:${postId}` }],
-          [{ text: '❌ لغو', callback_data: `post:addbtn:cancel:${postId}` }],
-        ],
-      },
-    };
-  }
-
-  function buildNewButtonEditInlineKeyboard(postId: number, row: number, col: number, totalRows: number, totalCols: number) {
-    const navRow: any[] = [];
-    if (row > 0) navRow.push({ text: '⬆️', callback_data: `post:newbtn:up:${postId}:${row}:${col}` });
-    if (row < totalRows - 1) navRow.push({ text: '⬇️', callback_data: `post:newbtn:down:${postId}:${row}:${col}` });
-    if (col > 0) navRow.push({ text: '⬅️', callback_data: `post:newbtn:left:${postId}:${row}:${col}` });
-    if (col < totalCols - 1) navRow.push({ text: '➡️', callback_data: `post:newbtn:right:${postId}:${row}:${col}` });
-    return {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '✏️ ویرایش متن', callback_data: `post:newbtn:text:${postId}:${row}:${col}` }],
-          [{ text: '🔗 لینک', callback_data: `post:newbtn:link:${postId}:${row}:${col}` }],
-          [{ text: '⚡ دستور', callback_data: `post:newbtn:cmd:${postId}:${row}:${col}` }],
-          navRow.length ? navRow : [],
-          [{ text: '🔙 بازگشت', callback_data: `post:addbtn:cancel:${postId}` }],
-        ].filter(r => r.length > 0),
-      },
-    };
-  }
-
-  function buildAddButtonPlacementKeyboard(postId: number, buttons: any[][]) {
-    const rows: any[][] = [];
-    for (let r = 0; r < buttons.length; r++) {
-      const btnRow: any[] = [];
-      for (let c = 0; c < (buttons[r] || []).length; c++) {
-        btnRow.push({ text: buttons[r][c]?.text || '□', callback_data: `post:addbtn:select:${postId}:${r}:${c}` });
-      }
-      rows.push(btnRow);
-    }
-    rows.push([{ text: '❌ لغو', callback_data: `post:addbtn:cancel:${postId}` }]);
-    return { reply_markup: { inline_keyboard: rows } };
-  }
-
-  async function deleteButtonEditorMessages(ctx: any) {
-    const oldIds = cache.get<number[]>(editorKey(ctx.from.id, 'btn_msg_ids')) || [];
-    for (const mId of oldIds) {
-      try { await ctx.deleteMessage(mId); } catch (e) {}
-    }
-    cache.del(editorKey(ctx.from.id, 'btn_msg_ids'));
-  }
-
-  async function refreshButtonEditor(ctx: any, postId: number) {
-    const post = await postService.findById(postId);
-    if (!post) return;
-    const buttons: any[][] = (post as any).buttons || [];
-    const selRow = cache.get<number>(editorKey(ctx.from.id, 'btn_sel_row'));
-    const selCol = cache.get<number>(editorKey(ctx.from.id, 'btn_sel_col'));
-
-    await deleteButtonEditorMessages(ctx);
-
-    const newMsgIds: number[] = [];
-    const msg = await ctx.reply('⌨ ویرایشگر دکمه:\nبرای ویرایش روی دکمه ضربه بزنید.', {
-      ...buildButtonEditorReplyKeyboard(buttons, selRow, selCol),
-    });
-    if (msg) newMsgIds.push(msg.message_id);
-
-    for (let r = 0; r < buttons.length; r++) {
-      const rowText = (buttons[r] || []).map((b: any, c: number) => `${c + 1}: ${b?.text || ''}`).join(' | ');
-      const sent = await ctx.reply(`📋 سطر ${r + 1}: ${rowText}`, {
-        ...buildButtonRowAddInlineKeyboard(postId, r),
-      });
-      if (sent) newMsgIds.push(sent.message_id);
-    }
-    cache.set(editorKey(ctx.from.id, 'btn_msg_ids'), newMsgIds, 600);
-  }
-
   // ─── Per-Message Callbacks ─────────────────────────────
 
   bot.action(/^post:msg:edit:(\d+):(\d+)$/, async (ctx: any) => {
@@ -2608,359 +2108,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       try { await ctx.reply('❌ خطا. لطفاً دوباره تلاش کنید.'); } catch (_) {}
     }
-  });
-
-  // ─── Button Editor Callbacks ───────────────────────────
-
-  bot.action(/^post:btn:addtrow:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const rowIndex = parseInt(ctx.match[2]);
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[rowIndex]) buttons[rowIndex] = [];
-    buttons[rowIndex].push({ text: 'دکمه جدید', type: 'URL', value: '' });
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  bot.action(/^post:newbtn:text:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'add_button_text', 600);
-    cache.set(editorKey(ctx.from.id, 'btn_text_row'), row, 600);
-    cache.set(editorKey(ctx.from.id, 'btn_text_col'), col, 600);
-    const post = await postService.findById(postId);
-    const buttons: any[][] = (post as any).buttons || [];
-    const currentText = buttons[row]?.[col]?.text || '';
-    await ctx.reply(`✏️ متن جدید دکمه را ارسال کنید:\n\nمتن فعلی: \`${currentText}\``, {
-      parse_mode: 'Markdown' as any,
-      ...postCancelOnlyReplyKeyboard(),
-    });
-  });
-
-  bot.action(/^post:newbtn:cmd:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    const commands = await postService.getCommands(postId);
-    await ctx.reply('⚡ دستور مورد نظر را انتخاب کنید:', {
-      ...buildCommandSelectInlineKeyboard(postId, row, col, commands),
-    });
-  });
-
-  bot.action(/^post:newbtn:setcmd:(\d+):(\d+):(\d+):(.+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    const cmdName = ctx.match[4];
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (buttons[row]?.[col]) {
-      buttons[row][col].type = 'CALLBACK';
-      buttons[row][col].value = `cmd:${cmdName}`;
-      await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-      await ctx.reply(`✅ دستور /${cmdName} به دکمه متصل شد.`);
-    }
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    cache.del(editorKey(ctx.from.id, 'btn_sel_row'));
-    cache.del(editorKey(ctx.from.id, 'btn_sel_col'));
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  bot.action(/^post:newbtn:cancelcmd:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    cache.del(editorKey(ctx.from.id, 'btn_sel_row'));
-    cache.del(editorKey(ctx.from.id, 'btn_sel_col'));
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  bot.action(/^post:newbtn:up:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    if (row <= 0) return;
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[row]?.[col] || !buttons[row - 1]) return;
-    const movedBtn = buttons[row].splice(col, 1)[0];
-    const insertCol = Math.min(col, buttons[row - 1].length);
-    buttons[row - 1].splice(insertCol, 0, movedBtn);
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    cache.del(editorKey(ctx.from.id, 'btn_sel_row'));
-    cache.del(editorKey(ctx.from.id, 'btn_sel_col'));
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  bot.action(/^post:newbtn:down:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[row]?.[col] || !buttons[row + 1]) return;
-    const movedBtn = buttons[row].splice(col, 1)[0];
-    const insertCol = Math.min(col, buttons[row + 1].length);
-    buttons[row + 1].splice(insertCol, 0, movedBtn);
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    cache.del(editorKey(ctx.from.id, 'btn_sel_row'));
-    cache.del(editorKey(ctx.from.id, 'btn_sel_col'));
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  bot.action(/^post:newbtn:left:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    if (col <= 0) return;
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[row]?.[col] || !buttons[row]?.[col - 1]) return;
-    [buttons[row][col - 1], buttons[row][col]] = [buttons[row][col], buttons[row][col - 1]];
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    cache.del(editorKey(ctx.from.id, 'btn_sel_row'));
-    cache.del(editorKey(ctx.from.id, 'btn_sel_col'));
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  bot.action(/^post:newbtn:right:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[row]?.[col] || !buttons[row]?.[col + 1]) return;
-    [buttons[row][col], buttons[row][col + 1]] = [buttons[row][col + 1], buttons[row][col]];
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    cache.del(editorKey(ctx.from.id, 'btn_sel_row'));
-    cache.del(editorKey(ctx.from.id, 'btn_sel_col'));
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  // ─── Add Link to Button ─────────────────────────────────
-  bot.action(/^post:newbtn:link:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'add_button_link', 600);
-    cache.set(editorKey(ctx.from.id, 'btn_link_row'), row, 600);
-    cache.set(editorKey(ctx.from.id, 'btn_link_col'), col, 600);
-    await safeEdit(ctx, '🔗 لینک مورد نظر را ارسال کنید:\nمثلاً https://example.com', {
-      ...postCancelOnlyReplyKeyboard(),
-    });
-  });
-
-  // ─── Add Button: Placement Select ───────────────────────
-  bot.action(/^post:addbtn:select:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const refRow = parseInt(ctx.match[2]);
-    const refCol = parseInt(ctx.match[3]);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'add_button_position', 600);
-    cache.set(editorKey(ctx.from.id, 'add_btn_ref_row'), refRow, 600);
-    cache.set(editorKey(ctx.from.id, 'add_btn_ref_col'), refCol, 600);
-    await safeEdit(ctx, '📍 مکان قرارگیری دکمه جدید را انتخاب کنید:', {
-      ...buildAddButtonPositionRelativeKeyboard(postId, refRow, refCol),
-    });
-  });
-
-  // ─── Add Button: After reference button ─────────────────
-  bot.action(/^post:addbtn:after:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const refRow = parseInt(ctx.match[2]);
-    const refCol = parseInt(ctx.match[3]);
-    const btnName = cache.get<string>(editorKey(ctx.from.id, 'add_btn_name')) || 'دکمه جدید';
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[refRow]) buttons[refRow] = [];
-    buttons[refRow].splice(refCol + 1, 0, { text: btnName, type: 'URL', value: '' });
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_row'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_col'));
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    await ctx.reply('✅ دکمه اضافه شد.');
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  // ─── Add Button: Before reference button ────────────────
-  bot.action(/^post:addbtn:before:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const refRow = parseInt(ctx.match[2]);
-    const refCol = parseInt(ctx.match[3]);
-    const btnName = cache.get<string>(editorKey(ctx.from.id, 'add_btn_name')) || 'دکمه جدید';
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[refRow]) buttons[refRow] = [];
-    buttons[refRow].splice(refCol, 0, { text: btnName, type: 'URL', value: '' });
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_row'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_col'));
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    await ctx.reply('✅ دکمه اضافه شد.');
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  // ─── Add Button: End of row ─────────────────────────────
-  bot.action(/^post:addbtn:endrow:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const refRow = parseInt(ctx.match[2]);
-    const btnName = cache.get<string>(editorKey(ctx.from.id, 'add_btn_name')) || 'دکمه جدید';
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[refRow]) buttons[refRow] = [];
-    buttons[refRow].push({ text: btnName, type: 'URL', value: '' });
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_row'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_col'));
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    await ctx.reply('✅ دکمه اضافه شد.');
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  // ─── Add Button: Start of row ───────────────────────────
-  bot.action(/^post:addbtn:startrow:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const refRow = parseInt(ctx.match[2]);
-    const btnName = cache.get<string>(editorKey(ctx.from.id, 'add_btn_name')) || 'دکمه جدید';
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    if (!buttons[refRow]) buttons[refRow] = [];
-    buttons[refRow].unshift({ text: btnName, type: 'URL', value: '' });
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_row'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_col'));
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    await ctx.reply('✅ دکمه اضافه شد.');
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  // ─── Add Button: New row at top ─────────────────────────
-  bot.action(/^post:addbtn:newrowtop:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const btnName = cache.get<string>(editorKey(ctx.from.id, 'add_btn_name')) || 'دکمه جدید';
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    buttons.unshift([{ text: btnName, type: 'URL', value: '' }]);
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_row'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_col'));
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    await ctx.reply('✅ دکمه اضافه شد.');
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  // ─── Add Button: New row at bottom ──────────────────────
-  bot.action(/^post:addbtn:newrowbottom:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const btnName = cache.get<string>(editorKey(ctx.from.id, 'add_btn_name')) || 'دکمه جدید';
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = (post as any).buttons || [];
-    buttons.push([{ text: btnName, type: 'URL', value: '' }]);
-    await postService.update(postId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-    cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_row'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_col'));
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    await ctx.reply('✅ دکمه اضافه شد.');
-    await refreshButtonEditor(ctx, postId);
-  });
-
-  // ─── Add Button: Cancel ────────────────────────────────
-  bot.action(/^post:addbtn:cancel:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_row'));
-    cache.del(editorKey(ctx.from.id, 'add_btn_ref_col'));
-    cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-    await safeEdit(ctx, 'لغو شد.');
-    await refreshButtonEditor(ctx, postId);
   });
 
   // ─── Editor Text Handler ───────────────────────────────
@@ -3145,19 +2292,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
       if (text === 'ویرایش دکمه ها') {
+        clearButtonEditorState(ctx.from.id);
+        cache.set(pendingKey(ctx.from.id, 'editing_post'), editorPostId, 600);
+        cache.set(pendingKey(ctx.from.id, 'edit_mode'), editorPostId, 300);
         const post = await postService.findById(editorPostId);
         if (!post) return ctx.reply('❌ پست یافت نشد.');
         const buttons = (post as any).buttons || [];
-        cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-        cache.del(editorKey(ctx.from.id, 'btn_sel_row'));
-        cache.del(editorKey(ctx.from.id, 'btn_sel_col'));
-        await ctx.reply('⌨ ویرایشگر دکمه:\nبرای ویرایش روی دکمه ضربه بزنید.', {
-          ...buildButtonEditorReplyKeyboard(buttons),
-        });
-        for (let r = 0; r < buttons.length; r++) {
-          const rowText = buttons[r].map((b: any, c: number) => `${c + 1}: ${b?.text || ''}`).join(' | ');
-          await ctx.reply(`📋 سطر ${r + 1}: ${rowText}`, {
-            ...buildButtonRowAddInlineKeyboard(editorPostId, r),
+        if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
+          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+          await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
+        } else {
+          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+          await ctx.reply('⌨ ویرایشگر دکمه:', {
+            ...buildButtonEditorExitKeyboard(),
+            ...buildButtonListInlineKeyboard(editorPostId, buttons),
           });
         }
         return;
@@ -3219,132 +2367,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       const updated = await postService.findById(editorPostId);
       if (updated) await refreshEditorMessages(ctx, updated);
-      return;
-    }
-
-    // ─── BUTTON EDITOR MODE ──────────────────────────────
-    if (mode === 'button_editor') {
-      if (text === '➕ افزودن سطر') {
-        const post = await postService.findById(editorPostId);
-        if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const buttons: any[][] = (post as any).buttons || [];
-        buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
-        await postService.update(editorPostId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-        await refreshButtonEditor(ctx, editorPostId);
-        return;
-      }
-      if (text === '🔙 بازگشت به ویرایشگر') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
-        cache.del(editorKey(ctx.from.id, 'btn_sel_row'));
-        cache.del(editorKey(ctx.from.id, 'btn_sel_col'));
-        deleteButtonEditorMessages(ctx);
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
-        const post = await postService.findById(editorPostId);
-        const messages = post ? parsePostMessages(post.content || '') : [];
-        const msgText = messages[msgIdx] || '(بدون محتوا)';
-        await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
-          ...postEditMessageReplyKeyboard(),
-        });
-        return;
-      }
-      // Check if text matches a button text → select it for editing
-      const post = await postService.findById(editorPostId);
-      if (post) {
-        const buttons: any[][] = (post as any).buttons || [];
-        for (let r = 0; r < buttons.length; r++) {
-          for (let c = 0; c < (buttons[r] || []).length; c++) {
-            const btnText = buttons[r][c]?.text;
-            if (btnText && text === btnText) {
-              cache.set(editorKey(ctx.from.id, 'btn_sel_row'), r, 600);
-              cache.set(editorKey(ctx.from.id, 'btn_sel_col'), c, 600);
-              await ctx.reply(`✏️ ویرایش دکمه: ${btnText}`, {
-                ...buildNewButtonEditInlineKeyboard(editorPostId, r, c, buttons.length, (buttons[r] || []).length),
-              });
-              return;
-            }
-          }
-        }
-      }
-
-      // ─── ADD BUTTON FLOW ──────────────────────────────────
-      if (text === '➕ افزودن دکمه') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'add_button_name', 600);
-        cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-        await ctx.reply('نام دکمه جدید را ارسال کنید:', {
-          ...postCancelOnlyReplyKeyboard(),
-        });
-        return;
-      }
-
-      return;
-    }
-
-    // ─── ADD BUTTON TEXT MODE ────────────────────────────
-    if (mode === 'add_button_text') {
-      if (text === '❌ لغو') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-        cache.del(editorKey(ctx.from.id, 'btn_text_row'));
-        cache.del(editorKey(ctx.from.id, 'btn_text_col'));
-        await refreshButtonEditor(ctx, editorPostId);
-        return;
-      }
-      const btnRow = cache.get<number>(editorKey(ctx.from.id, 'btn_text_row'));
-      const btnCol = cache.get<number>(editorKey(ctx.from.id, 'btn_text_col'));
-      const post = await postService.findById(editorPostId);
-      if (!post) return ctx.reply('❌ پست یافت نشد.');
-      const buttons: any[][] = (post as any).buttons || [];
-      if (btnRow != null && btnCol != null && buttons[btnRow] && buttons[btnRow][btnCol]) {
-        buttons[btnRow][btnCol].text = text;
-        await postService.update(editorPostId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-      }
-      cache.del(editorKey(ctx.from.id, 'btn_text_row'));
-      cache.del(editorKey(ctx.from.id, 'btn_text_col'));
-      cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-      await refreshButtonEditor(ctx, editorPostId);
-      return;
-    }
-
-    // ─── ADD BUTTON NAME MODE ────────────────────────────
-    if (mode === 'add_button_name') {
-      if (text === '❌ لغو') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-        cache.del(editorKey(ctx.from.id, 'add_btn_name'));
-        await refreshButtonEditor(ctx, editorPostId);
-        return;
-      }
-      cache.set(editorKey(ctx.from.id, 'add_btn_name'), text, 600);
-      cache.set(editorKey(ctx.from.id, 'mode'), 'add_button_select', 600);
-      const post = await postService.findById(editorPostId);
-      const buttons: any[][] = (post as any).buttons || [];
-      await ctx.reply('🔘 روی دکمه‌ای که می‌خواهید دکمه جدید نسبت به آن قرار گیرد ضربه بزنید:', {
-        ...buildAddButtonPlacementKeyboard(editorPostId, buttons),
-      });
-      return;
-    }
-
-    // ─── ADD BUTTON LINK MODE ────────────────────────────
-    if (mode === 'add_button_link') {
-      if (text === '❌ لغو') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-        cache.del(editorKey(ctx.from.id, 'btn_link_row'));
-        cache.del(editorKey(ctx.from.id, 'btn_link_col'));
-        await refreshButtonEditor(ctx, editorPostId);
-        return;
-      }
-      const linkRow = cache.get<number>(editorKey(ctx.from.id, 'btn_link_row'));
-      const linkCol = cache.get<number>(editorKey(ctx.from.id, 'btn_link_col'));
-      const post = await postService.findById(editorPostId);
-      if (!post) return ctx.reply('❌ پست یافت نشد.');
-      const buttons: any[][] = (post as any).buttons || [];
-      if (linkRow != null && linkCol != null && buttons[linkRow] && buttons[linkRow][linkCol]) {
-        buttons[linkRow][linkCol].type = 'URL';
-        buttons[linkRow][linkCol].value = text;
-        await postService.update(editorPostId, { buttons: JSON.parse(JSON.stringify(buttons)) } as any);
-      }
-      cache.del(editorKey(ctx.from.id, 'btn_link_row'));
-      cache.del(editorKey(ctx.from.id, 'btn_link_col'));
-      cache.set(editorKey(ctx.from.id, 'mode'), 'button_editor', 600);
-      await refreshButtonEditor(ctx, editorPostId);
       return;
     }
 
