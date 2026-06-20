@@ -29,6 +29,7 @@ import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../servic
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { findButtonById } from '../../services/post-normalizer.service';
 import { safeEdit, sendPostToUser } from '../shared';
+import { iksManager } from '../services/inline-keyboard-session.service';
 import {
   propFirmDiscountKeyboard,
   lotteryHistoryKeyboard,
@@ -254,6 +255,23 @@ async function finalizeBotBroadcast(ctx: any, pending: PendingBroadcast) {
 }
 
 export function registerHandlers(bot: Telegraf<Context>) {
+  // ─── Clear all user state (sessions, wizards, pending actions) ──
+  function clearAllUserState(userId: number, chatId?: number) {
+    cache.delByPrefix(`post:pending:${userId}`);
+    cache.delByPrefix(`post:editor:${userId}`);
+    cache.del(`post_mgmt_mode:${userId}`);
+    cache.del(`menu:edit_mode:${userId}`);
+    cache.del(`menu:selected:${userId}`);
+    cache.del(`menu:editing:${userId}`);
+    cache.del(`ai_mode:${userId}`);
+    cache.del(`admin_broadcast:${userId}`);
+    cache.del(pendingBroadcastKey(userId));
+    if (chatId) {
+      iksManager.removeAllForChat(chatId);
+    }
+    logger.info(`[ClearState] Cleared all state for user ${userId}`);
+  }
+
   bot.on('my_chat_member', async (ctx: any, next) => {
     const chat = ctx.update.my_chat_member?.chat;
     const newStatus = ctx.update.my_chat_member?.new_chat_member?.status;
@@ -276,10 +294,17 @@ export function registerHandlers(bot: Telegraf<Context>) {
     return next();
   });
   bot.start(async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
     const name = ctx.from?.first_name || 'کاربر';
+
+    // Clear ALL user state — /start always resets the session
+    clearAllUserState(userId, ctx.chat?.id);
+    logger.info(`[Start] User ${userId} session cleared, sending START post`);
+
     const scoring = await scoringService.getSettings();
 
-    const profile = await userService.getProfile(BigInt(ctx.from!.id));
+    const profile = await userService.getProfile(BigInt(userId));
     const isNewUser = !profile || (profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 10_000);
 
     if (isNewUser) {
@@ -311,7 +336,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       }
     }
 
-    // Send START system post instead of static welcome message
+    // Send START system post through the proper rendering pipeline
     try {
       const startPost = await postService.findSystemPost('START' as any);
       if (startPost) {
@@ -340,6 +365,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
           { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
         );
       }
+    }
+
+    // Show main menu keyboard
+    try {
+      await ctx.reply('منوی اصلی', await adminReplyOptions(userId));
+    } catch (e) {
+      logger.error('[Start] Failed to show main menu', e);
     }
 
     const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
@@ -1868,10 +1900,37 @@ export function registerHandlers(bot: Telegraf<Context>) {
   const { registerPostHandlers } = require('./post-handlers');
   registerPostHandlers(bot);
 
-  // ─── Catch-all for Unknown Messages ────────────────────
+  // ─── Catch-all for Unmatched Callbacks (expired/deleted buttons) ──
+  // Must be BEFORE the UNKNOWN handler. Prevents callbacks from reaching UNKNOWN.
+  bot.action(/.*/, async (ctx: any) => {
+    await ctx.answerCbQuery('🔘 این دکمه دیگر وجود ندارد.', { show_alert: true });
+    logger.info(`[ExpiredCallback] Unmatched callback: ${ctx.callbackQuery?.data}`);
+  });
+
+  // ─── Pipeline Routing ─────────────────────────────────
+  // Only messages that pass through ALL handlers above reach here.
+  // Applies ctx.state.handled pattern for clean routing.
   bot.use(async (ctx, next) => {
+    // Track whether any handler matched
+    ctx.state.handled = ctx.state.handled ?? false;
+
+    // Callback queries that reached here are unmatched — handled above by bot.action(/.*/)
+    if (ctx.callbackQuery) {
+      return;
+    }
+
+    return next();
+  });
+
+  // ─── Catch-all for Unknown Text Messages ──────────────
+  // Only text messages in private chat reach here (callback queries are caught above).
+  // This is the LAST resort — only when NO other handler matched.
+  bot.use(async (ctx, next) => {
+    if (ctx.state.handled) return next();
     if (!ctx.message) return next();
     if (ctx.chat?.type !== 'private') return next();
+    const msgText = (ctx.message as any)?.text;
+    if (msgText?.startsWith('/')) return next();
 
     try {
       const unknownPost = await postService.findSystemPost('UNKNOWN' as any);
@@ -1889,8 +1948,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
     } catch (err) {
       logger.error('[SystemPost] UNKNOWN render failed', err);
     }
-
-    return next();
   });
 
   logger.info('✅ تمام هندلرهای ربات ثبت شدند');
