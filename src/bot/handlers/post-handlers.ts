@@ -24,6 +24,7 @@ import {
   postIntegrityKeyboard,
   postGlobalAnalyticsKeyboard,
   postMultiMessageEditorReplyKeyboard,
+  postMoveModeReplyKeyboard,
   postAddMessageReplyKeyboard,
   postEditMessageReplyKeyboard,
   postCancelOnlyReplyKeyboard,
@@ -251,6 +252,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           '✏️ ویرایش محتوا', '📝 ویرایش عنوان', 'ویرایش دکمه ها', '❌ لغو',
           '↪️ ارسال به عنوان فوروارد (خاموش)', '✅ ارسال به عنوان فوروارد (روشن)',
           '🔙 بازگشت به ویرایشگر',
+          '🗑 حذف پست',
         ].includes(text);
         if (!isEditorAction) {
           logger.warn(`[StaleEditorKey] Clearing stale editor key for user ${ctx.from.id} (mode=${existingMode}, text="${text.substring(0, 30)}")`);
@@ -1219,6 +1221,49 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
     if (!postId) return next();
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+
+    // ─── MOVE MODE (button swap with reply keyboard) ─────
+    if (state === 'move') {
+      const text = ctx.message.text;
+      if (text === '⬆️ بالا' || text === '⬇️ پایین') {
+        const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
+        const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
+        if (row === undefined || col === undefined) return ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
+        const post = await postService.findById(postId);
+        if (!post) return ctx.reply('❌ پست یافت نشد.');
+        const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+        if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
+        const btn = buttons[row][col];
+        buttons[row].splice(col, 1);
+        if (buttons[row].length === 0) buttons.splice(row, 1);
+        if (text === '⬆️ بالا') {
+          if (row === 0) return ctx.reply('⚠️ دکمه در بالاترین سطر قرار دارد.');
+          const prevRow = row - 1;
+          buttons[prevRow] = buttons[prevRow] || [];
+          buttons[prevRow].push(btn);
+        } else {
+          const nextRow = row; // after splice, row index is valid
+          buttons[nextRow] = buttons[nextRow] || [];
+          buttons[nextRow].unshift(btn);
+        }
+        await postService.update(postId, { buttons } as any);
+        cache.del(pendingKey(ctx.from.id, 'editor_row'));
+        cache.del(pendingKey(ctx.from.id, 'editor_col'));
+        cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+        await ctx.reply(`✅ دکمه به ${text === '⬆️ بالا' ? 'بالا' : 'پایین'} منتقل شد.`);
+        await refreshButtonListView(ctx, postId);
+        return;
+      }
+      if (text === '🔙 بازگشت') {
+        cache.del(pendingKey(ctx.from.id, 'editor_row'));
+        cache.del(pendingKey(ctx.from.id, 'editor_col'));
+        cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+        await refreshButtonListView(ctx, postId, '⌨️ جابجایی لغو شد.');
+        return;
+      }
+      return;
+    }
+
     if (!state || !['wait_popup', 'wait_url', 'wait_command'].includes(state)) return next();
     if (ctx.message.text === '❌ لغو') {
       cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
@@ -1306,11 +1351,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const srcRow = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
       const srcCol = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
       if (srcRow === undefined || srcCol === undefined) {
-        // First click — select source button
+        // First click — select source button, enter move mode with reply keyboard
         cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
-        await safeEdit(ctx, `📍 ${buttons[row][col].text} انتخاب شد.\n⬆️ یا ⬇️ را برای جابجایی انتخاب کنید.`,
-          buildButtonListInlineKeyboard(postId, buttons, 'swap', row, col));
+        cache.set(pendingKey(ctx.from.id, 'editor_state'), 'move', 600);
+        await safeEdit(ctx, `📍 ${buttons[row][col].text} انتخاب شد.\n⬆️ یا ⬇️ را برای جابجایی انتخاب کنید.`);
+        await ctx.reply('🔀 حالت جابجایی:', postMoveModeReplyKeyboard());
       } else if (srcRow === row && srcCol === col) {
         await safeEdit(ctx, '⚠️ همان دکمه را انتخاب کردید.');
       } else {
@@ -1565,12 +1611,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'editing_post'));
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    await ctx.reply('⌨ ویرایشگر دکمه بسته شد.', buildButtonEditorExitKeyboard());
-    await safeEdit(ctx, formatPostPreview(post), {
-      parse_mode: 'Markdown',
-      link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, !!(post.content || post.mediaFileId)),
-    });
+    await ctx.reply('⌨ ویرایشگر دکمه بسته شد.');
+    await enterPostEditor(ctx, post);
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -1735,11 +1777,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   });
 
   // 🗑 حذف پست: Ask confirmation, then delete, clear cache, go back to post list
-  bot.hears('🗑 حذف پست', async (ctx: any) => {
+  bot.hears('🗑 حذف پست', async (ctx: any, next: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
-    if (!postId) return;
+    if (!postId) return next();
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     cache.set(pendingKey(ctx.from.id, 'delete_post_id'), postId, 600);
@@ -2290,6 +2332,28 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           if (post) await refreshEditorMessages(ctx, post);
           return;
         }
+        case '🗑 حذف پست': {
+          const post = await postService.findById(editorPostId);
+          if (!post) return ctx.reply('❌ پست یافت نشد.');
+          cache.set(pendingKey(ctx.from.id, 'delete_post_id'), editorPostId, 600);
+          await ctx.reply(
+            '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +
+            'این عملیات غیرقابل بازگشت است.\n\n' +
+            'تمام موارد زیر حذف خواهند شد:\n' +
+            '📝 اطلاعات پست\n' +
+            '⌨️ دکمه‌ها\n' +
+            '🏷 دستورات\n' +
+            '🖼 مدیاهای وابسته\n' +
+            '🔗 ارتباطات\n' +
+            '📦 کش‌های مربوط\n\n' +
+            '❗ این عملیات قابل بازیابی نیست.',
+            Markup.keyboard([
+              ['✅ تایید حذف'],
+              ['❌ انصراف'],
+            ]).resize().persistent(),
+          );
+          return;
+        }
         case '🗂 بازگشت به لیست': {
           cache.del(editorKey(ctx.from.id, 'active'));
           cache.del(editorKey(ctx.from.id, 'mode'));
@@ -2318,6 +2382,68 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         }
         default:
           return next();
+      }
+      return;
+    }
+
+    // ─── MOVE MODE (button swap) ─────────────────────────
+    if (mode === 'move') {
+      if (text === '⬆️ بالا') {
+        const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
+        const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
+        if (row === undefined || col === undefined) return ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
+        const post = await postService.findById(editorPostId);
+        if (!post) return ctx.reply('❌ پست یافت نشد.');
+        const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+        if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
+        if (row === 0) return ctx.reply('⚠️ دکمه در بالاترین سطر قرار دارد.');
+        const btn = buttons[row][col];
+        buttons[row].splice(col, 1);
+        if (buttons[row].length === 0) buttons.splice(row, 1);
+        const prevRow = row - 1;
+        buttons[prevRow] = buttons[prevRow] || [];
+        buttons[prevRow].push(btn);
+        await postService.update(editorPostId, { buttons } as any);
+        cache.del(pendingKey(ctx.from.id, 'editor_row'));
+        cache.del(pendingKey(ctx.from.id, 'editor_col'));
+        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        const updated = await postService.findById(editorPostId);
+        if (updated) await refreshEditorMessages(ctx, updated);
+        await ctx.reply('✅ دکمه به بالا منتقل شد.');
+        return;
+      }
+      if (text === '⬇️ پایین') {
+        const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
+        const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
+        if (row === undefined || col === undefined) return ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
+        const post = await postService.findById(editorPostId);
+        if (!post) return ctx.reply('❌ پست یافت نشد.');
+        const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+        if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
+        if (row >= buttons.length - 1) return ctx.reply('⚠️ دکمه در پایین‌ترین سطر قرار دارد.');
+        const btn = buttons[row][col];
+        buttons[row].splice(col, 1);
+        if (buttons[row].length === 0) buttons.splice(row, 1);
+        const nextRow = row; // after splice, indices shift down
+        buttons[nextRow] = buttons[nextRow] || [];
+        buttons[nextRow].unshift(btn);
+        await postService.update(editorPostId, { buttons } as any);
+        cache.del(pendingKey(ctx.from.id, 'editor_row'));
+        cache.del(pendingKey(ctx.from.id, 'editor_col'));
+        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        const updated = await postService.findById(editorPostId);
+        if (updated) await refreshEditorMessages(ctx, updated);
+        await ctx.reply('✅ دکمه به پایین منتقل شد.');
+        return;
+      }
+      if (text === '🔙 بازگشت') {
+        cache.del(pendingKey(ctx.from.id, 'editor_row'));
+        cache.del(pendingKey(ctx.from.id, 'editor_col'));
+        cache.del(pendingKey(ctx.from.id, 'editor_state'));
+        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        const post = await postService.findById(editorPostId);
+        if (post) await refreshEditorMessages(ctx, post);
+        return;
       }
       return;
     }

@@ -362,7 +362,15 @@ export const postMultiMessageEditorReplyKeyboard = () =>
     ['➕ افزودن پیام', 'افزودن دستور'],
     ['📊 آمار', '📤 لغو انتشار'],
     ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
-    ['🔙 بازگشت', '⛔ توقف ویرایش'],
+    ['🗑 حذف پست', '⛔ توقف ویرایش'],
+    ['🔙 بازگشت'],
+  ]).resize().persistent();
+
+export const postMoveModeReplyKeyboard = () =>
+  Markup.keyboard([
+    ['⬆️ بالا'],
+    ['⬇️ پایین'],
+    ['🔙 بازگشت'],
   ]).resize().persistent();
 
 export const postAddMessageReplyKeyboard = (forwardOn: boolean) =>
