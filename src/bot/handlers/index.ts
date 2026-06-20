@@ -903,9 +903,50 @@ export function registerHandlers(bot: Telegraf<Context>) {
     } catch {}
   });
 
+  // ─── Dynamic Post Button Routing (ALL users — must be BEFORE admin-only handler) ───
+  // This intercepts main menu post button clicks for regular users and sends the post.
+  bot.on('text', async (ctx: any, next) => {
+    if (!ctx.from || ctx.chat?.type !== 'private') return next();
+    const text = ctx.message.text;
+    if (!text || text.startsWith('/')) return next();
+
+    // Skip known system button texts
+    const knownTexts = [
+      '🎯 کدهای تخفیف', '🏢 پراپ فرم‌ها', '🎰 قرعه‌کشی', '⭐️ امتیاز من',
+      '🏆 لیدربورد', '👥 دعوت دوستان', '🤖 هوش مصنوعی پراپ هاب',
+      '🔍 جستجو', '🚀 پروفایل من', '👨‍💼 پنل ادمین',
+      '↩️ بازگشت به منوی اصلی', '📢 پیام همگانی', '📝 پست‌ها',
+      '🎛 ویرایش منو', '👥 مدیریت ادمین‌ها', '📊 گزارشات', '⚙️ تنظیمات',
+      '➕ ایجاد پست', '📋 مدیریت پست‌ها', '📦 پیش‌نویس‌ها',
+      '👻 پست‌های مخفی', '👁 پیش​‌نمایش', '📤 انتشار',
+      '🔎 جستجو', '📊 آمار پست', '📊 آمار کلی', '🔍 بررسی سلامت',
+      '↩️ بازگشت به پنل ادمین',
+    ];
+    if (knownTexts.includes(text)) return next();
+
+    // Skip if admin is in Post Management mode
+    if (cache.get(`post_mgmt_mode:${ctx.from.id}`)) {
+      return next();
+    }
+
+    try {
+      const layout = await settingsService.getResolvedMenuLayout(false);
+      const textMap = settingsService.getMenuButtonTextMap(layout);
+      const match = textMap.get(text);
+      if (match && match.ref.startsWith('post:')) {
+        const postId = parseInt(match.ref.replace('post:', ''));
+        const post = await postService.findById(postId);
+        if (post && post.status === 'PUBLISHED' && post.isPublished) {
+          await sendPostToUser(ctx, post);
+          return;
+        }
+      }
+    } catch {}
+    return next();
+  });
+
   // ─── Menu Editor (Reply Keyboard) ─────────────────────────
   // Handles Reply Keyboard interactions for the menu editor.
-  // Runs before Dynamic Post Button Routing so menu edit texts are intercepted first.
   bot.on('text', async (ctx: any, next) => {
     if (!ctx.from || ctx.chat?.type !== 'private') return next();
     const admin = await botAdminService.getActive(ctx.from.id);
@@ -1059,38 +1100,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return next();
     }
 
-    // ─── Dynamic Post Button Routing ──────────────────────────
-    if (!text || text.startsWith('/')) return next();
-    const knownTexts = [
-      '🎯 کدهای تخفیف', '🏢 پراپ فرم‌ها', '🎰 قرعه‌کشی', '⭐️ امتیاز من',
-      '🏆 لیدربورد', '👥 دعوت دوستان', '🤖 هوش مصنوعی پراپ هاب',
-      '🔍 جستجو', '🚀 پروفایل من', '👨‍💼 پنل ادمین',
-      '↩️ بازگشت به منوی اصلی', '📢 پیام همگانی', '📝 پست‌ها',
-      '🎛 ویرایش منو', '👥 مدیریت ادمین‌ها', '📊 گزارشات', '⚙️ تنظیمات',
-      '➕ ایجاد پست', '📋 مدیریت پست‌ها', '📦 پیش‌نویس‌ها',
-      '👻 پست‌های مخفی', '👁 پیش‌نمایش', '📤 انتشار',
-      '🔎 جستجو', '📊 آمار پست', '📊 آمار کلی', '🔍 بررسی سلامت',
-      '↩️ بازگشت به پنل ادمین',
-    ];
-    if (knownTexts.includes(text)) return next();
-    // 🚫 Skip if admin is in Post Management mode — the post-handlers.ts text handler
-    // will match the post title and show the admin edit panel instead.
-    if (cache.get(`post_mgmt_mode:${ctx.from.id}`)) {
-      return next();
-    }
-    try {
-      const layout = await settingsService.getResolvedMenuLayout(false);
-      const textMap = settingsService.getMenuButtonTextMap(layout);
-      const match = textMap.get(text);
-      if (match && match.ref.startsWith('post:')) {
-        const postId = parseInt(match.ref.replace('post:', ''));
-        const post = await postService.findById(postId);
-        if (post && post.status === 'PUBLISHED' && post.isPublished) {
-          await sendPostToUser(ctx, post);
-          return;
-        }
-      }
-    } catch {}
     return next();
   });
 
