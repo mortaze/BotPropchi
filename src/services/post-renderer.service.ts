@@ -67,18 +67,30 @@ function splitContentMessages(content: string): string[] {
   return messages;
 }
 
+function getMessageButtonsFromPost(post: any, messageIdx: number): any[][] {
+  const raw = post.buttons;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
+    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
+  }
+  return [];
+}
+
 export async function renderPostToTelegram(ctx: any, post: any) {
   const messages = splitContentMessages(post.content || '');
-
   if (messages.length > 1) {
     let lastResult = false;
     for (let i = 0; i < messages.length; i++) {
-      const msgPost = { ...post, content: messages[i] };
+      const msgButtons = getMessageButtonsFromPost(post, i);
+      const msgPost = { ...post, content: messages[i], buttons: msgButtons };
       if (i === 0) {
         lastResult = await renderSinglePost(ctx, msgPost);
       } else {
         try {
-          await sendFormattedMessage(ctx, { text: messages[i] }, {});
+          await sendFormattedMessage(ctx, { text: messages[i] }, {
+            buttons: buildTelegramKeyboard(msgButtons, post.id),
+          });
           lastResult = true;
         } catch (e) {
           logger.warn(`[Pipeline] post=${post.id} extra message ${i + 1} failed: ${e}`);
@@ -87,8 +99,8 @@ export async function renderPostToTelegram(ctx: any, post: any) {
     }
     return lastResult;
   }
-
-  return renderSinglePost(ctx, post);
+  const msgButtons = getMessageButtonsFromPost(post, 0);
+  return renderSinglePost(ctx, { ...post, buttons: msgButtons });
 }
 
 async function renderSinglePost(ctx: any, post: any) {
