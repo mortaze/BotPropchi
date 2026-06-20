@@ -33,16 +33,17 @@ import {
   postEditMessageReplyKeyboard,
   postCancelOnlyReplyKeyboard,
   postSingleMessageInlineKeyboard,
-  buildButtonEditorReplyKeyboard,
-  buildButtonRowAddInlineKeyboard,
-  buildNewButtonEditInlineKeyboard,
-  buildCommandSelectInlineKeyboard,
-  buildAddButtonPlacementKeyboard,
-  buildAddButtonPositionRelativeKeyboard,
+  buildNoButtonsReplyKeyboard,
+  buildButtonTypeSelectionKeyboard,
+  buildCancelOnlyReplyKeyboard,
+  buildButtonEditorExitKeyboard,
+  buildButtonListInlineKeyboard,
+  buildEditButtonTypeKeyboard,
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
 import { safeEdit, sendPostToUser } from '../shared';
+import { iksManager } from '../services/inline-keyboard-session.service';
 
 function isPostAdmin(admin: any): boolean {
   if (!admin) return false;
@@ -721,8 +722,19 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
     if (action === 'buttons') {
       const buttons = (post as any).buttons || [];
-      await safeEdit(ctx, '⌨ ویرایشگر دکمه:\n\nبرای ویرایش روی دکمه ضربه بزنید یا دکمه جدید اضافه کنید.',
-        postButtonsEditorKeyboard(postId, buttons));
+      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+      cache.del(pendingKey(ctx.from.id, 'editor_mode'));
+      cache.del(pendingKey(ctx.from.id, 'editor_row'));
+      cache.del(pendingKey(ctx.from.id, 'editor_col'));
+      if (!buttons || buttons.length === 0 || buttons.every((r: any[]) => !r || r.length === 0)) {
+        await safeEdit(ctx, '⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
+      } else {
+        await safeEdit(ctx, '⌨ ویرایشگر دکمه:', {
+          ...buildButtonEditorExitKeyboard(),
+          ...buildButtonListInlineKeyboard(postId, buttons),
+        });
+      }
       return;
     }
   });
@@ -1477,6 +1489,339 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await safeEdit(ctx, '➖ سطر حذف شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
+  // ─── NEW BUTTON EDITOR (pbedit) ─────────────────────────
+  // State machine: button_idle → select_type → wait_popup/wait_url/wait_command
+  // Also handles swap, delete, edit modes on existing buttons.
+  // State stored in pendingKey(ctx.from.id, 'editor_state')
+  // Post ID stored in pendingKey(ctx.from.id, 'editing_post')
+
+  async function refreshButtonListView(ctx: any, postId: number, msg?: string) {
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const buttons = (post as any).buttons || [];
+    if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+      await safeEdit(ctx, msg || '⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد.', buildNoButtonsReplyKeyboard());
+    } else {
+      await ctx.reply(msg || '⌨ ویرایشگر دکمه:', {
+        ...buildButtonListInlineKeyboard(postId, buttons),
+      });
+    }
+  }
+
+  // ─── Handler: "➕ ایجاد دکمه" (from reply keyboard when no buttons) ──
+  bot.hears('➕ ایجاد دکمه', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
+    await ctx.reply('❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
+  });
+
+  // ─── Keyboard type selection handlers ────────────────────
+  bot.hears('🔗 حالت دکمه: لینک یا اشتراک', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (state !== 'select_type') return;
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_url', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await ctx.reply(
+      '🔗 ❇️ داده ها را برای URL / دکمه اشتراک گذاری وارد کنید.\n\n' +
+      'مثال:\n' +
+      'اشتراک گذاری کنید\n' +
+      'https://t.me/share/url?url=t.me/MenuBuilderHelpBot\n\n' +
+      'ℹ️ داده ها در دو خط هستند:\n' +
+      '🏷 عنوان دکمه\n' +
+      '🌐 آدرس اینترنتی',
+      buildCancelOnlyReplyKeyboard(),
+    );
+  });
+
+  bot.hears('🪟 حالت دکمه: صفحه POP-UP', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (state !== 'select_type') return;
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_popup', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await ctx.reply(
+      '🪟 ❇️ داده های دکمه را با پنجره POP-UP وارد کنید.\n\n' +
+      '⚠️ محدودیت تلگرام برای این نوع پیام‌ها 200 کاراکتر است.\n' +
+      'ℹ️ داده‌ها می‌توانند در چندین خط باشند:\n\n' +
+      '🏷 عنوان دکمه\n' +
+      '📝 اولین خط پیام\n' +
+      '📝 دومین خط پیام',
+      buildCancelOnlyReplyKeyboard(),
+    );
+  });
+
+  bot.hears('⌨️ حالت دکمه: دستور', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (state !== 'select_type') return;
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_command', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await ctx.reply(
+      '⌨️ ❇️ داده های دکمه را وارد کنید.\n' +
+      'فرمان نباید با "/" شروع شود.\n' +
+      'فقط: a-z0-9_\n\n' +
+      'مثال:\n' +
+      'mycommand\n' +
+      'mycommand1\n' +
+      'mycommand_1\n\n' +
+      'ℹ️ داده ها:\n' +
+      '🏷 عنوان دکمه\n' +
+      '⌨️ COMMAND',
+      buildCancelOnlyReplyKeyboard(),
+    );
+  });
+
+  // ─── Handler: Text input for new button data ─────────────
+  bot.on('text', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return next();
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (!state || !['wait_popup', 'wait_url', 'wait_command'].includes(state)) return next();
+    if (ctx.message.text === '❌ لغو') {
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+      await refreshButtonListView(ctx, postId, '⌨️ عملیات لغو شد.');
+      return;
+    }
+
+    const text = ctx.message.text;
+    const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
+    if (lines.length < 2) {
+      await ctx.reply('❌ حداقل دو خط وارد کنید: عنوان و مقدار.', buildCancelOnlyReplyKeyboard());
+      return;
+    }
+    const title = lines[0];
+    const value = lines.slice(1).join('\n');
+
+    if (state === 'wait_url') {
+      const url = value;
+      if (!url.startsWith('http') && !url.startsWith('https') && !url.startsWith('t.me/') && !url.startsWith('tg://')) {
+        await ctx.reply('❌ آدرس اینترنتی معتبر نیست. باید با http:// یا https:// یا t.me/ یا tg:// شروع شود.', buildCancelOnlyReplyKeyboard());
+        return;
+      }
+    }
+
+    if (state === 'wait_command') {
+      const command = value;
+      if (!/^[a-z0-9_]+$/.test(command)) {
+        await ctx.reply('❌ دستور نامعتبر است. فقط حروف a-z، اعداد 0-9 و زیرخط (_) مجاز است.', buildCancelOnlyReplyKeyboard());
+        return;
+      }
+    }
+
+    if (state === 'wait_popup') {
+      if (value.length > 200) {
+        await ctx.reply('❌ متن POP-UP نمی‌تواند بیش از 200 کاراکتر باشد.', buildCancelOnlyReplyKeyboard());
+        return;
+      }
+    }
+
+    const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode'));
+    const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
+    const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+
+    if (mode === 'create') {
+      // Add new button at the end of the last row, or create first row
+      if (buttons.length === 0) buttons.push([]);
+      buttons[buttons.length - 1].push({ text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value });
+    } else if (mode === 'edit' && row !== undefined && col !== undefined) {
+      // Edit existing button
+      if (buttons[row] && buttons[row][col]) {
+        buttons[row][col] = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value };
+      }
+    }
+
+    await postService.update(postId, { buttons } as any);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_mode'));
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+
+    const msg = mode === 'edit'
+      ? '✅ دکمه با موفقیت تصحیح شد!\n\n⌨ ویرایشگر دکمه:'
+      : '✅ دکمه جدید ایجاد شد!\n\n⌨ ویرایشگر دکمه:';
+    await ctx.reply(msg, buildButtonEditorExitKeyboard());
+    await refreshButtonListView(ctx, postId);
+  });
+
+  // ─── Handler: Click on a button ──────────────────────────
+  bot.action(/^pbedit:click:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
+    const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+    const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+
+    if (mode === 'swap') {
+      // Find which button was previously selected as swap source
+      const srcRow = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
+      const srcCol = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
+      if (srcRow === row && srcCol === col) {
+        await safeEdit(ctx, '⚠️ همان دکمه را انتخاب کردید.');
+        return;
+      }
+      // Swap the two buttons
+      if (buttons[srcRow] && buttons[srcRow][srcCol] && buttons[row] && buttons[row][col]) {
+        const temp = buttons[srcRow][srcCol];
+        buttons[srcRow][srcCol] = buttons[row][col];
+        buttons[row][col] = temp;
+        await postService.update(postId, { buttons } as any);
+        cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+        cache.del(pendingKey(ctx.from.id, 'editor_row'));
+        cache.del(pendingKey(ctx.from.id, 'editor_col'));
+        await safeEdit(ctx, '✅ دکمه‌ها جابجا شدند!', buildButtonListInlineKeyboard(postId, buttons));
+      } else {
+        await safeEdit(ctx, '❌ خطا در جابجایی دکمه.');
+      }
+      return;
+    }
+
+    if (mode === 'delete') {
+      // Delete the clicked button
+      if (buttons[row] && buttons[row][col] !== undefined) {
+        buttons[row].splice(col, 1);
+        if (buttons[row].length === 0) buttons.splice(row, 1);
+        await postService.update(postId, { buttons } as any);
+        const btn = buttons[row]?.[col]; // already shifted, get info before delete
+        cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+        cache.del(pendingKey(ctx.from.id, 'editor_row'));
+        cache.del(pendingKey(ctx.from.id, 'editor_col'));
+        const deletedText = (post as any).buttons?.[row]?.[col]?.text || '';
+        await safeEdit(ctx,
+          `✅ دکمه درون خطی با موفقیت حذف شد!\nℹ️ داده های دکمه:\n${deletedText}\n🔧 شما در حالت تنظیمات پیام هستید.`);
+        await ctx.reply('⌨ ویرایشگر دکمه:', buildButtonListInlineKeyboard(postId, buttons));
+      }
+      return;
+    }
+
+    if (mode === 'edit') {
+      // Show edit type selection for the clicked button
+      const btn = buttons[row]?.[col];
+      if (!btn) return safeEdit(ctx, '❌ دکمه یافت نشد.');
+      cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
+      cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
+      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
+      const currentType = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : '🔗 لینک';
+      await safeEdit(ctx,
+        `🔧 شما در حالت تنظیمات پیام هستید.\n❇️ حالت دکمه را انتخاب کنید.\n\nℹ️ مقدار فعلی:\n${currentType}\n${btn.text}: ${btn.value || ''}`,
+        buildEditButtonTypeKeyboard(postId, row, col));
+      return;
+    }
+
+    // Default: Add a new button BELOW this one
+    const newBtn = { text: 'دکمه جدید', type: 'URL', value: '' };
+    if (buttons[row] && buttons[row][col] !== undefined) {
+      buttons[row].splice(col + 1, 0, newBtn);
+    } else {
+      if (!buttons[row]) buttons[row] = [];
+      buttons[row].push(newBtn);
+    }
+    await postService.update(postId, { buttons } as any);
+    await safeEdit(ctx, '✅ دکمه جدید اضافه شد.', buildButtonListInlineKeyboard(postId, buttons));
+  });
+
+  // ─── Handler: Set mode (swap / delete / edit) ──────────
+  bot.action(/^pbedit:mode:(swap|delete|edit):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const mode = ctx.match[1];
+    const postId = parseInt(ctx.match[2]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
+    const buttons = (post as any).buttons || [];
+
+    if (mode === 'swap') {
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'swap', 600);
+      await safeEdit(ctx, '⬅️ روی دکمه مقصد کلیک کنید.', buildButtonListInlineKeyboard(postId, buttons, 'swap'));
+    } else if (mode === 'delete') {
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'delete', 600);
+      await safeEdit(ctx, '🗑 روی دکمه مورد نظر برای حذف کلیک کنید.', buildButtonListInlineKeyboard(postId, buttons, 'delete'));
+    } else if (mode === 'edit') {
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'edit', 600);
+      await safeEdit(ctx, '✏️ روی دکمه مورد نظر برای تصحیح کلیک کنید.', buildButtonListInlineKeyboard(postId, buttons, 'edit'));
+    }
+  });
+
+  // ─── Handler: Select edit button type ──────────────────
+  bot.action(/^pbedit:type:(url|popup|command):(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const btnType = ctx.match[1];
+    const postId = parseInt(ctx.match[2]);
+    const row = parseInt(ctx.match[3]);
+    const col = parseInt(ctx.match[4]);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), `wait_${btnType}`, 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
+
+    const messages: Record<string, string> = {
+      url: '🔗 داده های جدید را برای URL / دکمه اشتراک گذاری وارد کنید:\n\n🏷 عنوان دکمه\n🌐 آدرس جدید',
+      popup: '🪟 داده های جدید را برای POP-UP وارد کنید:\n\n🏷 عنوان دکمه\n📝 محتوای جدید',
+      command: '⌨️ داده های جدید را برای دستور وارد کنید:\n\n🏷 عنوان دکمه\n⌨️ COMMAND جدید',
+    };
+    await ctx.reply(messages[btnType] || '', buildCancelOnlyReplyKeyboard());
+  });
+
+  bot.action(/^pbedit:type:cancel:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_mode'));
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    await refreshButtonListView(ctx, postId, '⌨️ عملیات لغو شد.');
+  });
+
+  // ─── Handler: Exit button editor ───────────────────────
+  bot.hears('🚪 خروج از تنظیمات پیام', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    cache.del(pendingKey(ctx.from.id, 'editor_state'));
+    cache.del(pendingKey(ctx.from.id, 'editor_mode'));
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    cache.del(pendingKey(ctx.from.id, 'editing_post'));
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    await ctx.reply('⌨ ویرایشگر دکمه بسته شد.', buildButtonEditorExitKeyboard());
+    await safeEdit(ctx, formatPostPreview(post), {
+      parse_mode: 'Markdown',
+      link_preview_options: { is_disabled: true },
+      ...postEditorKeyboard(postId, !!(post.content || post.mediaFileId)),
+    });
+  });
+
   // ═══════════════════════════════════════════════════════════
   // ─── Post Manager Inline Keyboard Callbacks ───────────────
   // These operate on the post info message using inline keyboards
@@ -1941,6 +2286,89 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   }
 
   // ─── Button Editor Helpers ─────────────────────────────
+
+  // Inline stubs for backward-compatible keyboard functions.
+  // These are kept so old `post:*` inline keyboards already sent to users continue to work.
+  function buildButtonEditorReplyKeyboard(buttons: any[][], selRow?: number, selCol?: number) {
+    const rows: any[] = [];
+    for (let r = 0; r < buttons.length; r++) {
+      const btnRow: any[] = [];
+      for (let c = 0; c < (buttons[r] || []).length; c++) {
+        const b = buttons[r][c];
+        const selected = (selRow === r && selCol === c);
+        btnRow.push({
+          text: selected ? `👉 ${b?.text || ''}` : (b?.text || '□'),
+          callback_data: `pbedit:click:0:${r}:${c}`,
+        });
+      }
+      btnRow.push({ text: `➕ سطر ${r + 1}`, callback_data: `post:btn:addtrow:0:${r}` });
+      rows.push(btnRow);
+    }
+    rows.push([{ text: '➕ ردیف جدید', callback_data: 'pbedit:addrow:0' }]);
+    rows.push([{ text: '🚪 خروج از تنظیمات پیام', callback_data: 'pbedit:exit:0' }]);
+    return { reply_markup: { inline_keyboard: rows } };
+  }
+
+  function buildButtonRowAddInlineKeyboard(postId: number, row: number) {
+    return { reply_markup: { inline_keyboard: [[{ text: `➕ افزودن دکمه به سطر ${row + 1}`, callback_data: `post:btn:addtrow:${postId}:${row}` }]] } };
+  }
+
+  function buildCommandSelectInlineKeyboard(postId: number, row: number, col: number, commands: any[]) {
+    const rows: any[][] = [];
+    for (const cmd of commands) {
+      rows.push([{ text: `/${cmd.name}`, callback_data: `post:newbtn:setcmd:${postId}:${row}:${col}:${cmd.name}` }]);
+    }
+    rows.push([{ text: '❌ لغو', callback_data: `post:newbtn:cancelcmd:${postId}:${row}:${col}` }]);
+    return { reply_markup: { inline_keyboard: rows } };
+  }
+
+  function buildAddButtonPositionRelativeKeyboard(postId: number, refRow: number, refCol: number) {
+    return {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'بعد از دکمه مرجع', callback_data: `post:addbtn:after:${postId}:${refRow}:${refCol}` }],
+          [{ text: 'قبل از دکمه مرجع', callback_data: `post:addbtn:before:${postId}:${refRow}:${refCol}` }],
+          [{ text: 'انتهای سطر', callback_data: `post:addbtn:endrow:${postId}:${refRow}:${refCol}` }],
+          [{ text: 'ابتدای سطر', callback_data: `post:addbtn:startrow:${postId}:${refRow}:${refCol}` }],
+          [{ text: 'ردیف جدید در بالا', callback_data: `post:addbtn:newrowtop:${postId}` }],
+          [{ text: 'ردیف جدید در پایین', callback_data: `post:addbtn:newrowbottom:${postId}` }],
+          [{ text: '❌ لغو', callback_data: `post:addbtn:cancel:${postId}` }],
+        ],
+      },
+    };
+  }
+
+  function buildNewButtonEditInlineKeyboard(postId: number, row: number, col: number, totalRows: number, totalCols: number) {
+    const navRow: any[] = [];
+    if (row > 0) navRow.push({ text: '⬆️', callback_data: `post:newbtn:up:${postId}:${row}:${col}` });
+    if (row < totalRows - 1) navRow.push({ text: '⬇️', callback_data: `post:newbtn:down:${postId}:${row}:${col}` });
+    if (col > 0) navRow.push({ text: '⬅️', callback_data: `post:newbtn:left:${postId}:${row}:${col}` });
+    if (col < totalCols - 1) navRow.push({ text: '➡️', callback_data: `post:newbtn:right:${postId}:${row}:${col}` });
+    return {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '✏️ ویرایش متن', callback_data: `post:newbtn:text:${postId}:${row}:${col}` }],
+          [{ text: '🔗 لینک', callback_data: `post:newbtn:link:${postId}:${row}:${col}` }],
+          [{ text: '⚡ دستور', callback_data: `post:newbtn:cmd:${postId}:${row}:${col}` }],
+          navRow.length ? navRow : [],
+          [{ text: '🔙 بازگشت', callback_data: `post:addbtn:cancel:${postId}` }],
+        ].filter(r => r.length > 0),
+      },
+    };
+  }
+
+  function buildAddButtonPlacementKeyboard(postId: number, buttons: any[][]) {
+    const rows: any[][] = [];
+    for (let r = 0; r < buttons.length; r++) {
+      const btnRow: any[] = [];
+      for (let c = 0; c < (buttons[r] || []).length; c++) {
+        btnRow.push({ text: buttons[r][c]?.text || '□', callback_data: `post:addbtn:select:${postId}:${r}:${c}` });
+      }
+      rows.push(btnRow);
+    }
+    rows.push([{ text: '❌ لغو', callback_data: `post:addbtn:cancel:${postId}` }]);
+    return { reply_markup: { inline_keyboard: rows } };
+  }
 
   async function deleteButtonEditorMessages(ctx: any) {
     const oldIds = cache.get<number[]>(editorKey(ctx.from.id, 'btn_msg_ids')) || [];

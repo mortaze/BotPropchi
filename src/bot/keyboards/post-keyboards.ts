@@ -528,94 +528,77 @@ export const buildMenuRowSelectKeyboard = (totalRows: number, sourceRow: number)
   return Markup.inlineKeyboard(rows);
 };
 
-// ─── Button Editor (New Design) ──────────────────────────────
+// ─── Button Editor — New Design ──────────────────────────────
 
-export const buildButtonEditorReplyKeyboard = (buttons: any[], selectedRow?: number, selectedCol?: number) => {
-  const rows: string[][] = [];
+// Reply keyboard when NO buttons exist
+export const buildNoButtonsReplyKeyboard = () =>
+  Markup.keyboard([
+    ['➕ ایجاد دکمه'],
+    ['❌ لغو'],
+  ]).resize().persistent();
+
+// Reply keyboard when waiting for button type selection
+export const buildButtonTypeSelectionKeyboard = () =>
+  Markup.keyboard([
+    ['🔗 حالت دکمه: لینک یا اشتراک'],
+    ['🪟 حالت دکمه: صفحه POP-UP'],
+    ['⌨️ حالت دکمه: دستور'],
+    ['❌ لغو'],
+  ]).resize().persistent();
+
+// Unified cancel-only reply keyboard when waiting for input
+export const buildCancelOnlyReplyKeyboard = () =>
+  Markup.keyboard([
+    ['❌ لغو'],
+  ]).resize().persistent();
+
+// Reply keyboard when buttons exist (exit button editor)
+export const buildButtonEditorExitKeyboard = () =>
+  Markup.keyboard([
+    ['🚪 خروج از تنظیمات پیام'],
+  ]).resize().persistent();
+
+// ─── Inline keyboard: button list with actions ──────────────
+// Each button shown as {➕} text with ⬅️, 🗑, ✏️ below
+export const buildButtonListInlineKeyboard = (
+  postId: number,
+  buttons: any[][],
+  mode?: 'swap' | 'delete' | 'edit' | null,
+) => {
+  const rows: any[][] = [];
   if (buttons && buttons.length > 0) {
     for (let r = 0; r < buttons.length; r++) {
       const row = buttons[r];
       if (!Array.isArray(row)) continue;
-      const rowTexts: string[] = [];
       for (let c = 0; c < row.length; c++) {
         const btn = row[c];
-        const text = btn?.text || 'بدون عنوان';
-        const safe = graphemeTruncate(sanitizeTelegramText(text), 20);
-        if (selectedRow === r && selectedCol === c) {
-          rowTexts.push(`{${safe}}`);
-        } else {
-          rowTexts.push(safe);
-        }
+        if (!btn) continue;
+        const text = btn.text || 'بدون عنوان';
+        const safe = graphemeTruncate(sanitizeTelegramText(text), 15);
+        const icon = mode === 'swap' ? '⬅️' : mode === 'delete' ? '❌' : mode === 'edit' ? '➗' : '➕';
+        rows.push([
+          Markup.button.callback(
+            `{${icon}} ${safe}`,
+            `pbedit:click:${postId}:${r}:${c}`,
+          ),
+        ]);
       }
-      if (rowTexts.length > 0) rows.push(rowTexts);
     }
   }
-  rows.push(['➕ افزودن دکمه', '➕ افزودن سطر']);
-  rows.push(['🔙 بازگشت به ویرایشگر']);
-  return Markup.keyboard(rows).resize().persistent();
-};
-
-export const buildButtonRowAddInlineKeyboard = (postId: number, rowIndex: number) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('➕ اضافه کردن دکمه', `post:btn:addtrow:${postId}:${rowIndex}`)],
-  ]);
-};
-
-export const buildNewButtonEditInlineKeyboard = (postId: number, row: number, col: number, totalRows: number, totalColsInRow: number) => {
-  const moveBtns: any[] = [];
-  if (row > 0) moveBtns.push(Markup.button.callback('⬆️ بالا', `post:newbtn:up:${postId}:${row}:${col}`));
-  if (row < totalRows - 1) moveBtns.push(Markup.button.callback('⬇️ پایین', `post:newbtn:down:${postId}:${row}:${col}`));
-  if (col > 0) moveBtns.push(Markup.button.callback('⬅️ چپ', `post:newbtn:left:${postId}:${row}:${col}`));
-  if (col < totalColsInRow - 1) moveBtns.push(Markup.button.callback('➡️ راست', `post:newbtn:right:${postId}:${row}:${col}`));
-
-  const rows: any[][] = [
-    [
-      Markup.button.callback('✏️ تغییر متن', `post:newbtn:text:${postId}:${row}:${col}`),
-    ],
-  ];
-  if (moveBtns.length > 0) rows.push(moveBtns);
-  rows.push([
-    Markup.button.callback('🔗 افزودن لینک', `post:newbtn:link:${postId}:${row}:${col}`),
-    Markup.button.callback('⚡ افزودن دستور', `post:newbtn:cmd:${postId}:${row}:${col}`),
-  ]);
+  // Action row
+  const actionRow: any[] = [];
+  actionRow.push(Markup.button.callback('⬅️ جابجایی', `pbedit:mode:swap:${postId}`));
+  actionRow.push(Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`));
+  actionRow.push(Markup.button.callback('✏️ تصحیح', `pbedit:mode:edit:${postId}`));
+  rows.push(actionRow);
   return Markup.inlineKeyboard(rows);
 };
 
-export const buildCommandSelectInlineKeyboard = (postId: number, row: number, col: number, commands: any[]) => {
-  const rows: any[][] = commands.map((cmd: any) => [
-    Markup.button.callback(`/${cmd.command}`, `post:newbtn:setcmd:${postId}:${row}:${col}:${cmd.command}`),
+// ─── Edit button type selection inline keyboard ────────────
+export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: number) =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback('🔗 لینک یا اشتراک', `pbedit:type:url:${postId}:${row}:${col}`)],
+    [Markup.button.callback('🪟 POP-UP', `pbedit:type:popup:${postId}:${row}:${col}`)],
+    [Markup.button.callback('⌨️ دستور', `pbedit:type:command:${postId}:${row}:${col}`)],
+    [Markup.button.callback('❌ لغو', `pbedit:type:cancel:${postId}`)],
   ]);
-  rows.push([Markup.button.callback('« لغو', `post:newbtn:cancelcmd:${postId}:${row}:${col}`)]);
-  return Markup.inlineKeyboard(rows);
-};
-
-// ─── Add Button Placement Options ──────────────────────────
-export const buildAddButtonPlacementKeyboard = (postId: number, buttons: any[][]) => {
-  const rows: any[][] = [];
-  for (let r = 0; r < buttons.length; r++) {
-    for (let c = 0; c < buttons[r].length; c++) {
-      const btn = buttons[r][c];
-      if (!btn) continue;
-      const label = btn.text || 'بدون عنوان';
-      rows.push([Markup.button.callback(`📌 ${label}`, `post:addbtn:select:${postId}:${r}:${c}`)]);
-    }
-  }
-  rows.push([
-    Markup.button.callback('📍 ایجاد سطر جدید بالا', `post:addbtn:newrowtop:${postId}`),
-    Markup.button.callback('📍 ایجاد سطر جدید پایین', `post:addbtn:newrowbottom:${postId}`),
-  ]);
-  rows.push([Markup.button.callback('« لغو', `post:addbtn:cancel:${postId}`)]);
-  return Markup.inlineKeyboard(rows);
-};
-
-export const buildAddButtonPositionRelativeKeyboard = (postId: number, refRow: number, refCol: number) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('📍 بعد از این دکمه', `post:addbtn:after:${postId}:${refRow}:${refCol}`)],
-    [Markup.button.callback('📍 قبل از این دکمه', `post:addbtn:before:${postId}:${refRow}:${refCol}`)],
-    [Markup.button.callback('📍 انتهای همین سطر', `post:addbtn:endrow:${postId}:${refRow}:${refCol}`)],
-    [Markup.button.callback('📍 ابتدای همین سطر', `post:addbtn:startrow:${postId}:${refRow}:${refCol}`)],
-    [Markup.button.callback('📍 ایجاد سطر جدید بالا', `post:addbtn:newrowtop:${postId}`)],
-    [Markup.button.callback('📍 ایجاد سطر جدید پایین', `post:addbtn:newrowbottom:${postId}`)],
-    [Markup.button.callback('« لغو', `post:addbtn:cancel:${postId}`)],
-  ]);
-};
