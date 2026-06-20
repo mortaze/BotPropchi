@@ -14,6 +14,7 @@ import { normalizePost } from './post-normalizer.service';
 const CACHE_KEY_PUBLISHED = cacheKey('posts:published');
 const CACHE_KEY_COMMANDS = cacheKey('posts:commands');
 const CACHE_KEY_MENU = cacheKey('posts:menu');
+const CACHE_KEY_TITLE = cacheKey('posts:title');
 let _cacheListenersRegistered = false;
 
 export const postService = {
@@ -428,8 +429,13 @@ export const postService = {
   },
 
   async findByTitle(title: string) {
+    const ck = `${CACHE_KEY_TITLE}:${title.toLowerCase()}`;
+    const cached = cache.get<any>(ck);
+    if (cached !== undefined) return cached === null ? null : cached;
     const post = await postRepository.findByTitle(title);
-    return post ? normalizePost(post) : null;
+    const result = post ? normalizePost(post) : null;
+    cache.set(ck, result, 60);
+    return result;
   },
 
   async findBySlug(slug: string) {
@@ -712,6 +718,7 @@ export const postService = {
     cache.del(CACHE_KEY_PUBLISHED);
     cache.del(CACHE_KEY_COMMANDS);
     cache.del(CACHE_KEY_MENU);
+    cache.delByPrefix(CACHE_KEY_TITLE);
   },
 
   setupCacheListeners() {

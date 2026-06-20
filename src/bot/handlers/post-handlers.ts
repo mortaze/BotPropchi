@@ -4,7 +4,7 @@ import { botAdminService } from '../../services/bot-admin.service';
 import { postService } from '../../services/post.service';
 import { systemLogService } from '../../services/system-log.service';
 import { cache } from '../../utils/cache';
-import { logger } from '../../utils/logger';
+import { logger, traceLogger } from '../../utils/logger';
 import { graphemeTruncate } from '../../utils/grapheme';
 import {
   postMainMenuKeyboard,
@@ -54,6 +54,9 @@ function requirePostAdmin(ctx: any): Promise<any> {
 }
 
 async function adminMainMenu(ctx: any) {
+  clearEditorKeyState(ctx.from.id);
+  cache.del(`post_mgmt_mode:${ctx.from.id}`);
+  cache.del(`menu:edit_mode:${ctx.from.id}`);
   const admin = await botAdminService.getActive(ctx.from.id);
   if (!admin) return;
   const canBroadcast = admin.role === 'OWNER' || admin.role === 'ADMIN';
@@ -70,6 +73,17 @@ function pendingKey(telegramId: number, field: string) {
 const EDITOR_PREFIX = 'post:editor:';
 function editorKey(userId: number, field: string) {
   return `${EDITOR_PREFIX}${userId}:${field}`;
+}
+
+// ─── Clear all editor state (self-healing) ──────────────
+function clearEditorKeyState(userId: number) {
+  const keys = [
+    'active', 'mode', 'msg_idx', 'message_ids', 'forward_on',
+    'btn_sel_row', 'btn_sel_col', 'btn_msg_ids',
+    'add_btn_name', 'add_btn_ref_row', 'add_btn_ref_col',
+    'btn_text_row', 'btn_text_col', 'btn_link_row', 'btn_link_col',
+  ];
+  for (const k of keys) cache.del(editorKey(userId, k));
 }
 
 // ─── Parse content into message segments ──────────────────
@@ -188,6 +202,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.hears('📝 پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
+    clearEditorKeyState(ctx.from.id);
     const layout = await settingsService.getResolvedMenuLayout(false);
     const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
     if (postButtons.length === 0) {
@@ -201,6 +216,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.hears('📋 مدیریت پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
+    clearEditorKeyState(ctx.from.id);
     const layout = await settingsService.getResolvedMenuLayout(false);
     const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
     if (postButtons.length === 0) {
@@ -217,8 +233,29 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || !isPostAdmin(admin)) return next();
 
-    // Skip if multi-message editor is active
-    if (cache.get<number>(editorKey(ctx.from.id, 'active'))) return next();
+    // Self-healing: if editorKey is stale (active but user is sending non-editor text),
+    // clear it and proceed. Check by seeing if text is a known post title.
+    const existingKey = cache.get<number>(editorKey(ctx.from.id, 'active'));
+    if (existingKey) {
+      const existingMode = cache.get<string>(editorKey(ctx.from.id, 'mode'));
+      // If in 'main' mode and text doesn't look like an editor action, the key is stale
+      if (existingMode === 'main') {
+        const text = ctx.message.text;
+        const isEditorAction = ['➕ افزودن پیام', 'افزودن دستور', '📊 آمار', '📤 لغو انتشار',
+          '🗂 بازگشت به لیست', '🏠 منو اصلی', '🔙 بازگشت', '⛔ توقف ویرایش',
+          '✏️ ویرایش محتوا', '📝 ویرایش عنوان', 'ویرایش دکمه ها', '❌ لغو',
+          '↪️ ارسال به عنوان فوروارد (خاموش)', '✅ ارسال به عنوان فوروارد (روشن)',
+          '🔙 بازگشت به ویرایشگر',
+        ].includes(text);
+        if (!isEditorAction) {
+          logger.warn(`[StaleEditorKey] Clearing stale editor key for user ${ctx.from.id} (mode=${existingMode}, text="${text.substring(0, 30)}")`);
+          clearEditorKeyState(ctx.from.id);
+        }
+      }
+      // In sub-modes like 'edit_message', the editor is legit — skip
+      // In stale 'main' mode (cleared above), fall through to post title matching
+      if (cache.get<number>(editorKey(ctx.from.id, 'active'))) return next();
+    }
 
     const text = ctx.message.text;
 
@@ -322,6 +359,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.hears('📥 Import From Telegram', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
+    clearEditorKeyState(ctx.from.id);
     cache.set(pendingKey(ctx.from.id, 'import_title'), true, 300);
     await ctx.reply('📥 عنوان پست جدید را ارسال کنید، سپس پیام تلگرام اصلی را فوروارد کنید.');
   });
@@ -329,6 +367,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.hears('➕ ایجاد پست', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
+    clearEditorKeyState(ctx.from.id);
     cache.set(pendingKey(ctx.from.id, 'creating'), true, 300);
     await ctx.reply('📝 عنوان پست را وارد کنید:');
   });
@@ -1469,6 +1508,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
+    clearEditorKeyState(ctx.from.id);
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
@@ -1491,6 +1531,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   // ═══════════════════════════════════════════════════════════
 
   async function showEditMode(ctx: any, postId: number) {
+    clearEditorKeyState(ctx.from.id);
     const post = await postService.findById(postId);
     if (!post) {
       await ctx.reply('❌ پست یافت نشد.');
@@ -1596,10 +1637,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (editorPostId) {
       const mode = cache.get<string>(editorKey(ctx.from.id, 'mode')) || 'main';
       if (mode === 'add_message' || mode === 'add_command' || mode === 'edit_message' || mode === 'edit_content' || mode === 'edit_title') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'main');
+        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
         cache.del(editorKey(ctx.from.id, 'msg_idx'));
-        const post = await postService.findById(editorPostId);
-        if (post) await refreshEditorMessages(ctx, post);
+        try {
+          const post = await postService.findById(editorPostId);
+          if (post) await refreshEditorMessages(ctx, post);
+        } catch (e: any) {
+          logger.error(`[BackHandler] Failed to refresh editor for post ${editorPostId}: ${e.message}`, { postId: editorPostId, userId: ctx.from?.id });
+        }
         return;
       }
       // In main editor mode → back exits to post list
@@ -1794,6 +1839,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
   // ─── Helper: Show post list from menu layout ────────────
   async function showPostListFromLayout(ctx: any) {
+    clearEditorKeyState(ctx.from.id);
     const layout = await settingsService.getResolvedMenuLayout(false);
     const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
     if (postButtons.length === 0) {
@@ -1816,6 +1862,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
   async function enterPostEditor(ctx: any, post: any) {
     const postId = post.id;
+    const trace = traceLogger();
+    trace.info(`enterPostEditor postId=${postId} userId=${ctx.from?.id}`);
+
     clearAllWaitingStates(ctx.from.id);
     cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
     cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
@@ -1823,7 +1872,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(editorKey(ctx.from.id, 'message_ids'));
     cache.del(editorKey(ctx.from.id, 'forward_on'));
 
-    await refreshEditorMessages(ctx, post);
+    try {
+      await refreshEditorMessages(ctx, post);
+      trace.info(`enterPostEditor OK postId=${postId} duration=${trace.duration()}ms`);
+    } catch (e: any) {
+      trace.error(`enterPostEditor FAILED postId=${postId} error=${e.message}`);
+      cache.del(editorKey(ctx.from.id, 'active'));
+      cache.del(editorKey(ctx.from.id, 'mode'));
+      cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      cache.del(editorKey(ctx.from.id, 'message_ids'));
+      cache.del(editorKey(ctx.from.id, 'forward_on'));
+      try { await ctx.reply('❌ خطا در نمایش ویرایشگر. لطفاً دوباره تلاش کنید.'); } catch (_) {}
+    }
   }
 
   async function refreshEditorMessages(ctx: any, post: any) {
@@ -1836,11 +1896,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       try { await ctx.deleteMessage(msgId); } catch (e) {}
     }
 
-    await ctx.reply(`📝 *${post.title}* | ✏️ ویرایشگر (${messages.length} پیام)`, {
-      parse_mode: 'Markdown',
-      link_preview_options: { is_disabled: true },
-      ...postMultiMessageEditorReplyKeyboard(),
-    });
+    try {
+      await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
+        link_preview_options: { is_disabled: true },
+        ...postMultiMessageEditorReplyKeyboard(),
+      });
+    } catch (e: any) {
+      await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
+        ...postMultiMessageEditorReplyKeyboard(),
+      });
+    }
 
     const newMsgIds: number[] = [];
     for (let i = 0; i < messages.length; i++) {
@@ -1921,13 +1986,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
     cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
     cache.set(editorKey(ctx.from.id, 'msg_idx'), msgIdx, 600);
-    const post = await postService.findById(postId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const messages = parsePostMessages(post.content || '');
-    const msgText = messages[msgIdx] || '(بدون محتوا)';
-    await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
-      ...postEditMessageReplyKeyboard(),
-    });
+    try {
+      const post = await postService.findById(postId);
+      if (!post) return ctx.reply('❌ پست یافت نشد.');
+      const messages = parsePostMessages(post.content || '');
+      const msgText = messages[msgIdx] || '(بدون محتوا)';
+      await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
+        ...postEditMessageReplyKeyboard(),
+      });
+    } catch (e: any) {
+      logger.error(`[MsgEdit] Failed postId=${postId} msgIdx=${msgIdx}: ${e.message}`, { postId, msgIdx, userId: ctx.from?.id });
+      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      try { await ctx.reply('❌ خطا در ویرایش پیام. لطفاً دوباره تلاش کنید.'); } catch (_) {}
+    }
   });
 
   bot.action(/^post:msg:delete:(\d+):(\d+)$/, async (ctx: any) => {
@@ -1995,10 +2067,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
     cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
     cache.set(editorKey(ctx.from.id, 'msg_idx'), msgIdx, 600);
-    const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
-    await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
-      ...postAddMessageReplyKeyboard(forwardOn),
-    });
+    try {
+      const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
+      await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
+        ...postAddMessageReplyKeyboard(forwardOn),
+      });
+    } catch (e: any) {
+      logger.error(`[MsgAdd] Failed postId=${postId}: ${e.message}`, { postId, userId: ctx.from?.id });
+      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      try { await ctx.reply('❌ خطا. لطفاً دوباره تلاش کنید.'); } catch (_) {}
+    }
   });
 
   // ─── Button Editor Callbacks ───────────────────────────
