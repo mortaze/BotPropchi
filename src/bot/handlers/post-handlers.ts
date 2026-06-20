@@ -6,6 +6,7 @@ import { systemLogService } from '../../services/system-log.service';
 import { cache } from '../../utils/cache';
 import { logger, traceLogger } from '../../utils/logger';
 import { graphemeTruncate } from '../../utils/grapheme';
+import { parseMessageEntries, serializeMessageEntries, migrateButtonsFormat, MessageEntry } from '../../services/post-normalizer.service';
 import {
   postMainMenuKeyboard,
   postEditorKeyboard,
@@ -129,38 +130,72 @@ function moveButtonInLayout(
   }
 }
 
-// Swap button arrays for two message indices (used when reordering messages)
-function swapMessageButtons(raw: any, idxA: number, idxB: number): any {
+// Swap button arrays for two message UUIDs (used when reordering messages)
+function swapMessageButtons(raw: any, idA: string, idB: string): any {
   if (!raw) return raw;
-  if (Array.isArray(raw)) return raw; // old shared format — nothing to swap
-  if (typeof raw !== 'object' || !raw.messages) return raw;
-  const msgs = raw.messages;
-  const keyA = String(idxA);
-  const keyB = String(idxB);
-  const tmp = msgs[keyA];
-  msgs[keyA] = msgs[keyB];
-  msgs[keyB] = tmp;
+  if (Array.isArray(raw)) return raw; // shared format — nothing to swap
+  if (typeof raw !== 'object') return raw;
+  // New UUID-keyed format
+  if (raw[idA] !== undefined || raw[idB] !== undefined) {
+    const tmp = raw[idA];
+    raw[idA] = raw[idB];
+    raw[idB] = tmp;
+    logger.debug(`[MessageBinding] swapMessageButtons: "${idA}" <-> "${idB}"`);
+    return raw;
+  }
+  // Legacy messages format (index keys)
+  if (raw.messages) {
+    const tmp = raw.messages[idA];
+    raw.messages[idA] = raw.messages[idB];
+    raw.messages[idB] = tmp;
+    logger.debug(`[MessageBinding] swapMessageButtons (legacy): "${idA}" <-> "${idB}"`);
+    return raw;
+  }
   return raw;
 }
 
 // ─── Per-message button helpers ──────────────────────────
-function getMessageButtons(raw: any, messageIdx: number): any[][] {
+function getMessageButtons(raw: any, messageId: string): any[][] {
   if (!raw) return [];
-  if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
-  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
+  if (Array.isArray(raw)) return raw; // shared format
+  if (typeof raw === 'object') {
+    // New UUID-keyed format
+    if (raw[messageId]) return raw[messageId];
+    // Legacy messages format (index keys or UUID keys under .messages)
+    if (raw.messages) {
+      // Try messageId (could be UUID or numeric)
+      if (raw.messages[messageId]) return raw.messages[messageId];
+      // Try numeric index (backward compat for old caches)
+      if (/^\d+$/.test(messageId) && raw.messages[messageId]) return raw.messages[messageId];
+      return raw.messages['_shared'] || [];
+    }
+    // Direct UUID lookup on the object
+    return raw[messageId] || raw['_shared'] || [];
   }
   return [];
 }
 
-function setMessageButtons(raw: any, messageIdx: number, buttons: any[][]): any {
-  const result: any = { messages: {} };
-  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    for (const [k, v] of Object.entries(raw.messages)) {
-      result.messages[k] = v;
+function setMessageButtons(raw: any, messageId: string, buttons: any[][]): any {
+  const result: any = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    // Preserve existing keys (UUID keys, _shared, or messages sub-object)
+    for (const [k, v] of Object.entries(raw)) {
+      if (k === 'messages') {
+        result.messages = { ...(raw.messages as any) };
+      } else {
+        result[k] = v;
+      }
     }
   }
-  result.messages[String(messageIdx)] = buttons;
+  // If raw has 'messages' sub-object, use it; otherwise store directly
+  if (raw?.messages) {
+    if (!result.messages) result.messages = {};
+    result.messages[messageId] = buttons;
+    logger.debug(`[MessageBinding] setMessageButtons: .messages["${messageId}"] set`);
+  } else {
+    result[messageId] = buttons;
+    logger.debug(`[MessageBinding] setMessageButtons: ["${messageId}"] set`);
+  }
   return result;
 }
 
@@ -173,42 +208,47 @@ function clearButtonEditorState(userId: number) {
   for (const k of keys) cache.del(pendingKey(userId, k));
 }
 
-// ─── Parse content into message segments ──────────────────
-function parsePostMessages(content: string | null | undefined): string[] {
-  if (!content || !content.trim()) return [''];
-  const messages: string[] = [];
-  const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const before = content.slice(lastIndex, match.index).trim();
-      if (before) messages.push(before);
-    }
-    messages.push(match[1].trim());
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < content.length) {
-    const remaining = content.slice(lastIndex).trim();
-    if (remaining) messages.push(remaining);
-  }
-  if (messages.length === 0) messages.push(content.trim() || '');
-  return messages;
+// ─── Parse content into message entries ──────────────────
+function parsePostMessages(content: string | null | undefined): MessageEntry[] {
+  const entries = parseMessageEntries(content);
+  if (entries.length === 0) return [{ id: crypto.randomUUID(), content: '' }];
+  return entries;
 }
 
-// ─── Serialize message segments back to content ──────────
-function serializePostMessages(messages: string[]): string {
-  if (messages.length === 0) return '';
-  if (messages.length === 1) return messages[0] || '';
-  while (messages.length > 1 && messages[messages.length - 1].trim() === '') {
-    messages.pop();
+// ─── Serialize message entries back to content JSON ──────
+function serializePostMessages(messages: MessageEntry[]): string {
+  if (!messages || messages.length === 0) return '';
+  return serializeMessageEntries(messages);
+}
+
+// ─── Migrate a post from old to new message format ────────
+async function migratePostFormat(post: any, userId: number): Promise<any> {
+  const content = post.content || '';
+  const isOldFormat = !content.trim().startsWith('[') && (content.includes('[[copy]]') || !content.trim().startsWith('[{'));
+  if (!isOldFormat) return post;
+
+  logger.info(`[MessageBinding] Migrating post=${post.id} from old format to new UUID-based format`);
+
+  const entries = parseMessageEntries(content);
+  const newContent = serializeMessageEntries(entries);
+
+  // Migrate buttons from old index-based to new UUID-based
+  let newButtons = (post as any).buttons || {};
+  if (newButtons && typeof newButtons === 'object' && !Array.isArray(newButtons)) {
+    newButtons = migrateButtonsFormat(newButtons, entries);
+  } else if (Array.isArray(newButtons)) {
+    newButtons = { _shared: newButtons };
   }
-  if (messages.length === 1) return messages[0] || '';
-  const segments = messages.map((msg, i) => {
-    if (i === 0) return msg;
-    return `[[copy]]\n${msg}\n[[/copy]]`;
-  });
-  return segments.join('\n\n');
+
+  await postService.update(post.id, {
+    content: newContent,
+    buttons: newButtons,
+    updatedBy: BigInt(userId),
+  } as any);
+
+  const migrated = await postService.findById(post.id);
+  logger.info(`[MessageBinding] Migration complete for post=${post.id} entries=${entries.length}`);
+  return migrated;
 }
 
 function slugify(text: string): string {
@@ -264,9 +304,9 @@ function formatPostInfoPersian(post: any): string {
   const mediaCount = post.mediaType ? (Array.isArray(post.albumMediaIds) ? post.albumMediaIds.length : 1) : 0;
   const views = (post as any)._count?.views || 0;
   const clicks = (post as any)._count?.clickLogs || 0;
-  // Calculate message count: count [[copy]] blocks + 1 base message
-  const copyBlockCount = post.content ? (post.content.match(/\[\[copy\]\]/g) || []).length : 0;
-  const messageCount = post.content ? copyBlockCount + 1 : 0;
+  // Calculate message count using parseMessageEntries (handles both old and new JSON format)
+  const entries = parseMessageEntries(post.content || '');
+  const messageCount = entries.length;
   const createdDate = post.createdAt ? new Date(post.createdAt).toLocaleDateString('fa-IR') : '';
   const updatedDate = post.updatedAt ? new Date(post.updatedAt).toLocaleDateString('fa-IR') : '';
 
@@ -363,6 +403,25 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(pendingKey(ctx.from.id, 'edit_mode'));
 
       await enterPostEditor(ctx, post);
+      return;
+    }
+
+    // System post buttons
+    if (text === '🚀 پیام Start') {
+      const startPost = await postService.findSystemPost('START' as any);
+      if (!startPost) return ctx.reply('❌ پست Start یافت نشد.');
+      cache.del(`post_mgmt_mode:${ctx.from.id}`);
+      cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+      await enterPostEditor(ctx, startPost);
+      return;
+    }
+
+    if (text === '❓ پیام ناشناخته') {
+      const unknownPost = await postService.findSystemPost('UNKNOWN' as any);
+      if (!unknownPost) return ctx.reply('❌ پست ناشناخته یافت نشد.');
+      cache.del(`post_mgmt_mode:${ctx.from.id}`);
+      cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+      await enterPostEditor(ctx, unknownPost);
       return;
     }
 
@@ -1152,6 +1211,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
+    // System posts cannot be deleted
+    if (post.systemType && post.systemType !== 'NORMAL') {
+      return ctx.reply('⛔ پست‌های سیستمی قابل حذف نیستند.');
+    }
     await ctx.reply(
       `🗑 آیا از حذف "${post.title}" مطمئن هستید؟`,
       Markup.inlineKeyboard([
@@ -1166,8 +1229,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    await postService.delete(postId);
-    await safeEdit(ctx, '🗑 پست حذف شد.');
+    try {
+      await postService.delete(postId);
+      await safeEdit(ctx, '🗑 پست حذف شد.');
+    } catch (e: any) {
+      await ctx.reply(`⛔ ${e.message}`);
+    }
   });
 
   // ─── ❌ لغو in button editor (all states) ──────────────
@@ -1206,8 +1273,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   async function refreshButtonListView(ctx: any, postId: number, msg?: string) {
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-    const buttons = getMessageButtons((post as any).buttons, messageIdx);
+    const messageId = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx')) || '';
+    const buttons = getMessageButtons((post as any).buttons, messageId);
     const editorMode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode'));
     const listMode: 'create' | 'edit' | 'delete' | 'move' = editorMode === 'edit' ? 'edit' : editorMode === 'delete' ? 'delete' : editorMode === 'move' ? 'move' : 'create';
     if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
@@ -1321,18 +1388,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         if (row === undefined || col === undefined) return ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
         const post = await postService.findById(postId);
         if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-        const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+        const messageId = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx')) || '';
+        const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageId)));
         if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
         const btnText = buttons[row][col].text || '';
 
         const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
 
-        await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+        await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageId, buttons) } as any);
 
         // Reload fresh data from DB for accurate preview
         const freshPost = await postService.findById(postId);
-        const freshButtons = getMessageButtons((freshPost as any).buttons, messageIdx);
+        const freshButtons = getMessageButtons((freshPost as any).buttons, messageId);
 
         cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_col'), newCol, 600);
@@ -1397,10 +1464,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode'));
     const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
     const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
-    const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
+    const messageId = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx')) || '';
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageId)));
 
     if (mode === 'create') {
       // Add new button in a new row at the bottom (never append to existing row)
@@ -1413,7 +1480,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }
     }
 
-    await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+    await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageId, buttons) } as any);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     cache.del(pendingKey(ctx.from.id, 'editor_row'));
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
@@ -1438,8 +1505,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const col = parseInt(ctx.match[3]);
     const post = await postService.findById(postId);
     if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+    const messageId = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx')) || '';
+    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageId)));
     const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode')) || 'create';
 
     if (mode === 'move') {
@@ -1471,7 +1538,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const deletedText = buttons[row][col].text || '';
         buttons[row].splice(col, 1);
         if (buttons[row].length === 0) buttons.splice(row, 1);
-        await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+        const msgId = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx')) || '';
+        await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, msgId, buttons) } as any);
         cache.del(pendingKey(ctx.from.id, 'editor_row'));
         cache.del(pendingKey(ctx.from.id, 'editor_col'));
         await refreshButtonListView(ctx, postId,
@@ -1495,8 +1563,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
 
     // Default: create mode — add a new default button in a new row below clicked row
+    const msgId = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx')) || '';
     buttons.splice(row + 1, 0, [{ text: 'دکمه جدید', type: 'URL', value: '', buttonId: crypto.randomUUID() }]);
-    await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+    await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, msgId, buttons) } as any);
     await refreshButtonListView(ctx, postId, '✅ دکمه جدید ایجاد شد.');
     return;
   });
@@ -1510,8 +1579,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
     if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+    const messageId = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx')) || '';
+    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageId)));
 
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), mode, 600);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
@@ -1574,10 +1643,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const realPostId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post')) || postId;
     const post = await postService.findById(realPostId);
     if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
-    const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+    const messageId = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx')) || '';
+    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageId)));
     buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '', buttonId: crypto.randomUUID() }]);
-    await postService.update(realPostId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+    await postService.update(realPostId, { buttons: setMessageButtons((post as any).buttons, messageId, buttons) } as any);
     cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_row'), buttons.length - 1, 600);
     cache.set(pendingKey(ctx.from.id, 'editor_col'), 0, 600);
@@ -1709,11 +1778,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'edit_mode'));
     clearButtonEditorState(ctx.from.id);
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
-    cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), 0, 600);
+    const messages = parsePostMessages(post.content || '');
+    const firstMsgId = messages.length > 0 ? messages[0].id : '_shared';
+    cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), firstMsgId, 600);
     cache.set(pendingKey(ctx.from.id, 'edit_mode'), postId, 300);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
-    const buttons = getMessageButtons((post as any).buttons, 0);
+    const buttons = getMessageButtons((post as any).buttons, firstMsgId);
     if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
       await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
     } else {
@@ -1994,6 +2065,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
+    // System posts cannot be deleted
+    if (post.systemType && post.systemType !== 'NORMAL') {
+      return ctx.reply('⛔ پست‌های سیستمی قابل حذف نیستند.');
+    }
     const text = `⚠️ *حذف دائمی*\n\nآیا از حذف دائمی "${post.title}" مطمئن هستید؟\n\nاین عملیات قابل بازگشت نیست و پست به طور کامل از تمام جداول دیتابیس حذف خواهد شد.`;
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🔥 بله، حذف دائمی شود', `post:manager:harddelete:confirm:${postId}`)],
@@ -2059,11 +2134,43 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     clearEditorKeyState(ctx.from.id);
     const layout = await settingsService.getResolvedMenuLayout(false);
     const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
-    if (postButtons.length === 0) {
+    const hasMenuPosts = postButtons.length > 0;
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+
+    // Fetch system posts for admin
+    const [startPost, unknownPost] = await Promise.all([
+      postService.findSystemPost('START' as any),
+      postService.findSystemPost('UNKNOWN' as any),
+    ]);
+
+    const backBtn = ['🔙 بازگشت به منو پست‌ها'];
+    const rows: string[][] = [];
+
+    // System post buttons only for admins (always shown)
+    if (startPost || unknownPost) {
+      const systemRow: string[] = [];
+      if (startPost) systemRow.push('🚀 پیام Start');
+      if (unknownPost) systemRow.push('❓ پیام ناشناخته');
+      if (systemRow.length > 0) rows.push(systemRow);
+    }
+
+    if (hasMenuPosts) {
+      rows.push(...layout.map(row =>
+        Array.isArray(row)
+          ? row
+              .filter((btn: any) => btn && btn.ref && btn.ref.startsWith('post:'))
+              .map((btn: any) => {
+                const text = btn.text || btn.label || btn.title || btn.ref || 'بدون عنوان';
+                return sanitizeTelegramText(text, 128);
+              })
+          : []
+      ).filter((r: string[]) => r.length > 0));
+    } else if (!startPost && !unknownPost) {
       return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
-    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
+
+    rows.push(backBtn);
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', Markup.keyboard(rows).resize().persistent());
   }
 
   // ─── Clear all waiting states ───────────────────────────
@@ -2090,7 +2197,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(editorKey(ctx.from.id, 'forward_on'));
 
     try {
-      await refreshEditorMessages(ctx, post);
+      // Migrate post format if needed
+      const migrated = await migratePostFormat(post, ctx.from.id);
+      await refreshEditorMessages(ctx, migrated);
       trace.info(`enterPostEditor OK postId=${postId} duration=${trace.duration()}ms`);
     } catch (e: any) {
       trace.error(`enterPostEditor FAILED postId=${postId} error=${e.message}`);
@@ -2126,18 +2235,19 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const newMsgIds: number[] = [];
     for (let i = 0; i < messages.length; i++) {
-      const msgText = messages[i];
+      const msgText = messages[i].content;
+      const messageId = messages[i].id;
       const label = `📨 *پیام ${i + 1} از ${messages.length}*`;
       try {
         const sent = await ctx.reply(`${label}\n\n${msgText}`, {
           parse_mode: 'Markdown',
           link_preview_options: { is_disabled: true },
-          ...postSingleMessageInlineKeyboard(postId, i, messages.length),
+          ...postSingleMessageInlineKeyboard(postId, messageId, messages.length, i),
         });
         if (sent) newMsgIds.push(sent.message_id);
       } catch (e) {
         const sent = await ctx.reply(`${label}\n\n${msgText}`, {
-          ...postSingleMessageInlineKeyboard(postId, i, messages.length),
+          ...postSingleMessageInlineKeyboard(postId, messageId, messages.length, i),
         });
         if (sent) newMsgIds.push(sent.message_id);
       }
@@ -2159,102 +2269,142 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
   // ─── Per-Message Callbacks ─────────────────────────────
 
-  bot.action(/^post:msg:edit:(\d+):(\d+)$/, async (ctx: any) => {
+  // Helper: resolve message reference (UUID or numeric index) to messageId + index
+  function resolveMsgRef(entries: MessageEntry[], ref: string): { messageId: string; index: number } {
+    if (/^\d+$/.test(ref)) {
+      const idx = parseInt(ref);
+      return { messageId: entries[idx]?.id || '', index: idx };
+    }
+    const idx = entries.findIndex(e => e.id === ref);
+    return { messageId: ref, index: idx };
+  }
+
+  bot.action(/^post:msg:edit:(\d+):([^:]+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
+    const msgRef = ctx.match[2];
     cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
     cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
-    cache.set(editorKey(ctx.from.id, 'msg_idx'), msgIdx, 600);
+    cache.set(editorKey(ctx.from.id, 'msg_idx'), msgRef, 600);
     try {
       const post = await postService.findById(postId);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       const messages = parsePostMessages(post.content || '');
-      const msgText = messages[msgIdx] || '(بدون محتوا)';
+      const { index: msgIdx, messageId } = resolveMsgRef(messages, msgRef);
+      if (msgIdx < 0) return ctx.reply('❌ پیام یافت نشد.');
+      const msgText = messages[msgIdx]?.content || '(بدون محتوا)';
+      logger.debug(`[MessageBinding] post:msg:edit postId=${postId} msgRef=${msgRef} → msgIdx=${msgIdx} messageId=${messageId}`);
       await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
         ...postEditMessageReplyKeyboard(),
       });
     } catch (e: any) {
-      logger.error(`[MsgEdit] Failed postId=${postId} msgIdx=${msgIdx}: ${e.message}`, { postId, msgIdx, userId: ctx.from?.id });
+      logger.error(`[MsgEdit] Failed postId=${postId} msgRef=${msgRef}: ${e.message}`, { postId, msgRef, userId: ctx.from?.id });
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       try { await ctx.reply('❌ خطا در ویرایش پیام. لطفاً دوباره تلاش کنید.'); } catch (_) {}
     }
   });
 
-  bot.action(/^post:msg:delete:(\d+):(\d+)$/, async (ctx: any) => {
+  bot.action(/^post:msg:delete:(\d+):([^:]+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
+    const msgRef = ctx.match[2];
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = parsePostMessages(post.content || '');
+    const { index: msgIdx, messageId } = resolveMsgRef(messages, msgRef);
     if (msgIdx < 0 || msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
+    logger.debug(`[MessageBinding] post:msg:delete postId=${postId} msgRef=${msgRef} → msgIdx=${msgIdx} messageId=${messageId}`);
+
+    // Delete button key for this message
+    const newButtons = { ...((post as any).buttons || {}) };
+    if (newButtons.messages) {
+      delete newButtons.messages[messageId];
+      delete newButtons.messages[String(msgIdx)];
+    } else {
+      delete newButtons[messageId];
+      delete newButtons[String(msgIdx)];
+    }
+
     if (messages.length <= 1) {
-      await postService.update(postId, { content: '', updatedBy: BigInt(ctx.from.id) } as any);
+      await postService.update(postId, { content: '', buttons: newButtons, updatedBy: BigInt(ctx.from.id) } as any);
     } else {
       messages.splice(msgIdx, 1);
       const newContent = serializePostMessages(messages);
-      await postService.update(postId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+      await postService.update(postId, { content: newContent, buttons: newButtons, updatedBy: BigInt(ctx.from.id) } as any);
     }
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
 
-  bot.action(/^post:msg:up:(\d+):(\d+)$/, async (ctx: any) => {
+  bot.action(/^post:msg:up:(\d+):([^:]+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
-    if (msgIdx <= 0) return;
+    const msgRef = ctx.match[2];
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = parsePostMessages(post.content || '');
+    const { index: msgIdx, messageId } = resolveMsgRef(messages, msgRef);
+    if (msgIdx <= 0) return;
     if (msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
+    logger.debug(`[MessageBinding] post:msg:up postId=${postId} msgRef=${msgRef} → msgIdx=${msgIdx} messageId=${messageId}`);
+
+    // Determine UUIDs for swap
+    const idA = messages[msgIdx - 1].id;
+    const idB = messages[msgIdx].id;
+
     // Swap content
     [messages[msgIdx - 1], messages[msgIdx]] = [messages[msgIdx], messages[msgIdx - 1]];
     const newContent = serializePostMessages(messages);
-    // Swap per-message buttons
-    const buttons = swapMessageButtons((post as any).buttons, msgIdx - 1, msgIdx);
+    // Swap per-message buttons by UUID
+    const buttons = swapMessageButtons((post as any).buttons, idA, idB);
     await postService.update(postId, { content: newContent, buttons, updatedBy: BigInt(ctx.from.id) } as any);
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
 
-  bot.action(/^post:msg:down:(\d+):(\d+)$/, async (ctx: any) => {
+  bot.action(/^post:msg:down:(\d+):([^:]+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
+    const msgRef = ctx.match[2];
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = parsePostMessages(post.content || '');
+    const { index: msgIdx, messageId } = resolveMsgRef(messages, msgRef);
     if (msgIdx < 0 || msgIdx >= messages.length - 1) return ctx.reply('❌ در پایین‌ترین موقعیت.');
+    logger.debug(`[MessageBinding] post:msg:down postId=${postId} msgRef=${msgRef} → msgIdx=${msgIdx} messageId=${messageId}`);
+
+    // Determine UUIDs for swap
+    const idA = messages[msgIdx].id;
+    const idB = messages[msgIdx + 1].id;
+
     // Swap content
     [messages[msgIdx], messages[msgIdx + 1]] = [messages[msgIdx + 1], messages[msgIdx]];
     const newContent = serializePostMessages(messages);
-    // Swap per-message buttons
-    const buttons = swapMessageButtons((post as any).buttons, msgIdx, msgIdx + 1);
+    // Swap per-message buttons by UUID
+    const buttons = swapMessageButtons((post as any).buttons, idA, idB);
     await postService.update(postId, { content: newContent, buttons, updatedBy: BigInt(ctx.from.id) } as any);
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
 
-  bot.action(/^post:msg:add:(\d+):(\d+)$/, async (ctx: any) => {
+  bot.action(/^post:msg:add:(\d+):([^:]+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
+    const msgRef = ctx.match[2];
     cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
     cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
-    cache.set(editorKey(ctx.from.id, 'msg_idx'), msgIdx, 600);
+    cache.set(editorKey(ctx.from.id, 'msg_idx'), msgRef, 600);
     try {
       const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
       await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
@@ -2287,9 +2437,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           const post = await postService.findById(editorPostId);
           if (!post) return ctx.reply('❌ پست یافت نشد.');
           const messages = parsePostMessages(post.content || '');
-          const addAfter = messages.length - 1;
+          const lastMsgId = messages.length > 0 ? messages[messages.length - 1].id : 'last';
           cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
-          cache.set(editorKey(ctx.from.id, 'msg_idx'), addAfter, 600);
+          cache.set(editorKey(ctx.from.id, 'msg_idx'), lastMsgId, 600);
           const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
           await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
             ...postAddMessageReplyKeyboard(forwardOn),
@@ -2424,7 +2574,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── ADD MESSAGE MODE ────────────────────────────────
     if (mode === 'add_message') {
-      const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+      const msgRef = cache.get<string>(editorKey(ctx.from.id, 'msg_idx')) ?? '';
 
       if (text === '↪️ ارسال به عنوان فوروارد (خاموش)' || text === '✅ ارسال به عنوان فوروارد (روشن)') {
         const current = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
@@ -2447,8 +2597,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const post = await postService.findById(editorPostId);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       const messages = parsePostMessages(post.content || '');
-      const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
-      messages.splice(insertAt, 0, text);
+      const { index: resolvedIdx } = resolveMsgRef(messages, msgRef);
+      const insertAt = resolvedIdx < 0 ? messages.length : Math.min(resolvedIdx + 1, messages.length);
+      messages.splice(insertAt, 0, { id: crypto.randomUUID(), content: text });
       const newContent = serializePostMessages(messages);
       await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
@@ -2492,12 +2643,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── EDIT MESSAGE MODE ───────────────────────────────
     if (mode === 'edit_message') {
+      const msgRef = cache.get<string>(editorKey(ctx.from.id, 'msg_idx')) ?? '';
       if (text === '✏️ ویرایش محتوا') {
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
         cache.set(editorKey(ctx.from.id, 'mode'), 'edit_content', 600);
         const post = await postService.findById(editorPostId);
         const messages = post ? parsePostMessages(post.content || '') : [];
-        const current = messages[msgIdx] || '(بدون محتوا)';
+        const { index: msgIdx } = resolveMsgRef(messages, msgRef);
+        const current = messages[msgIdx]?.content || '(بدون محتوا)';
         await ctx.reply(`✏️ پیام ${msgIdx + 1} - محتوای جدید را ارسال کنید:\n\nمتن فعلی: ${current}`, {
           ...postCancelOnlyReplyKeyboard(),
         });
@@ -2513,16 +2665,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
       if (text === 'ویرایش دکمه ها') {
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? 0;
         clearButtonEditorState(ctx.from.id);
         cache.set(pendingKey(ctx.from.id, 'editing_post'), editorPostId, 600);
-        cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), msgIdx, 600);
+        cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), msgRef, 600);
         cache.set(pendingKey(ctx.from.id, 'edit_mode'), editorPostId, 300);
         cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
         const post = await postService.findById(editorPostId);
         if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const buttons = getMessageButtons((post as any).buttons, msgIdx);
+        const buttons = getMessageButtons((post as any).buttons, msgRef);
         if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
           await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
         } else {
@@ -2545,23 +2696,24 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── EDIT CONTENT MODE ───────────────────────────────
     if (mode === 'edit_content') {
+      const msgRef = cache.get<string>(editorKey(ctx.from.id, 'msg_idx')) ?? '';
       if (text === '❌ لغو') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
         const post = await postService.findById(editorPostId);
         const messages = post ? parsePostMessages(post.content || '') : [];
-        const msgText = messages[msgIdx] || '(بدون محتوا)';
+        const { index: msgIdx } = resolveMsgRef(messages, msgRef);
+        const msgText = messages[msgIdx]?.content || '(بدون محتوا)';
         await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
           ...postEditMessageReplyKeyboard(),
         });
         return;
       }
-      const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
       const post = await postService.findById(editorPostId);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       const messages = parsePostMessages(post.content || '');
+      const { index: msgIdx } = resolveMsgRef(messages, msgRef);
       if (msgIdx >= 0 && msgIdx < messages.length) {
-        messages[msgIdx] = text;
+        messages[msgIdx].content = text;
         const newContent = serializePostMessages(messages);
         await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
       }
@@ -2574,12 +2726,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── EDIT TITLE MODE ─────────────────────────────────
     if (mode === 'edit_title') {
+      const msgRef = cache.get<string>(editorKey(ctx.from.id, 'msg_idx')) ?? '';
       if (text === '❌ لغو') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
         const post = await postService.findById(editorPostId);
         const messages = post ? parsePostMessages(post.content || '') : [];
-        const msgText = messages[msgIdx] || '(بدون محتوا)';
+        const { index: msgIdx } = resolveMsgRef(messages, msgRef);
+        const msgText = messages[msgIdx]?.content || '(بدون محتوا)';
         await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
           ...postEditMessageReplyKeyboard(),
         });
@@ -2608,12 +2761,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const msg = ctx.message;
     const caption = msg.caption || '';
-    const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+    const msgRef = cache.get<string>(editorKey(ctx.from.id, 'msg_idx')) ?? '';
     const post = await postService.findById(editorPostId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = parsePostMessages(post.content || '');
-    const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
-    messages.splice(insertAt, 0, caption || '(رسانه)');
+    const { index: resolvedIdx } = resolveMsgRef(messages, msgRef);
+    const insertAt = resolvedIdx < 0 ? messages.length : Math.min(resolvedIdx + 1, messages.length);
+    messages.splice(insertAt, 0, { id: crypto.randomUUID(), content: caption || '(رسانه)' });
     const newContent = serializePostMessages(messages);
     await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
     cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);

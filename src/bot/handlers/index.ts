@@ -311,19 +311,33 @@ export function registerHandlers(bot: Telegraf<Context>) {
       }
     }
 
-    if (scoring.isWelcomeMessageEnabled) {
-      await ctx.reply(
-        scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
-        { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
-      );
-      const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
-      if (scoring.startPoints > 0 && isFirstEntrance) {
-        await ctx.reply(scoringService.formatTemplate(scoring.initialPointsMessageText, { name, points: scoring.startPoints }), { link_preview_options: { is_disabled: true } });
+    // Send START system post instead of static welcome message
+    try {
+      const startPost = await postService.findSystemPost('START' as any);
+      if (startPost) {
+        await sendPostToUser(ctx, startPost);
+      } else {
+        // Fallback if START post doesn't exist
+        if (scoring.isWelcomeMessageEnabled) {
+          await ctx.reply(
+            scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
+            { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
+          );
+        }
       }
-      return;
+    } catch {
+      if (scoring.isWelcomeMessageEnabled) {
+        await ctx.reply(
+          scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
+          { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
+        );
+      }
     }
 
-    await ctx.reply('از منوی زیر انتخاب کنید:', { link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) });
+    const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
+    if (scoring.startPoints > 0 && isFirstEntrance) {
+      await ctx.reply(scoringService.formatTemplate(scoring.initialPointsMessageText, { name, points: scoring.startPoints }), { link_preview_options: { is_disabled: true } });
+    }
   });
 
 
@@ -857,6 +871,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       '👻 پست‌های مخفی', '👁 پیش​‌نمایش', '📤 انتشار',
       '🔎 جستجو', '📊 آمار پست', '📊 آمار کلی', '🔍 بررسی سلامت',
       '↩️ بازگشت به پنل ادمین',
+      '🚀 پیام Start', '❓ پیام ناشناخته',
     ];
     if (knownTexts.includes(text)) return next();
 
