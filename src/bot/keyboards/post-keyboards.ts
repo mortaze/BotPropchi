@@ -482,13 +482,13 @@ export const buildButtonEditorExitKeyboard = () =>
   ]).resize().persistent();
 
 // ─── Inline keyboard: button list with actions ──────────────
-// Each button shown as {➕} text with ⬅️, 🗑, ✏️ below
+// Structure:
+//   {icon} ButtonName  (one per button)
+//   [🔀 جابجایی] [🗑 حذف] [✏️ ویرایش]  (always visible)
 export const buildButtonListInlineKeyboard = (
   postId: number,
   buttons: any[][],
   mode?: 'swap' | 'delete' | 'edit' | null,
-  selectedRow?: number,
-  selectedCol?: number,
 ) => {
   const rows: any[][] = [];
   if (buttons && buttons.length > 0) {
@@ -501,11 +501,10 @@ export const buildButtonListInlineKeyboard = (
         if (!btn) continue;
         const text = btn.text || 'بدون عنوان';
         const safe = graphemeTruncate(sanitizeTelegramText(text), 15);
-        const isSelected = mode === 'swap' && selectedRow === r && selectedCol === c;
-        const icon = isSelected ? '📍' : mode === 'swap' ? '⬅️' : mode === 'delete' ? '❌' : mode === 'edit' ? '➗' : '➕';
+        const icon = mode === 'swap' ? '{🔀}' : mode === 'delete' ? '{❌}' : mode === 'edit' ? '{✏️}' : '{+}';
         rowButtons.push(
           Markup.button.callback(
-            `${isSelected ? '📍 ' : ''}${safe}`,
+            `${icon} ${safe}`,
             `pbedit:click:${postId}:${r}:${c}`,
           ),
         );
@@ -513,18 +512,12 @@ export const buildButtonListInlineKeyboard = (
       if (rowButtons.length > 0) rows.push(rowButtons);
     }
   }
-  // Action row
-  const actionRow: any[] = [];
-  if (mode === 'swap' && selectedRow !== undefined && selectedCol !== undefined) {
-    if (selectedRow > 0) actionRow.push(Markup.button.callback('⬆️', `pbedit:moveup:${postId}:${selectedRow}:${selectedCol}`));
-    if (selectedRow < rows.length - 1) actionRow.push(Markup.button.callback('⬇️', `pbedit:movedown:${postId}:${selectedRow}:${selectedCol}`));
-    actionRow.push(Markup.button.callback('❌ لغو', `pbedit:mode:cancel:${postId}`));
-  } else {
-    actionRow.push(Markup.button.callback('⬅️ جابجایی', `pbedit:mode:swap:${postId}`));
-    actionRow.push(Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`));
-    actionRow.push(Markup.button.callback('✏️ تصحیح', `pbedit:mode:edit:${postId}`));
-  }
-  rows.push(actionRow);
+  // Action row — always the three mode buttons
+  rows.push([
+    Markup.button.callback('🔀 جابجایی', `pbedit:mode:swap:${postId}`),
+    Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`),
+    Markup.button.callback('✏️ ویرایش', `pbedit:mode:edit:${postId}`),
+  ]);
   return Markup.inlineKeyboard(rows);
 };
 
@@ -537,11 +530,4 @@ export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: nu
     [Markup.button.callback('❌ لغو', `pbedit:type:cancel:${postId}`)],
   ]);
 
-// ─── Button selection inline keyboard (edit/delete/move/cancel) ──
-export const buildButtonSelectionKeyboard = (postId: number) =>
-  Markup.inlineKeyboard([
-    [Markup.button.callback('✏️ ویرایش', `pbedit:sel:edit:${postId}`)],
-    [Markup.button.callback('🗑 حذف', `pbedit:sel:delete:${postId}`)],
-    [Markup.button.callback('🔀 جابجایی', `pbedit:sel:move:${postId}`)],
-    [Markup.button.callback('🔙 بازگشت', `pbedit:sel:cancel:${postId}`)],
-  ]);
+
