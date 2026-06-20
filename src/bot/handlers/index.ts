@@ -296,17 +296,32 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.start(async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
-    const name = ctx.from?.first_name || 'کاربر';
 
     // Clear ALL user state — /start always resets the session
     clearAllUserState(userId, ctx.chat?.id);
     logger.info(`[Start] User ${userId} session cleared, sending START post`);
 
-    const scoring = await scoringService.getSettings();
+    // Ensure system posts exist, then send START post through the proper rendering pipeline
+    await postService.ensureSystemPosts();
+    try {
+      const startPost = await postService.findSystemPost('START' as any);
+      if (startPost) {
+        logger.info('[SystemPost] START loaded');
+        const sent = await sendPostToUser(ctx, startPost);
+        if (sent) {
+          logger.info('[SystemPost] START rendered');
+          logger.info('[SystemPost] START sent');
+        } else {
+          logger.error('[SystemPost] render failed');
+        }
+      }
+    } catch (e) {
+      logger.error('[SystemPost] START render failed', e);
+    }
 
+    // New user notification for admins (kept as separate system)
     const profile = await userService.getProfile(BigInt(userId));
     const isNewUser = !profile || (profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 10_000);
-
     if (isNewUser) {
       const totalUsers = await prisma.user.count();
       const adminList = await botAdminService.list();
@@ -334,49 +349,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
           );
         } catch {}
       }
-    }
-
-    // Send START system post through the proper rendering pipeline
-    try {
-      const startPost = await postService.findSystemPost('START' as any);
-      if (startPost) {
-        logger.info('[SystemPost] START loaded');
-        const sent = await sendPostToUser(ctx, startPost);
-        if (sent) {
-          logger.info('[SystemPost] START rendered');
-          logger.info('[SystemPost] START sent');
-        } else {
-          logger.error('[SystemPost] render failed');
-        }
-      } else {
-        // Fallback if START post doesn't exist
-        if (scoring.isWelcomeMessageEnabled) {
-          await ctx.reply(
-            scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
-            { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
-          );
-        }
-      }
-    } catch (e) {
-      logger.error('[SystemPost] START render failed', e);
-      if (scoring.isWelcomeMessageEnabled) {
-        await ctx.reply(
-          scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
-          { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
-        );
-      }
-    }
-
-    // Show main menu keyboard
-    try {
-      await ctx.reply('منوی اصلی', await adminReplyOptions(userId));
-    } catch (e) {
-      logger.error('[Start] Failed to show main menu', e);
-    }
-
-    const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
-    if (scoring.startPoints > 0 && isFirstEntrance) {
-      await ctx.reply(scoringService.formatTemplate(scoring.initialPointsMessageText, { name, points: scoring.startPoints }), { link_preview_options: { is_disabled: true } });
     }
   });
 
@@ -911,7 +883,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
       '👻 پست‌های مخفی', '👁 پیش​‌نمایش', '📤 انتشار',
       '🔎 جستجو', '📊 آمار پست', '📊 آمار کلی', '🔍 بررسی سلامت',
       '↩️ بازگشت به پنل ادمین',
-      '🚀 پیام Start', '❓ پیام ناشناخته',
     ];
     if (knownTexts.includes(text)) return next();
 
@@ -1932,6 +1903,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const msgText = (ctx.message as any)?.text;
     if (msgText?.startsWith('/')) return next();
 
+    await postService.ensureSystemPosts();
     try {
       const unknownPost = await postService.findSystemPost('UNKNOWN' as any);
       if (unknownPost) {
