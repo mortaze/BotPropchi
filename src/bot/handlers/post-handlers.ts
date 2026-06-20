@@ -87,6 +87,15 @@ function clearEditorKeyState(userId: number) {
   for (const k of keys) cache.del(editorKey(userId, k));
 }
 
+// ─── Clear all button-editor pending state ─────────────
+function clearButtonEditorState(userId: number) {
+  const keys = [
+    'editor_state', 'editor_mode', 'editor_row', 'editor_col',
+    'editing_post',
+  ];
+  for (const k of keys) cache.del(pendingKey(userId, k));
+}
+
 // ─── Parse content into message segments ──────────────────
 function parsePostMessages(content: string | null | undefined): string[] {
   if (!content || !content.trim()) return [''];
@@ -1489,6 +1498,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await safeEdit(ctx, '➖ سطر حذف شد.\n\n⌨ ویرایشگر دکمه:', postButtonsEditorKeyboard(postId, buttons));
   });
 
+  // ─── ❌ لغو in button editor (all states) ──────────────
+  bot.hears('❌ لغو', async (ctx: any, next: any) => {
+    if (!ctx.from) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (!postId || !state) return next();
+    // Clear all button-editor state
+    clearButtonEditorState(ctx.from.id);
+    // Restore to button list
+    await refreshButtonListView(ctx, postId, '✅ عملیات ایجاد / ویرایش دکمه لغو شد.\n🔧 شما دوباره در بخش تنظیمات دکمه‌های پیام قرار دارید.');
+  });
+
   // ─── NEW BUTTON EDITOR (pbedit) ─────────────────────────
   // State machine: button_idle → select_type → wait_popup/wait_url/wait_command
   // Also handles swap, delete, edit modes on existing buttons.
@@ -1972,6 +1995,77 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', { parse_mode: 'Markdown' as any });
   });
 
+  // 🗑 حذف پست: Ask confirmation, then delete, clear cache, go back to post list
+  bot.hears('🗑 حذف پست', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return;
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    cache.set(pendingKey(ctx.from.id, 'delete_post_id'), postId, 600);
+    await ctx.reply(
+      '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +
+      'این عملیات غیرقابل بازگشت است.\n\n' +
+      'تمام موارد زیر حذف خواهند شد:\n' +
+      '📝 اطلاعات پست\n' +
+      '⌨️ دکمه‌ها\n' +
+      '🏷 دستورات\n' +
+      '🖼 مدیاهای وابسته\n' +
+      '🔗 ارتباطات\n' +
+      '📦 کش‌های مربوط\n\n' +
+      '❗ این عملیات قابل بازیابی نیست.',
+      Markup.keyboard([
+        ['✅ تایید حذف'],
+        ['❌ انصراف'],
+      ]).resize().persistent(),
+    );
+  });
+
+  // ✅ تایید حذف: Execute the delete with full cleanup
+  bot.hears('✅ تایید حذف', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'delete_post_id'));
+    if (!postId) return ctx.reply('❌ درخواست حذف یافت نشد.');
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    try {
+      await postService.delete(postId);
+      cache.del(pendingKey(ctx.from.id, 'delete_post_id'));
+      cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+      cache.del(pendingKey(ctx.from.id, 'editor_state'));
+      cache.del(pendingKey(ctx.from.id, 'editor_mode'));
+      cache.del(pendingKey(ctx.from.id, 'editor_row'));
+      cache.del(pendingKey(ctx.from.id, 'editor_col'));
+      cache.del(pendingKey(ctx.from.id, 'editing_post'));
+      cache.del(pendingKey(ctx.from.id, 'editing_field'));
+      clearEditorKeyState(ctx.from.id);
+      await ctx.reply(
+        '✅ پست با موفقیت حذف شد.\n' +
+        '🗑 تمامی اطلاعات وابسته نیز حذف شدند.\n' +
+        '🔄 منو بروزرسانی شد.',
+      );
+      await showPostListFromLayout(ctx);
+    } catch (err: any) {
+      logger.error(`[DeletePost] Failed to delete post ${postId}: ${err.message}`, { postId, userId: ctx.from?.id });
+      await ctx.reply('❌ خطا در حذف پست. لطفاً دوباره تلاش کنید.');
+      await showEditMode(ctx, postId);
+    }
+  });
+
+  // ❌ انصراف: Cancel delete, return to edit mode
+  bot.hears('❌ انصراف', async (ctx: any, next: any) => {
+    if (!ctx.from) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'delete_post_id'));
+    if (!postId) return next();
+    cache.del(pendingKey(ctx.from.id, 'delete_post_id'));
+    await ctx.reply('✅ عملیات حذف لغو شد. هیچ تغییری اعمال نشد.');
+    await showEditMode(ctx, postId);
+  });
+
   // 🔙 بازگشت: Handle back in both editor mode and edit mode
   bot.hears('🔙 بازگشت', async (ctx: any, next: any) => {
     const admin = await requirePostAdmin(ctx);
@@ -2004,6 +2098,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
     if (!postId) return next();
     cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+    cache.del(pendingKey(ctx.from.id, 'delete_post_id'));
+    cache.del(pendingKey(ctx.from.id, 'editor_state'));
+    cache.del(pendingKey(ctx.from.id, 'editor_mode'));
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    cache.del(pendingKey(ctx.from.id, 'editing_post'));
+    cache.del(pendingKey(ctx.from.id, 'editing_field'));
+    clearEditorKeyState(ctx.from.id);
     await showPostListFromLayout(ctx);
   });
 
