@@ -46,7 +46,7 @@ function telegramLength(text: string) {
   return Buffer.from(text || '', 'utf16le').length / 2;
 }
 
-function buttonToTelegram(btn: any, postId?: number) {
+function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number) {
   const text = sanitizeTelegramText(btn?.text || 'Link', 128);
   const value = btn?.value || btn?.url || btn?.callback_data || '';
   switch (btn?.type) {
@@ -59,6 +59,7 @@ function buttonToTelegram(btn: any, postId?: number) {
     case 'SWITCH_INLINE':
     case 'SEND_COMMAND': return Markup.button.switchToChat(text, value);
     case 'SWITCH_INLINE_CURRENT_CHAT': return Markup.button.switchToCurrentChat(text, value);
+    case 'POPUP': return Markup.button.callback(text, `post:user:popup:${postId}:${row}:${col}`);
     case 'COMMAND': return Markup.button.callback(text, `post:user:cmd:${value}`);
     case 'INTERNAL_NAV': return Markup.button.callback(text, `post:user:nav:${sanitizeTelegramText(value || 'noop', 64)}`);
     default: return value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop');
@@ -67,7 +68,7 @@ function buttonToTelegram(btn: any, postId?: number) {
 
 function buildTelegramKeyboard(buttons: any[] | null | undefined, postId?: number): any[][] {
   if (!Array.isArray(buttons)) return [];
-  return buttons.map(row => (Array.isArray(row) ? row : []).map(btn => buttonToTelegram(btn, postId)).filter(Boolean));
+  return buttons.map((row, r) => (Array.isArray(row) ? row : []).map((btn, c) => buttonToTelegram(btn, postId, r, c)).filter(Boolean));
 }
 
 export function extractTelegramSnapshot(message: any) {

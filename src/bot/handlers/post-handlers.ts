@@ -1094,10 +1094,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (!postId || !state) return next();
-    // Clear all button-editor state
+    const savedView = cache.get<string>(pendingKey(ctx.from.id, 'previous_view'));
     clearButtonEditorState(ctx.from.id);
-    // Restore to button list
-    await refreshButtonListView(ctx, postId, '✅ عملیات ایجاد / ویرایش دکمه لغو شد.\n🔧 شما دوباره در بخش تنظیمات دکمه‌های پیام قرار دارید.');
+    cache.del(pendingKey(ctx.from.id, 'previous_view'));
+    if (savedView === 'select_type') {
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
+      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      await ctx.reply('❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
+    } else {
+      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      await refreshButtonListView(ctx, postId, '✅ عملیات ایجاد / ویرایش دکمه لغو شد.\n🔧 شما دوباره در بخش تنظیمات دکمه‌های پیام قرار دارید.');
+    }
   });
 
   // ─── NEW BUTTON EDITOR (pbedit) ─────────────────────────
@@ -1110,12 +1117,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const buttons = (post as any).buttons || [];
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
     if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
-      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
       await safeEdit(ctx, msg || '⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد.', buildNoButtonsReplyKeyboard());
     } else {
       await ctx.reply(msg || '⌨ ویرایشگر دکمه:', {
-        ...buildButtonListInlineKeyboard(postId, buttons),
+        reply_markup: {
+          ...buildButtonListInlineKeyboard(postId, buttons).reply_markup,
+          keyboard: [['🚪 خروج از تنظیمات پیام']],
+          resize_keyboard: true,
+          persistent: true,
+        },
       });
     }
   }
@@ -1138,6 +1150,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
+    cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
     cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_url', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
     await ctx.reply(
@@ -1159,6 +1172,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
+    cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
     cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_popup', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
     await ctx.reply(
@@ -1179,6 +1193,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
+    cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
     cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_command', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
     await ctx.reply(
@@ -1288,25 +1303,38 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
 
     if (mode === 'swap') {
-      // Find which button was previously selected as swap source
       const srcRow = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
       const srcCol = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
-      if (srcRow === row && srcCol === col) {
+      if (srcRow === undefined || srcCol === undefined) {
+        // First click — select source button
+        cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
+        cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
+        await safeEdit(ctx, `📍 ${buttons[row][col].text} انتخاب شد.\n⬆️ یا ⬇️ را برای جابجایی انتخاب کنید.`,
+          buildButtonListInlineKeyboard(postId, buttons, 'swap', row, col));
+      } else if (srcRow === row && srcCol === col) {
         await safeEdit(ctx, '⚠️ همان دکمه را انتخاب کردید.');
-        return;
-      }
-      // Swap the two buttons
-      if (buttons[srcRow] && buttons[srcRow][srcCol] && buttons[row] && buttons[row][col]) {
-        const temp = buttons[srcRow][srcCol];
-        buttons[srcRow][srcCol] = buttons[row][col];
-        buttons[row][col] = temp;
-        await postService.update(postId, { buttons } as any);
-        cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
-        cache.del(pendingKey(ctx.from.id, 'editor_row'));
-        cache.del(pendingKey(ctx.from.id, 'editor_col'));
-        await safeEdit(ctx, '✅ دکمه‌ها جابجا شدند!', buildButtonListInlineKeyboard(postId, buttons));
       } else {
-        await safeEdit(ctx, '❌ خطا در جابجایی دکمه.');
+        // Fallback: swap two buttons (previous behavior)
+        if (buttons[srcRow] && buttons[srcRow][srcCol] && buttons[row] && buttons[row][col]) {
+          const temp = buttons[srcRow][srcCol];
+          buttons[srcRow][srcCol] = buttons[row][col];
+          buttons[row][col] = temp;
+          await postService.update(postId, { buttons } as any);
+          cache.del(pendingKey(ctx.from.id, 'editor_row'));
+          cache.del(pendingKey(ctx.from.id, 'editor_col'));
+          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+          await safeEdit(ctx, '✅ دکمه‌ها جابجا شدند!', buildButtonListInlineKeyboard(postId, buttons));
+          await ctx.reply('⌨ ویرایشگر دکمه:', {
+            reply_markup: {
+              ...buildButtonListInlineKeyboard(postId, buttons).reply_markup,
+              keyboard: [['🚪 خروج از تنظیمات پیام']],
+              resize_keyboard: true,
+              persistent: true,
+            },
+          });
+        } else {
+          await safeEdit(ctx, '❌ خطا در جابجایی دکمه.');
+        }
       }
       return;
     }
@@ -1324,7 +1352,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const deletedText = (post as any).buttons?.[row]?.[col]?.text || '';
         await safeEdit(ctx,
           `✅ دکمه درون خطی با موفقیت حذف شد!\nℹ️ داده های دکمه:\n${deletedText}\n🔧 شما در حالت تنظیمات پیام هستید.`);
-        await ctx.reply('⌨ ویرایشگر دکمه:', buildButtonListInlineKeyboard(postId, buttons));
+        await ctx.reply('⌨ ویرایشگر دکمه:', {
+          reply_markup: {
+            ...buildButtonListInlineKeyboard(postId, buttons).reply_markup,
+            keyboard: [['🚪 خروج از تنظیمات پیام']],
+            resize_keyboard: true,
+            persistent: true,
+          },
+        });
       }
       return;
     }
@@ -1387,6 +1422,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[2]);
     const row = parseInt(ctx.match[3]);
     const col = parseInt(ctx.match[4]);
+    const currentState = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    cache.set(pendingKey(ctx.from.id, 'previous_view'), currentState || 'button_idle', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_state'), `wait_${btnType}`, 600);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
@@ -1431,7 +1468,91 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.reply('✅ ردیف جدید اضافه شد.\n❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
   });
 
-  // ─── Handler: Exit button editor ───────────────────────
+  // ─── Handler: Row-based move UP ──────────────────────────
+  bot.action(/^pbedit:moveup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
+    const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+    if (!buttons[row] || !buttons[row][col]) return safeEdit(ctx, '❌ دکمه یافت نشد.');
+    const btn = buttons[row][col];
+    buttons[row].splice(col, 1);
+    if (buttons[row].length === 0) buttons.splice(row, 1);
+    if (row > 0) {
+      const prevRow = row - 1;
+      buttons[prevRow] = buttons[prevRow] || [];
+      buttons[prevRow].push(btn);
+    } else {
+      buttons.unshift([btn]);
+    }
+    await postService.update(postId, { buttons } as any);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    await safeEdit(ctx, '✅ دکمه به بالا منتقل شد.', buildButtonListInlineKeyboard(postId, buttons));
+    await ctx.reply('⌨ ویرایشگر دکمه:', {
+      reply_markup: {
+        ...buildButtonListInlineKeyboard(postId, buttons).reply_markup,
+        keyboard: [['🚪 خروج از تنظیمات پیام']],
+        resize_keyboard: true,
+        persistent: true,
+      },
+    });
+  });
+
+  // ─── Handler: Row-based move DOWN ────────────────────────
+  bot.action(/^pbedit:movedown:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
+    const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+    if (!buttons[row] || !buttons[row][col]) return safeEdit(ctx, '❌ دکمه یافت نشد.');
+    const btn = buttons[row][col];
+    buttons[row].splice(col, 1);
+    if (buttons[row].length === 0) buttons.splice(row, 1);
+    if (row < buttons.length) {
+      const nextRow = row; // after splice, indices shift
+      buttons[nextRow] = buttons[nextRow] || [];
+      buttons[nextRow].unshift(btn);
+    } else {
+      buttons.push([btn]);
+    }
+    await postService.update(postId, { buttons } as any);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    await safeEdit(ctx, '✅ دکمه به پایین منتقل شد.', buildButtonListInlineKeyboard(postId, buttons));
+    await ctx.reply('⌨ ویرایشگر دکمه:', {
+      reply_markup: {
+        ...buildButtonListInlineKeyboard(postId, buttons).reply_markup,
+        keyboard: [['🚪 خروج از تنظیمات پیام']],
+        resize_keyboard: true,
+        persistent: true,
+      },
+    });
+  });
+
+  // ─── Handler: Cancel swap mode ─────────────────────────
+  bot.action(/^pbedit:mode:cancel:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'button_idle', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    await refreshButtonListView(ctx, postId, '⌨️ جابجایی لغو شد.');
+  });
   bot.hears('🚪 خروج از تنظیمات پیام', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;

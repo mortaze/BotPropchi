@@ -1303,6 +1303,25 @@ export function registerHandlers(bot: Telegraf<Context>) {
     }
   });
 
+  // ─── Post POPUP Button routing ─────────────────────────
+  bot.action(/^post:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    if (!(await settingsService.isFeatureEnabled('posts'))) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    try {
+      const post = await postService.findById(postId);
+      if (!post) return ctx.answerCbQuery('❌ پست یافت نشد.', { show_alert: true });
+      const buttons: any[][] = (post as any).buttons || [];
+      const btn = buttons[row]?.[col];
+      if (!btn || btn.type !== 'POPUP') return ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+      await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+    } catch (err) {
+      logger.error(`[PostPopup] Failed:`, err);
+      await ctx.answerCbQuery('❌ خطا', { show_alert: true });
+    }
+  });
+
   bot.action('broadcast:confirm', async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
