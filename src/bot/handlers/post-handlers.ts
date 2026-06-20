@@ -82,6 +82,53 @@ function clearEditorKeyState(userId: number) {
   for (const k of keys) cache.del(editorKey(userId, k));
 }
 
+// ─── Move button helper (Layout reconstruction) ──────────
+// Both ⬆️ and ⬇️ extract a button from its row and reconstruct layout:
+//   - Non-singleton row → new singleton row at (originalRow + 1)
+//   - Singleton row → ⬇️ appends to next row, ⬆️ prepends to previous row
+//   - No row-boundary checks (row === 0 / lastRow are never used)
+function moveButtonInLayout(
+  buttons: any[][],
+  row: number,
+  col: number,
+  direction: 'up' | 'down',
+): { newRow: number; newCol: number } {
+  const btn = buttons[row]?.[col];
+  if (!btn) return { newRow: row, newCol: col };
+  const wasSingleton = buttons[row].length === 1;
+
+  // Remove button from its row
+  buttons[row].splice(col, 1);
+  if (buttons[row].length === 0) buttons.splice(row, 1);
+
+  if (wasSingleton) {
+    // Singleton row was removed — merge into adjacent row
+    if (direction === 'down') {
+      // Append to the row that shifted into this position (next row)
+      if (row < buttons.length) {
+        buttons[row].push(btn);
+        return { newRow: row, newCol: buttons[row].length - 1 };
+      } else {
+        buttons.push([btn]);
+        return { newRow: buttons.length - 1, newCol: 0 };
+      }
+    } else {
+      // Prepend to the row above
+      if (row > 0 && row - 1 < buttons.length) {
+        buttons[row - 1].unshift(btn);
+        return { newRow: row - 1, newCol: 0 };
+      } else {
+        buttons.push([btn]);
+        return { newRow: buttons.length - 1, newCol: 0 };
+      }
+    }
+  } else {
+    // Non-singleton — create a new singleton row right after original position
+    buttons.splice(row + 1, 0, [btn]);
+    return { newRow: row + 1, newCol: 0 };
+  }
+}
+
 // ─── Per-message button helpers ──────────────────────────
 function getMessageButtons(raw: any, messageIdx: number): any[][] {
   if (!raw) return [];
@@ -1263,42 +1310,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
         const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
         if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
-        const btn = buttons[row][col];
-        let newRow: number, newCol: number;
-        if (text === '⬆️ بالا') {
-          if (row === 0) return ctx.reply('⚠️ دکمه در بالاترین سطر قرار دارد.');
-          const wasSingleton = buttons[row].length === 1;
-          buttons[row].splice(col, 1);
-          if (buttons[row].length === 0) buttons.splice(row, 1);
-          if (wasSingleton && row > 0) {
-            buttons[row - 1].push(btn);
-            newRow = row - 1;
-            newCol = buttons[row - 1].length - 1;
-          } else if (!wasSingleton) {
-            buttons.splice(row, 0, [btn]);
-            newRow = row;
-            newCol = 0;
-          } else {
-            return ctx.reply('❌ خطا در جابجایی.');
-          }
-        } else {
-          if (row >= buttons.length - 1) return ctx.reply('⚠️ دکمه در پایین‌ترین سطر قرار دارد.');
-          const wasSingleton = buttons[row].length === 1;
-          const r = row;
-          buttons[row].splice(col, 1);
-          if (buttons[row].length === 0) buttons.splice(row, 1);
-          if (wasSingleton && row < buttons.length) {
-            buttons[row].unshift(btn);
-            newRow = row;
-            newCol = 0;
-          } else if (!wasSingleton) {
-            buttons.splice(r + 1, 0, [btn]);
-            newRow = r + 1;
-            newCol = 0;
-          } else {
-            return ctx.reply('❌ خطا در جابجایی.');
-          }
-        }
+
+        const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
+
         await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
         cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_col'), newCol, 600);
@@ -1364,9 +1378,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
 
     if (mode === 'create') {
-      // Add new button at the end of the last row, or create first row
-      if (buttons.length === 0) buttons.push([]);
-      buttons[buttons.length - 1].push({ text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value });
+      // Add new button in a new row at the bottom (never append to existing row)
+      buttons.push([{ text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value }]);
     } else if (mode === 'edit' && row !== undefined && col !== undefined) {
       // Edit existing button
       if (buttons[row] && buttons[row][col]) {
@@ -1455,8 +1468,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return;
     }
 
-    // Default: create mode — add a new default button immediately below clicked one
-    buttons[row].splice(col + 1, 0, { text: 'دکمه جدید', type: 'URL', value: '' });
+    // Default: create mode — add a new default button in a new row below clicked row
+    buttons.splice(row + 1, 0, [{ text: 'دکمه جدید', type: 'URL', value: '' }]);
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
     await refreshButtonListView(ctx, postId, '✅ دکمه جدید ایجاد شد.');
     return;
@@ -2338,7 +2351,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── MOVE MODE (button swap) ─────────────────────────
     if (mode === 'move') {
-      if (text === '⬆️ بالا') {
+      if (text === '⬆️ بالا' || text === '⬇️ پایین') {
         const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
         const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
         if (row === undefined || col === undefined) return ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
@@ -2346,44 +2359,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         if (!post) return ctx.reply('❌ پست یافت نشد.');
         const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
         if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
-        if (row === 0) return ctx.reply('⚠️ دکمه در بالاترین سطر قرار دارد.');
-        const btn = buttons[row][col];
-        buttons[row].splice(col, 1);
-        if (buttons[row].length === 0) buttons.splice(row, 1);
-        const prevRow = row - 1;
-        buttons[prevRow] = buttons[prevRow] || [];
-        buttons[prevRow].push(btn);
+
+        const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
+
         await postService.update(editorPostId, { buttons } as any);
-        cache.del(pendingKey(ctx.from.id, 'editor_row'));
-        cache.del(pendingKey(ctx.from.id, 'editor_col'));
-        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
+        cache.set(pendingKey(ctx.from.id, 'editor_col'), newCol, 600);
         const updated = await postService.findById(editorPostId);
         if (updated) await refreshEditorMessages(ctx, updated);
-        await ctx.reply('✅ دکمه به بالا منتقل شد.');
-        return;
-      }
-      if (text === '⬇️ پایین') {
-        const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
-        const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
-        if (row === undefined || col === undefined) return ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
-        const post = await postService.findById(editorPostId);
-        if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
-        if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
-        if (row >= buttons.length - 1) return ctx.reply('⚠️ دکمه در پایین‌ترین سطر قرار دارد.');
-        const btn = buttons[row][col];
-        buttons[row].splice(col, 1);
-        if (buttons[row].length === 0) buttons.splice(row, 1);
-        const nextRow = row; // after splice, indices shift down
-        buttons[nextRow] = buttons[nextRow] || [];
-        buttons[nextRow].unshift(btn);
-        await postService.update(editorPostId, { buttons } as any);
-        cache.del(pendingKey(ctx.from.id, 'editor_row'));
-        cache.del(pendingKey(ctx.from.id, 'editor_col'));
-        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
-        const updated = await postService.findById(editorPostId);
-        if (updated) await refreshEditorMessages(ctx, updated);
-        await ctx.reply('✅ دکمه به پایین منتقل شد.');
+        await ctx.reply(`✅ دکمه به ${text === '⬆️ بالا' ? 'بالا' : 'پایین'} منتقل شد.`);
         return;
       }
       if (text === '🔙 بازگشت') {
