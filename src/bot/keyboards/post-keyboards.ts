@@ -484,11 +484,12 @@ export const buildButtonEditorExitKeyboard = () =>
 // ─── Inline keyboard: button list with actions ──────────────
 // Structure:
 //   {icon} ButtonName  (one per button)
-//   [🔀 جابجایی] [🗑 حذف] [✏️ ویرایش]  (always visible)
+//   [✏️ ویرایش] [🗑 حذف] [➕ جدید] [🔀 جابجایی]  (always visible)
+// mode controls icon prefix: {+} (create), {✏️} (edit), {❌} (delete), {🔀} (move)
 export const buildButtonListInlineKeyboard = (
   postId: number,
   buttons: any[][],
-  mode?: 'swap' | 'delete' | 'edit' | null,
+  mode?: 'create' | 'edit' | 'delete' | 'move',
 ) => {
   const rows: any[][] = [];
   if (buttons && buttons.length > 0) {
@@ -501,7 +502,7 @@ export const buildButtonListInlineKeyboard = (
         if (!btn) continue;
         const text = btn.text || 'بدون عنوان';
         const safe = graphemeTruncate(sanitizeTelegramText(text), 15);
-        const icon = mode === 'swap' ? '{🔀}' : mode === 'delete' ? '{❌}' : mode === 'edit' ? '{✏️}' : '{+}';
+        const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{❌}' : mode === 'move' ? '{🔀}' : '{+}';
         rowButtons.push(
           Markup.button.callback(
             `${icon} ${safe}`,
@@ -512,11 +513,12 @@ export const buildButtonListInlineKeyboard = (
       if (rowButtons.length > 0) rows.push(rowButtons);
     }
   }
-  // Action row — always the three mode buttons
+  // Action row — always the four mode buttons
   rows.push([
-    Markup.button.callback('🔀 جابجایی', `pbedit:mode:swap:${postId}`),
-    Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`),
     Markup.button.callback('✏️ ویرایش', `pbedit:mode:edit:${postId}`),
+    Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`),
+    Markup.button.callback('➕ جدید', `pbedit:mode:create:${postId}`),
+    Markup.button.callback('🔀 جابجایی', `pbedit:mode:move:${postId}`),
   ]);
   return Markup.inlineKeyboard(rows);
 };
