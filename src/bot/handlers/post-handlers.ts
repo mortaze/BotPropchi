@@ -5,9 +5,7 @@ import { postService } from '../../services/post.service';
 import { systemLogService } from '../../services/system-log.service';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
-import { sanitizeTelegramText, sanitizeTelegramExtra, buildSafeTelegramButton } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
-import { normalizePost } from '../../services/post-normalizer.service';
 import {
   postMainMenuKeyboard,
   postEditorKeyboard,
@@ -44,7 +42,7 @@ import {
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
-import { renderPostToTelegram } from '../../services/post-renderer.service';
+import { safeEdit, sendPostToUser } from '../shared';
 
 function isPostAdmin(admin: any): boolean {
   if (!admin) return false;
@@ -151,21 +149,6 @@ function formatPostPreview(post: any): string {
   return lines;
 }
 
-// ─── Single-message editing: edit if possible, reply as fallback ───
-async function safeEdit(ctx: any, text: string, extra?: any): Promise<void> {
-  const safeText = sanitizeTelegramText(text, 4096);
-  const safeExtra = sanitizeTelegramExtra(extra);
-  if (ctx.callbackQuery?.message) {
-    try {
-      await ctx.editMessageText(safeText, safeExtra);
-      return;
-    } catch (e: any) {
-      logger.debug('[safeEdit] Fallback to reply:', e.description || e.message);
-    }
-  }
-  await ctx.reply(safeText, safeExtra).catch(() => {});
-}
-
 // ─── Persian Post Info Display ────────────────────────────
 // Shows full info for ALL posts regardless of publish status.
 function formatPostInfoPersian(post: any): string {
@@ -246,8 +229,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
 
     // Match post title → select that post
-    const result = await postService.findAll({ page: 1, limit: 100 });
-    const matched = result.items.find((p: any) => p.title === text);
+    const matched = await postService.findByTitle(text);
     if (matched) {
       const post = await postService.findById(matched.id);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
@@ -814,7 +796,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (isNaN(postId)) return ctx.reply('❌ شناسه نامعتبر.');
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    await sendPostToChat(ctx, post);
+    await sendPostToUser(ctx, post);
+    await systemLogService.log({
+      eventType: 'ADMIN_ACTION' as any,
+      message: `Post Previewed: "${post.title}"`,
+      telegramId: ctx.from.id,
+      metadata: { postId: post.id } as any,
+    });
   });
 
   // ─── Publish Post ───────────────────────────────────────
@@ -937,7 +925,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    await sendPostToChat(ctx, post);
+    await sendPostToUser(ctx, post);
+    await systemLogService.log({
+      eventType: 'ADMIN_ACTION' as any,
+      message: `Post Previewed: "${post.title}"`,
+      telegramId: ctx.from.id,
+      metadata: { postId: post.id } as any,
+    });
   });
 
   // ─── Command List ────────────────────────────────────────
@@ -1793,59 +1787,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
   // ─── Published Posts in Main Menu ───────────────────────
   // This is handled by modifying buildMainMenuKeyboard in keyboards/index.ts
-
-  // ─── Post View / Send to User ──────────────────────────
-  function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; content: string }[] } {
-    const segments: { type: 'text' | 'copy'; content: string }[] = [];
-    const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        segments.push({ type: 'text', content: text.slice(lastIndex, match.index) });
-      }
-      segments.push({ type: 'copy', content: match[1] });
-      lastIndex = match.index + match[0].length;
-    }
-    if (lastIndex < text.length) {
-      segments.push({ type: 'text', content: text.slice(lastIndex) });
-    }
-    return { segments };
-  }
-
-  async function sendPostToChat(ctx: any, rawPost: any) {
-    const post = normalizePost(rawPost);
-    await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-    await renderPostToTelegram(ctx, post);
-    await systemLogService.log({
-      eventType: 'ADMIN_ACTION' as any,
-      message: `Post Previewed: "${post.title}"`,
-      telegramId: ctx.from.id,
-      metadata: { postId: post.id } as any,
-    });
-  }
-
-  function buildPostInlineKeyboard(buttons: any[], postId?: number): any[][] {
-    if (!buttons || buttons.length === 0) return [];
-    return buttons.map((row: any[]) =>
-      row.map((btn: any) => {
-        if (!btn) return null;
-        const safeText = sanitizeTelegramText(btn.text || 'Link', 128);
-        switch (btn.type) {
-          case 'URL': return Markup.button.url(safeText, btn.value || '');
-          case 'CALLBACK': {
-            const clickData = JSON.stringify({ postId, text: btn.text, type: btn.type });
-            return Markup.button.callback(safeText, `post:user:click:${clickData}`);
-          }
-          case 'OPEN_MINI_APP': return Markup.button.webApp(safeText, btn.value || '');
-          case 'COPY_TEXT': return Markup.button.callback(safeText, `post:user:copy:${sanitizeTelegramText(btn.value || '', 64)}`);
-          case 'SEND_COMMAND': return Markup.button.switchToChat(safeText, btn.value || '');
-          case 'INTERNAL_NAV': return Markup.button.callback(safeText, `post:user:nav:${sanitizeTelegramText(btn.value || 'noop', 64)}`);
-          default: return Markup.button.url(safeText, btn.value || '');
-        }
-      }).filter(Boolean)
-    );
-  }
 
   // ═══════════════════════════════════════════════════════════
   // ─── Multi-Message Editor ─────────────────────────────────

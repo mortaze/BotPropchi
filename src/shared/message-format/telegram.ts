@@ -34,11 +34,16 @@ function buildKeyboard(buttons?: any[][]): any {
           case 'CALLBACK': return Markup.button.callback(text, value);
           case 'WEB_APP':
           case 'OPEN_MINI_APP': return Markup.button.webApp(text, value);
+          case 'LOGIN_URL': return { text, login_url: btn.login_url || btn.payload?.login_url || { url: value } } as any;
+          case 'COPY_TEXT': return { text, copy_text: { text: value } } as any;
+          case 'SWITCH_INLINE':
+          case 'SEND_COMMAND': return Markup.button.switchToChat(text, value);
+          case 'SWITCH_INLINE_CURRENT_CHAT': return Markup.button.switchToCurrentChat(text, value);
           default: return value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop');
         }
       }).filter(Boolean),
     ),
-  );
+  ) as any;
 }
 
 export function buildTelegramRequests(

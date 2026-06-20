@@ -1,7 +1,8 @@
 import { PostStatus, Prisma, SystemEventType } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { postRepository } from '../repositories/post.repository';
-import { cache } from '../utils/cache';
+import { cache, cacheKey } from '../utils/cache';
+import { redisClient } from '../utils/redis';
 import { systemLogService } from './system-log.service';
 import { settingsService } from './settings.service';
 import { eventBus, Events } from '../utils/events';
@@ -10,9 +11,10 @@ import { sanitizeTelegramText, sanitizeJsonStrings, validateDbInput } from '../u
 import { extractTelegramSnapshot, validateTelegramEntities, validateTelegramHtml } from './post-renderer.service';
 import { normalizePost } from './post-normalizer.service';
 
-const CACHE_KEY_PUBLISHED = 'posts:published';
-const CACHE_KEY_COMMANDS = 'posts:commands';
-const CACHE_KEY_MENU = 'posts:menu';
+const CACHE_KEY_PUBLISHED = cacheKey('posts:published');
+const CACHE_KEY_COMMANDS = cacheKey('posts:commands');
+const CACHE_KEY_MENU = cacheKey('posts:menu');
+let _cacheListenersRegistered = false;
 
 export const postService = {
   async create(data: {
@@ -298,11 +300,27 @@ export const postService = {
         scheduledAt: { lte: now },
         isPublished: false,
       },
+      select: { id: true, title: true },
     });
-    for (const post of dueForPublish) {
-      await this.publish(post.id);
-      processed++;
-      logger.info(`[Scheduler] Auto-published post: "${post.title}" (id: ${post.id})`);
+    if (dueForPublish.length > 0) {
+      await prisma.post.updateMany({
+        where: { id: { in: dueForPublish.map(p => p.id) } },
+        data: { status: PostStatus.PUBLISHED, isPublished: true, publishedAt: now },
+      });
+      this.invalidateCache();
+      for (const post of dueForPublish) {
+        await settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
+          logger.warn(`[Scheduler] Menu sync failed for post ${post.id}:`, err);
+        });
+        await systemLogService.log({
+          eventType: SystemEventType.ADMIN_ACTION,
+          message: `Post Published: "${post.title}"`,
+          metadata: { postId: post.id, source: 'scheduler' } as any,
+        });
+        eventBus.emit(Events.POST_PUBLISHED, { postId: post.id, title: post.title });
+        logger.info(`[Scheduler] Auto-published post: "${post.title}" (id: ${post.id})`);
+        processed++;
+      }
     }
     const dueForUnpublish = await prisma.post.findMany({
       where: {
@@ -310,11 +328,22 @@ export const postService = {
         isPublished: true,
         unpublishAt: { lte: now },
       },
+      select: { id: true, title: true },
     });
-    for (const post of dueForUnpublish) {
-      await this.unpublish(post.id);
-      processed++;
-      logger.info(`[Scheduler] Auto-unpublished post: "${post.title}" (id: ${post.id})`);
+    if (dueForUnpublish.length > 0) {
+      await prisma.post.updateMany({
+        where: { id: { in: dueForUnpublish.map(p => p.id) } },
+        data: { status: PostStatus.DRAFT, isPublished: false },
+      });
+      this.invalidateCache();
+      for (const post of dueForUnpublish) {
+        await settingsService.removePostFromMenu(post.id).catch(err => {
+          logger.warn(`[Scheduler] Menu sync failed for post ${post.id}:`, err);
+        });
+        eventBus.emit(Events.POST_UNPUBLISHED, { postId: post.id, title: post.title });
+        logger.info(`[Scheduler] Auto-unpublished post: "${post.title}" (id: ${post.id})`);
+        processed++;
+      }
     }
     return processed;
   },
@@ -380,11 +409,11 @@ export const postService = {
       prisma.postMedia.deleteMany({ where: { postId } }),
       prisma.postEntity.deleteMany({ where: { postId } }),
       prisma.postKeyboard.deleteMany({ where: { postId } }),
+      ...(media.length ? [prisma.postMedia.createMany({ data: media.map((m: any, i: number) => ({ postId, ...m, order: i })) })] : []),
+      ...(entities.length ? [prisma.postEntity.createMany({ data: entities.map((e: any) => ({ postId, source: 'text' as const, type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, customEmojiId: e.custom_emoji_id, payload: e })) })] : []),
+      ...(captionEntities.length ? [prisma.postEntity.createMany({ data: captionEntities.map((e: any) => ({ postId, source: 'caption' as const, type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, customEmojiId: e.custom_emoji_id, payload: e })) })] : []),
+      ...(keyboard.length ? [prisma.postKeyboard.createMany({ data: keyboard.flatMap((row: any[], r: number) => row.map((btn: any, c: number) => ({ postId, row: r, col: c, text: btn.text, type: btn.url ? 'URL' : btn.callback_data ? 'CALLBACK' : 'NATIVE', value: btn.url || btn.callback_data, payload: btn }))) })] : []),
     ]);
-    for (let i = 0; i < media.length; i++) await prisma.postMedia.create({ data: { postId, ...media[i], order: i } as any });
-    for (let i = 0; i < entities.length; i++) await prisma.postEntity.create({ data: { postId, source: 'text', type: entities[i].type, offset: entities[i].offset, length: entities[i].length, url: entities[i].url, user: entities[i].user, language: entities[i].language, customEmojiId: entities[i].custom_emoji_id, payload: entities[i] } as any });
-    for (let i = 0; i < captionEntities.length; i++) await prisma.postEntity.create({ data: { postId, source: 'caption', type: captionEntities[i].type, offset: captionEntities[i].offset, length: captionEntities[i].length, url: captionEntities[i].url, user: captionEntities[i].user, language: captionEntities[i].language, customEmojiId: captionEntities[i].custom_emoji_id, payload: captionEntities[i] } as any });
-    for (let r = 0; r < keyboard.length; r++) for (let c = 0; c < keyboard[r].length; c++) await prisma.postKeyboard.create({ data: { postId, row: r, col: c, text: keyboard[r][c].text, type: keyboard[r][c].url ? 'URL' : keyboard[r][c].callback_data ? 'CALLBACK' : 'NATIVE', value: keyboard[r][c].url || keyboard[r][c].callback_data, payload: keyboard[r][c] } as any });
     this.invalidateCache();
     return post;
   },
@@ -395,6 +424,11 @@ export const postService = {
 
   async findById(id: number) {
     const post = await postRepository.findById(id);
+    return post ? normalizePost(post) : null;
+  },
+
+  async findByTitle(title: string) {
+    const post = await postRepository.findByTitle(title);
     return post ? normalizePost(post) : null;
   },
 
@@ -424,9 +458,15 @@ export const postService = {
   },
 
   async getPublished() {
-    const cached = cache.get<any[]>(CACHE_KEY_PUBLISHED);
-    if (cached) return cached;
+    const memCached = cache.get<any[]>(CACHE_KEY_PUBLISHED);
+    if (memCached) return memCached;
+    const redisCached = await redisClient.get<any[]>(CACHE_KEY_PUBLISHED);
+    if (redisCached) {
+      cache.set(CACHE_KEY_PUBLISHED, redisCached, 10);
+      return redisCached;
+    }
     const posts = (await postRepository.getPublished()).map(normalizePost);
+    await redisClient.set(CACHE_KEY_PUBLISHED, posts, 10);
     cache.set(CACHE_KEY_PUBLISHED, posts, 10);
     return posts;
   },
@@ -510,12 +550,16 @@ export const postService = {
     const aliasConflicts = await prisma.postCommand.findMany({
       where: { OR: [{ command }, { aliases: { array_contains: command } }] },
     });
-    if (aliases) {
+    if (aliases && aliases.length > 0) {
+      const allCommands = await prisma.postCommand.findMany({
+        select: { command: true, aliases: true },
+      });
       for (const alias of aliases) {
-        const conflict = await prisma.postCommand.findFirst({
-          where: { OR: [{ command: alias }, { aliases: { array_contains: alias } }] },
-        });
-        if (conflict) throw new Error(`❌ Alias /${alias} conflicts with existing command /${conflict.command}`);
+        for (const cmd of allCommands) {
+          if (cmd.command === alias || ((cmd.aliases as string[]) || []).includes(alias)) {
+            throw new Error(`❌ Alias /${alias} conflicts with existing command /${cmd.command}`);
+          }
+        }
       }
     }
     const result = await prisma.postCommand.create({
@@ -670,10 +714,27 @@ export const postService = {
     cache.del(CACHE_KEY_MENU);
   },
 
+  setupCacheListeners() {
+    if (_cacheListenersRegistered) return;
+    _cacheListenersRegistered = true;
+    const invalidateAll = () => this.invalidateCache();
+    const events = [Events.POST_CREATED, Events.POST_UPDATED, Events.POST_DELETED, Events.POST_PUBLISHED, Events.POST_UNPUBLISHED, Events.POST_HIDDEN, Events.COMMAND_ADDED, Events.COMMAND_REMOVED, Events.COMMAND_UPDATED];
+    for (const ev of events) {
+      eventBus.on(ev, invalidateAll);
+    }
+    logger.info(`[Cache] Auto-invalidation listeners registered for ${events.length} events`);
+  },
+
   async getAllForMenu(): Promise<any[]> {
-    const cached = cache.get<any[]>(CACHE_KEY_MENU);
-    if (cached) return cached;
+    const memCached = cache.get<any[]>(CACHE_KEY_MENU);
+    if (memCached) return memCached;
+    const redisCached = await redisClient.get<any[]>(CACHE_KEY_MENU);
+    if (redisCached) {
+      cache.set(CACHE_KEY_MENU, redisCached, 10);
+      return redisCached;
+    }
     const published = (await postRepository.getPublished()).map(normalizePost);
+    await redisClient.set(CACHE_KEY_MENU, published, 10);
     cache.set(CACHE_KEY_MENU, published, 10);
     return published;
   },

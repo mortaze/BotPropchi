@@ -28,6 +28,12 @@ export const postRepository = {
     });
   },
 
+  async findByTitle(title: string) {
+    return prisma.post.findFirst({
+      where: { title: { equals: title, mode: 'insensitive' } },
+    });
+  },
+
   async findByCommand(command: string) {
     const post = await prisma.post.findFirst({
       where: { OR: [{ command }, { commands: { some: { command } } }] },

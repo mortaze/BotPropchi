@@ -1,5 +1,4 @@
 import { logger } from '../../utils/logger';
-import { RendererResolver } from './renderer-resolver.service';
 import { TelegramNativeRenderer, telegramLength, cleanEntities } from './telegram-native-renderer.service';
 import { telegramRequestValidator } from './telegram-request-validator.service';
 import { telegramSnapshotComparator } from './telegram-snapshot-comparator.service';
@@ -20,15 +19,13 @@ export class DeliveryDebugService {
     snapshotComparison: any;
   } {
     const pipeline: string[] = [];
-    const renderer = new RendererResolver();
 
     pipeline.push(`[Pipeline] post=${post.id} title="${post.title}" status=${post.status}`);
     pipeline.push(`[Pipeline] telegramPayload=${!!post.telegramPayload} telegramMessageSnapshot=${!!post.telegramMessageSnapshot}`);
     pipeline.push(`[Pipeline] entities=${Array.isArray(post.entities) ? post.entities.length : typeof post.entities} contentFormat=${post.contentFormat}`);
     pipeline.push(`[Pipeline] richEntities=${Array.isArray(post.richEntities) ? post.richEntities.length : 'N/A'} postEntities=${Array.isArray(post.postEntities) ? post.postEntities.length : 'N/A'}`);
 
-    const rendererChoice = renderer.resolve(post);
-    pipeline.push(`[Pipeline] rendererChoice=${rendererChoice}`);
+    pipeline.push(`[Pipeline] rendererChoice=native`);
 
     const nativeRenderer = new TelegramNativeRenderer();
     const rendered = nativeRenderer.render(post);
@@ -68,7 +65,7 @@ export class DeliveryDebugService {
 
     return {
       pipeline,
-      renderer: rendererChoice,
+      renderer: 'native',
       dbContent: {
         title: post.title,
         content: post.content,

@@ -25,10 +25,9 @@ import { config } from '../../config';
 import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
-import { buildPostDebugSnapshot, comparePostNativeRoundtrip, renderPostToTelegram } from '../../services/post-renderer.service';
+import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../services/post-renderer.service';
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
-import { sanitizeTelegramText, sanitizeTelegramExtra } from '../../utils/unicode';
-import { normalizePost } from '../../services/post-normalizer.service';
+import { safeEdit, sendPostToUser } from '../shared';
 import {
   propFirmDiscountKeyboard,
   lotteryHistoryKeyboard,
@@ -157,55 +156,7 @@ async function adminReplyOptions(telegramId?: number) {
   return buildMainMenuKeyboard(Boolean(admin), features, menuLayout, displayMode);
 }
 
-function parseCopyBlocks(text: string): { segments: { type: 'text' | 'copy'; content: string }[] } {
-  const segments: { type: 'text' | 'copy'; content: string }[] = [];
-  const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ type: 'text', content: text.slice(lastIndex, match.index) });
-    }
-    segments.push({ type: 'copy', content: match[1] });
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) {
-    segments.push({ type: 'text', content: text.slice(lastIndex) });
-  }
-  return { segments };
-}
 
-async function sendPostToUser(ctx: any, rawPost: any) {
-  const post = normalizePost(rawPost);
-  await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-  await renderPostToTelegram(ctx, post);
-}
-
-function buildPostInlineKeyboard(buttons: any[], postId?: number): any[][] {
-  if (!buttons || buttons.length === 0) return [];
-  return buttons.map((row: any[]) =>
-    row.map((btn: any) => {
-      if (!btn) return null;
-      const safeText = sanitizeTelegramText(btn.text || 'Link', 128);
-      switch (btn.type) {
-        case 'URL': return Markup.button.url(safeText, btn.value || '');
-        case 'CALLBACK': {
-          if (typeof btn.value === 'string' && btn.value.startsWith('cmd:')) {
-            const cmdName = btn.value.slice(4);
-            return Markup.button.callback(safeText, `post:user:cmd:${sanitizeTelegramText(cmdName, 64)}`);
-          }
-          const clickData = JSON.stringify({ postId, text: btn.text, type: btn.type });
-          return Markup.button.callback(safeText, `post:user:click:${clickData}`);
-        }
-        case 'OPEN_MINI_APP': return Markup.button.webApp(safeText, btn.value || '');
-        case 'COPY_TEXT': return Markup.button.callback(safeText, `post:user:copy:${sanitizeTelegramText(btn.value || '', 64)}`);
-        case 'SEND_COMMAND': return Markup.button.switchToChat(safeText, btn.value || '');
-        case 'INTERNAL_NAV': return Markup.button.callback(safeText, `post:user:nav:${sanitizeTelegramText(btn.value || 'noop', 64)}`);
-        default: return Markup.button.url(safeText, btn.value || '');
-      }
-    }).filter(Boolean)
-  );
-}
 
 type PendingBroadcast = {
   sourceChatId: number | string;
@@ -299,22 +250,6 @@ async function finalizeBotBroadcast(ctx: any, pending: PendingBroadcast) {
     `اکانت حذف شده: ${summary.deleted}`,
     `مدت زمان ارسال: ${formatDuration(Date.now() - startedAt)}`,
   ].join('\n'));
-}
-
-// ─── Single-message editing: edit if possible, reply as fallback ───
-async function safeEdit(ctx: any, text: string, extra?: any): Promise<void> {
-  const safeText = sanitizeTelegramText(text, 4096);
-  const safeExtra = sanitizeTelegramExtra(extra);
-  if (ctx.callbackQuery?.message) {
-    try {
-      await ctx.editMessageText(safeText, safeExtra);
-      return;
-    } catch (e: any) {
-      // EditMessage might fail if message is media, too old, or content unchanged
-      logger.debug('[safeEdit] Fallback to reply:', e.description || e.message);
-    }
-  }
-  await ctx.reply(safeText, safeExtra).catch(() => {});
 }
 
 export function registerHandlers(bot: Telegraf<Context>) {
@@ -924,8 +859,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
     ];
     if (knownTexts.includes(text)) return next();
 
-    // Skip if admin is in Post Management mode
-    if (cache.get(`post_mgmt_mode:${ctx.from.id}`)) {
+    // Skip if admin is in Post Management or Menu Editor mode
+    if (cache.get(`post_mgmt_mode:${ctx.from.id}`) || cache.get(`menu:edit_mode:${ctx.from.id}`)) {
       return next();
     }
 
@@ -1545,16 +1480,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     const isAiMode = cache.get<boolean>(`ai_mode:${ctx.from.id}`);
     if (isAiMode) {
-      const text = ctx.message.text;
-      if (text === '↩️ بازگشت به منوی اصلی') {
-        cache.del(`ai_mode:${ctx.from.id}`);
-        return ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));
-      }
       await ctx.reply('⏳ در حال بررسی سوال شما...');
       try {
         const result = await wordpressApiClient.sendMessage({
           telegramId: BigInt(ctx.from.id),
-          message: text,
+          message: ctx.message.text,
           userData: {
             username: ctx.from.username,
             firstName: ctx.from.first_name,

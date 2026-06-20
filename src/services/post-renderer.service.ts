@@ -7,22 +7,14 @@ import {
   deliveryDebugService,
   extractTelegramSnapshot,
   telegramLength,
-  cleanEntities,
   nonEmptyEntities,
+  cleanEntities,
   cloneJson,
   buildTelegramKeyboard,
+  MEDIA_SENDERS,
 } from './renderer';
 import { sendFormattedMessage } from '../shared/message-format';
 import { normalizePost } from './post-normalizer.service';
-
-const MEDIA_SENDERS: Record<string, { inputType: string; method: string; apiMethod: string }> = {
-  photo: { inputType: 'photo', method: 'replyWithPhoto', apiMethod: 'sendPhoto' },
-  video: { inputType: 'video', method: 'replyWithVideo', apiMethod: 'sendVideo' },
-  animation: { inputType: 'animation', method: 'replyWithAnimation', apiMethod: 'sendAnimation' },
-  document: { inputType: 'document', method: 'replyWithDocument', apiMethod: 'sendDocument' },
-  audio: { inputType: 'audio', method: 'replyWithAudio', apiMethod: 'sendAudio' },
-  voice: { inputType: 'voice', method: 'replyWithVoice', apiMethod: 'sendVoice' },
-};
 
 export function validateTelegramHtml(html?: string | null): string[] {
   return telegramRequestValidator.validateHtml(html);
@@ -33,10 +25,6 @@ export function validateTelegramEntities(text: string | null | undefined, entiti
 }
 
 export { TelegramNativeRenderer, extractTelegramSnapshot };
-
-export function buildTelegramKeyboardLegacy(buttons: any[] | null | undefined, postId?: number): any[][] {
-  return buildTelegramKeyboard(buttons, postId);
-}
 
 export function buildPostDebugSnapshot(post: any) {
   const debug = deliveryDebugService.getFullPipelineDebug(post);
@@ -79,10 +67,7 @@ function splitContentMessages(content: string): string[] {
   return messages;
 }
 
-export async function renderPostToTelegram(ctx: any, rawPost: any) {
-  const post = normalizePost(rawPost);
-  deliveryDebugService.logFullPipeline(post);
-
+export async function renderPostToTelegram(ctx: any, post: any) {
   const messages = splitContentMessages(post.content || '');
 
   if (messages.length > 1) {

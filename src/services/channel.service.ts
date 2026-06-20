@@ -201,6 +201,8 @@ export const channelService = {
     const channels = await channelRepository.findActive();
     if (channels.length === 0) return { isMember: true, notJoined: [] };
 
+    const user = await prisma.user.findUnique({ where: { telegramId }, select: { id: true } });
+    const userId = user?.id;
     const notJoined: Array<{ title: string; inviteLink: string | null; channelId: string; buttonText?: string | null }> = [];
     const checkedAt = new Date();
 
@@ -209,7 +211,7 @@ export const channelService = {
       if (!chatIdentifier || chatIdentifier.startsWith('@')) {
         const reason = !chatIdentifier ? 'missing_chat_id' : 'username_fallback_not_allowed_for_membership';
         notJoined.push({ title: getDisplayTitle(channel), inviteLink: preferredInviteLink(channel), channelId: chatIdentifier || channel.channelId, buttonText: channel.buttonText });
-        await this.persistMembership(telegramId, channel.id, 'ERROR', checkedAt, reason);
+        if (userId) await this.persistMembership(userId, channel.id, 'ERROR', checkedAt, reason);
         await channelRepository.update(channel.id, { lastError: 'برای بررسی عضویت باید chat_id عددی واقعی کانال ذخیره شود.', botStatusCheckedAt: checkedAt }).catch(logger.error);
         continue;
       }
@@ -217,7 +219,7 @@ export const channelService = {
       try {
         const member = await bot.telegram.getChatMember(chatIdentifier as any, Number(telegramId));
         const status = member.status.toUpperCase();
-        await this.persistMembership(telegramId, channel.id, status, checkedAt, null);
+        if (userId) await this.persistMembership(userId, channel.id, status, checkedAt, null);
         if (!VALID_MEMBER_STATUSES.includes(member.status)) {
           notJoined.push({ title: getDisplayTitle(channel), inviteLink: preferredInviteLink(channel), channelId: chatIdentifier, buttonText: channel.buttonText });
           if (LEFT_STATUSES.includes(member.status)) {
@@ -227,7 +229,7 @@ export const channelService = {
       } catch (err) {
         const details = telegramErrorDetails(err);
         logger.warn(`خطا در بررسی عضویت chatId=${chatIdentifier} user=${telegramId.toString()}: ${details.description}`);
-        await this.persistMembership(telegramId, channel.id, 'ERROR', checkedAt, details.description);
+        if (userId) await this.persistMembership(userId, channel.id, 'ERROR', checkedAt, details.description);
         await channelRepository.update(channel.id, { lastError: details.description, botStatus: details.isChatNotFound ? 'CHAT_NOT_FOUND' : details.isForbidden ? 'BOT_ACCESS_DENIED' : 'ERROR', botStatusCheckedAt: checkedAt }).catch(logger.error);
         await systemLogService.log({ eventType: SystemEventType.ERROR, level: SystemLogLevel.ERROR, telegramId, message: 'Telegram getChatMember failed for required channel', metadata: { channelId: channel.id, chatId: chatIdentifier, ...details } as any });
         notJoined.push({ title: getDisplayTitle(channel), inviteLink: preferredInviteLink(channel), channelId: chatIdentifier, buttonText: channel.buttonText });
@@ -239,13 +241,11 @@ export const channelService = {
     return result;
   },
 
-  async persistMembership(telegramId: bigint, requiredChannelId: number, status: string, checkedAt: Date, error: string | null) {
-    const user = await prisma.user.findUnique({ where: { telegramId } });
-    if (!user) return;
+  async persistMembership(userId: number, requiredChannelId: number, status: string, checkedAt: Date, error: string | null) {
     await prisma.userRequiredChannelMembership.upsert({
-      where: { userId_requiredChannelId: { userId: user.id, requiredChannelId } },
+      where: { userId_requiredChannelId: { userId, requiredChannelId } },
       update: { status, lastCheckedAt: checkedAt, verifiedAt: VALID_MEMBER_STATUSES.includes(status.toLowerCase()) ? checkedAt : undefined, error },
-      create: { userId: user.id, requiredChannelId, status, lastCheckedAt: checkedAt, verifiedAt: VALID_MEMBER_STATUSES.includes(status.toLowerCase()) ? checkedAt : null, error },
+      create: { userId, requiredChannelId, status, lastCheckedAt: checkedAt, verifiedAt: VALID_MEMBER_STATUSES.includes(status.toLowerCase()) ? checkedAt : null, error },
     });
   },
 };

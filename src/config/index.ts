@@ -49,6 +49,7 @@ export const config = {
 
   cache: {
     ttl: parseInt(process.env.CACHE_TTL_SECONDS || '300'),
+    version: process.env.CACHE_VERSION || '1',
   },
 
   membership: {

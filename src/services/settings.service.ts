@@ -417,6 +417,8 @@ class SettingsService {
 
   // Listen for post events to invalidate menu cache
   setupEventListeners() {
+    if ((this as any)._listenersRegistered) return;
+    (this as any)._listenersRegistered = true;
     const invalidate = () => {
       this.invalidateMenuLayoutCache();
     };
@@ -640,5 +642,3 @@ class SettingsService {
 }
 
 export const settingsService = new SettingsService();
-// Auto-register event listeners for live cache invalidation
-settingsService.setupEventListeners();

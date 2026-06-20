@@ -3,6 +3,7 @@
 import winston from "winston";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 
 // ساخت پوشه logs اگر وجود نداشت
 const logDir = path.join(process.cwd(), "logs");
@@ -74,5 +75,31 @@ export const logger = winston.createLogger({
     }),
   ],
 });
+
+const traceStorage = new Map<string, { start: number }>();
+
+export function createTraceId(): string {
+  return crypto.randomBytes(4).toString('hex');
+}
+
+export function traceLogger(traceId?: string) {
+  const tid = traceId || createTraceId();
+  traceStorage.set(tid, { start: Date.now() });
+  return {
+    traceId: tid,
+    info: (msg: string, meta?: any) => logger.info(`[${tid}] ${msg}`, meta),
+    warn: (msg: string, meta?: any) => logger.warn(`[${tid}] ${msg}`, meta),
+    error: (msg: string, meta?: any) => logger.error(`[${tid}] ${msg}`, meta),
+    debug: (msg: string, meta?: any) => logger.debug(`[${tid}] ${msg}`, meta),
+    duration: () => {
+      const entry = traceStorage.get(tid);
+      if (entry) return Date.now() - entry.start;
+      return 0;
+    },
+    done: () => {
+      traceStorage.delete(tid);
+    },
+  };
+}
 
 export default logger;

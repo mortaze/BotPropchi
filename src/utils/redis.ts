@@ -2,6 +2,8 @@ import Redis from 'ioredis';
 import { config } from '../config';
 import { logger } from './logger';
 
+const FALLBACK_MAX_KEYS = 5000;
+
 class RedisClient {
   private client: Redis | null = null;
   private fallback: Map<string, { value: any; expires: number }> = new Map();
@@ -129,6 +131,10 @@ class RedisClient {
   }
 
   private fallbackSet(key: string, value: any, ttlSeconds: number): void {
+    if (this.fallback.size >= FALLBACK_MAX_KEYS) {
+      const oldest = this.fallback.keys().next().value;
+      if (oldest) this.fallback.delete(oldest);
+    }
     this.fallback.set(key, {
       value,
       expires: ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : 0,

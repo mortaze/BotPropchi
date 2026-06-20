@@ -4,6 +4,13 @@
 import NodeCache from 'node-cache';
 import { config } from '../config';
 
+const CACHE_VERSION = config.cache.version;
+
+export function cacheKey(prefix: string, ...parts: (string | number | undefined)[]): string {
+  const key = [prefix, ...parts.filter(p => p != null)].join(':');
+  return `${key}:v${CACHE_VERSION}`;
+}
+
 class CacheService {
   private cache: NodeCache;
 
@@ -27,10 +34,16 @@ class CacheService {
     this.cache.flushAll();
   }
 
-  // پاک کردن کلیدهایی که با یک پیشوند شروع می‌شوند
   delByPrefix(prefix: string): void {
-    const keys = this.cache.keys().filter((k) => k.startsWith(prefix));
-    keys.forEach((k) => this.cache.del(k));
+    const versionPrefix = `${prefix}:v${CACHE_VERSION}`;
+    const keys = this.cache.keys().filter((k) => k.startsWith(versionPrefix));
+    for (const k of keys) {
+      this.cache.del(k);
+    }
+  }
+
+  get keys(): string[] {
+    return this.cache.keys();
   }
 }
 

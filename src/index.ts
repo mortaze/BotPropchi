@@ -24,6 +24,7 @@ import { requiredChannelsService } from './services/requiredChannels.service';
 import { registerChatMemberHandlers } from './bot/webhooks/chatMember.handler';
 import { startMembershipWorker } from './workers/membership.worker';
 import { startLeaderboardWorker } from './workers/leaderboard.worker';
+import { postService } from './services/post.service';
 
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
@@ -42,6 +43,10 @@ async function bootstrap() {
 
   // تنظیم نمونه ربات برای سرویس‌ها
   membershipService.setBot(bot);
+
+  // فعال‌سازی کش خودکار با رویدادها
+  postService.setupCacheListeners();
+  settingsService.setupEventListeners();
 
   // آغاز Membership Worker (برای پردازش‌های سنگین)
   startMembershipWorker(bot);

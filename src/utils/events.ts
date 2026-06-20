@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { logger } from './logger';
 
 export const eventBus = new EventEmitter();
 eventBus.setMaxListeners(50);
@@ -28,3 +29,12 @@ export type EventPayloads = {
   'command:removed': { postId: number; command: string };
   'command:updated': { commandId: number; command: string };
 };
+
+export function logListenerCount(): void {
+  for (const ev of Object.values(Events)) {
+    const count = eventBus.listenerCount(ev);
+    if (count > 0) {
+      logger.debug(`[EventBus] "${ev}" has ${count} listener(s)`);
+    }
+  }
+}
