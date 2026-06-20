@@ -315,7 +315,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     try {
       const startPost = await postService.findSystemPost('START' as any);
       if (startPost) {
-        await sendPostToUser(ctx, startPost);
+        logger.info('[SystemPost] START loaded');
+        const sent = await sendPostToUser(ctx, startPost);
+        if (sent) {
+          logger.info('[SystemPost] START rendered');
+          logger.info('[SystemPost] START sent');
+        } else {
+          logger.error('[SystemPost] render failed');
+        }
       } else {
         // Fallback if START post doesn't exist
         if (scoring.isWelcomeMessageEnabled) {
@@ -325,7 +332,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
           );
         }
       }
-    } catch {
+    } catch (e) {
+      logger.error('[SystemPost] START render failed', e);
       if (scoring.isWelcomeMessageEnabled) {
         await ctx.reply(
           scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
@@ -1868,11 +1876,18 @@ export function registerHandlers(bot: Telegraf<Context>) {
     try {
       const unknownPost = await postService.findSystemPost('UNKNOWN' as any);
       if (unknownPost) {
-        await sendPostToUser(ctx, unknownPost);
+        logger.info('[SystemPost] UNKNOWN loaded');
+        const sent = await sendPostToUser(ctx, unknownPost);
+        if (sent) {
+          logger.info('[SystemPost] UNKNOWN rendered');
+          logger.info('[SystemPost] UNKNOWN sent');
+        } else {
+          logger.error('[SystemPost] render failed');
+        }
         return;
       }
     } catch (err) {
-      logger.error('[UnknownHandler] Error sending unknown post:', err);
+      logger.error('[SystemPost] UNKNOWN render failed', err);
     }
 
     return next();

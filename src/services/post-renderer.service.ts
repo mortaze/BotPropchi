@@ -117,9 +117,14 @@ export async function renderPostToTelegram(ctx: any, post: any) {
     }
     return lastResult;
   }
+  const msgContent = texts[0] || '';
+  if (!msgContent) {
+    logger.error(`[SystemPost] render failed — post=${post.id} no content after parsing message entries`);
+    return false;
+  }
   const firstId = entries[0]?.id;
   const msgButtons = getMessageButtonsFromPost(post, 0, firstId);
-  return renderSinglePost(ctx, { ...post, buttons: msgButtons });
+  return renderSinglePost(ctx, { ...post, content: msgContent, buttons: msgButtons });
 }
 
 async function renderSinglePost(ctx: any, post: any) {
