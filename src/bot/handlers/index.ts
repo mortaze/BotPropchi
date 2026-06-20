@@ -1273,17 +1273,33 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.action(/^post:user:cmd:(.+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     if (!(await settingsService.isFeatureEnabled('posts'))) return;
-    const cmdName = ctx.match[1].toLowerCase().trim();
+    const raw = ctx.match[1].trim().replace(/\s+/g, ' ');
+    const normalized = raw.startsWith('/') ? raw : `/${raw}`;
+    const cmdName = normalized.slice(1).toLowerCase();
+    const btnText = ctx.callbackQuery?.message?.reply_markup?.inline_keyboard
+      ?.flat()
+      ?.find((b: any) => b.callback_data?.includes(ctx.match[1]))
+      ?.text || 'unknown';
+    logger.info(`[ButtonCommand] button="${btnText}" raw=${raw} normalized=${normalized}`);
+    logger.info(`[CommandResolve] lookup=${normalized}`);
     try {
       const post = await postService.resolveCommand(cmdName);
       if (post && post.status === 'PUBLISHED' && post.isPublished) {
+        logger.info(`[CommandResolve] found post=${post.id}`);
+        logger.info(`[Pipeline] sending post=${post.id}`);
+        await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
         await sendPostToUser(ctx, post);
+        await systemLogService.log({
+          eventType: SystemEventType.ADMIN_ACTION,
+          message: `ButtonCommand Executed: ${normalized} -> "${post.title}"`,
+          telegramId: ctx.from.id,
+          metadata: { postId: post.id, command: cmdName, buttonText: btnText } as any,
+        });
       } else {
-        await ctx.reply('❌ پست مورد نظر یافت نشد.');
+        logger.info(`[CommandResolve] NOT_FOUND lookup=${normalized}`);
       }
     } catch (err) {
       logger.error(`[PostCmdBtn] Failed to execute command "${cmdName}":`, err);
-      await ctx.reply('❌ خطا در اجرای دستور.');
     }
   });
 

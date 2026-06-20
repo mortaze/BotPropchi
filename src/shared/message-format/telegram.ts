@@ -39,6 +39,7 @@ function buildKeyboard(buttons?: any[][]): any {
           case 'SWITCH_INLINE':
           case 'SEND_COMMAND': return Markup.button.switchToChat(text, value);
           case 'SWITCH_INLINE_CURRENT_CHAT': return Markup.button.switchToCurrentChat(text, value);
+          case 'COMMAND': return Markup.button.callback(text, `post:user:cmd:${value}`);
           default: return value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop');
         }
       }).filter(Boolean),
