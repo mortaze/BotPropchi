@@ -536,3 +536,12 @@ export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: nu
     [Markup.button.callback('⌨️ دستور', `pbedit:type:command:${postId}:${row}:${col}`)],
     [Markup.button.callback('❌ لغو', `pbedit:type:cancel:${postId}`)],
   ]);
+
+// ─── Button selection inline keyboard (edit/delete/move/cancel) ──
+export const buildButtonSelectionKeyboard = (postId: number) =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback('✏️ ویرایش', `pbedit:sel:edit:${postId}`)],
+    [Markup.button.callback('🗑 حذف', `pbedit:sel:delete:${postId}`)],
+    [Markup.button.callback('🔀 جابجایی', `pbedit:sel:move:${postId}`)],
+    [Markup.button.callback('🔙 بازگشت', `pbedit:sel:cancel:${postId}`)],
+  ]);
