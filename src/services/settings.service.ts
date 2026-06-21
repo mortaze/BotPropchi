@@ -48,6 +48,13 @@ export function isOwnerRole(role?: string | null) {
   return role === AdminRole.OWNER || role === 'SUPER_ADMIN';
 }
 
+export interface MenuEditSession {
+  originalLayout: any[][];
+  draftLayout: any[][];
+  changed: boolean;
+  startedAt: number;
+}
+
 class SettingsService {
   private seeded = false;
   private featureCache = new Map<string, { enabled: boolean; expires: number }>();
@@ -161,6 +168,100 @@ class SettingsService {
   private readonly MENU_LAYOUT_VERSION_KEY = 'menu_layout_version';
   private readonly MENU_LAYOUT_SNAPSHOT_KEY = 'menu_layout_snapshot';
   private nextButtonId = 1;
+
+  // ─── Edit Session (per-user for menu editor) ─────────────────
+  // Session isolates mutations on draftLayout; originalLayout is immutable.
+  // Cache only reflects committed DB state; during editing, draft overrides cache.
+  private editSessions = new Map<number, MenuEditSession>();
+
+  /**
+   * Start a new editing session for the given user.
+   * Deep-clones current layout into both originalLayout and draftLayout.
+   * Returns false if no layout is loaded yet.
+   */
+  startEditSession(userId: number): boolean {
+    if (!this.menuLayoutCache) return false;
+    const layout = this.menuLayoutCache.layout;
+    this.editSessions.set(userId, {
+      originalLayout: JSON.parse(JSON.stringify(layout)),
+      draftLayout: JSON.parse(JSON.stringify(layout)),
+      changed: false,
+      startedAt: Date.now(),
+    });
+    logger.debug(`[MenuEditSession] Started for user ${userId}, ${layout.length} rows`);
+    return true;
+  }
+
+  /** Get the current session for a user, or undefined. */
+  getEditSession(userId: number): MenuEditSession | undefined {
+    return this.editSessions.get(userId);
+  }
+
+  /** Get the draft layout from the user's session, or undefined if no session. */
+  getDraftLayout(userId: number): any[][] | undefined {
+    return this.editSessions.get(userId)?.draftLayout;
+  }
+
+  /** Get the immutable original layout from the user's session. */
+  getOriginalLayout(userId: number): any[][] | undefined {
+    return this.editSessions.get(userId)?.originalLayout;
+  }
+
+  /** Mark the session as having changes, emit editor:updated event. */
+  notifySessionChanged(userId: number, action: string): void {
+    const session = this.editSessions.get(userId);
+    if (!session) return;
+    session.changed = true;
+    eventBus.emit(Events.MENU_EDITOR_UPDATED, { userId, action, changed: true });
+  }
+
+  /**
+   * Commit the draft layout to DB and update cache.
+   * Preserves the session (so further edits still work) but updates cache to match DB.
+   */
+  async commitEditSession(userId: number): Promise<void> {
+    const session = this.editSessions.get(userId);
+    if (!session) {
+      logger.warn(`[MenuEditSession] No active session for user ${userId}, cannot commit`);
+      return;
+    }
+    // Save to DB using the draft
+    await this.saveMenuLayout(session.draftLayout);
+    logger.info(`[MenuEditSession] Committed layout for user ${userId} (version ${this.menuLayoutCache?.version})`);
+  }
+
+  /**
+   * Cancel the editing session.
+   * If revert is true, restores originalLayout to DB (undo all changes).
+   * If revert is false, keeps the current DB state but still clears session.
+   */
+  async cancelEditSession(userId: number, revert = false): Promise<void> {
+    const session = this.editSessions.get(userId);
+    if (!session) return;
+
+    if (revert && session.changed) {
+      // Restore original layout to DB
+      logger.info(`[MenuEditSession] Reverting layout for user ${userId} — restoring original`);
+      await this.saveMenuLayout(session.originalLayout);
+      eventBus.emit(Events.MENU_EDITOR_CANCELLED, { userId });
+    }
+
+    this.editSessions.delete(userId);
+    logger.debug(`[MenuEditSession] Session ended for user ${userId}${revert ? ' (reverted)' : ''}`);
+  }
+
+  /** Check if a user has an active editing session. */
+  hasActiveSession(userId: number): boolean {
+    return this.editSessions.has(userId);
+  }
+
+  /** Get the stable original-layout snapshot for change comparison during a session. */
+  private getComparisonLayout(userId?: number): any[][] {
+    if (userId !== undefined && this.editSessions.has(userId)) {
+      return this.editSessions.get(userId)!.originalLayout;
+    }
+    return this.menuLayoutCache?.layout ?? [];
+  }
 
   private normalizeLayout(layout: any[][]): any[][] {
     return layout
@@ -295,6 +396,20 @@ class SettingsService {
     return this.menuLayoutCache.layout;
   }
 
+  /** Get the draft layout for editing (returns session draft or cached layout). */
+  getEditableLayout(userId: number): any[][] {
+    const session = this.editSessions.get(userId);
+    if (session) return session.draftLayout;
+    if (this.menuLayoutCache) return this.menuLayoutCache.layout;
+    return [];
+  }
+
+  /** Get resolved draft layout with live post titles. */
+  async getResolvedEditableLayout(userId: number, live = true): Promise<any[][]> {
+    const layout = this.getEditableLayout(userId);
+    return this.resolveMenuLayout(layout, live);
+  }
+
   // Get layout with live post titles resolved from DB (single source of truth)
   async getResolvedMenuLayout(live = true): Promise<any[][]> {
     const layout = await this.getMenuLayout();
@@ -374,6 +489,9 @@ class SettingsService {
     } else {
       logger.debug(`[MenuLayout] Saved version ${newVersion} (no change)`);
     }
+
+    // Always emit menu:layout:changed after every save (action-based, not just diff-based)
+    eventBus.emit(Events.MENU_LAYOUT_CHANGED, { version: newVersion });
   }
 
   validateMenuLayout(layout: any[][]): { valid: boolean; reason?: string } {

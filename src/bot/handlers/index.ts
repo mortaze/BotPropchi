@@ -444,10 +444,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     cache.del(`menu:selected:${ctx.from.id}`);
     cache.del(`menu:renaming:${ctx.from.id}`);
+    // Load fresh layout from DB and open a new editing session
     settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getResolvedMenuLayout(false);
+    await settingsService.getMenuLayout(); // populate cache from DB
+    settingsService.startEditSession(ctx.from.id);
+    const draftLayout = settingsService.getEditableLayout(ctx.from.id);
+    const resolvedDraft = await settingsService.getResolvedEditableLayout(ctx.from.id, false);
     cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید:', buildMenuEditorReplyKeyboard(layout));
+    await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید:', buildMenuEditorReplyKeyboard(resolvedDraft));
   });
 
   bot.action('menu:item:back', async (ctx: any) => {
@@ -456,6 +460,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     cache.del(`menu:selected:${ctx.from.id}`);
     cache.del(`menu:renaming:${ctx.from.id}`);
+    cache.del(`menu:edit_mode:${ctx.from.id}`);
+    // Cancel session with revert: discards draft changes and restores original layout
+    await settingsService.cancelEditSession(ctx.from.id, true);
     const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
     await safeEdit(ctx, '⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
@@ -464,16 +471,30 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getMenuLayout();
+    // Preview from session draft if editing, otherwise from cache
+    let layout: any[][];
+    if (settingsService.hasActiveSession(ctx.from.id)) {
+      layout = settingsService.getEditableLayout(ctx.from.id);
+    } else {
+      settingsService.invalidateMenuLayoutCache();
+      layout = await settingsService.getMenuLayout();
+    }
     await ctx.reply('👁 پیش‌نمایش منوی اصلی:', buildMainMenuKeyboard(true, {}, layout));
   });
 
   // ─── Helper: update inline + reply after item action ──────────
   async function updateAfterItemAction(ctx: any, buttonId: string) {
-    settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getMenuLayout();
-    const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+    // Use session's draft layout for immediate UI update (committed state via cache)
+    let layout: any[][];
+    let resolvedLayout: any[][];
+    if (settingsService.hasActiveSession(ctx.from.id)) {
+      layout = settingsService.getEditableLayout(ctx.from.id);
+      resolvedLayout = await settingsService.getResolvedEditableLayout(ctx.from.id, false);
+    } else {
+      settingsService.invalidateMenuLayoutCache();
+      layout = await settingsService.getMenuLayout();
+      resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+    }
     const newPos = findButtonNewPosition(layout, buttonId);
     if (!newPos) {
       cache.del(`menu:selected:${ctx.from.id}`);
@@ -497,12 +518,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getMenuLayout();
+    const layout = settingsService.getEditableLayout(ctx.from.id);
     if (!layout[row] || col === 0) return;
     const btnId = layout[row][col].id;
     [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
     await settingsService.saveMenuLayout(layout);
+    settingsService.notifySessionChanged(ctx.from.id, 'left');
     await updateAfterItemAction(ctx, btnId);
   });
 
@@ -513,12 +534,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getMenuLayout();
+    const layout = settingsService.getEditableLayout(ctx.from.id);
     if (!layout[row] || col >= layout[row].length - 1) return;
     const btnId = layout[row][col].id;
     [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
     await settingsService.saveMenuLayout(layout);
+    settingsService.notifySessionChanged(ctx.from.id, 'right');
     await updateAfterItemAction(ctx, btnId);
   });
 
@@ -531,8 +552,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getMenuLayout();
+    const layout = settingsService.getEditableLayout(ctx.from.id);
     const button = layout[row]?.[col];
     if (!button) return;
     const btnId = button.id;
@@ -549,10 +569,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
       // Remove empty row
       const cleaned = layout.filter((r: any[]) => r.length > 0);
       await settingsService.saveMenuLayout(cleaned);
+      settingsService.notifySessionChanged(ctx.from.id, 'up');
       await updateAfterItemAction(ctx, btnId);
       return;
     }
     await settingsService.saveMenuLayout(layout);
+    settingsService.notifySessionChanged(ctx.from.id, 'up');
     await updateAfterItemAction(ctx, btnId);
   });
 
@@ -565,8 +587,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getMenuLayout();
+    const layout = settingsService.getEditableLayout(ctx.from.id);
     const button = layout[row]?.[col];
     if (!button) return;
     const btnId = button.id;
@@ -583,10 +604,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
       // Remove empty row
       const cleaned = layout.filter((r: any[]) => r.length > 0);
       await settingsService.saveMenuLayout(cleaned);
+      settingsService.notifySessionChanged(ctx.from.id, 'down');
       await updateAfterItemAction(ctx, btnId);
       return;
     }
     await settingsService.saveMenuLayout(layout);
+    settingsService.notifySessionChanged(ctx.from.id, 'down');
     await updateAfterItemAction(ctx, btnId);
   });
 
@@ -597,11 +620,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getMenuLayout();
+    const layout = settingsService.getEditableLayout(ctx.from.id);
     if (layout[row]?.[col]) {
       layout[row][col].visible = layout[row][col].visible === false ? true : false;
       await settingsService.saveMenuLayout(layout);
+      settingsService.notifySessionChanged(ctx.from.id, 'toggle');
       const btnId = layout[row][col].id;
       await updateAfterItemAction(ctx, btnId);
     }
@@ -614,8 +637,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    settingsService.invalidateMenuLayoutCache();
-    const layout = await settingsService.getMenuLayout();
+    const layout = settingsService.getEditableLayout(ctx.from.id);
     const button = layout[row]?.[col];
     if (!button) return;
     cache.set(`menu:renaming:${ctx.from.id}`, { row, col }, 300);
@@ -685,8 +707,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
       if (text === '❌ لغو') {
         cache.del(`menu:renaming:${ctx.from.id}`);
         const btnData = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
-        const layout = await settingsService.getMenuLayout();
-        const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+        const layout = settingsService.getEditableLayout(ctx.from.id);
+        const resolvedLayout = await settingsService.getResolvedEditableLayout(ctx.from.id, false);
         if (btnData && isSelectedKeyValid(layout, btnData)) {
           const btn = layout[btnData.row][btnData.col];
           await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, btnData));
@@ -698,8 +720,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
         return;
       }
       // New name received
-      settingsService.invalidateMenuLayoutCache();
-      const layout = await settingsService.getMenuLayout();
+      const layout = settingsService.getEditableLayout(ctx.from.id);
       const button = layout[renameData.row]?.[renameData.col];
       let buttonId: string | undefined;
       if (button) {
@@ -713,10 +734,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
           button.label = text;
         }
         await settingsService.saveMenuLayout(layout);
+        settingsService.notifySessionChanged(ctx.from.id, 'rename');
       }
       cache.del(`menu:renaming:${ctx.from.id}`);
-      const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-      const newLayout = await settingsService.getMenuLayout();
+      const resolvedLayout = await settingsService.getResolvedEditableLayout(ctx.from.id, false);
+      const newLayout = settingsService.getEditableLayout(ctx.from.id);
       if (buttonId) {
         const newPos = findButtonNewPosition(newLayout, buttonId);
         if (newPos) {
@@ -737,9 +759,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (inMenuEditor) {
       let selectedKey = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
 
-      // Validate selectedKey after possible deploy
+      // Validate selectedKey after possible deploy (use session draft)
       if (selectedKey) {
-        const validationLayout = await settingsService.getMenuLayout();
+        const validationLayout = settingsService.getEditableLayout(ctx.from.id);
         if (!isSelectedKeyValid(validationLayout, selectedKey)) {
           logger.warn(`[MenuEditor] Stale selectedKey detected for user ${ctx.from.id}, clearing`);
           cache.del(`menu:selected:${ctx.from.id}`);
@@ -750,20 +772,22 @@ export function registerHandlers(bot: Telegraf<Context>) {
       if (text === '🔙 بازگشت') {
         if (selectedKey) {
           cache.del(`menu:selected:${ctx.from.id}`);
-          const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+          const resolvedLayout = await settingsService.getResolvedEditableLayout(ctx.from.id, false);
           await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
           return;
         }
+        // Exit menu editor — cancel session with revert to restore original layout
         cache.del(`menu:edit_mode:${ctx.from.id}`);
         cache.del(`menu:selected:${ctx.from.id}`);
+        await settingsService.cancelEditSession(ctx.from.id, true);
         const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
         await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
         return;
       }
 
       // Match text to a menu button → select for editing
-      const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-      const rawLayout = await settingsService.getMenuLayout();
+      const resolvedLayout = await settingsService.getResolvedEditableLayout(ctx.from.id, false);
+      const rawLayout = settingsService.getEditableLayout(ctx.from.id);
       const matchText = text.replace(/^\{|\}$/g, '');
       let matched = false;
       for (let r = 0; r < resolvedLayout.length; r++) {

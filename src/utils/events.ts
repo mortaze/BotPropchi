@@ -12,6 +12,8 @@ export const Events = {
   POST_UNPUBLISHED: 'post:unpublished',
   POST_UPDATED: 'post:updated',
   MENU_LAYOUT_CHANGED: 'menu:layout:changed',
+  MENU_EDITOR_UPDATED: 'menu:editor:updated',
+  MENU_EDITOR_CANCELLED: 'menu:editor:cancelled',
   COMMAND_ADDED: 'command:added',
   COMMAND_REMOVED: 'command:removed',
   COMMAND_UPDATED: 'command:updated',
@@ -25,6 +27,8 @@ export type EventPayloads = {
   'post:unpublished': { postId: number; title: string };
   'post:updated': { postId: number; changes: string[] };
   'menu:layout:changed': { version: number };
+  'menu:editor:updated': { userId: number; action: string; changed: boolean };
+  'menu:editor:cancelled': { userId: number };
   'command:added': { postId: number; command: string };
   'command:removed': { postId: number; command: string };
   'command:updated': { commandId: number; command: string };
