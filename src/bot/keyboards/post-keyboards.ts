@@ -373,13 +373,12 @@ export const menuRowResizeKeyboard = (row: number) => {
 
 // ─── Multi-Message Editor Keyboards ────────────────────────
 
-export const postMultiMessageEditorReplyKeyboard = () =>
+export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean) =>
   Markup.keyboard([
     ['➕ افزودن پیام', 'افزودن دستور'],
-    ['📊 آمار', '📤 لغو انتشار'],
+    ['📊 آمار', isPublished ? '📤 لغو انتشار' : '✅ انتشار'],
     ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
-    ['🗑 حذف پست', '⛔ توقف ویرایش'],
-    ['🔙 بازگشت'],
+    ['🗑 حذف پست'],
   ]).resize().persistent();
 
 export const postMoveModeReplyKeyboard = () =>

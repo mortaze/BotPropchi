@@ -316,7 +316,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       // If in 'main' mode and text doesn't look like an editor action, the key is stale
       if (existingMode === 'main') {
         const text = ctx.message.text;
-        const isEditorAction = ['➕ افزودن پیام', 'افزودن دستور', '📊 آمار', '📤 لغو انتشار',
+        const isEditorAction = ['➕ افزودن پیام', 'افزودن دستور', '📊 آمار', '📤 لغو انتشار', '✅ انتشار',
           '🗂 بازگشت به لیست', '🏠 منو اصلی', '🔙 بازگشت', '⛔ توقف ویرایش',
           '✏️ ویرایش محتوا', '📝 ویرایش عنوان', 'ویرایش دکمه ها', '❌ لغو',
           '↪️ ارسال به عنوان فوروارد (خاموش)', '✅ ارسال به عنوان فوروارد (روشن)',
@@ -2098,11 +2098,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     try {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
         link_preview_options: { is_disabled: true },
-        ...postMultiMessageEditorReplyKeyboard(),
+        ...postMultiMessageEditorReplyKeyboard(post.isPublished),
       });
     } catch (e: any) {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
-        ...postMultiMessageEditorReplyKeyboard(),
+        ...postMultiMessageEditorReplyKeyboard(post.isPublished),
       });
     }
 
@@ -2297,10 +2297,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           await ctx.reply(text, { parse_mode: 'Markdown' as any });
           return;
         }
+        case '✅ انتشار': {
+          await postService.publish(editorPostId);
+          const postPub = await postService.findById(editorPostId);
+          if (postPub) await refreshEditorMessages(ctx, postPub);
+          return;
+        }
         case '📤 لغو انتشار': {
           await postService.unpublish(editorPostId);
-          const post = await postService.findById(editorPostId);
-          if (post) await refreshEditorMessages(ctx, post);
+          const postUnpub = await postService.findById(editorPostId);
+          if (postUnpub) await refreshEditorMessages(ctx, postUnpub);
           return;
         }
         case '🗑 حذف پست': {
