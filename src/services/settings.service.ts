@@ -51,6 +51,8 @@ export function isOwnerRole(role?: string | null) {
 class SettingsService {
   private seeded = false;
   private featureCache = new Map<string, { enabled: boolean; expires: number }>();
+  private featuresCache: { rows: any[]; expires: number } | null = null;
+  private readonly FEATURES_CACHE_TTL = 60_000;
 
   async ensureDefaults() {
     if (this.seeded) return;
@@ -79,8 +81,13 @@ class SettingsService {
   }
 
   async getFeatures() {
+    if (this.featuresCache && this.featuresCache.expires > Date.now()) {
+      return this.featuresCache.rows;
+    }
     await this.ensureDefaults();
-    return prisma.featureToggle.findMany({ orderBy: [{ id: 'asc' }] });
+    const rows = await prisma.featureToggle.findMany({ orderBy: [{ id: 'asc' }] });
+    this.featuresCache = { rows, expires: Date.now() + this.FEATURES_CACHE_TTL };
+    return rows;
   }
 
   async getFeatureMap() {
@@ -91,6 +98,7 @@ class SettingsService {
   async setFeature(key: string, isEnabled: boolean) {
     await this.ensureDefaults();
     this.featureCache.delete(key);
+    this.featuresCache = null;
     return prisma.featureToggle.update({ where: { key }, data: { isEnabled } });
   }
 

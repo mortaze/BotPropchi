@@ -1,10 +1,25 @@
 import { Router } from 'express';
 import { analyticsService } from '../../services/analytics.service';
 import { serializeBigInts } from '../../utils/serialize';
-export const analyticsRouter = Router();
-analyticsRouter.get('/dashboard', async (_req, res) => res.json({ success: true, data: serializeBigInts(await analyticsService.dashboard()) }));
+import { logger } from '../../utils/logger';
 
-analyticsRouter.get('/users', async (req, res) => {
+export const analyticsRouter = Router();
+
+function asyncHandler(fn: (req: any, res: any, next: any) => Promise<any>) {
+  return (req: any, res: any, next: any) => {
+    Promise.resolve(fn(req, res, next)).catch((err) => {
+      logger.error('[Analytics Route] Error:', err);
+      res.status(500).json({ success: false, error: 'خطا در دریافت آمار' });
+    });
+  };
+}
+
+analyticsRouter.get('/dashboard', asyncHandler(async (_req, res) => {
+  const data = serializeBigInts(await analyticsService.dashboard());
+  res.json({ success: true, data });
+}));
+
+analyticsRouter.get('/users', asyncHandler(async (req, res) => {
   const { startDate, endDate, compareStart, compareEnd } = req.query as Record<string, string | undefined>;
   const now = new Date();
   const sDate = startDate || new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10);
@@ -16,4 +31,9 @@ analyticsRouter.get('/users', async (req, res) => {
     compareEnd,
   });
   res.json({ success: true, data: serializeBigInts(data) });
-});
+}));
+
+analyticsRouter.post('/invalidate-cache', asyncHandler(async (_req, res) => {
+  await analyticsService.invalidateCache();
+  res.json({ success: true, message: 'Cache invalidated' });
+}));

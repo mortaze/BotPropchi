@@ -3,11 +3,14 @@ import { config } from '../config';
 import { logger } from './logger';
 
 const FALLBACK_MAX_KEYS = 5000;
+const DEFAULT_TTL = 300;
 
 class RedisClient {
   private client: Redis | null = null;
   private fallback: Map<string, { value: any; expires: number }> = new Map();
   private connected = false;
+  private hitCount = 0;
+  private missCount = 0;
 
   constructor() {
     if (config.redis.url) {
@@ -30,6 +33,7 @@ class RedisClient {
           return Math.min(times * 200, 2000);
         },
         lazyConnect: true,
+        enableOfflineQueue: false,
       });
 
       this.client.on('connect', () => {
@@ -61,25 +65,48 @@ class RedisClient {
     return this.connected && this.client !== null && this.client.status === 'ready';
   }
 
+  async healthCheck(): Promise<{ ok: boolean; usingRedis: boolean; cacheSize: number; hitRate: number }> {
+    if (this.isConnected()) {
+      try {
+        await this.client!.ping();
+        return {
+          ok: true,
+          usingRedis: true,
+          cacheSize: this.fallback.size,
+          hitRate: this.hitCount + this.missCount > 0
+            ? Math.round((this.hitCount / (this.hitCount + this.missCount)) * 100)
+            : 0,
+        };
+      } catch {
+        return { ok: true, usingRedis: false, cacheSize: this.fallback.size, hitRate: 0 };
+      }
+    }
+    return { ok: true, usingRedis: false, cacheSize: this.fallback.size, hitRate: 0 };
+  }
+
   async get<T>(key: string): Promise<T | undefined> {
     if (this.isConnected()) {
       try {
         const raw = await this.client!.get(key);
-        if (raw === null) return undefined;
-        if (raw.includes('???')) logger.warn(`[Redis] Possible corrupted placeholder read key=${key}`);
+        if (raw === null) {
+          this.missCount++;
+          return undefined;
+        }
+        this.hitCount++;
         return JSON.parse(raw) as T;
       } catch {
+        this.missCount++;
         return this.fallbackGet<T>(key);
       }
     }
+    this.missCount++;
     return this.fallbackGet<T>(key);
   }
 
-  async set(key: string, value: any, ttlSeconds = 60): Promise<void> {
+  async set(key: string, value: any, ttlSeconds = DEFAULT_TTL): Promise<void> {
     if (this.isConnected()) {
       try {
         const serialized = JSON.stringify(value);
-        if (serialized.includes('???')) logger.warn(`[Redis] Possible corrupted placeholder write key=${key}`);
         if (ttlSeconds > 0) {
           await this.client!.setex(key, ttlSeconds, serialized);
         } else {
@@ -120,6 +147,14 @@ class RedisClient {
     }
   }
 
+  async getOrSet<T>(key: string, fetcher: () => Promise<T>, ttlSeconds = DEFAULT_TTL): Promise<T> {
+    const cached = await this.get<T>(key);
+    if (cached !== undefined) return cached;
+    const value = await fetcher();
+    await this.set(key, value, ttlSeconds);
+    return value;
+  }
+
   private fallbackGet<T>(key: string): T | undefined {
     const entry = this.fallback.get(key);
     if (!entry) return undefined;
@@ -127,6 +162,7 @@ class RedisClient {
       this.fallback.delete(key);
       return undefined;
     }
+    this.hitCount++;
     return entry.value as T;
   }
 

@@ -38,6 +38,7 @@ import { postRouter } from "./routes/post.routes";
 import { menuRouter } from "./routes/menu.routes";
 import { forcedMembershipRouter } from "./routes/forced-membership.routes";
 import { forceJoinRouter } from "./routes/force-join.routes";
+import { searchRouter } from "./routes/search.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -195,6 +196,7 @@ export function startAdminApi(bot?: Telegraf) {
 
   app.use("/api/bot-admins", authMiddleware, botAdminRouter);
   app.use("/api/analytics", authMiddleware, requireFeature("reports"), analyticsRouter);
+  app.use("/api/search", authMiddleware, searchRouter);
   app.use("/api/ai", createAiRouter(bot));
   app.use("/api/settings", authMiddleware, settingsRouter);
   app.use("/api/admin-users", authMiddleware, requireOwner, adminUserRouter);

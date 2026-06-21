@@ -6,7 +6,7 @@ import { Activity, Gift, Ticket, Trophy, Users } from "lucide-react";
 import { Badge, Card, CardContent, CardHeader, EmptyState, StatCardSkeleton } from "@/components/ui";
 import { discountsApi, lotteriesApi, usersApi } from "@/services/api";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
-
+import DashboardCharts from "@/components/charts/DashboardCharts";
 
 export default function DashboardPage() {
   const usersStats = useQuery({ queryKey: ["users", "stats"], queryFn: usersApi.getStats });
@@ -22,6 +22,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div><h1 className="text-2xl font-bold">داشبورد مدیریت</h1><p className="text-sm text-muted-foreground">نمای کلی وضعیت کاربران، تخفیف‌ها و قرعه‌کشی‌ها</p></div>
+      <DashboardCharts />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {usersStats.isLoading ? <StatCardSkeleton /> : <Metric icon={<Users />} title="کل کاربران" value={formatNumber(usersStats.data?.total)} subtitle={`امروز: ${formatNumber(usersStats.data?.today)}`} />}
         {lotteries.isLoading ? <StatCardSkeleton /> : <Metric icon={<Ticket />} title="کل قرعه‌کشی‌ها" value={formatNumber(lotteries.data?.total)} subtitle={`فعال: ${formatNumber(active)}`} />}

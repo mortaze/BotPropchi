@@ -581,6 +581,47 @@ export const menuApi = {
   },
 };
 
+export const searchApi = {
+  async users(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/users", { params });
+    return data;
+  },
+  async broadcasts(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/broadcasts", { params });
+    return data;
+  },
+  async featureToggles(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/feature-toggles", { params });
+    return data;
+  },
+  async settings(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/settings", { params });
+    return data;
+  },
+  async posts(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/posts", { params });
+    return data;
+  },
+  async referrals(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/referrals", { params });
+    return data;
+  },
+  async botAdmins(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/bot-admins", { params });
+    return data;
+  },
+  async propFirms(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/prop-firms", { params });
+    return data;
+  },
+  async lotteries(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
+    const { data } = await api.get("/api/search/lotteries", { params });
+    return data;
+  },
+};
+
+
+
 export const forceJoinApi = {
   async getSettings(): Promise<{ success: boolean; data: import("@/types").ForceJoinSettings }> {
     const { data } = await api.get("/api/admin/force-join/settings");
