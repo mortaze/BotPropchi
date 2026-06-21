@@ -312,6 +312,44 @@ export interface MiniAppDebugLog { id: number; telegramId?: string | null; event
 export interface MiniAppLogsReport { latestErrors: MiniAppDebugLog[]; latestSuccesses: MiniAppDebugLog[]; latestValidationFailures: MiniAppDebugLog[]; successfulUsersCount: number; failedUsersCount: number; }
 export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: number; activeWeek: number; activeMonth: number; newUsers: number }; referrals: { totalInvites: number; successful: number; failed: number; conversionRate: number; topReferrers: Array<{ referrerId: number; _count: { _all: number }; _sum: { rewardPoints: number | null }; user?: User }> }; forceJoin: { channels: number; groups: number; verifiedUsers: number }; discounts: { topClicks: Array<{ discountCodeId: number; clicks: number; discountCode?: DiscountCode }>; topUsage: DiscountCode[]; topViewed: DiscountCode[] }; lotteries: { total: number; participants: number; ticketsSold: number; pointsSpent: number; totalChance: number; topLottery?: { lottery: Lottery; tickets: number; participants: number } | null }; broadcasts: { total: number; successRate: number; errorRate: number; success: number; failed: number }; groups: { approved: number; active: number }; charts: { dailyUsers: Array<{ date: string; count: number }>; dailyReferrals: Array<{ date: string; count: number }>; dailyDiscountClicks: Array<{ date: string; count: number }>; dailyLotteryEntries: Array<{ date: string; count: number }> } }
 
+export interface UserAnalyticsKPI {
+  totalUsers: number;
+  realUsers: number;
+  dau: number;
+  wau: number;
+  mau: number;
+  newUsers: number;
+  blocked: number;
+  deleted: number;
+  inactive30: number;
+  inactive60: number;
+  inactive90: number;
+  growthRate: number;
+  healthScore: number;
+}
+export interface UserAnalyticsSeriesItem {
+  date: string;
+  realUsers: number;
+  dau: number;
+  wau: number;
+  mau: number;
+  newUsers: number;
+  blocked: number;
+  deleted: number;
+  growthRate: number | null;
+  healthScore: number;
+}
+export interface UserAnalyticsCompareSummary {
+  totalNewUsers: number;
+  totalDAU: number;
+}
+export interface UserAnalyticsResponse {
+  kpis: UserAnalyticsKPI;
+  compareSummary: UserAnalyticsCompareSummary | null;
+  series: UserAnalyticsSeriesItem[];
+  days: string[];
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface MenuOrderItem {
   id: number;

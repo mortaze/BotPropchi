@@ -305,6 +305,10 @@ export const analyticsApi = {
     const { data } = await api.get("/api/analytics/dashboard");
     return data;
   },
+  async users(params: { startDate: string; endDate: string; compareStart?: string; compareEnd?: string }): Promise<{ success: boolean; data: import("@/types").UserAnalyticsResponse }> {
+    const { data } = await api.get("/api/analytics/users", { params });
+    return data;
+  },
 };
 
 export interface BotAdminPayload {
