@@ -40,12 +40,8 @@ import {
 } from '../keyboards';
 import {
   buildMenuEditorReplyKeyboard,
-  buildMenuButtonEditReplyKeyboard,
-  buildMenuEditInlineKeyboard,
-  buildMenuRowSelectKeyboard,
-  menuEditorKeyboard,
-  menuButtonEditKeyboard,
-  menuSwapTargetKeyboard,
+  buildMenuItemEditKeyboard,
+  buildCancelOnlyReplyKeyboard,
 } from '../keyboards/post-keyboards';
 
 type PaginatedResult<T> = { items: T[]; total: number; pages: number };
@@ -81,38 +77,7 @@ function buildSafeMenuEditorKeyboard(layout: any[][], selectedKey?: { row: numbe
   }
 }
 
-async function updateMenuEditorAfterAction(ctx: any, buttonId: string) {
-  const layout = await settingsService.getMenuLayout();
-  const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-  const newPos = findButtonNewPosition(layout, buttonId);
-  if (!newPos) {
-    cache.del(`menu:selected:${ctx.from.id}`);
-    await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
-    return;
-  }
-  cache.set(`menu:selected:${ctx.from.id}`, newPos, 300);
-  const button = layout[newPos.row]?.[newPos.col];
-  const btnText = button?.text || button?.label || button?.title || button?.ref || 'دکمه';
-  try {
-    await ctx.editMessageText(`ویرایش دکمه: ${btnText}`, buildMenuEditInlineKeyboard(newPos.row, newPos.col, button));
-  } catch {}
-  await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
-}
-
-async function editMenuEditor(ctx: any, message: string) {
-  const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-  logger.info(`[MenuEditor] Rendering editor keyboard rows=${resolvedLayout.length}`);
-  return safeEdit(ctx, message, menuEditorKeyboard(resolvedLayout));
-}
-
-async function showMenuEditor(ctx: any, message: string) {
-  const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-  logger.info(`[MenuEditor] Rendering Reply Keyboard rows=${resolvedLayout.length}`);
-  cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
-  await ctx.reply(message, buildSafeMenuEditorKeyboard(resolvedLayout));
-}
-
-function assertMenuTextPreserved(before: any[][], after: any[][], operation: string) {
+async function assertMenuTextPreserved(before: any[][], after: any[][], operation: string) {
   const beforeTexts = before.flat().map((button: any) => button?.text || button?.label || button?.title || button?.ref || '');
   const afterTexts = after.flat().map((button: any) => button?.text || button?.label || button?.title || button?.ref || '');
   if (beforeTexts.some((text: string) => text.includes('???')) || afterTexts.some((text: string) => text.includes('???'))) {
@@ -505,26 +470,21 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('🎛 ویرایش منو', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    // Clear any stale state from previous sessions (e.g., after deploy)
     cache.del(`menu:selected:${ctx.from.id}`);
-    // Editor mode: resolve titles from DB but show all entries (including unpublished)
+    cache.del(`menu:renaming:${ctx.from.id}`);
     const layout = await settingsService.getResolvedMenuLayout(false);
     cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', buildMenuEditorReplyKeyboard(layout));
+    await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید:', buildMenuEditorReplyKeyboard(layout));
   });
 
-  bot.action('menu:editor', async (ctx: any) => {
+  bot.action('menu:item:back', async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     cache.del(`menu:selected:${ctx.from.id}`);
-    cache.del(`menu:edit_mode:${ctx.from.id}`);
-    const layout = await settingsService.getResolvedMenuLayout(false);
-    try {
-      await ctx.editMessageText('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
-    } catch {
-      await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید تا جابجا/مرتب کنید:', menuEditorKeyboard(layout));
-    }
+    cache.del(`menu:renaming:${ctx.from.id}`);
+    const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
+    await safeEdit(ctx, '⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
 
   bot.action('menu:preview', async (ctx: any) => {
@@ -535,394 +495,156 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply('👁 پیش‌نمایش منوی اصلی:', buildMainMenuKeyboard(true, {}, layout));
   });
 
-  bot.action('menu:back', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
-    await safeEdit(ctx, '⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
-  });
-
-  bot.action(/^menu:edit:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
+  // ─── Helper: update inline + reply after item action ──────────
+  async function updateAfterItemAction(ctx: any, buttonId: string) {
     const layout = await settingsService.getMenuLayout();
     const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-    const button = layout[row]?.[col];
-    const resolvedButton = resolvedLayout[row]?.[col] || button;
-    if (!button) {
-      await editMenuEditor(ctx, 'دکمه‌ای یافت نشد.');
+    const newPos = findButtonNewPosition(layout, buttonId);
+    if (!newPos) {
+      cache.del(`menu:selected:${ctx.from.id}`);
+      cache.del(`menu:renaming:${ctx.from.id}`);
+      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
       return;
     }
-    const ref = button.ref || '';
-    const isPost = ref.startsWith('post:');
-    const postId = isPost ? parseInt(ref.replace('post:', '')) : null;
-    const displayText = resolvedButton?.text || button.text || button.label || button.title || button.ref || 'دکمه';
-    const label = isPost ? `📄 ${displayText}` : `${displayText}`;
-    await safeEdit(
-      ctx,
-      `${label}\n${isPost ? `🆔 پست: ${postId}` : `🔗 ارجاع: ${ref}`}\n${button.visible !== false ? '👁 قابل مشاهده' : '🙈 مخفی'}`,
-      menuButtonEditKeyboard(row, col, button)
-    );
-  });
+    cache.set(`menu:selected:${ctx.from.id}`, newPos, 300);
+    const button = layout[newPos.row]?.[newPos.col];
+    const btnText = button?.text || button?.label || button?.title || button?.ref || 'دکمه';
+    try {
+      await ctx.editMessageText(`ویرایش دکمه: ${btnText}`, buildMenuItemEditKeyboard(newPos.row, newPos.col, button, layout));
+    } catch {}
+    await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
+  }
 
-  bot.action(/^menu:btnleft:(\d+):(\d+)$/, async (ctx: any) => {
+  // ─── Menu Item: Move Left ──────────────────────────────
+  bot.action(/^menu:item:left:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
-    if (col === 0) return safeEdit(ctx, 'هم‌اکنون در چپ‌ترین است.');
     const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (!layout[row]) return;
+    if (!layout[row] || col === 0) return;
+    const btnId = layout[row][col].id;
     [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
     await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-left');
-    await editMenuEditor(ctx, '✅ دکمه به چپ منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
+    await updateAfterItemAction(ctx, btnId);
   });
 
-  bot.action(/^menu:btnright:(\d+):(\d+)$/, async (ctx: any) => {
+  // ─── Menu Item: Move Right ─────────────────────────────
+  bot.action(/^menu:item:right:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (!layout[row] || col >= layout[row].length - 1) return safeEdit(ctx, 'هم‌اکنون در راست‌ترین است.');
+    if (!layout[row] || col >= layout[row].length - 1) return;
+    const btnId = layout[row][col].id;
     [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
     await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-right');
-    await editMenuEditor(ctx, '✅ دکمه به راست منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
+    await updateAfterItemAction(ctx, btnId);
   });
 
-  bot.action(/^menu:rowup:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    if (row === 0) return safeEdit(ctx, 'هم‌اکنون در بالاست.');
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    [layout[row - 1], layout[row]] = [layout[row], layout[row - 1]];
-    await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'row-up');
-    await editMenuEditor(ctx, '✅ سطر به بالا منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
-  });
-
-  bot.action(/^menu:rowdown:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (row >= layout.length - 1) return safeEdit(ctx, 'هم‌اکنون در پایین‌ترین جایگاه است.');
-    [layout[row], layout[row + 1]] = [layout[row + 1], layout[row]];
-    await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'row-down');
-    await editMenuEditor(ctx, '✅ سطر به پایین منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
-  });
-
-  bot.action(/^menu:swap:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const layout = await settingsService.getMenuLayout();
-    await safeEdit(ctx, '🔄 سطر مقصد را برای جابجایی انتخاب کنید:', menuSwapTargetKeyboard(row, layout.length));
-  });
-
-  bot.action(/^menu:swapto:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const rowA = parseInt(ctx.match[1]);
-    const rowB = parseInt(ctx.match[2]);
-    if (rowA === rowB) return;
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    [layout[rowA], layout[rowB]] = [layout[rowB], layout[rowA]];
-    await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'row-swap');
-    await editMenuEditor(ctx, '🔄 سطرها جابجا شدند.\n\n🎛 ویرایشگر منوی اصلی:');
-  });
-
-  bot.action(/^menu:btnup:(\d+):(\d+)$/, async (ctx: any) => {
+  // ─── Menu Item: Move Up ────────────────────────────────
+  // Multi-col row → extract button to own single row above
+  // Single-col row → move button to previous row
+  bot.action(/^menu:item:up:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (row === 0) return safeEdit(ctx, 'هم‌اکنون در بالاترین سطر است.');
-    const button = layout[row]?.splice(col, 1)[0];
-    if (button) {
-      layout[row - 1].push(button);
-      await settingsService.saveMenuLayout(layout);
-      assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-up');
-      await editMenuEditor(ctx, `✅ دکمه به سطر ${row} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`);
-    }
-  });
-
-  bot.action(/^menu:btndown:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    const button = layout[row]?.splice(col, 1)[0];
-    if (button) {
-      const targetRow = row + 1;
-      if (targetRow >= layout.length) {
-        layout.push([]);
-      }
-      layout[targetRow].push(button);
-      await settingsService.saveMenuLayout(layout);
-      assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-down');
-      await editMenuEditor(ctx, `✅ دکمه به سطر ${targetRow + 1} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`);
-    }
-  });
-
-  bot.action(/^menu:toggle:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (layout[row]?.[col]) {
-      layout[row][col].visible = layout[row][col].visible === false ? true : false;
-      await settingsService.saveMenuLayout(layout);
-      assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-toggle');
-      const status = layout[row][col].visible !== false ? 'نمایش داده می‌شود' : 'مخفی شد';
-      await editMenuEditor(ctx, `👁 دکمه ${status}.\n\n🎛 ویرایشگر منوی اصلی:`);
-    }
-  });
-
-  // ─── Menu Editor: New Inline Edit Actions ──────────────
-  // Uses a fixed Reply Keyboard (with {} marker on selected button)
-  // and sends a separate Inline Keyboard message for edit actions.
-
-  bot.action(/^menu:sel:hide:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (layout[row]?.[col]) {
-      layout[row][col].visible = layout[row][col].visible === false ? true : false;
-      await settingsService.saveMenuLayout(layout);
-      assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-toggle');
-      const btnId = layout[row][col].id;
-      await updateMenuEditorAfterAction(ctx, btnId);
-    }
-  });
-
-  bot.action(/^menu:sel:left:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
-    if (col === 0) {
-      try { await ctx.editMessageText('هم‌اکنون در چپ‌ترین است.', { reply_markup: undefined }); } catch {}
-      return;
-    }
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (!layout[row]) return;
-    [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
-    await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-left');
-    const btnId = layout[row][col - 1].id;
-    await updateMenuEditorAfterAction(ctx, btnId);
-  });
-
-  bot.action(/^menu:sel:right:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (!layout[row] || col >= layout[row].length - 1) {
-      try { await ctx.editMessageText('هم‌اکنون در راست‌ترین است.', { reply_markup: undefined }); } catch {}
-      return;
-    }
-    [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
-    await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-right');
-    const btnId = layout[row][col + 1].id;
-    await updateMenuEditorAfterAction(ctx, btnId);
-  });
-
-  bot.action(/^menu:sel:up:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
-    const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
-    if (row === 0) {
-      try { await ctx.editMessageText('هم‌اکنون در بالاترین جایگاه است.', { reply_markup: undefined }); } catch {}
-      return;
-    }
     const button = layout[row]?.[col];
     if (!button) return;
     const btnId = button.id;
 
     if (layout[row].length > 1) {
-      // Multi-column row → extract to own single row above current position
+      // Multi-column → extract to own row above
       layout[row].splice(col, 1);
       layout.splice(row, 0, [button]);
     } else {
-      // Single-column row → swap with row above
-      [layout[row - 1], layout[row]] = [layout[row], layout[row - 1]];
+      // Single-column → move to previous row
+      if (row === 0) return;
+      layout[row].splice(col, 1);
+      layout[row - 1].push(button);
+      // Remove empty row
+      const cleaned = layout.filter((r: any[]) => r.length > 0);
+      await settingsService.saveMenuLayout(cleaned);
+      await updateAfterItemAction(ctx, btnId);
+      return;
     }
     await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-up');
-    await updateMenuEditorAfterAction(ctx, btnId);
+    await updateAfterItemAction(ctx, btnId);
   });
 
-  bot.action(/^menu:sel:down:(\d+):(\d+)$/, async (ctx: any) => {
+  // ─── Menu Item: Move Down ──────────────────────────────
+  // Multi-col row → extract button to own single row below
+  // Single-col row → move button to next row
+  bot.action(/^menu:item:down:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
-    const before = await settingsService.getResolvedMenuLayout(false);
     const button = layout[row]?.[col];
     if (!button) return;
     const btnId = button.id;
 
     if (layout[row].length > 1) {
-      // Multi-column row → extract to own single row below current position
+      // Multi-column → extract to own row below
       layout[row].splice(col, 1);
       layout.splice(row + 1, 0, [button]);
     } else {
-      // Single-column row → swap with row below
-      if (row >= layout.length - 1) {
-        try { await ctx.editMessageText('هم‌اکنون در پایین‌ترین جایگاه است.', { reply_markup: undefined }); } catch {}
-        return;
-      }
-      [layout[row], layout[row + 1]] = [layout[row + 1], layout[row]];
+      // Single-column → move to next row
+      if (row >= layout.length - 1) return;
+      layout[row].splice(col, 1);
+      layout[row + 1].push(button);
+      // Remove empty row
+      const cleaned = layout.filter((r: any[]) => r.length > 0);
+      await settingsService.saveMenuLayout(cleaned);
+      await updateAfterItemAction(ctx, btnId);
+      return;
     }
     await settingsService.saveMenuLayout(layout);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-down');
-    await updateMenuEditorAfterAction(ctx, btnId);
+    await updateAfterItemAction(ctx, btnId);
   });
 
-  bot.action(/^menu:sel:torow:(\d+):(\d+)$/, async (ctx: any) => {
+  // ─── Menu Item: Toggle Visibility ──────────────────────
+  bot.action(/^menu:item:toggle:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
-    try {
-      await ctx.editMessageText('انتخاب سطر مقصد:', buildMenuRowSelectKeyboard(layout.length, row));
-    } catch {
-      await ctx.reply('انتخاب سطر مقصد:', buildMenuRowSelectKeyboard(layout.length, row));
+    if (layout[row]?.[col]) {
+      layout[row][col].visible = layout[row][col].visible === false ? true : false;
+      await settingsService.saveMenuLayout(layout);
+      const btnId = layout[row][col].id;
+      await updateAfterItemAction(ctx, btnId);
     }
   });
 
-  bot.action(/^menu:sel:moveto:(\d+)$/, async (ctx: any) => {
+  // ─── Menu Item: Rename ─────────────────────────────────
+  bot.action(/^menu:item:rename:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const targetRow = parseInt(ctx.match[1]);
-    const selectedKey = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
-    if (!selectedKey) {
-      try { await ctx.editMessageText('دکمه‌ای انتخاب نشده است.', { reply_markup: undefined }); } catch {}
-      return;
-    }
+    const row = parseInt(ctx.match[1]);
+    const col = parseInt(ctx.match[2]);
     const layout = await settingsService.getMenuLayout();
-    // Validate selectedKey is still valid
-    if (!isSelectedKeyValid(layout, selectedKey)) {
-      logger.warn(`[MenuEditor] Stale selectedKey in moveto for user ${ctx.from.id}, clearing`);
-      cache.del(`menu:selected:${ctx.from.id}`);
-      try { await ctx.editMessageText('دکمه‌ای که انتخاب کرده بودید دیگر وجود ندارد.', { reply_markup: undefined }); } catch {}
-      const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
-      return;
-    }
-    const before = await settingsService.getResolvedMenuLayout(false);
-    const button = layout[selectedKey.row].splice(selectedKey.col, 1)[0];
+    const button = layout[row]?.[col];
     if (!button) return;
-    const btnId = button.id;
-
-    // Remove empty rows
-    const cleaned = layout.filter(row => row.length > 0);
-
-    // Calculate target row in cleaned layout: each empty row before targetRow shifts it down
-    let shift = 0;
-    for (let r = 0; r < layout.length && r < targetRow; r++) {
-      if (layout[r].length === 0) shift++;
-    }
-    const actualTarget = Math.min(targetRow - shift, cleaned.length);
-
-    // Insert button at end of target row
-    if (actualTarget >= cleaned.length) {
-      cleaned.push([button]);
-    } else {
-      cleaned[actualTarget].push(button);
-    }
-
-    await settingsService.saveMenuLayout(cleaned);
-    assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-moveto');
-
-    // Find new position and update UI
-    const newLayout = await settingsService.getMenuLayout();
-    const newPos = findButtonNewPosition(newLayout, btnId);
-    if (newPos) {
-      cache.set(`menu:selected:${ctx.from.id}`, newPos, 300);
-      const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-      try {
-        await ctx.editMessageText(`ویرایش دکمه: ${button.text || button.label || button.title || button.ref || 'دکمه'}`, buildMenuEditInlineKeyboard(newPos.row, newPos.col, button));
-      } catch {}
-      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
-    } else {
-      cache.del(`menu:selected:${ctx.from.id}`);
-      const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
-      await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
-    }
-  });
-
-  bot.action('menu:sel:cancel', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const selectedKey = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
-    if (!selectedKey) {
-      try { await ctx.editMessageText('لغو شد.', { reply_markup: undefined }); } catch {}
-      return;
-    }
-    const layout = await settingsService.getMenuLayout();
-    // Validate selectedKey is still valid
-    if (!isSelectedKeyValid(layout, selectedKey)) {
-      cache.del(`menu:selected:${ctx.from.id}`);
-      try { await ctx.editMessageText('لغو شد. (دکمه انتخاب شده دیگر وجود ندارد)', { reply_markup: undefined }); } catch {}
-      return;
-    }
-    const button = layout[selectedKey.row][selectedKey.col];
+    cache.set(`menu:renaming:${ctx.from.id}`, { row, col }, 300);
     const btnText = button.text || button.label || button.title || button.ref || 'دکمه';
     try {
-      await ctx.editMessageText(`ویرایش دکمه: ${btnText}`, buildMenuEditInlineKeyboard(selectedKey.row, selectedKey.col, button));
-    } catch {}
+      await ctx.editMessageText(`✏️ لطفاً نام جدید را برای "${btnText}" وارد کنید:`, { reply_markup: undefined });
+    } catch {
+      await ctx.reply(`✏️ لطفاً نام جدید را برای "${btnText}" وارد کنید:`);
+    }
+    await ctx.reply('برای لغو عملیات، دکمه زیر را بزنید:', buildCancelOnlyReplyKeyboard());
   });
 
   // ─── Dynamic Post Button Routing (ALL users — must be BEFORE admin-only handler) ───
@@ -976,91 +698,55 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const text = ctx.message.text;
     if (!text || text.startsWith('/')) return next();
 
-    // ── Check if user is editing a specific button ────────────
-    const editingButton = cache.get<{row: number; col: number}>(`menu:editing:${ctx.from.id}`);
-    if (editingButton) {
-      const { row, col } = editingButton;
+    // ── Rename mode ──────────────────────────────────────
+    const renameData = cache.get<{ row: number; col: number }>(`menu:renaming:${ctx.from.id}`);
+    if (renameData) {
+      if (text === '❌ لغو') {
+        cache.del(`menu:renaming:${ctx.from.id}`);
+        const btnData = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
+        const layout = await settingsService.getMenuLayout();
+        const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+        if (btnData && isSelectedKeyValid(layout, btnData)) {
+          const btn = layout[btnData.row][btnData.col];
+          await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, btnData));
+          await ctx.reply(`ویرایش دکمه: ${btn.text || btn.label || btn.title || btn.ref || 'دکمه'}`, buildMenuItemEditKeyboard(btnData.row, btnData.col, btn, layout));
+        } else {
+          cache.del(`menu:selected:${ctx.from.id}`);
+          await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
+        }
+        return;
+      }
+      // New name received
       const layout = await settingsService.getMenuLayout();
-      const before = await settingsService.getResolvedMenuLayout(false);
-      const button = layout[row]?.[col];
-
-      if (text === '🙈 مخفی' || text === '👁 نمایش') {
-        if (button) {
-          button.visible = button.visible === false ? true : false;
-          await settingsService.saveMenuLayout(layout);
-          assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-toggle');
-          const status = button.visible !== false ? 'نمایش داده می‌شود' : 'مخفی شد';
-          cache.del(`menu:editing:${ctx.from.id}`);
-          await showMenuEditor(ctx, `👁 دکمه ${status}.\n\n🎛 ویرایشگر منوی اصلی:`);
-          return;
+      const button = layout[renameData.row]?.[renameData.col];
+      let buttonId: string | undefined;
+      if (button) {
+        buttonId = button.id;
+        const ref = button.ref || '';
+        if (ref.startsWith('post:')) {
+          const postId = parseInt(ref.replace('post:', ''));
+          await postService.update(postId, { title: text });
+        } else {
+          button.text = text;
+          button.label = text;
         }
-      }
-
-      if (text === '⬆ سطر قبل') {
-        if (row === 0) {
-          await ctx.reply('هم‌اکنون در بالاترین سطر است.');
-          return;
-        }
-        const btn = layout[row]?.splice(col, 1)[0];
-        if (btn) {
-          layout[row - 1].push(btn);
-          await settingsService.saveMenuLayout(layout);
-          assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-up');
-          cache.del(`menu:editing:${ctx.from.id}`);
-          await showMenuEditor(ctx, `✅ دکمه به سطر ${row} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`);
-          return;
-        }
-      }
-
-      if (text === '⬇ سطر بعد') {
-        const btn = layout[row]?.splice(col, 1)[0];
-        if (btn) {
-          const targetRow = row + 1;
-          if (targetRow >= layout.length) layout.push([]);
-          layout[targetRow].push(btn);
-          await settingsService.saveMenuLayout(layout);
-          assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-down');
-          cache.del(`menu:editing:${ctx.from.id}`);
-          await showMenuEditor(ctx, `✅ دکمه به سطر ${targetRow + 1} منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:`);
-          return;
-        }
-      }
-
-      if (text === '◀ چپ') {
-        if (col === 0) {
-          await ctx.reply('هم‌اکنون در چپ‌ترین است.');
-          return;
-        }
-        if (layout[row]) {
-          [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
-          await settingsService.saveMenuLayout(layout);
-          assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-left');
-          cache.del(`menu:editing:${ctx.from.id}`);
-          await showMenuEditor(ctx, '✅ دکمه به چپ منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
-          return;
-        }
-      }
-
-      if (text === '▶ راست') {
-        if (!layout[row] || col >= layout[row].length - 1) {
-          await ctx.reply('هم‌اکنون در راست‌ترین است.');
-          return;
-        }
-        [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
         await settingsService.saveMenuLayout(layout);
-        assertMenuTextPreserved(before, await settingsService.getResolvedMenuLayout(false), 'button-right');
-        cache.del(`menu:editing:${ctx.from.id}`);
-        await showMenuEditor(ctx, '✅ دکمه به راست منتقل شد.\n\n🎛 ویرایشگر منوی اصلی:');
-        return;
       }
-
-      if (text === '🔙 بازگشت') {
-        cache.del(`menu:editing:${ctx.from.id}`);
-        await showMenuEditor(ctx, '🎛 ویرایشگر منوی اصلی:');
-        return;
+      cache.del(`menu:renaming:${ctx.from.id}`);
+      const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
+      const newLayout = await settingsService.getMenuLayout();
+      if (buttonId) {
+        const newPos = findButtonNewPosition(newLayout, buttonId);
+        if (newPos) {
+          cache.set(`menu:selected:${ctx.from.id}`, newPos, 300);
+          const btn = newLayout[newPos.row][newPos.col];
+          await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
+          await ctx.reply(`ویرایش دکمه: ${text}`, buildMenuItemEditKeyboard(newPos.row, newPos.col, btn, newLayout));
+          return;
+        }
       }
-
-      // Unknown text in edit mode — ignore
+      cache.del(`menu:selected:${ctx.from.id}`);
+      await ctx.reply(`✅ نام به "${text}" تغییر کرد.\n\n🎛 ویرایشگر منوی اصلی:`, buildSafeMenuEditorKeyboard(resolvedLayout));
       return;
     }
 
@@ -1069,7 +755,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (inMenuEditor) {
       let selectedKey = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
 
-      // Validate selectedKey after possible deploy — if indices are stale, clear them
+      // Validate selectedKey after possible deploy
       if (selectedKey) {
         const validationLayout = await settingsService.getMenuLayout();
         if (!isSelectedKeyValid(validationLayout, selectedKey)) {
@@ -1096,7 +782,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
       // Match text to a menu button → select for editing
       const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
       const rawLayout = await settingsService.getMenuLayout();
-      // Strip {} from tapped text (selected button is displayed as {text})
       const matchText = text.replace(/^\{|\}$/g, '');
       let matched = false;
       for (let r = 0; r < resolvedLayout.length; r++) {
@@ -1110,7 +795,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
             const rawButton = rawLayout[r]?.[c];
             cache.set(`menu:selected:${ctx.from.id}`, { row: r, col: c }, 300);
             await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, { row: r, col: c }));
-            await ctx.reply(`ویرایش دکمه: ${btnText}`, buildMenuEditInlineKeyboard(r, c, rawButton || btn));
+            await ctx.reply(`ویرایش دکمه: ${btnText}`, buildMenuItemEditKeyboard(r, c, rawButton || btn, rawLayout));
             matched = true;
             break;
           }
@@ -1118,7 +803,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
         if (matched) break;
       }
       if (matched) return;
-      // Text didn't match any button — forward to next handler
       return next();
     }
 

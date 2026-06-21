@@ -299,81 +299,36 @@ export const buildMenuEditorReplyKeyboard = (layout: any[][], selectedKey?: { ro
   return Markup.keyboard(rows).resize().persistent();
 };
 
-// ─── Reply Keyboard: Button Edit Actions ──
-// Shown after user taps a specific menu button to edit it.
-export const buildMenuButtonEditReplyKeyboard = (row: number, col: number, button: any) => {
+// ─── Inline Keyboard: Menu Item Management ──
+// Smart inline keyboard for editing a single menu item.
+// Direction buttons are shown/hidden based on the item's position.
+export const buildMenuItemEditKeyboard = (row: number, col: number, button: any, layout: any[][]) => {
   const isHidden = button?.visible === false;
-  return Markup.keyboard([
-    [isHidden ? '👁 نمایش' : '🙈 مخفی'],
-    ['⬆ سطر قبل', '⬇ سطر بعد'],
-    ['◀ چپ', '▶ راست'],
-    ['🔙 بازگشت'],
-  ]).resize().persistent();
-};
-
-export const menuEditorKeyboard = (layout: any[][]) => {
   const rows: any[][] = [];
-  logger.debug(`[MenuKeyboard] Generating editor keyboard rows=${layout?.length ?? 0}`);
-  if (layout && layout.length > 0) {
-    for (let r = 0; r < layout.length; r++) {
-      const row = layout[r];
-      if (!Array.isArray(row)) continue;
-      const rowButtons: any[] = [];
-      for (let c = 0; c < row.length; c++) {
-        const btn = row[c];
-        if (!btn) continue;
-        const prefix = btn.visible === false ? '🙈 ' : '';
-        rowButtons.push(
-          Markup.button.callback(
-            `${prefix}${buildSafeTelegramButton(graphemeTruncate(buttonDisplayText(btn, 'بدون عنوان'), 10))}`,
-            `menu:edit:${r}:${c}`
-          )
-        );
-      }
-      rows.push(rowButtons);
-      rows.push([
-        Markup.button.callback('⬆', `menu:rowup:${r}`),
-        Markup.button.callback('⬇', `menu:rowdown:${r}`),
-        Markup.button.callback('🔄 جابجایی', `menu:swap:${r}`),
-      ]);
-    }
-  }
+
+  // ── Direction buttons (vertical) ──────────────────────
+  const vertRow: any[] = [];
+  const canUp = row > 0 || (row === 0 && layout[0].length > 1);
+  const canDown = row < layout.length - 1 || (row === layout.length - 1 && layout[row].length > 1);
+  if (canUp) vertRow.push(Markup.button.callback('⬆️ بالا', `menu:item:up:${row}:${col}`));
+  if (canDown) vertRow.push(Markup.button.callback('⬇️ پایین', `menu:item:down:${row}:${col}`));
+  if (vertRow.length > 0) rows.push(vertRow);
+
+  // ── Direction buttons (horizontal) ────────────────────
+  const horRow: any[] = [];
+  if (col > 0) horRow.push(Markup.button.callback('⬅️ چپ', `menu:item:left:${row}:${col}`));
+  if (col < layout[row].length - 1) horRow.push(Markup.button.callback('➡️ راست', `menu:item:right:${row}:${col}`));
+  if (horRow.length > 0) rows.push(horRow);
+
+  // ── Action buttons ────────────────────────────────────
   rows.push([
-    Markup.button.callback('👁 پیش‌نمایش', 'menu:preview'),
+    Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `menu:item:toggle:${row}:${col}`),
+    Markup.button.callback('✏️ تغییر نام', `menu:item:rename:${row}:${col}`),
   ]);
   rows.push([
-    Markup.button.callback('🔙 بازگشت', 'menu:back'),
+    Markup.button.callback('🔙 بازگشت', 'menu:item:back'),
   ]);
   return Markup.inlineKeyboard(rows);
-};
-
-export const menuButtonEditKeyboard = (row: number, col: number, button: any) => {
-  const isPost = button.ref?.startsWith('post:');
-  const isHidden = button.visible === false;
-  const btns: any[][] = [
-    [
-      Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `menu:toggle:${row}:${col}`),
-    ],
-    [
-      Markup.button.callback('⬆ سطر قبل', `menu:btnup:${row}:${col}`),
-      Markup.button.callback('⬇ سطر بعد', `menu:btndown:${row}:${col}`),
-    ],
-    [
-      Markup.button.callback('◀ چپ', `menu:btnleft:${row}:${col}`),
-      Markup.button.callback('▶ راست', `menu:btnright:${row}:${col}`),
-    ],
-    [Markup.button.callback('« بازگشت به ویرایشگر منو', 'menu:editor')],
-  ];
-  return Markup.inlineKeyboard(btns);
-};
-
-export const menuRowResizeKeyboard = (row: number) => {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('۱ دکمه در سطر', `menu:rowsize:${row}:1`)],
-    [Markup.button.callback('۲ دکمه در سطر', `menu:rowsize:${row}:2`)],
-    [Markup.button.callback('۳ دکمه در سطر', `menu:rowsize:${row}:3`)],
-    [Markup.button.callback('« بازگشت به ویرایشگر منو', 'menu:editor')],
-  ]);
 };
 
 // ─── Multi-Message Editor Keyboards ────────────────────────
@@ -429,51 +384,6 @@ export const postSingleMessageInlineKeyboard = (postId: number, msgIdx: number, 
   if (msgIdx < totalMsgs - 1) moveRow.push(Markup.button.callback('⬇️ پایین', `post:msg:down:${postId}:${msgIdx}`));
   if (moveRow.length > 0) rows.push(moveRow);
   rows.push([Markup.button.callback('➕ افزودن پیام', `post:msg:add:${postId}:${msgIdx}`)]);
-  return Markup.inlineKeyboard(rows);
-};
-
-export const menuSwapTargetKeyboard = (sourceRow: number, totalRows: number) => {
-  const rows: any[][] = [];
-  for (let i = 0; i < totalRows; i++) {
-    if (i !== sourceRow) {
-      rows.push([Markup.button.callback(`↔ جابجایی با سطر ${i + 1}`, `menu:swapto:${sourceRow}:${i}`)]);
-    }
-  }
-  rows.push([Markup.button.callback('« لغو', 'menu:editor')]);
-  return Markup.inlineKeyboard(rows);
-};
-
-// ─── Inline Keyboard: Edit Actions for Selected Button ──
-// Sent as a separate message after a button is selected in the menu editor.
-// The reply keyboard remains unchanged below.
-export const buildMenuEditInlineKeyboard = (row: number, col: number, button: any) => {
-  const isHidden = button?.visible === false;
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('⬆️ بالا', `menu:sel:up:${row}:${col}`),
-      Markup.button.callback('⬇️ پایین', `menu:sel:down:${row}:${col}`),
-    ],
-    [
-      Markup.button.callback('⬅️ چپ', `menu:sel:left:${row}:${col}`),
-      Markup.button.callback('➡️ راست', `menu:sel:right:${row}:${col}`),
-    ],
-    [
-      Markup.button.callback('🔄 انتقال به سطر', `menu:sel:torow:${row}:${col}`),
-      Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی کردن', `menu:sel:hide:${row}:${col}`),
-    ],
-  ]);
-};
-
-// ─── Inline Keyboard: Row Selection ──
-// Shows all row numbers for the "move to row" action.
-export const buildMenuRowSelectKeyboard = (totalRows: number, sourceRow: number) => {
-  const rows: any[][] = [];
-  for (let i = 0; i < totalRows; i++) {
-    if (i !== sourceRow) {
-      rows.push([Markup.button.callback(`↔ جابجایی با سطر ${i + 1}`, `menu:swapto:${sourceRow}:${i}`)]);
-    }
-  }
-  rows.push([Markup.button.callback('« لغو', 'menu:editor')]);
   return Markup.inlineKeyboard(rows);
 };
 
