@@ -49,21 +49,26 @@ function telegramLength(text: string) {
 function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number) {
   const text = sanitizeTelegramText(btn?.text || 'Link', 128);
   const value = btn?.value || btn?.url || btn?.callback_data || '';
+  let result: any;
   switch (btn?.type) {
-    case 'URL': return Markup.button.url(text, value);
-    case 'CALLBACK': return Markup.button.callback(text, btn.callback_data || value || `post:user:click:${JSON.stringify({ postId, text, type: btn.type })}`);
+    case 'URL': result = Markup.button.url(text, value); break;
+    case 'CALLBACK': result = Markup.button.callback(text, btn.callback_data || value || `post:user:click:${JSON.stringify({ postId, text, type: btn.type })}`); break;
     case 'WEB_APP':
-    case 'OPEN_MINI_APP': return Markup.button.webApp(text, value);
-    case 'LOGIN_URL': return { text, login_url: btn.login_url || btn.payload?.login_url || { url: value } };
-    case 'COPY_TEXT': return { text, copy_text: { text: value } };
+    case 'OPEN_MINI_APP': result = Markup.button.webApp(text, value); break;
+    case 'LOGIN_URL': result = { text, login_url: btn.login_url || btn.payload?.login_url || { url: value } }; break;
+    case 'COPY_TEXT': result = { text, copy_text: { text: value } }; break;
     case 'SWITCH_INLINE':
-    case 'SEND_COMMAND': return Markup.button.switchToChat(text, value);
-    case 'SWITCH_INLINE_CURRENT_CHAT': return Markup.button.switchToCurrentChat(text, value);
-    case 'POPUP': return Markup.button.callback(text, `post:user:popup:${postId}:${row}:${col}`);
-    case 'COMMAND': return Markup.button.callback(text, `post:user:cmd:${value}`);
-    case 'INTERNAL_NAV': return Markup.button.callback(text, `post:user:nav:${sanitizeTelegramText(value || 'noop', 64)}`);
-    default: return value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop');
+    case 'SEND_COMMAND': result = Markup.button.switchToChat(text, value); break;
+    case 'SWITCH_INLINE_CURRENT_CHAT': result = Markup.button.switchToCurrentChat(text, value); break;
+    case 'POPUP': result = Markup.button.callback(text, `post:user:popup:${postId}:${row}:${col}`); break;
+    case 'COMMAND': result = Markup.button.callback(text, `post:user:cmd:${value}`); break;
+    case 'INTERNAL_NAV': result = Markup.button.callback(text, `post:user:nav:${sanitizeTelegramText(value || 'noop', 64)}`); break;
+    default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop'); break;
   }
+  if (result && btn?.style && ['primary', 'success', 'danger'].includes(btn.style)) {
+    result.style = btn.style;
+  }
+  return result;
 }
 
 function buildTelegramKeyboard(buttons: any[] | null | undefined, postId?: number): any[][] {

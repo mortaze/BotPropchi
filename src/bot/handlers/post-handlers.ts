@@ -35,6 +35,7 @@ import {
   buildButtonEditorExitKeyboard,
   buildButtonListInlineKeyboard,
   buildEditButtonTypeKeyboard,
+  buildButtonColorSelectionKeyboard,
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
@@ -1251,17 +1252,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
     cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_url', 600);
+    cache.set(pendingKey(ctx.from.id, 'button_type'), 'url', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
     await ctx.reply(
-      '🔗 ❇️ داده ها را برای URL / دکمه اشتراک گذاری وارد کنید.\n\n' +
-      'مثال:\n' +
-      'اشتراک گذاری کنید\n' +
-      'https://t.me/share/url?url=t.me/MenuBuilderHelpBot\n\n' +
-      'ℹ️ داده ها در دو خط هستند:\n' +
-      '🏷 عنوان دکمه\n' +
-      '🌐 آدرس اینترنتی',
-      buildCancelOnlyReplyKeyboard(),
+      '🎨 رنگ دکمه را انتخاب کنید:',
+      buildButtonColorSelectionKeyboard(),
     );
   });
 
@@ -1273,16 +1269,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
     cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_popup', 600);
+    cache.set(pendingKey(ctx.from.id, 'button_type'), 'popup', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
     await ctx.reply(
-      '🪟 ❇️ داده های دکمه را با پنجره POP-UP وارد کنید.\n\n' +
-      '⚠️ محدودیت تلگرام برای این نوع پیام‌ها 200 کاراکتر است.\n' +
-      'ℹ️ داده‌ها می‌توانند در چندین خط باشند:\n\n' +
-      '🏷 عنوان دکمه\n' +
-      '📝 اولین خط پیام\n' +
-      '📝 دومین خط پیام',
-      buildCancelOnlyReplyKeyboard(),
+      '🎨 رنگ دکمه را انتخاب کنید:',
+      buildButtonColorSelectionKeyboard(),
     );
   });
 
@@ -1294,20 +1286,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
     cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_command', 600);
+    cache.set(pendingKey(ctx.from.id, 'button_type'), 'command', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
     await ctx.reply(
-      '⌨️ ❇️ داده های دکمه را وارد کنید.\n' +
-      'فرمان نباید با "/" شروع شود.\n' +
-      'فقط: a-z0-9_\n\n' +
-      'مثال:\n' +
-      'mycommand\n' +
-      'mycommand1\n' +
-      'mycommand_1\n\n' +
-      'ℹ️ داده ها:\n' +
-      '🏷 عنوان دکمه\n' +
-      '⌨️ COMMAND',
-      buildCancelOnlyReplyKeyboard(),
+      '🎨 رنگ دکمه را انتخاب کنید:',
+      buildButtonColorSelectionKeyboard(),
     );
   });
 
@@ -1352,7 +1336,108 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return;
     }
 
-    if (!state || !['wait_popup', 'wait_url', 'wait_command'].includes(state)) return next();
+    if (!state || !['wait_popup', 'wait_url', 'wait_command', 'wait_color'].includes(state)) return next();
+
+    // ─── WAIT_COLOR state ──────────────────────────────────
+    if (state === 'wait_color') {
+      if (ctx.message.text === '❌ لغو') {
+        cache.del(pendingKey(ctx.from.id, 'editor_state'));
+        cache.del(pendingKey(ctx.from.id, 'button_color'));
+        cache.del(pendingKey(ctx.from.id, 'button_type'));
+        await refreshButtonListView(ctx, postId, '⌨️ عملیات لغو شد.');
+        return;
+      }
+
+      const colorMap: Record<string, string> = {
+        '🔵 Primary (آبی)': 'primary',
+        '🟢 Success (سبز)': 'success',
+        '🔴 Danger (قرمز)': 'danger',
+        '⚪ default': 'default',
+      };
+      const color = colorMap[ctx.message.text];
+      if (!color) {
+        await ctx.reply('❌ لطفاً یک رنگ از دکمه‌های زیر انتخاب کنید.', buildButtonColorSelectionKeyboard());
+        return;
+      }
+
+      const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode'));
+
+      if (mode === 'create') {
+        // Store color and proceed to value entry
+        cache.set(pendingKey(ctx.from.id, 'button_color'), color, 600);
+        const btnType = cache.get<string>(pendingKey(ctx.from.id, 'button_type'));
+        if (btnType === 'url') {
+          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_url', 600);
+          return await ctx.reply(
+            '🔗 ❇️ داده ها را برای URL / دکمه اشتراک گذاری وارد کنید.\n\n' +
+            'مثال:\n' +
+            'اشتراک گذاری کنید\n' +
+            'https://t.me/share/url?url=t.me/MenuBuilderHelpBot\n\n' +
+            'ℹ️ داده ها در دو خط هستند:\n' +
+            '🏷 عنوان دکمه\n' +
+            '🌐 آدرس اینترنتی',
+            buildCancelOnlyReplyKeyboard(),
+          );
+        }
+        if (btnType === 'popup') {
+          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_popup', 600);
+          return await ctx.reply(
+            '🪟 ❇️ داده های دکمه را با پنجره POP-UP وارد کنید.\n\n' +
+            '⚠️ محدودیت تلگرام برای این نوع پیام‌ها 200 کاراکتر است.\n' +
+            'ℹ️ داده‌ها می‌توانند در چندین خط باشند:\n\n' +
+            '🏷 عنوان دکمه\n' +
+            '📝 اولین خط پیام\n' +
+            '📝 دومین خط پیام',
+            buildCancelOnlyReplyKeyboard(),
+          );
+        }
+        if (btnType === 'command') {
+          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_command', 600);
+          return await ctx.reply(
+            '⌨️ ❇️ داده های دکمه را وارد کنید.\n' +
+            'فرمان نباید با "/" شروع شود.\n' +
+            'فقط: a-z0-9_\n\n' +
+            'مثال:\n' +
+            'mycommand\n' +
+            'mycommand1\n' +
+            'mycommand_1\n\n' +
+            'ℹ️ داده ها:\n' +
+            '🏷 عنوان دکمه\n' +
+            '⌨️ COMMAND',
+            buildCancelOnlyReplyKeyboard(),
+          );
+        }
+        // Fallback
+        cache.del(pendingKey(ctx.from.id, 'editor_state'));
+        cache.del(pendingKey(ctx.from.id, 'button_color'));
+        cache.del(pendingKey(ctx.from.id, 'button_type'));
+        return await refreshButtonListView(ctx, postId, '❌ نوع دکمه نامشخص است.');
+      }
+
+      // Edit mode — directly update button's style
+      const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
+      const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
+      if (row === undefined || col === undefined) {
+        return await ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
+      }
+      const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
+      const post = await postService.findById(postId);
+      if (!post) return await ctx.reply('❌ پست یافت نشد.');
+      const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+      if (!buttons[row] || !buttons[row][col]) {
+        return await ctx.reply('❌ دکمه یافت نشد.');
+      }
+      // Preserve existing text/value, update only the style
+      buttons[row][col] = { ...buttons[row][col], style: color === 'default' ? undefined : color };
+      await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+      cache.del(pendingKey(ctx.from.id, 'editor_state'));
+      cache.del(pendingKey(ctx.from.id, 'editor_row'));
+      cache.del(pendingKey(ctx.from.id, 'editor_col'));
+      cache.del(pendingKey(ctx.from.id, 'button_color'));
+      cache.del(pendingKey(ctx.from.id, 'button_type'));
+      return await refreshButtonListView(ctx, postId, '🎨 رنگ دکمه با موفقیت تغییر یافت!');
+    }
+
     if (ctx.message.text === '❌ لغو') {
       cache.del(pendingKey(ctx.from.id, 'editor_state'));
       await refreshButtonListView(ctx, postId, '⌨️ عملیات لغو شد.');
@@ -1399,13 +1484,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
 
+    const buttonColor = cache.get<string>(pendingKey(ctx.from.id, 'button_color'));
     if (mode === 'create') {
-      // Add new button in a new row at the bottom (never append to existing row)
-      buttons.push([{ text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value }]);
+      const btn: any = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value };
+      if (buttonColor && buttonColor !== 'default') btn.style = buttonColor;
+      buttons.push([btn]);
     } else if (mode === 'edit' && row !== undefined && col !== undefined) {
       // Edit existing button
       if (buttons[row] && buttons[row][col]) {
-        buttons[row][col] = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value };
+        buttons[row][col] = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value, style: buttons[row][col].style };
       }
     }
 
@@ -1413,6 +1500,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     cache.del(pendingKey(ctx.from.id, 'editor_row'));
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    cache.del(pendingKey(ctx.from.id, 'button_color'));
+    cache.del(pendingKey(ctx.from.id, 'button_type'));
 
     await refreshButtonListView(ctx, postId, mode === 'edit'
       ? '✅ دکمه با موفقیت تصحیح شد!'
@@ -1484,9 +1573,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
       cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
       const currentType = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : '🔗 لینک';
+      const colorText = btn.style && btn.style !== 'default' ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
       await safeEdit(ctx,
-        `🔧 شما در حالت تنظیمات پیام هستید.\n❇️ حالت دکمه را انتخاب کنید.\n\nℹ️ مقدار فعلی:\n${currentType}\n${btn.text}: ${btn.value || ''}`,
-        buildEditButtonTypeKeyboard(postId, row, col));
+        `🔧 شما در حالت تنظیمات پیام هستید.\n❇️ حالت دکمه را انتخاب کنید.\n\nℹ️ مقدار فعلی:\n${currentType}\n${btn.text}: ${btn.value || ''}\n${colorText}`,
+        buildEditButtonTypeKeyboard(postId, row, col, btn.style));
       return;
     }
 
@@ -1559,6 +1649,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
     cache.del(pendingKey(ctx.from.id, 'previous_view'));
     await refreshButtonListView(ctx, postId, '⌨️ عملیات لغو شد.');
+  });
+
+  // ─── Handler: Select button color ─────────────────────────
+  bot.action(/^pbedit:color:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
+    await ctx.reply('🎨 رنگ دکمه را انتخاب کنید:', buildButtonColorSelectionKeyboard());
   });
 
   // ─── Handler: Add new row (from pbedit:addrow inline button) ──

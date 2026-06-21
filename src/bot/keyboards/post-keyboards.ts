@@ -495,6 +495,16 @@ export const buildButtonTypeSelectionKeyboard = () =>
     ['❌ لغو'],
   ]).resize().persistent();
 
+// Reply keyboard for button color selection
+export const buildButtonColorSelectionKeyboard = () =>
+  Markup.keyboard([
+    ['🔵 Primary (آبی)'],
+    ['🟢 Success (سبز)'],
+    ['🔴 Danger (قرمز)'],
+    ['⚪ default'],
+    ['❌ لغو'],
+  ]).resize().persistent();
+
 // Unified cancel-only reply keyboard when waiting for input
 export const buildCancelOnlyReplyKeyboard = () =>
   Markup.keyboard([
@@ -512,6 +522,13 @@ export const buildButtonEditorExitKeyboard = () =>
 //   {icon} ButtonName  (one per button)
 //   [✏️ ویرایش] [🗑 حذف] [➕ جدید] [🔀 جابجایی]  (always visible)
 // mode controls icon prefix: {+} (create), {✏️} (edit), {❌} (delete), {🔀} (move)
+const colorIndicator = (style?: string) => {
+  if (style === 'primary') return '🔵';
+  if (style === 'success') return '🟢';
+  if (style === 'danger') return '🔴';
+  return '';
+};
+
 export const buildButtonListInlineKeyboard = (
   postId: number,
   buttons: any[][],
@@ -527,11 +544,11 @@ export const buildButtonListInlineKeyboard = (
         const btn = row[c];
         if (!btn) continue;
         const text = btn.text || 'بدون عنوان';
-        const safe = graphemeTruncate(sanitizeTelegramText(text), 15);
+        const safe = graphemeTruncate(sanitizeTelegramText(text), 13);
         const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{❌}' : mode === 'move' ? '{🔀}' : '{+}';
         rowButtons.push(
           Markup.button.callback(
-            `${icon} ${safe}`,
+            `${colorIndicator(btn.style)}${icon} ${safe}`,
             `pbedit:click:${postId}:${r}:${c}`,
           ),
         );
@@ -550,12 +567,17 @@ export const buildButtonListInlineKeyboard = (
 };
 
 // ─── Edit button type selection inline keyboard ────────────
-export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: number) =>
-  Markup.inlineKeyboard([
+export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: number, currentColor?: string) => {
+  const colorLabel = currentColor
+    ? `🎨 رنگ (${colorIndicator(currentColor)})`
+    : '🎨 رنگ';
+  return Markup.inlineKeyboard([
     [Markup.button.callback('🔗 لینک یا اشتراک', `pbedit:type:url:${postId}:${row}:${col}`)],
     [Markup.button.callback('🪟 POP-UP', `pbedit:type:popup:${postId}:${row}:${col}`)],
     [Markup.button.callback('⌨️ دستور', `pbedit:type:command:${postId}:${row}:${col}`)],
+    [Markup.button.callback(colorLabel, `pbedit:color:${postId}:${row}:${col}`)],
     [Markup.button.callback('❌ لغو', `pbedit:type:cancel:${postId}`)],
   ]);
+};
 
 
