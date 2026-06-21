@@ -1384,14 +1384,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (state === 'move') {
       const text = ctx.message.text;
 
-      // Exit must always work even in move mode
+      // EXIT — immediate, no DB queries
       if (text === '🚪 خروج از تنظیمات پیام') {
         clearButtonEditorState(ctx.from.id);
         cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
-        const exitPost = await postService.findById(postId);
-        if (!exitPost) return ctx.reply('❌ پست یافت نشد.');
-        await ctx.reply('⌨ ویرایشگر دکمه بسته شد.');
-        await enterPostEditor(ctx, exitPost);
+        delete ctx.session?.pbedit;
         return;
       }
 
@@ -1408,12 +1405,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
 
         await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-        // Reset state after operation
-        await ctx.reply("🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد");
         const updatedPost = await postService.findById(postId);
         const buttonsList = updatedPost?.buttons;
-        await ctx.reply(`📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsList, null, 2)}`);
-        await refreshButtonListView(ctx, postId);
+        await ctx.reply(`🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد\n📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsList, null, 2)}`);
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
         cache.del(pendingKey(ctx.from.id, 'editor_row'));
         cache.del(pendingKey(ctx.from.id, 'editor_col'));
@@ -1525,11 +1519,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       // Preserve existing text/value, update only the style
       buttons[row][col] = { ...buttons[row][col], style: color === 'default' ? undefined : color };
       await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-      await ctx.reply("🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد");
       const updatedPostColor = await postService.findById(postId);
       const buttonsColorList = updatedPostColor?.buttons;
-      await ctx.reply(`📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsColorList, null, 2)}`);
-      await refreshButtonListView(ctx, postId);
+      await ctx.reply(`🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد\n📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsColorList, null, 2)}`);
       cache.del(pendingKey(ctx.from.id, 'editor_state'));
       cache.del(pendingKey(ctx.from.id, 'editor_row'));
       cache.del(pendingKey(ctx.from.id, 'editor_col'));
@@ -1598,11 +1590,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
 
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-    await ctx.reply("🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد");
     const updatedPostCreate = await postService.findById(postId);
     const buttonsCreateList = updatedPostCreate?.buttons;
-    await ctx.reply(`📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsCreateList, null, 2)}`);
-    await refreshButtonListView(ctx, postId);
+    await ctx.reply(`🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد\n📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsCreateList, null, 2)}`);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     cache.del(pendingKey(ctx.from.id, 'editor_row'));
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
@@ -1660,11 +1650,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         buttons[row].splice(col, 1);
         if (buttons[row].length === 0) buttons.splice(row, 1);
         await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-        await ctx.reply("🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد");
         const updatedPostDelete = await postService.findById(postId);
         const buttonsDeleteList = updatedPostDelete?.buttons;
-        await ctx.reply(`📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsDeleteList, null, 2)}`);
-        await refreshButtonListView(ctx, postId);
+        await ctx.reply(`🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد\n📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsDeleteList, null, 2)}`);
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
         cache.del(pendingKey(ctx.from.id, 'editor_row'));
         cache.del(pendingKey(ctx.from.id, 'editor_col'));
@@ -1691,11 +1679,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     // Default: create mode — add a new default button in a new row below clicked row
     buttons.splice(row + 1, 0, [{ text: 'دکمه جدید', type: 'URL', value: '' }]);
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-    await ctx.reply("🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد");
     const updatedPostCreateClick = await postService.findById(postId);
     const buttonsCreateClickList = updatedPostCreateClick?.buttons;
-    await ctx.reply(`📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsCreateClickList, null, 2)}`);
-    await refreshButtonListView(ctx, postId);
+    await ctx.reply(`🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد\n📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsCreateClickList, null, 2)}`);
     return;
   });
 
@@ -1790,11 +1776,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
     buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
     await postService.update(realPostId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-    await ctx.reply("🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد");
     const updatedPostAddRow = await postService.findById(realPostId);
     const buttonsAddRowList = updatedPostAddRow?.buttons;
-    await ctx.reply(`📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsAddRowList, null, 2)}`);
-    await refreshButtonListView(ctx, realPostId);
+    await ctx.reply(`🛠 ویرایشگر دکمه‌ها به‌روزرسانی شد\n📌 لیست دکمه‌ها:\n${JSON.stringify(buttonsAddRowList, null, 2)}`);
     cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_row'), buttons.length - 1, 600);
     cache.set(pendingKey(ctx.from.id, 'editor_col'), 0, 600);
