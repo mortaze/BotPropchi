@@ -228,23 +228,30 @@ class BroadcastService {
     };
 
     if (parseMode) {
+      function broadcastPayload(extra: any): any {
+        const payload = { ...extra };
+        if (buttons) {
+          payload.reply_markup = { inline_keyboard: buttons };
+          logger.info('[TELEGRAM_REPLY_MARKUP] ' + JSON.stringify(payload.reply_markup, null, 2));
+        }
+        logger.info('[TELEGRAM_PAYLOAD] ' + JSON.stringify({ chat_id: chatId, ...payload }, null, 2));
+        return payload;
+      }
       switch (broadcast.messageType) {
         case BroadcastType.TEXT:
-          return this.bot.telegram.sendMessage(chatId, content || '', { parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
-        case BroadcastType.PHOTO:
-          return this.bot.telegram.sendPhoto(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+          return this.bot.telegram.sendMessage(chatId, content || '', broadcastPayload({ parse_mode: parseMode, link_preview_options: { is_disabled: true } }));
         case BroadcastType.VIDEO:
-          return this.bot.telegram.sendVideo(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, link_preview_options: { is_disabled: true }, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+          return this.bot.telegram.sendVideo(chatId, broadcast.mediaFileId || '', broadcastPayload({ parse_mode: parseMode, caption: content, link_preview_options: { is_disabled: true } }));
         case BroadcastType.DOCUMENT:
-          return this.bot.telegram.sendDocument(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+          return this.bot.telegram.sendDocument(chatId, broadcast.mediaFileId || '', broadcastPayload({ parse_mode: parseMode, caption: content }));
         case BroadcastType.VOICE:
-          return this.bot.telegram.sendVoice(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+          return this.bot.telegram.sendVoice(chatId, broadcast.mediaFileId || '', broadcastPayload({ parse_mode: parseMode, caption: content }));
         case BroadcastType.AUDIO:
-          return this.bot.telegram.sendAudio(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+          return this.bot.telegram.sendAudio(chatId, broadcast.mediaFileId || '', broadcastPayload({ parse_mode: parseMode, caption: content }));
         case BroadcastType.STICKER:
-          return this.bot.telegram.sendSticker(chatId, broadcast.mediaFileId || '', buttons ? { reply_markup: { inline_keyboard: buttons } } : undefined);
+          return this.bot.telegram.sendSticker(chatId, broadcast.mediaFileId || '', broadcastPayload({}));
         case BroadcastType.ANIMATION:
-          return this.bot.telegram.sendAnimation(chatId, broadcast.mediaFileId || '', { caption: content, parse_mode: parseMode, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) } as any);
+          return this.bot.telegram.sendAnimation(chatId, broadcast.mediaFileId || '', broadcastPayload({ parse_mode: parseMode, caption: content }));
         case BroadcastType.MEDIA_GROUP:
           return this.bot.telegram.sendMediaGroup(chatId, (broadcast.mediaItems as any[]) || []);
         default:

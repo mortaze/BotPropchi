@@ -29,19 +29,29 @@ function buildKeyboard(buttons?: any[][]): any {
         if (!btn) return null;
         const text = btn.text || 'Link';
         const value = btn.value || btn.url || btn.callback_data || '';
+        let result: any;
         switch (btn.type) {
-          case 'URL': return Markup.button.url(text, value);
-          case 'CALLBACK': return Markup.button.callback(text, value);
+          case 'URL': result = Markup.button.url(text, value); break;
+          case 'CALLBACK': result = Markup.button.callback(text, value); break;
           case 'WEB_APP':
-          case 'OPEN_MINI_APP': return Markup.button.webApp(text, value);
-          case 'LOGIN_URL': return { text, login_url: btn.login_url || btn.payload?.login_url || { url: value } } as any;
-          case 'COPY_TEXT': return { text, copy_text: { text: value } } as any;
+          case 'OPEN_MINI_APP': result = Markup.button.webApp(text, value); break;
+          case 'LOGIN_URL': result = { text, login_url: btn.login_url || btn.payload?.login_url || { url: value } } as any; break;
+          case 'COPY_TEXT': result = { text, copy_text: { text: value } } as any; break;
           case 'SWITCH_INLINE':
-          case 'SEND_COMMAND': return Markup.button.switchToChat(text, value);
-          case 'SWITCH_INLINE_CURRENT_CHAT': return Markup.button.switchToCurrentChat(text, value);
-          case 'COMMAND': return Markup.button.callback(text, `post:user:cmd:${value}`);
-          default: return value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop');
+          case 'SEND_COMMAND': result = Markup.button.switchToChat(text, value); break;
+          case 'SWITCH_INLINE_CURRENT_CHAT': result = Markup.button.switchToCurrentChat(text, value); break;
+          case 'COMMAND': result = Markup.button.callback(text, `post:user:cmd:${value}`); break;
+          default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop'); break;
         }
+        // Preserve all extra properties from original button (e.g. style)
+        if (result && btn) {
+          for (const key of Object.keys(btn)) {
+            if (!(key in result) && key !== 'type' && key !== 'value' && key !== 'url') {
+              (result as any)[key] = btn[key];
+            }
+          }
+        }
+        return result;
       }).filter(Boolean),
     ),
   ) as any;
@@ -101,7 +111,12 @@ export async function sendFormattedMessage(
 
     try {
       if (method === 'sendMessage') {
-        await ctx.reply(params.text || '(empty)', params);
+        if (params.reply_markup) {
+          logger.info('[TELEGRAM_REPLY_MARKUP] ' + JSON.stringify(params.reply_markup, null, 2));
+        }
+        logger.info('[TELEGRAM_PAYLOAD] ' + JSON.stringify({ method, ...params }, null, 2));
+        const sent = await ctx.reply(params.text || '(empty)', params);
+        logger.info('[TELEGRAM_RESPONSE] ' + JSON.stringify({ message_id: sent?.message_id, chat: sent?.chat }, null, 2));
       } else if (method === 'sendMediaGroup') {
         await ctx.replyWithMediaGroup(params.media);
       } else if (method === 'sendPhoto') {
@@ -154,7 +169,12 @@ export async function sendFormattedMessageToChat(
       const api = bot.telegram;
 
       if (method === 'sendMessage') {
-        await api.sendMessage(chatId, params.text || '(empty)', params);
+        if (params.reply_markup) {
+          logger.info('[TELEGRAM_REPLY_MARKUP] ' + JSON.stringify(params.reply_markup, null, 2));
+        }
+        logger.info('[TELEGRAM_PAYLOAD] ' + JSON.stringify({ method, chat_id: chatId, ...params }, null, 2));
+        const sent = await api.sendMessage(chatId, params.text || '(empty)', params);
+        logger.info('[TELEGRAM_RESPONSE] ' + JSON.stringify({ message_id: sent?.message_id, chat: sent?.chat }, null, 2));
       } else if (method === 'sendMediaGroup') {
         await api.sendMediaGroup(chatId, params.media);
       } else if (method === 'sendPhoto') {

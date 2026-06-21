@@ -332,8 +332,16 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.start(async (ctx) => {
     const name = ctx.from?.first_name || 'کاربر';
     const scoring = await scoringService.getSettings();
+    const userId = ctx.from!.id;
 
-    const profile = await userService.getProfile(BigInt(ctx.from!.id));
+    // ─── Reset all user state ────────────────────────────
+    for (const key of cache.keys) {
+      if (key.startsWith(`post:pending:${userId}:`) || key.startsWith(`post:editor:${userId}:`)) {
+        cache.del(key);
+      }
+    }
+
+    const profile = await userService.getProfile(BigInt(userId));
     const isNewUser = !profile || (profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 10_000);
 
     if (isNewUser) {
@@ -379,6 +387,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
         bot_name: DEFAULT_BOT_USERNAME || 'ربات',
       });
       await sendPostToUser(ctx, startContent);
+      // Restore main menu keyboard (even when startOnlyMode is active)
+      const adminOpts = await adminReplyOptions(ctx.from?.id);
+      await ctx.reply('🏠 منوی اصلی', adminOpts);
       return;
     }
 

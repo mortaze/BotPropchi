@@ -65,8 +65,13 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number)
     case 'INTERNAL_NAV': result = Markup.button.callback(text, `post:user:nav:${sanitizeTelegramText(value || 'noop', 64)}`); break;
     default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop'); break;
   }
-  if (result && btn?.style && ['primary', 'success', 'danger'].includes(btn.style)) {
-    result.style = btn.style;
+  // Preserve all extra properties from original button (e.g. style)
+  if (result && btn) {
+    for (const key of Object.keys(btn)) {
+      if (!(key in result) && key !== 'type' && key !== 'value' && key !== 'url') {
+        (result as any)[key] = btn[key];
+      }
+    }
   }
   return result;
 }

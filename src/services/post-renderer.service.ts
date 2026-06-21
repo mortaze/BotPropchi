@@ -127,7 +127,13 @@ async function renderSinglePost(ctx: any, post: any) {
   if (rendered.media.length > 1) {
     logger.info(`[TelegramSend] post=${post.id} sendMediaGroup items=${rendered.media.length}`);
     await ctx.replyWithMediaGroup(finalRequest.media);
-    if (buttons.length) await ctx.reply('عملیات:', Markup.inlineKeyboard(buttons));
+    if (buttons.length) {
+      const markup = Markup.inlineKeyboard(buttons);
+      logger.info('[TELEGRAM_REPLY_MARKUP] ' + JSON.stringify(markup, null, 2));
+      logger.info('[TELEGRAM_PAYLOAD] ' + JSON.stringify({ method: 'sendMessage', text: 'عملیات:', reply_markup: markup }, null, 2));
+      const sent = await ctx.reply('عملیات:', markup);
+      logger.info('[TELEGRAM_RESPONSE] ' + JSON.stringify({ message_id: sent?.message_id, chat: sent?.chat }, null, 2));
+    }
     return true;
   }
 
@@ -135,13 +141,20 @@ async function renderSinglePost(ctx: any, post: any) {
     const m = rendered.media[0];
     if (m.type === 'sticker') {
       logger.info(`[TelegramSend] post=${post.id} sendSticker`);
-      await ctx.replyWithSticker(m.fileId, buttons.length ? Markup.inlineKeyboard(buttons) : undefined);
+      const stickerExtra = buttons.length ? Markup.inlineKeyboard(buttons) : undefined;
+      if (stickerExtra) logger.info('[TELEGRAM_REPLY_MARKUP] ' + JSON.stringify(stickerExtra, null, 2));
+      await ctx.replyWithSticker(m.fileId, stickerExtra);
       return true;
     }
     const sender = MEDIA_SENDERS[m.type] || MEDIA_SENDERS.document;
     const { method, media, ...extra } = finalRequest;
     logger.info(`[TelegramSend] post=${post.id} ${sender.apiMethod}`);
-    await ctx[sender.method](media, extra);
+    if (extra.reply_markup) {
+      logger.info('[TELEGRAM_REPLY_MARKUP] ' + JSON.stringify(extra.reply_markup, null, 2));
+    }
+    logger.info('[TELEGRAM_PAYLOAD] ' + JSON.stringify({ method, media, ...extra }, null, 2));
+    const sent = await ctx[sender.method](media, extra);
+    logger.info('[TELEGRAM_RESPONSE] ' + JSON.stringify({ message_id: sent?.message_id, chat: sent?.chat }, null, 2));
     return true;
   }
 
