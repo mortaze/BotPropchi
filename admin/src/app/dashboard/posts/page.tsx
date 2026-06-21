@@ -107,7 +107,13 @@ export default function PostsPage() {
                     </Badge>
                   </td>
                   <td>
-                    <span className="font-medium hover:text-primary">{post.title}</span>
+                    <span className="font-medium hover:text-primary">
+                      {post.status === "DRAFT" ? (
+                        <span className="text-amber-600 dark:text-amber-400">📝 پیش‌نویس: {post.title}</span>
+                      ) : (
+                        post.title
+                      )}
+                    </span>
                   </td>
                   <td>
                     {post.commands?.length
