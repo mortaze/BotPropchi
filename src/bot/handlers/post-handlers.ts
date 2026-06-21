@@ -864,18 +864,25 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return safeEdit(ctx, '🖼 فایل رسانه ارسال کنید (عکس، ویدیو، گیف، سند، صدا، ویس):');
     }
     if (action === 'buttons') {
-      const buttons = (post as any).buttons || [];
       cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
       cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
       cache.del(pendingKey(ctx.from.id, 'editor_state'));
       cache.del(pendingKey(ctx.from.id, 'editor_row'));
       cache.del(pendingKey(ctx.from.id, 'editor_col'));
-      if (!buttons || buttons.length === 0 || buttons.every((r: any[]) => !r || r.length === 0)) {
+      const messages = parsePostMessages(post.content || '');
+      const firstMsgId = messages.length > 0 ? messages[0].id : '_shared';
+      cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), firstMsgId, 600);
+      const buttons = getMessageButtons((post as any).buttons, firstMsgId);
+      if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
         await safeEdit(ctx, '⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
       } else {
         await safeEdit(ctx, '⌨ ویرایشگر دکمه:', {
-          ...buildButtonEditorExitKeyboard(),
-          ...buildButtonListInlineKeyboard(postId, buttons),
+          reply_markup: {
+            ...buildButtonListInlineKeyboard(postId, buttons, 'create').reply_markup,
+            keyboard: [['🚪 خروج از تنظیمات پیام']],
+            resize_keyboard: true,
+            persistent: true,
+          },
         });
       }
       return;
@@ -1771,8 +1778,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
     } else {
       await ctx.reply('⌨ ویرایشگر دکمه:', {
-        ...buildButtonEditorExitKeyboard(),
-        ...buildButtonListInlineKeyboard(postId, buttons, 'create'),
+        reply_markup: {
+          ...buildButtonListInlineKeyboard(postId, buttons, 'create').reply_markup,
+          keyboard: [['🚪 خروج از تنظیمات پیام']],
+          resize_keyboard: true,
+          persistent: true,
+        },
       });
     }
   });
@@ -2684,8 +2695,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
         } else {
           await ctx.reply('⌨ ویرایشگر دکمه:', {
-            ...buildButtonEditorExitKeyboard(),
-            ...buildButtonListInlineKeyboard(editorPostId, buttons, 'create'),
+            reply_markup: {
+              ...buildButtonListInlineKeyboard(editorPostId, buttons, 'create').reply_markup,
+              keyboard: [['🚪 خروج از تنظیمات پیام']],
+              resize_keyboard: true,
+              persistent: true,
+            },
           });
         }
         return;
