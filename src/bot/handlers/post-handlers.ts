@@ -14,6 +14,7 @@ import {
   postListKeyboard,
   postViewKeyboard,
   postTitleOnlyListKeyboard,
+  buildPostListFromMenuLayout,
   postInfoActionKeyboard,
   postEditModeReplyKeyboard,
   postPublishOptionsKeyboard,
@@ -393,7 +394,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // System post buttons
     if (text === '🚀 پیام Start') {
-      await postService.ensureSystemPosts();
       const startPost = await postService.findSystemPost('START' as any);
       if (!startPost) return ctx.reply('❌ پست Start یافت نشد.');
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
@@ -403,7 +403,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
 
     if (text === '❓ پیام ناشناخته') {
-      await postService.ensureSystemPosts();
       const unknownPost = await postService.findSystemPost('UNKNOWN' as any);
       if (!unknownPost) return ctx.reply('❌ پست ناشناخته یافت نشد.');
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
@@ -2141,29 +2140,26 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   // ─── Helper: Show post list from menu layout ────────────
   async function showPostListFromLayout(ctx: any) {
     clearEditorKeyState(ctx.from.id);
-
-    // Admin check for system buttons
-    const admin = await botAdminService.getActive(ctx.from.id);
-    const isAdmin = isPostAdmin(admin);
-
     const layout = await settingsService.getResolvedMenuLayout(false);
     const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
     const hasMenuPosts = postButtons.length > 0;
     cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
 
-    logger.info('[PostList] Rendering posts list');
-
-    // Auto-create system posts if missing
-    await postService.ensureSystemPosts();
+    // Fetch system posts for admin
+    const [startPost, unknownPost] = await Promise.all([
+      postService.findSystemPost('START' as any),
+      postService.findSystemPost('UNKNOWN' as any),
+    ]);
 
     const backBtn = ['🔙 بازگشت به منوی پست‌ها'];
     const rows: string[][] = [];
 
-    // System post buttons for admin (always first row)
-    if (isAdmin) {
-      rows.push(['🚀 پیام Start', '❓ پیام ناشناخته']);
-      logger.info('[PostList] Added START system post button');
-      logger.info('[PostList] Added UNKNOWN system post button');
+    // System post buttons only for admins (always shown)
+    if (startPost || unknownPost) {
+      const systemRow: string[] = [];
+      if (startPost) systemRow.push('🚀 پیام Start');
+      if (unknownPost) systemRow.push('❓ پیام ناشناخته');
+      if (systemRow.length > 0) rows.push(systemRow);
     }
 
     if (hasMenuPosts) {
@@ -2177,7 +2173,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
               })
           : []
       ).filter((r: string[]) => r.length > 0));
-    } else if (!isAdmin) {
+    } else if (!startPost && !unknownPost) {
       return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
 
