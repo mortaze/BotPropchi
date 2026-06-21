@@ -9,6 +9,7 @@ import { parseReferralCode, referralService } from './referral.service';
 import { systemLogService } from './system-log.service';
 import { pointService } from './point.service';
 import { scoringService } from './scoring.service';
+import { notifyNewUserFromService } from '../bot/notifications';
 
 export const userService = {
   markMembershipVerified(telegramId: bigint) {
@@ -79,6 +80,12 @@ export const userService = {
       if (scoring.startPoints > 0) {
         await pointService.addPoints(user.id, scoring.startPoints, PointLogType.ADMIN_GRANT, 'امتیاز شروع ربات');
       }
+      logger.info(`[NewUser] detected userId=${params.telegramId.toString()}`);
+      notifyNewUserFromService(params.telegramId, {
+        first_name: params.firstName,
+        last_name: params.lastName,
+        username: params.username,
+      }).catch((err: unknown) => logger.error(`[NewUser] notification error userId=${params.telegramId.toString()}`, err));
     }
 
     // ثبت Referral تا زمان تأیید عضویت اجباری انجام نمی‌شود؛ referredById نقش pending referral را دارد.

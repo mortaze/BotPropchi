@@ -25,6 +25,7 @@ import { config } from '../../config';
 import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
+import { setBotInstance } from '../notifications';
 import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../services/post-renderer.service';
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { safeEdit, sendPostToUser } from '../shared';
@@ -273,6 +274,7 @@ async function finalizeBotBroadcast(ctx: any, pending: PendingBroadcast) {
 }
 
 export function registerHandlers(bot: Telegraf<Context>) {
+  setBotInstance(bot);
   bot.on('my_chat_member', async (ctx: any, next) => {
     const chat = ctx.update.my_chat_member?.chat;
     const newStatus = ctx.update.my_chat_member?.new_chat_member?.status;
@@ -307,36 +309,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
     }
 
     const profile = await userService.getProfile(BigInt(userId));
-    const isNewUser = !profile || (profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 10_000);
-
-    if (isNewUser) {
-      const totalUsers = await prisma.user.count();
-      const adminList = await botAdminService.list();
-      const activeAdmins = adminList.filter(a => a.status === 'ACTIVE');
-      const now = new Date().toLocaleString('fa-IR');
-      for (const admin of activeAdmins) {
-        try {
-          await bot.telegram.sendMessage(
-            Number(admin.telegramId),
-            [
-              '🎉 کاربر جدید وارد شد',
-              '',
-              `👤 نام: ${ctx.from?.first_name || 'نامشخص'} ${ctx.from?.last_name || ''}`,
-              `🆔 آیدی عددی: ${ctx.from?.id}`,
-              `📛 یوزرنیم: @${ctx.from?.username || 'ندارد'}`,
-              `📈 تعداد کل کاربران: ${totalUsers}`,
-              `📅 زمان: ${now}`,
-            ].join('\n'),
-            {
-              link_preview_options: { is_disabled: true },
-              ...Markup.inlineKeyboard([
-                [Markup.button.callback('📊 آمار', `admin:stats:${ctx.from?.id}`)],
-              ]),
-            }
-          );
-        } catch {}
-      }
-    }
 
     // ─── Send Start message ─────────────────────────────
     const startPost = await postService.getOrCreateStartPost();
