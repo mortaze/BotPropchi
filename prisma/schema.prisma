@@ -470,6 +470,7 @@ model ScoringSettings {
   welcomeMessageText       String   @default("سلام {name} عزیز! 👋\n\n🎯 به ربات کدهای تخفیف پراپ فرم خوش آمدید\n\nاز منوی زیر انتخاب کنید:")
   initialPointsMessageText String   @default("🎁 {points} امتیاز اولیه به حساب شما اضافه شد.")
   isWelcomeMessageEnabled  Boolean  @default(true)
+  startOnlyMode            Boolean  @default(false)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
   profileCompletionPoints  Int      @default(50)

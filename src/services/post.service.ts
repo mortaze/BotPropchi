@@ -745,4 +745,30 @@ export const postService = {
     cache.set(CACHE_KEY_MENU, published, 10);
     return published;
   },
+
+  // ─── Start Post ────────────────────────────────────────
+  async getOrCreateStartPost(): Promise<any> {
+    const slug = '__start__';
+    let post = await postRepository.findBySlug(slug);
+    if (!post) {
+      await postRepository.create({
+        title: '🚀 پیام Start',
+        slug,
+        content: 'به ربات خوش آمدید! 🙌',
+        status: PostStatus.PUBLISHED,
+        isPublished: true,
+        publishedAt: new Date(),
+        parseMode: 'Markdown',
+        renderMode: 'telegram_entities',
+        previewText: 'به ربات خوش آمدید! 🙌',
+      });
+      post = await postRepository.findBySlug(slug);
+      logger.info('[StartPost] Created start post');
+    }
+    return post ? normalizePost(post) : null;
+  },
+
+  isStartPost(post: any): boolean {
+    return post?.slug === '__start__';
+  },
 };

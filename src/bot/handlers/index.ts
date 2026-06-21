@@ -156,6 +156,15 @@ async function adminReplyOptions(telegramId?: number) {
   return buildMainMenuKeyboard(Boolean(admin), features, menuLayout, displayMode);
 }
 
+function applyStartVariables(post: any, vars: Record<string, string>): any {
+  const result = { ...post, content: post.content || '', caption: post.caption || '' };
+  result.content = result.content.replace(/\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g, (m: string, key: string) => vars[key] || '');
+  if (result.caption) result.caption = result.caption.replace(/\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g, (m: string, key: string) => vars[key] || '');
+  if (result.telegramPayload?.text) result.telegramPayload.text = String(result.telegramPayload.text).replace(/\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g, (m: string, key: string) => vars[key] || '');
+  if (result.telegramPayload?.caption) result.telegramPayload.caption = String(result.telegramPayload.caption).replace(/\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g, (m: string, key: string) => vars[key] || '');
+  return result;
+}
+
 
 
 type PendingBroadcast = {
@@ -310,10 +319,27 @@ export function registerHandlers(bot: Telegraf<Context>) {
       }
     }
 
-    if (scoring.isWelcomeMessageEnabled) {
+    // ─── Send Start message ─────────────────────────────
+    const startPost = await postService.getOrCreateStartPost();
+    const adminOpts = await adminReplyOptions(ctx.from?.id);
+    if (startPost?.content || startPost?.media?.length) {
+      const joinDate = profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('fa-IR') : '';
+      const startContent = applyStartVariables(startPost, {
+        first_name: ctx.from?.first_name || '',
+        last_name: ctx.from?.last_name || '',
+        username: ctx.from?.username || '',
+        user_id: String(ctx.from?.id || ''),
+        join_date: joinDate,
+        bot_name: DEFAULT_BOT_USERNAME || 'ربات',
+      });
+      await sendPostToUser(ctx, startContent);
+    }
+
+    // ─── Welcome message (only if startOnlyMode is off) ──
+    if (!scoring.startOnlyMode && scoring.isWelcomeMessageEnabled) {
       await ctx.reply(
         scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
-        { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
+        { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...adminOpts }
       );
       const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
       if (scoring.startPoints > 0 && isFirstEntrance) {
@@ -322,7 +348,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return;
     }
 
-    await ctx.reply('از منوی زیر انتخاب کنید:', { link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) });
+    if (!scoring.startOnlyMode) {
+      await ctx.reply('از منوی زیر انتخاب کنید:', { link_preview_options: { is_disabled: true }, ...adminOpts });
+    }
   });
 
 

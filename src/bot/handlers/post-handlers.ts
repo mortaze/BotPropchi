@@ -316,7 +316,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       // If in 'main' mode and text doesn't look like an editor action, the key is stale
       if (existingMode === 'main') {
         const text = ctx.message.text;
-        const isEditorAction = ['➕ افزودن پیام', 'افزودن دستور', '📊 آمار', '📤 لغو انتشار', '✅ انتشار',
+        const isEditorAction = ['➕ افزودن پیام', 'افزودن دستور', '📊 آمار', '📤 لغو انتشار', '✅ انتشار', '🔗 متغیرها',
           '🗂 بازگشت به لیست', '🏠 منو اصلی', '🔙 بازگشت', '⛔ توقف ویرایش',
           '✏️ ویرایش محتوا', '📝 ویرایش عنوان', 'ویرایش دکمه ها', '❌ لغو',
           '↪️ ارسال به عنوان فوروارد (خاموش)', '✅ ارسال به عنوان فوروارد (روشن)',
@@ -339,6 +339,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (text === '🔙 بازگشت به منوی پست' || text === '🔙 بازگشت به منوی پست‌ها') {
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
       return ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+    }
+
+    // Start post → open editor
+    if (text === '🚀 پیام Start') {
+      const startPost = await postService.getOrCreateStartPost();
+      if (!startPost) return ctx.reply('❌ خطا در بارگذاری پیام Start.');
+      cache.set(pendingKey(ctx.from.id, 'selected_post'), startPost.id, 300);
+      cache.del(`post_mgmt_mode:${ctx.from.id}`);
+      cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+      await enterPostEditor(ctx, startPost);
+      return;
     }
 
     // Match post title → select that post (support draft prefix)
@@ -1145,6 +1156,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
     await ctx.reply(
       `🗑 آیا از حذف "${post.title}" مطمئن هستید؟`,
       Markup.inlineKeyboard([
@@ -1159,6 +1171,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
     await postService.delete(postId);
     await safeEdit(ctx, '🗑 پست حذف شد.');
   });
@@ -1920,6 +1935,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل مخفی‌سازی نیست.');
     const wasHidden = post.status === 'HIDDEN';
     if (wasHidden) {
       await postService.show(postId);
@@ -1936,9 +1952,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    await postService.archive(postId);
     const post = await postService.findById(postId);
-    if (post) await showPostInfo(ctx, post);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل بایگانی نیست.');
+    await postService.archive(postId);
+    const updated = await postService.findById(postId);
+    if (updated) await showPostInfo(ctx, updated);
   });
 
   // 🗑 حذف پست: Ask confirmation, then delete, return to posts list
@@ -1949,6 +1968,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
     const text = `🗑 آیا از حذف "${post.title}" مطمئن هستید؟\n\nاین پست از منو و لیست پست‌ها حذف خواهد شد.`;
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('✅ بله، حذف شود', `post:manager:delete:confirm:${postId}`)],
@@ -1962,6 +1982,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
     await postService.delete(postId);
     try { await ctx.editMessageText('🗑 پست حذف شد.'); } catch { await ctx.reply('🗑 پست حذف شد.'); }
     await showPostListFromLayout(ctx);
@@ -1975,6 +1998,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
     const text = `⚠️ *حذف دائمی*\n\nآیا از حذف دائمی "${post.title}" مطمئن هستید؟\n\nاین عملیات قابل بازگشت نیست و پست به طور کامل از تمام جداول دیتابیس حذف خواهد شد.`;
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🔥 بله، حذف دائمی شود', `post:manager:harddelete:confirm:${postId}`)],
@@ -1988,6 +2012,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
+    const post = await postService.findById(postId);
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
     await postService.delete(postId);
     try { await ctx.editMessageText('🔥 پست به طور دائمی حذف شد.'); } catch { await ctx.reply('🔥 پست به طور دائمی حذف شد.'); }
     await showPostListFromLayout(ctx);
@@ -2098,11 +2125,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     try {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
         link_preview_options: { is_disabled: true },
-        ...postMultiMessageEditorReplyKeyboard(post.isPublished),
+        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__'),
       });
     } catch (e: any) {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
-        ...postMultiMessageEditorReplyKeyboard(post.isPublished),
+        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__'),
       });
     }
 
@@ -2295,6 +2322,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
             ...analytics.dailyViews.slice(-7).map((d: any) => `  ${d.date}: ${d.count} بازدید`),
           ].join('\n');
           await ctx.reply(text, { parse_mode: 'Markdown' as any });
+          return;
+        }
+        case '🔗 متغیرها': {
+          const variables = [
+            '`{first_name}` — نام کاربر',
+            '`{last_name}` — نام خانوادگی',
+            '`{username}` — نام کاربری',
+            '`{user_id}` — شناسه عددی',
+            '`{join_date}` — تاریخ عضویت',
+            '`{bot_name}` — نام ربات',
+          ].join('\n');
+          await ctx.reply(`📝 *متغیرهای قابل استفاده در پیام Start:*\n\n${variables}\n\nدر زمان ارسال، مقادیر واقعی جایگزین می‌شوند.`, { parse_mode: 'Markdown' as any });
           return;
         }
         case '✅ انتشار': {

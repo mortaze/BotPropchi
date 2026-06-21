@@ -14,6 +14,7 @@ export const DEFAULT_SCORING_SETTINGS = {
   welcomeMessageText: 'سلام {name} عزیز! 👋\n\n🎯 به ربات کدهای تخفیف پراپ فرم خوش آمدید\n\nاز منوی زیر انتخاب کنید:',
   initialPointsMessageText: '🎁 {points} امتیاز اولیه به حساب شما اضافه شد.',
   isWelcomeMessageEnabled: true,
+  startOnlyMode: false,
 };
 
 export type ScoringSettingsUpdate = Partial<typeof DEFAULT_SCORING_SETTINGS>;

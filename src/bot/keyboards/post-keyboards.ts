@@ -139,6 +139,7 @@ export const buildPostListFromMenuLayout = (layout: any[][], drafts?: any[]) => 
       rows.push([`📝 پیش‌نویس: ${sanitizeTelegramText(draft.title || 'بدون عنوان', 128)}`]);
     }
   }
+  rows.push(['🚀 پیام Start']);
   rows.push(['🔙 بازگشت به منوی پست‌ها']);
   return Markup.keyboard(rows).resize().persistent();
 };
@@ -154,29 +155,33 @@ export const postInfoActionKeyboard = (post: any) => {
   const postId = post.id;
   const isHidden = post.status === 'HIDDEN';
   const isPublished = post.isPublished && post.status === 'PUBLISHED';
-  return Markup.inlineKeyboard([
+  const isStart = post.slug === '__start__';
+  const rows: any[][] = [
     [
       Markup.button.callback('✏️ ویرایش', `post:manager:edit:${postId}`),
-      Markup.button.callback(isPublished ? '🚫 لغو انتشار' : '✅ انتشار', `post:manager:unpublish:${postId}`),
-      Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`),
     ],
-    [
+  ];
+  if (!isStart) {
+    rows[0].push(Markup.button.callback(isPublished ? '🚫 لغو انتشار' : '✅ انتشار', `post:manager:unpublish:${postId}`));
+    rows[0].push(Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`));
+    rows.push([
       Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
       Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
       Markup.button.callback('🗑 حذف پست', `post:manager:delete:${postId}`),
-    ],
-    [
+    ]);
+    rows.push([
       Markup.button.callback('🔥 حذف دائمی', `post:manager:harddelete:${postId}`),
-    ],
-    [
-      Markup.button.callback('🔙 بازگشت به لیست', `post:manager:back:${postId}`),
-    ],
-    [
-      Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
-      Markup.button.callback('➖ حذف محتوا', `post:action:remove:${postId}`),
-      Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
-    ],
+    ]);
+  }
+  rows.push([
+    Markup.button.callback('🔙 بازگشت به لیست', `post:manager:back:${postId}`),
   ]);
+  rows.push([
+    Markup.button.callback('➕ افزودن', `post:action:add:${postId}`),
+    Markup.button.callback('➖ حذف محتوا', `post:action:remove:${postId}`),
+    Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
+  ]);
+  return Markup.inlineKeyboard(rows);
 };
 
 // ─── Inline Keyboard: Post Edit Mode (operation buttons on post info) ──
@@ -373,13 +378,19 @@ export const menuRowResizeKeyboard = (row: number) => {
 
 // ─── Multi-Message Editor Keyboards ────────────────────────
 
-export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean) =>
-  Markup.keyboard([
+export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean, isStart?: boolean) => {
+  const rows: string[][] = [
     ['➕ افزودن پیام', 'افزودن دستور'],
-    ['📊 آمار', isPublished ? '📤 لغو انتشار' : '✅ انتشار'],
     ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
-    ['🗑 حذف پست'],
-  ]).resize().persistent();
+  ];
+  if (isStart) {
+    rows.splice(1, 0, ['📊 آمار', '🔗 متغیرها']);
+  } else {
+    rows.splice(1, 0, ['📊 آمار', isPublished ? '📤 لغو انتشار' : '✅ انتشار']);
+    rows.push(['🗑 حذف پست']);
+  }
+  return Markup.keyboard(rows).resize().persistent();
+};
 
 export const postMoveModeReplyKeyboard = () =>
   Markup.keyboard([
