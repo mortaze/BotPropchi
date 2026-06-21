@@ -1231,19 +1231,30 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   });
 
   // ─── ❌ لغو in button editor (all states) ──────────────
-  // Always exits the current wizard fully and returns to the button list.
   bot.hears('❌ لغو', async (ctx: any, next: any) => {
     if (!ctx.from) return next();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || !isPostAdmin(admin)) return next();
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
-    if (!postId) return next();
-    const msgIdx = cache.get<string>(pendingKey(ctx.from.id, 'editing_message_idx'));
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (!postId || !state) return next();
+    const savedView = cache.get<string>(pendingKey(ctx.from.id, 'previous_view'));
     clearButtonEditorState(ctx.from.id);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-    if (msgIdx) cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), msgIdx, 600);
-    await refreshButtonListView(ctx, postId, '✅ عملیات لغو شد.');
+    cache.del(pendingKey(ctx.from.id, 'previous_view'));
+    if (savedView === 'select_type') {
+      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
+      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      await ctx.reply('❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
+    } else if (savedView && ['create', 'edit', 'delete', 'move'].includes(savedView)) {
+      cache.set(pendingKey(ctx.from.id, 'editor_mode'), savedView, 600);
+      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      await refreshButtonListView(ctx, postId, '✅ عملیات لغو شد.');
+    } else {
+      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      await refreshButtonListView(ctx, postId, '✅ عملیات لغو شد.\n🔧 شما دوباره در بخش تنظیمات دکمه‌های پیام قرار دارید.');
+    }
   });
 
   // ─── NEW BUTTON EDITOR (pbedit) ─────────────────────────
@@ -2599,13 +2610,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
 
-      // Regular text = new message content (with entities preserved)
+      // Regular text = new message content
       const post = await postService.findById(editorPostId);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       const messages = parsePostMessages(post.content || '');
       const { index: resolvedIdx } = resolveMsgRef(messages, msgRef);
       const insertAt = resolvedIdx < 0 ? messages.length : Math.min(resolvedIdx + 1, messages.length);
-      messages.splice(insertAt, 0, { id: crypto.randomUUID(), content: text, entities: ctx.message.entities || [] });
+      messages.splice(insertAt, 0, { id: crypto.randomUUID(), content: text });
       const newContent = serializePostMessages(messages);
       await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
@@ -2720,7 +2731,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const { index: msgIdx } = resolveMsgRef(messages, msgRef);
       if (msgIdx >= 0 && msgIdx < messages.length) {
         messages[msgIdx].content = text;
-        messages[msgIdx].entities = ctx.message.entities || [];
         const newContent = serializePostMessages(messages);
         await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
       }
@@ -2774,7 +2784,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messages = parsePostMessages(post.content || '');
     const { index: resolvedIdx } = resolveMsgRef(messages, msgRef);
     const insertAt = resolvedIdx < 0 ? messages.length : Math.min(resolvedIdx + 1, messages.length);
-    messages.splice(insertAt, 0, { id: crypto.randomUUID(), content: caption || '(رسانه)', entities: ctx.message.caption_entities || [] });
+    messages.splice(insertAt, 0, { id: crypto.randomUUID(), content: caption || '(رسانه)' });
     const newContent = serializePostMessages(messages);
     await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
     cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);

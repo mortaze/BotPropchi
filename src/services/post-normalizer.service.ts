@@ -3,7 +3,6 @@ import { logger } from '../utils/logger';
 export interface MessageEntry {
   id: string;
   content: string;
-  entities?: any[];
 }
 
 function cloneJson<T>(value: T): T {

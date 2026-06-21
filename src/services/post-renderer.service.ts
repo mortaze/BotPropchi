@@ -101,8 +101,7 @@ export async function renderPostToTelegram(ctx: any, post: any) {
     for (let i = 0; i < texts.length; i++) {
       const messageId = entries[i]?.id;
       const msgButtons = getMessageButtonsFromPost(post, i, messageId);
-      const msgEntities = entries[i]?.entities || [];
-      const msgPost = { ...post, content: texts[i], buttons: msgButtons, entities: msgEntities, contentEntities: msgEntities };
+      const msgPost = { ...post, content: texts[i], buttons: msgButtons };
       if (i === 0) {
         lastResult = await renderSinglePost(ctx, msgPost);
       } else {
@@ -125,8 +124,7 @@ export async function renderPostToTelegram(ctx: any, post: any) {
   }
   const firstId = entries[0]?.id;
   const msgButtons = getMessageButtonsFromPost(post, 0, firstId);
-  const msgEntities = entries[0]?.entities || [];
-  return renderSinglePost(ctx, { ...post, content: msgContent, buttons: msgButtons, entities: msgEntities, contentEntities: msgEntities });
+  return renderSinglePost(ctx, { ...post, content: msgContent, buttons: msgButtons });
 }
 
 async function renderSinglePost(ctx: any, post: any) {
