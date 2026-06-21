@@ -319,6 +319,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
       logger.error('[SystemPost] START render failed', e);
     }
 
+    // Send the main menu keyboard so stale wizard keyboards are replaced
+    await ctx.reply('منوی اصلی', await adminReplyOptions(userId)).catch(() => {});
+
     // New user notification for admins (kept as separate system)
     const profile = await userService.getProfile(BigInt(userId));
     const isNewUser = !profile || (profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 10_000);
