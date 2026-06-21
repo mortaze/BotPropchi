@@ -129,20 +129,6 @@ function moveButtonInLayout(
   }
 }
 
-// Swap button arrays for two message indices (used when reordering messages)
-function swapMessageButtons(raw: any, idxA: number, idxB: number): any {
-  if (!raw) return raw;
-  if (Array.isArray(raw)) return raw; // old shared format — nothing to swap
-  if (typeof raw !== 'object' || !raw.messages) return raw;
-  const msgs = raw.messages;
-  const keyA = String(idxA);
-  const keyB = String(idxB);
-  const tmp = msgs[keyA];
-  msgs[keyA] = msgs[keyB];
-  msgs[keyB] = tmp;
-  return raw;
-}
-
 // ─── Per-message button helpers ──────────────────────────
 function getMessageButtons(raw: any, messageIdx: number): any[][] {
   if (!raw) return [];
@@ -1324,24 +1310,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
         const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
         if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
-        const btnText = buttons[row][col].text || '';
 
         const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
 
         await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-
-        // Reload fresh data from DB for accurate preview
-        const freshPost = await postService.findById(postId);
-        const freshButtons = getMessageButtons((freshPost as any).buttons, messageIdx);
-
         cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_col'), newCol, 600);
-
-        // Show success + selection prompt + updated inline keyboard + reply keyboard
-        await ctx.reply(
-          `✅ دکمه "${btnText}" با موفقیت جابجا شد.\n\n📍 ${btnText} انتخاب شد.\n⬆️ یا ⬇️ را برای جابجایی انتخاب کنید.`,
-          buildButtonListInlineKeyboard(postId, freshButtons, 'move'));
-        await ctx.reply('🔀 حالت جابجایی:', postMoveModeReplyKeyboard());
+        await refreshButtonListView(ctx, postId, `✅ دکمه به ${text === '⬆️ بالا' ? 'بالا' : 'پایین'} منتقل شد.`);
         return;
       }
       if (text === '🔙 بازگشت') {
@@ -1404,12 +1379,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     if (mode === 'create') {
       // Add new button in a new row at the bottom (never append to existing row)
-      buttons.push([{ text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value, buttonId: crypto.randomUUID() }]);
+      buttons.push([{ text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value }]);
     } else if (mode === 'edit' && row !== undefined && col !== undefined) {
-      // Edit existing button — preserve existing buttonId
+      // Edit existing button
       if (buttons[row] && buttons[row][col]) {
-        const existingId = buttons[row][col].buttonId || buttons[row][col].id;
-        buttons[row][col] = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value, buttonId: existingId || crypto.randomUUID() };
+        buttons[row][col] = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value };
       }
     }
 
@@ -1495,7 +1469,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
 
     // Default: create mode — add a new default button in a new row below clicked row
-    buttons.splice(row + 1, 0, [{ text: 'دکمه جدید', type: 'URL', value: '', buttonId: crypto.randomUUID() }]);
+    buttons.splice(row + 1, 0, [{ text: 'دکمه جدید', type: 'URL', value: '' }]);
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
     await refreshButtonListView(ctx, postId, '✅ دکمه جدید ایجاد شد.');
     return;
@@ -1576,7 +1550,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
     const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
-    buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '', buttonId: crypto.randomUUID() }]);
+    buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
     await postService.update(realPostId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
     cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
     cache.set(pendingKey(ctx.from.id, 'editor_row'), buttons.length - 1, 600);
@@ -2216,12 +2190,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = parsePostMessages(post.content || '');
     if (msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
-    // Swap content
     [messages[msgIdx - 1], messages[msgIdx]] = [messages[msgIdx], messages[msgIdx - 1]];
     const newContent = serializePostMessages(messages);
-    // Swap per-message buttons
-    const buttons = swapMessageButtons((post as any).buttons, msgIdx - 1, msgIdx);
-    await postService.update(postId, { content: newContent, buttons, updatedBy: BigInt(ctx.from.id) } as any);
+    await postService.update(postId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
@@ -2236,12 +2207,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = parsePostMessages(post.content || '');
     if (msgIdx < 0 || msgIdx >= messages.length - 1) return ctx.reply('❌ در پایین‌ترین موقعیت.');
-    // Swap content
     [messages[msgIdx], messages[msgIdx + 1]] = [messages[msgIdx + 1], messages[msgIdx]];
     const newContent = serializePostMessages(messages);
-    // Swap per-message buttons
-    const buttons = swapMessageButtons((post as any).buttons, msgIdx, msgIdx + 1);
-    await postService.update(postId, { content: newContent, buttons, updatedBy: BigInt(ctx.from.id) } as any);
+    await postService.update(postId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
@@ -2391,23 +2359,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         if (!post) return ctx.reply('❌ پست یافت نشد.');
         const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
         if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
-        const btnText = buttons[row][col].text || '';
 
         const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
 
         await postService.update(editorPostId, { buttons } as any);
         cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_col'), newCol, 600);
-
-        // Reload fresh data and show selection prompt
-        const freshPost = await postService.findById(editorPostId);
-        if (freshPost) {
-          await refreshEditorMessages(ctx, freshPost);
-        }
-        await ctx.reply(
-          `✅ دکمه "${btnText}" با موفقیت جابجا شد.\n\n📍 ${btnText} انتخاب شد.\n⬆️ یا ⬇️ را برای جابجایی انتخاب کنید.`,
-          buildButtonListInlineKeyboard(editorPostId, buttons, 'move'));
-        await ctx.reply('🔀 حالت جابجایی:', postMoveModeReplyKeyboard());
+        const updated = await postService.findById(editorPostId);
+        if (updated) await refreshEditorMessages(ctx, updated);
+        await ctx.reply(`✅ دکمه به ${text === '⬆️ بالا' ? 'بالا' : 'پایین'} منتقل شد.`);
         return;
       }
       if (text === '🔙 بازگشت') {

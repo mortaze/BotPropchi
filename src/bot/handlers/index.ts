@@ -27,7 +27,6 @@ import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../services/post-renderer.service';
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
-import { findButtonById } from '../../services/post-normalizer.service';
 import { safeEdit, sendPostToUser } from '../shared';
 import {
   propFirmDiscountKeyboard,
@@ -1305,24 +1304,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   // ─── Post POPUP Button routing ─────────────────────────
-  // New format with stable buttonId: post:user:popup:{postId}:id:{buttonId}
-  bot.action(/^post:user:popup:(\d+):id:([a-f0-9-]+)$/, async (ctx: any) => {
-    if (!(await settingsService.isFeatureEnabled('posts'))) return;
-    const postId = parseInt(ctx.match[1]);
-    const buttonId = ctx.match[2];
-    try {
-      const post = await postService.findById(postId);
-      if (!post) return ctx.answerCbQuery('❌ پست یافت نشد.', { show_alert: true });
-      const btn = findButtonById((post as any).buttons, buttonId);
-      if (!btn || btn.type !== 'POPUP') return ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
-      await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
-    } catch (err) {
-      logger.error(`[PostPopup] Failed:`, err);
-      await ctx.answerCbQuery('❌ خطا', { show_alert: true });
-    }
-  });
-
-  // Legacy format with row:col (backward compat)
   bot.action(/^post:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     if (!(await settingsService.isFeatureEnabled('posts'))) return;
     const postId = parseInt(ctx.match[1]);
