@@ -2567,7 +2567,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
       messages.splice(insertAt, 0, text);
       const newContent = serializePostMessages(messages);
-      await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+      await postService.update(editorPostId, {
+        content: newContent,
+        contentText: text,
+        contentEntities: ctx.message.entities || [],
+        renderMode: 'telegram_entities',
+        contentFormat: 'telegram_entities',
+        updatedBy: BigInt(ctx.from.id),
+      } as any);
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       const updated = await postService.findById(editorPostId);
@@ -2680,7 +2687,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (msgIdx >= 0 && msgIdx < messages.length) {
         messages[msgIdx] = text;
         const newContent = serializePostMessages(messages);
-        await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+        await postService.update(editorPostId, {
+          content: newContent,
+          contentText: text,
+          contentEntities: ctx.message.entities || [],
+          renderMode: 'telegram_entities',
+          contentFormat: 'telegram_entities',
+          updatedBy: BigInt(ctx.from.id),
+        } as any);
       }
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
@@ -2732,7 +2746,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
     messages.splice(insertAt, 0, caption || '(رسانه)');
     const newContent = serializePostMessages(messages);
-    await postService.update(editorPostId, { content: newContent, updatedBy: BigInt(ctx.from.id) } as any);
+    await postService.update(editorPostId, {
+      content: newContent,
+      contentText: caption,
+      contentEntities: msg.caption_entities || [],
+      renderMode: 'telegram_entities',
+      contentFormat: 'telegram_entities',
+      updatedBy: BigInt(ctx.from.id),
+    } as any);
     cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
     const updated = await postService.findById(editorPostId);

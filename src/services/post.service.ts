@@ -140,7 +140,7 @@ export const postService = {
     this.invalidateCache();
 
     // Auto-sync published posts to menu (single source of truth = post database — title resolved at render time)
-    if (post.status === 'PUBLISHED' && post.isPublished) {
+    if (post.status === 'PUBLISHED' && post.isPublished && post.slug !== '__start__') {
       settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
         logger.warn(`[Post] Menu sync failed for post ${id}:`, err);
       });
@@ -186,9 +186,11 @@ export const postService = {
     });
     this.invalidateCache();
     // Auto-add to menu_layout (visible by default for published posts — title resolved from DB at render time)
-    await settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
-      logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
-    });
+    if (post.slug !== '__start__') {
+      await settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
+        logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
+      });
+    }
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
       message: `Post Published: "${post.title}"`,

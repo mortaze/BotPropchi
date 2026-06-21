@@ -158,11 +158,57 @@ async function adminReplyOptions(telegramId?: number) {
 
 function applyStartVariables(post: any, vars: Record<string, string>): any {
   const result = { ...post, content: post.content || '', caption: post.caption || '' };
-  result.content = result.content.replace(/\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g, (m: string, key: string) => vars[key] || '');
-  if (result.caption) result.caption = result.caption.replace(/\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g, (m: string, key: string) => vars[key] || '');
-  if (result.telegramPayload?.text) result.telegramPayload.text = String(result.telegramPayload.text).replace(/\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g, (m: string, key: string) => vars[key] || '');
-  if (result.telegramPayload?.caption) result.telegramPayload.caption = String(result.telegramPayload.caption).replace(/\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g, (m: string, key: string) => vars[key] || '');
+  const VAR_PATTERN = /\{(first_name|last_name|username|user_id|join_date|bot_name)\}/g;
+  const oldContent = result.content;
+
+  result.content = result.content.replace(VAR_PATTERN, (m: string, key: string) => vars[key] || '');
+  if (result.caption) result.caption = result.caption.replace(VAR_PATTERN, (m: string, key: string) => vars[key] || '');
+  if (result.telegramPayload?.text) result.telegramPayload.text = String(result.telegramPayload.text).replace(VAR_PATTERN, (m: string, key: string) => vars[key] || '');
+  if (result.telegramPayload?.caption) result.telegramPayload.caption = String(result.telegramPayload.caption).replace(VAR_PATTERN, (m: string, key: string) => vars[key] || '');
+
+  // Adjust entity offsets after variable substitution
+  const shiftMap = buildOffsetShiftMap(oldContent, result.content, VAR_PATTERN, vars);
+  if (result.entities && shiftMap) {
+    result.entities = result.entities.map((e: any) => {
+      const shift = getShiftAtOffset(shiftMap, e.offset);
+      return { ...e, offset: e.offset + shift };
+    });
+  }
+  if (result.contentEntities && shiftMap) {
+    result.contentEntities = result.contentEntities.map((e: any) => {
+      const shift = getShiftAtOffset(shiftMap, e.offset);
+      return { ...e, offset: e.offset + shift };
+    });
+  }
+
   return result;
+}
+
+function buildOffsetShiftMap(oldText: string, newText: string, pattern: RegExp, vars: Record<string, string>): Map<number, number> | null {
+  const matches: { index: number; length: number; replacement: string }[] = [];
+  let m: RegExpExecArray | null;
+  const re = new RegExp(pattern.source, 'g');
+  while ((m = re.exec(oldText)) !== null) {
+    matches.push({ index: m.index, length: m[0].length, replacement: vars[m[1]] || '' });
+  }
+  if (matches.length === 0) return null;
+
+  matches.sort((a, b) => a.index - b.index);
+  const shiftMap = new Map<number, number>();
+  let cumulativeShift = 0;
+  for (const match of matches) {
+    cumulativeShift += match.replacement.length - match.length;
+    shiftMap.set(match.index + match.length, cumulativeShift);
+  }
+  return shiftMap;
+}
+
+function getShiftAtOffset(shiftMap: Map<number, number>, offset: number): number {
+  let shift = 0;
+  for (const [boundary, s] of shiftMap) {
+    if (offset >= boundary) shift = s;
+  }
+  return shift;
 }
 
 
@@ -321,8 +367,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     // ─── Send Start message ─────────────────────────────
     const startPost = await postService.getOrCreateStartPost();
-    const adminOpts = await adminReplyOptions(ctx.from?.id);
-    if (startPost?.content || startPost?.media?.length) {
+    const hasCustomContent = startPost?.content || startPost?.media?.length;
+    if (hasCustomContent) {
       const joinDate = profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('fa-IR') : '';
       const startContent = applyStartVariables(startPost, {
         first_name: ctx.from?.first_name || '',
@@ -333,9 +379,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
         bot_name: DEFAULT_BOT_USERNAME || 'ربات',
       });
       await sendPostToUser(ctx, startContent);
+      return;
     }
 
-    // ─── Welcome message (only if startOnlyMode is off) ──
+    // ─── Default welcome (only when no custom Start post) ──
+    const adminOpts = await adminReplyOptions(ctx.from?.id);
     if (!scoring.startOnlyMode && scoring.isWelcomeMessageEnabled) {
       await ctx.reply(
         scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
