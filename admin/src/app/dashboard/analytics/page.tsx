@@ -314,7 +314,6 @@ export default function AnalyticsPage() {
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip
                   labelFormatter={(label: ReactNode) => toJalali(String(label ?? ""))}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   formatter={(value: any, name: any) => [formatNumber(Number(value ?? 0)), METRICS_CONFIG[name as string]?.label ?? String(name)]}
                 />
                 {Array.from(selectedMetrics).map((metric) => (
