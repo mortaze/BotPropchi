@@ -141,6 +141,7 @@ export const postService = {
 
     // Auto-sync published posts to menu (single source of truth = post database — title resolved at render time)
     if (post.status === 'PUBLISHED' && post.isPublished && post.slug !== '__start__') {
+      settingsService.invalidateMenuLayoutCache();
       settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
         logger.warn(`[Post] Menu sync failed for post ${id}:`, err);
       });
@@ -160,6 +161,7 @@ export const postService = {
     const post = await postRepository.findById(id);
     if (!post) return null;
     // Remove all menu references before deletion
+    settingsService.invalidateMenuLayoutCache();
     await settingsService.removePostFromMenu(id).catch(err => {
       logger.warn(`[Post] Failed to remove post ${id} from menu:`, err);
     });
@@ -187,6 +189,7 @@ export const postService = {
     this.invalidateCache();
     // Auto-add to menu_layout (visible by default for published posts — title resolved from DB at render time)
     if (post.slug !== '__start__') {
+      settingsService.invalidateMenuLayoutCache();
       await settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
         logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
       });

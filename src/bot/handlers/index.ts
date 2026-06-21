@@ -444,6 +444,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     cache.del(`menu:selected:${ctx.from.id}`);
     cache.del(`menu:renaming:${ctx.from.id}`);
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getResolvedMenuLayout(false);
     cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
     await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید:', buildMenuEditorReplyKeyboard(layout));
@@ -463,12 +464,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getMenuLayout();
     await ctx.reply('👁 پیش‌نمایش منوی اصلی:', buildMainMenuKeyboard(true, {}, layout));
   });
 
   // ─── Helper: update inline + reply after item action ──────────
   async function updateAfterItemAction(ctx: any, buttonId: string) {
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getMenuLayout();
     const resolvedLayout = await settingsService.getResolvedMenuLayout(false);
     const newPos = findButtonNewPosition(layout, buttonId);
@@ -494,6 +497,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getMenuLayout();
     if (!layout[row] || col === 0) return;
     const btnId = layout[row][col].id;
@@ -509,6 +513,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getMenuLayout();
     if (!layout[row] || col >= layout[row].length - 1) return;
     const btnId = layout[row][col].id;
@@ -526,6 +531,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getMenuLayout();
     const button = layout[row]?.[col];
     if (!button) return;
@@ -559,6 +565,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getMenuLayout();
     const button = layout[row]?.[col];
     if (!button) return;
@@ -590,6 +597,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getMenuLayout();
     if (layout[row]?.[col]) {
       layout[row][col].visible = layout[row][col].visible === false ? true : false;
@@ -606,6 +614,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     const row = parseInt(ctx.match[1]);
     const col = parseInt(ctx.match[2]);
+    settingsService.invalidateMenuLayoutCache();
     const layout = await settingsService.getMenuLayout();
     const button = layout[row]?.[col];
     if (!button) return;
@@ -689,6 +698,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
         return;
       }
       // New name received
+      settingsService.invalidateMenuLayoutCache();
       const layout = await settingsService.getMenuLayout();
       const button = layout[renameData.row]?.[renameData.col];
       let buttonId: string | undefined;

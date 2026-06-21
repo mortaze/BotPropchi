@@ -302,7 +302,7 @@ class SettingsService {
   }
 
   async saveMenuLayout(layout: any[][], preserveVersion?: number) {
-    const oldLayout = this.menuLayoutCache?.layout || [];
+    const oldLayout = this.menuLayoutCache?.layout ? JSON.parse(JSON.stringify(this.menuLayoutCache.layout)) : [];
 
     // Normalize FIRST: remove undefined/null from all rows and empty rows
     layout = this.normalizeLayout(layout);
