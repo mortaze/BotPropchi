@@ -1055,9 +1055,29 @@ export function registerHandlers(bot: Telegraf<Context>) {
     try {
       const post = await postService.findById(postId);
       if (!post) return ctx.answerCbQuery('❌ پست یافت نشد.', { show_alert: true });
-      const buttons: any[][] = (post as any).buttons || [];
-      const btn = buttons[row]?.[col];
-      if (!btn || btn.type !== 'POPUP') return ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+      const raw = (post as any).buttons;
+      let btn: any = null;
+      logger.debug(`[PopupLookup] postId=${postId} row=${row} col=${col} buttonsType=${typeof raw} isArray=${Array.isArray(raw)}`);
+      if (Array.isArray(raw)) {
+        btn = raw[row]?.[col];
+        logger.debug(`[PopupLookup] array mode: btn=${btn ? 'found' : 'not found'} type=${btn?.type}`);
+      } else if (raw && typeof raw === 'object' && raw.messages) {
+        const msgKeys = Object.keys(raw.messages).sort((a, b) => Number(a) - Number(b));
+        logger.debug(`[PopupLookup] multi-msg mode: keys=${JSON.stringify(msgKeys)}`);
+        for (const key of msgKeys) {
+          const msgBtns = raw.messages[key];
+          if (Array.isArray(msgBtns) && msgBtns[row]?.[col]?.type === 'POPUP') {
+            btn = msgBtns[row][col];
+            logger.debug(`[PopupLookup] found in message ${key}`);
+            break;
+          }
+        }
+      }
+      if (!btn || btn.type !== 'POPUP') {
+        logger.debug(`[PopupLookup] NOT FOUND postId=${postId} row=${row} col=${col} btn=${JSON.stringify(btn)}`);
+        return ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+      }
+      logger.debug(`[PopupLookup] FOUND postId=${postId} messageIndex=auto row=${row} col=${col} type=${btn.type} value.length=${(btn.value || '').length}`);
       await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
     } catch (err) {
       logger.error(`[PostPopup] Failed:`, err);

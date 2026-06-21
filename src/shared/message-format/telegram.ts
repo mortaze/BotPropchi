@@ -16,16 +16,17 @@ import { serializeMessage, serializeMediaGroup, serializeSingleMedia, requestToT
 export interface SendOptions {
   chatId?: number | string;
   buttons?: any[][];
+  postId?: number;
   link_preview?: boolean;
   protect_content?: boolean;
   parse_mode?: string;
 }
 
-function buildKeyboard(buttons?: any[][]): any {
+function buildKeyboard(buttons?: any[][], postId?: number): any {
   if (!buttons || buttons.length === 0) return {};
   return Markup.inlineKeyboard(
-    buttons.map(row =>
-      row.map((btn: any) => {
+    buttons.map((row, r) =>
+      row.map((btn: any, c) => {
         if (!btn) return null;
         const text = btn.text || 'Link';
         const value = btn.value || btn.url || btn.callback_data || '';
@@ -40,6 +41,7 @@ function buildKeyboard(buttons?: any[][]): any {
           case 'SWITCH_INLINE':
           case 'SEND_COMMAND': result = Markup.button.switchToChat(text, value); break;
           case 'SWITCH_INLINE_CURRENT_CHAT': result = Markup.button.switchToCurrentChat(text, value); break;
+          case 'POPUP': result = Markup.button.callback(text, `post:user:popup:${postId || 0}:${r}:${c}`); break;
           case 'COMMAND': result = Markup.button.callback(text, `post:user:cmd:${value}`); break;
           default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop'); break;
         }
@@ -73,7 +75,7 @@ export function buildTelegramRequests(
 
   const common: any = {
     link_preview_options: options?.link_preview !== false ? { is_disabled: true } : undefined,
-    ...buildKeyboard(options?.buttons),
+    ...buildKeyboard(options?.buttons, options?.postId),
   };
 
   const requests = serializeMessage({
