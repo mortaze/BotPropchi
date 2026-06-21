@@ -19,7 +19,7 @@ export const postMainMenuKeyboard = () =>
     ['↩️ بازگشت به پنل ادمین'],
   ]).resize().persistent();
 
-export const postEditorKeyboard = (postId: number, hasContent: boolean, isSystem?: boolean) => {
+export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
   const rows: any[][] = [
     [
       Markup.button.callback('✏ ویرایش عنوان', `post:edit:${postId}:title`),
@@ -44,12 +44,10 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean, isSystem
       Markup.button.callback('📦 بایگانی', `post:archive:${postId}`),
       Markup.button.callback('👻 مخفی‌سازی', `post:hide:${postId}`),
     ],
-    isSystem
-      ? [Markup.button.callback('« بازگشت', `post:list:1`)]
-      : [
-          Markup.button.callback('🗑 حذف', `post:delete:${postId}`),
-          Markup.button.callback('« بازگشت', `post:list:1`),
-        ],
+    [
+      Markup.button.callback('🗑 حذف', `post:delete:${postId}`),
+      Markup.button.callback('« بازگشت', `post:list:1`),
+    ],
   ];
   return Markup.inlineKeyboard(rows);
 };
@@ -71,7 +69,6 @@ export const postListKeyboard = (posts: any[], page: number, totalPages: number)
 };
 
 export const postViewKeyboard = (post: any) => {
-  const isSystem = post.systemType && post.systemType !== 'NORMAL';
   const rows: any[][] = [
     [Markup.button.callback('✏ ویرایش', `post:edit:${post.id}:full`)],
     [
@@ -84,36 +81,24 @@ export const postViewKeyboard = (post: any) => {
       Markup.button.callback('📦 بایگانی', `post:archive:${post.id}`),
       Markup.button.callback(post.status === 'HIDDEN' ? '👻 نمایش' : '👻 مخفی', `post:hide:${post.id}`),
     ],
-    isSystem
-      ? [Markup.button.callback('« بازگشت', `post:list:1`)]
-      : [
-          Markup.button.callback('🗑 حذف', `post:delete:${post.id}`),
-          Markup.button.callback('« بازگشت', `post:list:1`),
-        ],
+    [
+      Markup.button.callback('🗑 حذف', `post:delete:${post.id}`),
+      Markup.button.callback('« بازگشت', `post:list:1`),
+    ],
   ];
   return Markup.inlineKeyboard(rows);
 };
 
 // ─── Reply Keyboard: Post Edit Mode ──────────────────────────
-export const postEditModeReplyKeyboard = (isSystem?: boolean) =>
-  Markup.keyboard(
-    isSystem
-      ? [
-          ['📝 ویرایش محتوا', '🏷 ویرایش عنوان'],
-          ['🔘 ویرایش دکمه‌ها', '🖼 ویرایش رسانه'],
-          ['🚀 تغییر وضعیت انتشار'],
-          ['➕ افزودن دستور'],
-          ['🔙 بازگشت'],
-        ]
-      : [
-          ['📝 ویرایش محتوا', '🏷 ویرایش عنوان'],
-          ['🔘 ویرایش دکمه‌ها', '🖼 ویرایش رسانه'],
-          ['🚀 تغییر وضعیت انتشار'],
-          ['➕ افزودن دستور'],
-          ['🗑 حذف پست'],
-          ['🔙 بازگشت'],
-        ],
-  ).resize().persistent();
+export const postEditModeReplyKeyboard = () =>
+  Markup.keyboard([
+    ['📝 ویرایش محتوا', '🏷 ویرایش عنوان'],
+    ['🔘 ویرایش دکمه‌ها', '🖼 ویرایش رسانه'],
+    ['🚀 تغییر وضعیت انتشار'],
+    ['➕ افزودن دستور'],
+    ['🗑 حذف پست'],
+    ['🔙 بازگشت'],
+  ]).resize().persistent();
 
 // ─── Reply Keyboard: Post Title List (with back button) ──
 export const postTitleOnlyListKeyboard = (posts: any[]) => {
@@ -153,12 +138,19 @@ export const postInfoActionKeyboard = (post: any) => {
   const postId = post.id;
   const isHidden = post.status === 'HIDDEN';
   const isPublished = post.isPublished && post.status === 'PUBLISHED';
-  const isSystem = post.systemType && post.systemType !== 'NORMAL';
-  const rows: any[][] = [
+  return Markup.inlineKeyboard([
     [
       Markup.button.callback('✏️ ویرایش', `post:manager:edit:${postId}`),
       Markup.button.callback(isPublished ? '🚫 لغو انتشار' : '✅ انتشار', `post:manager:unpublish:${postId}`),
       Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`),
+    ],
+    [
+      Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
+      Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
+      Markup.button.callback('🗑 حذف پست', `post:manager:delete:${postId}`),
+    ],
+    [
+      Markup.button.callback('🔥 حذف دائمی', `post:manager:harddelete:${postId}`),
     ],
     [
       Markup.button.callback('🔙 بازگشت به لیست', `post:manager:back:${postId}`),
@@ -168,18 +160,7 @@ export const postInfoActionKeyboard = (post: any) => {
       Markup.button.callback('➖ حذف محتوا', `post:action:remove:${postId}`),
       Markup.button.callback('🔁 جایگزینی', `post:action:replace:${postId}`),
     ],
-  ];
-  if (!isSystem) {
-    rows.splice(1, 0, [
-      Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
-      Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
-      Markup.button.callback('🗑 حذف پست', `post:manager:delete:${postId}`),
-    ]);
-    rows.splice(2, 0, [
-      Markup.button.callback('🔥 حذف دائمی', `post:manager:harddelete:${postId}`),
-    ]);
-  }
-  return Markup.inlineKeyboard(rows);
+  ]);
 };
 
 // ─── Inline Keyboard: Post Edit Mode (operation buttons on post info) ──
@@ -376,24 +357,14 @@ export const menuRowResizeKeyboard = (row: number) => {
 
 // ─── Multi-Message Editor Keyboards ────────────────────────
 
-export const postMultiMessageEditorReplyKeyboard = (isSystem?: boolean) =>
-  Markup.keyboard(
-    isSystem
-      ? [
-          ['➕ افزودن پیام', 'افزودن دستور'],
-          ['📊 آمار', '📤 لغو انتشار'],
-          ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
-          ['⛔ توقف ویرایش'],
-          ['🔙 بازگشت'],
-        ]
-      : [
-          ['➕ افزودن پیام', 'افزودن دستور'],
-          ['📊 آمار', '📤 لغو انتشار'],
-          ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
-          ['🗑 حذف پست', '⛔ توقف ویرایش'],
-          ['🔙 بازگشت'],
-        ],
-  ).resize().persistent();
+export const postMultiMessageEditorReplyKeyboard = () =>
+  Markup.keyboard([
+    ['➕ افزودن پیام', 'افزودن دستور'],
+    ['📊 آمار', '📤 لغو انتشار'],
+    ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
+    ['🗑 حذف پست', '⛔ توقف ویرایش'],
+    ['🔙 بازگشت'],
+  ]).resize().persistent();
 
 export const postMoveModeReplyKeyboard = () =>
   Markup.keyboard([

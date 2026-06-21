@@ -6,7 +6,6 @@ import { systemLogService } from '../../services/system-log.service';
 import { cache } from '../../utils/cache';
 import { logger, traceLogger } from '../../utils/logger';
 import { graphemeTruncate } from '../../utils/grapheme';
-import { sanitizeTelegramText } from '../../utils/unicode';
 import { parseMessageEntries, serializeMessageEntries, migrateButtonsFormat, MessageEntry } from '../../services/post-normalizer.service';
 import {
   postMainMenuKeyboard,
@@ -330,14 +329,29 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.hears('📝 پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    return showPostListFromLayout(ctx);
+    clearEditorKeyState(ctx.from.id);
+    const layout = await settingsService.getResolvedMenuLayout(false);
+    const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
+    if (postButtons.length === 0) {
+      return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
+    }
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
   });
 
   // ─── Post List (Reply Keyboard with Titles — built from menu layout) ──
   bot.hears('📋 مدیریت پست‌ها', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    return showPostListFromLayout(ctx);
+    clearEditorKeyState(ctx.from.id);
+    const layout = await settingsService.getResolvedMenuLayout(false);
+    const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
+    if (postButtons.length === 0) {
+      return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
+    }
+    // Set flag so the menu button handler in index.ts skips this user's next text
+    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
   });
 
   // ─── Text: Post Title Selection / Edit Action / Back ────
@@ -615,7 +629,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
             parse_mode: 'Markdown' as any,
             link_preview_options: { is_disabled: true } as any,
           });
-          await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard(updated.systemType && updated.systemType !== 'NORMAL'));
+          await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
         } else {
           await showPostEditor(ctx, postId);
         }
@@ -825,11 +839,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const hasContent = !!(post.content || post.mediaFileId);
     const preview = formatPostPreview(post);
-    const isSystem = post.systemType && post.systemType !== 'NORMAL';
     await safeEdit(ctx, preview, {
       parse_mode: 'Markdown',
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent, isSystem),
+      ...postEditorKeyboard(postId, hasContent),
     });
   }
 
@@ -1025,11 +1038,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(postId);
     const preview = formatPostPreview(post);
     const hasContent = !!(post.content || post.mediaFileId);
-    const isSystem = post.systemType && post.systemType !== 'NORMAL';
     await safeEdit(ctx, `✅ پست منتشر شد!\n\n${preview}`, {
       parse_mode: 'Markdown',
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent, isSystem),
+      ...postEditorKeyboard(postId, hasContent),
     });
   });
 
@@ -1043,11 +1055,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(postId);
     const preview = formatPostPreview(post);
     const hasContent = !!(post.content || post.mediaFileId);
-    const isSystem = post.systemType && post.systemType !== 'NORMAL';
     await safeEdit(ctx, `📝 به عنوان پیش‌نویس ذخیره شد.\n\n${preview}`, {
       parse_mode: 'Markdown',
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent, isSystem),
+      ...postEditorKeyboard(postId, hasContent),
     });
   });
 
@@ -1061,11 +1072,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(postId);
     const preview = formatPostPreview(post);
     const hasContent = !!(post.content || post.mediaFileId);
-    const isSystem = post.systemType && post.systemType !== 'NORMAL';
     await safeEdit(ctx, `📦 پست بایگانی شد.\n\n${preview}`, {
       parse_mode: 'Markdown',
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent, isSystem),
+      ...postEditorKeyboard(postId, hasContent),
     });
   });
 
@@ -1087,11 +1097,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const preview = formatPostPreview(updated);
     const hasContent = !!(updated.content || updated.mediaFileId);
     const msg = wasHidden ? '👻 پست اکنون قابل مشاهده است.' : '👻 پست مخفی شد.';
-    const isSystem = updated.systemType && updated.systemType !== 'NORMAL';
     await safeEdit(ctx, `${msg}\n\n${preview}`, {
       parse_mode: 'Markdown',
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent, isSystem),
+      ...postEditorKeyboard(postId, hasContent),
     });
   });
 
@@ -1187,11 +1196,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(postId);
     const preview = formatPostPreview(post);
     const hasContent = !!(post.content || post.mediaFileId);
-    const isSystem = post.systemType && post.systemType !== 'NORMAL';
     await safeEdit(ctx, `📥 انتشار پست لغو شد.\n\n${preview}`, {
       parse_mode: 'Markdown',
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent, isSystem),
+      ...postEditorKeyboard(postId, hasContent),
     });
   });
 
@@ -1709,7 +1717,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     } catch (e: any) {
       logger.debug('[PostManager] Edit mode fallback:', e.message);
     }
-    await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard(post.systemType && post.systemType !== 'NORMAL'));
+    await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -1729,7 +1737,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       parse_mode: 'Markdown' as any,
       link_preview_options: { is_disabled: true } as any,
     });
-    await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard(post.systemType && post.systemType !== 'NORMAL'));
+    await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
   }
 
   // 📝 ویرایش محتوا
@@ -1836,10 +1844,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return next();
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    // System posts cannot be deleted
-    if (post.systemType && post.systemType !== 'NORMAL') {
-      return ctx.reply('⛔ پست‌های سیستمی قابل حذف نیستند.');
-    }
     cache.set(pendingKey(ctx.from.id, 'delete_post_id'), postId, 600);
     await ctx.reply(
       '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +
@@ -2035,10 +2039,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    // System posts cannot be deleted
-    if (post.systemType && post.systemType !== 'NORMAL') {
-      return ctx.reply('⛔ پست‌های سیستمی قابل حذف نیستند.');
-    }
     const text = `🗑 آیا از حذف "${post.title}" مطمئن هستید؟\n\nاین پست از منو و لیست پست‌ها حذف خواهد شد.`;
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('✅ بله، حذف شود', `post:manager:delete:confirm:${postId}`)],
@@ -2052,13 +2052,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    try {
-      await postService.delete(postId);
-      try { await ctx.editMessageText('🗑 پست حذف شد.'); } catch { await ctx.reply('🗑 پست حذف شد.'); }
-      await showPostListFromLayout(ctx);
-    } catch (e: any) {
-      await ctx.reply(`⛔ ${e.message}`);
-    }
+    await postService.delete(postId);
+    try { await ctx.editMessageText('🗑 پست حذف شد.'); } catch { await ctx.reply('🗑 پست حذف شد.'); }
+    await showPostListFromLayout(ctx);
   });
 
   // 🔥 حذف دائمی: Confirm then fully remove post from all tables
@@ -2086,13 +2082,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    try {
-      await postService.delete(postId);
-      try { await ctx.editMessageText('🔥 پست به طور دائمی حذف شد.'); } catch { await ctx.reply('🔥 پست به طور دائمی حذف شد.'); }
-      await showPostListFromLayout(ctx);
-    } catch (e: any) {
-      await ctx.reply(`⛔ ${e.message}`);
-    }
+    await postService.delete(postId);
+    try { await ctx.editMessageText('🔥 پست به طور دائمی حذف شد.'); } catch { await ctx.reply('🔥 پست به طور دائمی حذف شد.'); }
+    await showPostListFromLayout(ctx);
   });
 
   // Cancel delete confirmation → show post info again
@@ -2151,7 +2143,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       postService.findSystemPost('UNKNOWN' as any),
     ]);
 
-    const backBtn = ['🔙 بازگشت به منوی پست‌ها'];
+    const backBtn = ['🔙 بازگشت به منو پست‌ها'];
     const rows: string[][] = [];
 
     // System post buttons only for admins (always shown)
@@ -2224,7 +2216,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = post.id;
     const content = post.content || '';
     const messages = parsePostMessages(content);
-    const isSystem = post.systemType && post.systemType !== 'NORMAL';
 
     const oldMsgIds = cache.get<number[]>(editorKey(ctx.from.id, 'message_ids')) || [];
     for (const msgId of oldMsgIds) {
@@ -2234,11 +2225,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     try {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
         link_preview_options: { is_disabled: true },
-        ...postMultiMessageEditorReplyKeyboard(isSystem),
+        ...postMultiMessageEditorReplyKeyboard(),
       });
     } catch (e: any) {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
-        ...postMultiMessageEditorReplyKeyboard(isSystem),
+        ...postMultiMessageEditorReplyKeyboard(),
       });
     }
 
@@ -2489,10 +2480,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         case '🗑 حذف پست': {
           const post = await postService.findById(editorPostId);
           if (!post) return ctx.reply('❌ پست یافت نشد.');
-          // System posts cannot be deleted
-          if (post.systemType && post.systemType !== 'NORMAL') {
-            return ctx.reply('⛔ پست‌های سیستمی قابل حذف نیستند.');
-          }
           cache.set(pendingKey(ctx.from.id, 'delete_post_id'), editorPostId, 600);
           await ctx.reply(
             '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +
