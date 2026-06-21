@@ -9,7 +9,7 @@ import {
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, EmptyState, StatCardSkeleton } from "@/components/ui";
 import { analyticsApi } from "@/services/api";
 import { formatNumber } from "@/lib/utils";
@@ -78,7 +78,7 @@ function downloadJSON(series: UserAnalyticsSeriesItem[]) {
 
 // ─── KPI Card ────────────────────────────────────────────────
 function KpiCard({
-  title, value, icon, trend, trendLabel, colorClass,
+  title, value, icon, trend, trendLabel, colorClass, delay = 0,
 }: {
   title: string;
   value: string | number;
@@ -86,10 +86,11 @@ function KpiCard({
   trend?: number | null;
   trendLabel?: string;
   colorClass: string;
+  delay?: number;
 }) {
   const positive = (trend ?? 0) >= 0;
   return (
-    <div className="stat-card animate-fade-in">
+    <div className="stat-card animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
       <div className="mb-3 flex items-start justify-between">
         <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorClass}`}>
           {icon}
@@ -236,9 +237,12 @@ export default function AnalyticsPage() {
 
       {/* KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {kpiCards.map((k, i) => (
-          <KpiCard key={k.key} {...k} trendLabel={compareMode ? "نسبت به دوره قبل" : undefined} delay={i * 50} />
-        ))}
+        {kpiCards.map((k, i) => {
+          const { key, ...cardProps } = k;
+          return (
+            <KpiCard key={key} {...cardProps} trendLabel={compareMode ? "نسبت به دوره قبل" : undefined} delay={i * 50} />
+          );
+        })}
       </div>
 
       {/* Compare Summary */}
@@ -309,8 +313,9 @@ export default function AnalyticsPage() {
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => toJalali(v)} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip
-                  labelFormatter={(label: string) => toJalali(label)}
-                  formatter={(value: number, name: string) => [formatNumber(value), METRICS_CONFIG[name]?.label ?? name]}
+                  labelFormatter={(label: ReactNode) => toJalali(String(label ?? ""))}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  formatter={(value: any, name: any) => [formatNumber(Number(value ?? 0)), METRICS_CONFIG[name as string]?.label ?? String(name)]}
                 />
                 {Array.from(selectedMetrics).map((metric) => (
                   <Area
