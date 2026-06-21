@@ -18,8 +18,8 @@ export async function safeEdit(ctx: any, text: string, extra?: any): Promise<voi
   await ctx.reply(safeText, safeExtra).catch(() => {});
 }
 
-export async function sendPostToUser(ctx: any, rawPost: any) {
+export async function sendPostToUser(ctx: any, rawPost: any): Promise<boolean> {
   const post = normalizePost(rawPost);
   await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-  await renderPostToTelegram(ctx, post);
+  return await renderPostToTelegram(ctx, post);
 }

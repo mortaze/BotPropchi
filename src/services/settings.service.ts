@@ -578,12 +578,13 @@ class SettingsService {
     let removed = 0;
     let madeVisible = 0;
 
-    // 1. Scan all publishable posts
+    // 1. Scan all publishable posts (exclude system posts — START/UNKNOWN are admin-only)
     const posts = await prisma.post.findMany({
       where: {
         status: { in: ['PUBLISHED', 'SCHEDULED'] },
         isPublished: true,
-      },
+        systemType: 'NORMAL',
+      } as any,
       select: { id: true },
     });
 

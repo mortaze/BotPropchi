@@ -29,6 +29,7 @@ import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../servic
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { findButtonById } from '../../services/post-normalizer.service';
 import { safeEdit, sendPostToUser } from '../shared';
+import { iksManager } from '../services/inline-keyboard-session.service';
 import {
   propFirmDiscountKeyboard,
   lotteryHistoryKeyboard,
@@ -254,6 +255,23 @@ async function finalizeBotBroadcast(ctx: any, pending: PendingBroadcast) {
 }
 
 export function registerHandlers(bot: Telegraf<Context>) {
+  // ─── Clear all user state (sessions, wizards, pending actions) ──
+  function clearAllUserState(userId: number, chatId?: number) {
+    cache.delByPrefix(`post:pending:${userId}`);
+    cache.delByPrefix(`post:editor:${userId}`);
+    cache.del(`post_mgmt_mode:${userId}`);
+    cache.del(`menu:edit_mode:${userId}`);
+    cache.del(`menu:selected:${userId}`);
+    cache.del(`menu:editing:${userId}`);
+    cache.del(`ai_mode:${userId}`);
+    cache.del(`admin_broadcast:${userId}`);
+    cache.del(pendingBroadcastKey(userId));
+    if (chatId) {
+      iksManager.removeAllForChat(chatId);
+    }
+    logger.info(`[ClearState] Cleared all state for user ${userId}`);
+  }
+
   bot.on('my_chat_member', async (ctx: any, next) => {
     const chat = ctx.update.my_chat_member?.chat;
     const newStatus = ctx.update.my_chat_member?.new_chat_member?.status;
@@ -276,12 +294,37 @@ export function registerHandlers(bot: Telegraf<Context>) {
     return next();
   });
   bot.start(async (ctx) => {
-    const name = ctx.from?.first_name || 'کاربر';
-    const scoring = await scoringService.getSettings();
+    const userId = ctx.from?.id;
+    if (!userId) return;
 
-    const profile = await userService.getProfile(BigInt(ctx.from!.id));
+    // Clear ALL user state — /start always resets the session
+    clearAllUserState(userId, ctx.chat?.id);
+    logger.info(`[Start] User ${userId} session cleared, sending START post`);
+
+    // Ensure system posts exist, then send START post through the proper rendering pipeline
+    await postService.ensureSystemPosts();
+    try {
+      const startPost = await postService.findSystemPost('START' as any);
+      if (startPost) {
+        logger.info('[SystemPost] START loaded');
+        const sent = await sendPostToUser(ctx, startPost);
+        if (sent) {
+          logger.info('[SystemPost] START rendered');
+          logger.info('[SystemPost] START sent');
+        } else {
+          logger.error('[SystemPost] render failed');
+        }
+      }
+    } catch (e) {
+      logger.error('[SystemPost] START render failed', e);
+    }
+
+    // Send the main menu keyboard so stale wizard keyboards are replaced
+    await ctx.reply('منوی اصلی', await adminReplyOptions(userId)).catch(() => {});
+
+    // New user notification for admins (kept as separate system)
+    const profile = await userService.getProfile(BigInt(userId));
     const isNewUser = !profile || (profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 10_000);
-
     if (isNewUser) {
       const totalUsers = await prisma.user.count();
       const adminList = await botAdminService.list();
@@ -310,20 +353,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
         } catch {}
       }
     }
-
-    if (scoring.isWelcomeMessageEnabled) {
-      await ctx.reply(
-        scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
-        { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) }
-      );
-      const isFirstEntrance = profile?.createdAt && Date.now() - new Date(profile.createdAt).getTime() < 120_000;
-      if (scoring.startPoints > 0 && isFirstEntrance) {
-        await ctx.reply(scoringService.formatTemplate(scoring.initialPointsMessageText, { name, points: scoring.startPoints }), { link_preview_options: { is_disabled: true } });
-      }
-      return;
-    }
-
-    await ctx.reply('از منوی زیر انتخاب کنید:', { link_preview_options: { is_disabled: true }, ...(await adminReplyOptions(ctx.from?.id)) });
   });
 
 
@@ -1844,6 +1873,57 @@ export function registerHandlers(bot: Telegraf<Context>) {
   // ─── Register Post Management Handlers ─────────────────
   const { registerPostHandlers } = require('./post-handlers');
   registerPostHandlers(bot);
+
+  // ─── Catch-all for Unmatched Callbacks (expired/deleted buttons) ──
+  // Must be BEFORE the UNKNOWN handler. Prevents callbacks from reaching UNKNOWN.
+  bot.action(/.*/, async (ctx: any) => {
+    await ctx.answerCbQuery('🔘 این دکمه دیگر وجود ندارد.', { show_alert: true });
+    logger.info(`[ExpiredCallback] Unmatched callback: ${ctx.callbackQuery?.data}`);
+  });
+
+  // ─── Pipeline Routing ─────────────────────────────────
+  // Only messages that pass through ALL handlers above reach here.
+  // Applies ctx.state.handled pattern for clean routing.
+  bot.use(async (ctx, next) => {
+    // Track whether any handler matched
+    ctx.state.handled = ctx.state.handled ?? false;
+
+    // Callback queries that reached here are unmatched — handled above by bot.action(/.*/)
+    if (ctx.callbackQuery) {
+      return;
+    }
+
+    return next();
+  });
+
+  // ─── Catch-all for Unknown Text Messages ──────────────
+  // Only text messages in private chat reach here (callback queries are caught above).
+  // This is the LAST resort — only when NO other handler matched.
+  bot.use(async (ctx, next) => {
+    if (ctx.state.handled) return next();
+    if (!ctx.message) return next();
+    if (ctx.chat?.type !== 'private') return next();
+    const msgText = (ctx.message as any)?.text;
+    if (msgText?.startsWith('/')) return next();
+
+    await postService.ensureSystemPosts();
+    try {
+      const unknownPost = await postService.findSystemPost('UNKNOWN' as any);
+      if (unknownPost) {
+        logger.info('[SystemPost] UNKNOWN loaded');
+        const sent = await sendPostToUser(ctx, unknownPost);
+        if (sent) {
+          logger.info('[SystemPost] UNKNOWN rendered');
+          logger.info('[SystemPost] UNKNOWN sent');
+        } else {
+          logger.error('[SystemPost] render failed');
+        }
+        return;
+      }
+    } catch (err) {
+      logger.error('[SystemPost] UNKNOWN render failed', err);
+    }
+  });
 
   logger.info('✅ تمام هندلرهای ربات ثبت شدند');
 }

@@ -606,6 +606,7 @@ model Post {
   id              Int            @id @default(autoincrement())
   title           String
   slug            String         @unique
+  systemType      PostSystemType @default(NORMAL)
   content         String?
   caption         String?
   mediaFileId     String?
@@ -937,6 +938,12 @@ enum PostStatus {
   SCHEDULED
   ARCHIVED
   HIDDEN
+}
+
+enum PostSystemType {
+  NORMAL
+  START
+  UNKNOWN
 }
 
 enum PostButtonType {
