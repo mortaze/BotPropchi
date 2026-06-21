@@ -1,4 +1,4 @@
-import { PostStatus, PostSystemType, Prisma, SystemEventType } from '@prisma/client';
+import { PostStatus, Prisma, SystemEventType } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { postRepository } from '../repositories/post.repository';
 import { cache, cacheKey } from '../utils/cache';
@@ -159,10 +159,6 @@ export const postService = {
   async delete(id: number) {
     const post = await postRepository.findById(id);
     if (!post) return null;
-    // System posts cannot be deleted
-    if (post.systemType && post.systemType !== PostSystemType.NORMAL) {
-      throw new Error(`System posts (${post.systemType}) cannot be deleted`);
-    }
     // Remove all menu references before deletion
     await settingsService.removePostFromMenu(id).catch(err => {
       logger.warn(`[Post] Failed to remove post ${id} from menu:`, err);
@@ -179,35 +175,6 @@ export const postService = {
     eventBus.emit(Events.POST_DELETED, { postId: id, title: post.title });
     logger.info(`[Post] Deleted: "${post.title}" (id: ${id})`);
     return post;
-  },
-
-  async ensureSystemPosts() {
-    const startPost = await prisma.post.findFirst({ where: { systemType: PostSystemType.START } });
-    if (!startPost) {
-      await postRepository.create({
-        title: '🚀 پیام Start',
-        slug: `_system_start_${Date.now()}`,
-        systemType: PostSystemType.START,
-        content: JSON.stringify([{ id: crypto.randomUUID(), content: 'به ربات خوش آمدید! 👋\n\nاز منوی زیر انتخاب کنید:' }]),
-        parseMode: 'Markdown',
-        status: PostStatus.PUBLISHED,
-        isPublished: true,
-      });
-      logger.info('[Post] Created system START post');
-    }
-    const unknownPost = await prisma.post.findFirst({ where: { systemType: PostSystemType.UNKNOWN } });
-    if (!unknownPost) {
-      await postRepository.create({
-        title: '❓ پیام ناشناخته',
-        slug: `_system_unknown_${Date.now()}`,
-        systemType: PostSystemType.UNKNOWN,
-        content: JSON.stringify([{ id: crypto.randomUUID(), content: '❌ دستور یا پیام مورد نظر یافت نشد.\n\nلطفاً از منوی اصلی استفاده کنید.' }]),
-        parseMode: 'Markdown',
-        status: PostStatus.PUBLISHED,
-        isPublished: true,
-      });
-      logger.info('[Post] Created system UNKNOWN post');
-    }
   },
 
   async publish(id: number, publishedBy?: bigint) {
@@ -458,11 +425,6 @@ export const postService = {
 
   async findById(id: number) {
     const post = await postRepository.findById(id);
-    return post ? normalizePost(post) : null;
-  },
-
-  async findSystemPost(systemType: PostSystemType) {
-    const post = await prisma.post.findFirst({ where: { systemType } });
     return post ? normalizePost(post) : null;
   },
 

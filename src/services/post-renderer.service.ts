@@ -14,7 +14,7 @@ import {
   MEDIA_SENDERS,
 } from './renderer';
 import { sendFormattedMessage } from '../shared/message-format';
-import { normalizePost, parseMessageEntries } from './post-normalizer.service';
+import { normalizePost } from './post-normalizer.service';
 
 export function validateTelegramHtml(html?: string | null): string[] {
   return telegramRequestValidator.validateHtml(html);
@@ -47,17 +47,6 @@ export function comparePostNativeRoundtrip(post: any) {
 
 function splitContentMessages(content: string): string[] {
   if (!content || !content.trim()) return [];
-  // Try new JSON format first
-  const trimmed = content.trim();
-  if (trimmed.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') {
-        return parsed.map((m: any) => m.content || '');
-      }
-    } catch { /* fall through to old format */ }
-  }
-  // Legacy [[copy]] format
   const messages: string[] = [];
   const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
   let lastIndex = 0;
@@ -78,36 +67,28 @@ function splitContentMessages(content: string): string[] {
   return messages;
 }
 
-function getMessageButtonsFromPost(post: any, messageIdx: number, messageId?: string): any[][] {
+function getMessageButtonsFromPost(post: any, messageIdx: number): any[][] {
   const raw = post.buttons;
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw;
-  // New UUID-keyed format — use messageId
-  if (messageId && typeof raw === 'object' && raw[messageId]) return raw[messageId];
-  if (messageId && typeof raw === 'object' && raw.messages?.[messageId]) return raw.messages[messageId];
-  // Old index-keyed format
-  if (raw.messages) return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
-  // Direct object with UUID keys — fallback
-  if (typeof raw === 'object') return raw['_shared'] || [];
+  if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
+    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
+  }
   return [];
 }
 
 export async function renderPostToTelegram(ctx: any, post: any) {
-  // Parse messages with their UUIDs for button lookup
-  const entries = parseMessageEntries(post.content || '');
-  const texts = entries.map(e => e.content);
-  if (texts.length > 1) {
+  const messages = splitContentMessages(post.content || '');
+  if (messages.length > 1) {
     let lastResult = false;
-    for (let i = 0; i < texts.length; i++) {
-      const messageId = entries[i]?.id;
-      const msgButtons = getMessageButtonsFromPost(post, i, messageId);
-      const msgEntities = entries[i]?.entities || [];
-      const msgPost = { ...post, content: texts[i], buttons: msgButtons, entities: msgEntities, contentEntities: msgEntities };
+    for (let i = 0; i < messages.length; i++) {
+      const msgButtons = getMessageButtonsFromPost(post, i);
+      const msgPost = { ...post, content: messages[i], buttons: msgButtons };
       if (i === 0) {
         lastResult = await renderSinglePost(ctx, msgPost);
       } else {
         try {
-          await sendFormattedMessage(ctx, { text: texts[i] }, {
+          await sendFormattedMessage(ctx, { text: messages[i] }, {
             buttons: buildTelegramKeyboard(msgButtons, post.id),
           });
           lastResult = true;
@@ -118,15 +99,8 @@ export async function renderPostToTelegram(ctx: any, post: any) {
     }
     return lastResult;
   }
-  const msgContent = texts[0] || '';
-  if (!msgContent) {
-    logger.error(`[SystemPost] render failed — post=${post.id} no content after parsing message entries`);
-    return false;
-  }
-  const firstId = entries[0]?.id;
-  const msgButtons = getMessageButtonsFromPost(post, 0, firstId);
-  const msgEntities = entries[0]?.entities || [];
-  return renderSinglePost(ctx, { ...post, content: msgContent, buttons: msgButtons, entities: msgEntities, contentEntities: msgEntities });
+  const msgButtons = getMessageButtonsFromPost(post, 0);
+  return renderSinglePost(ctx, { ...post, buttons: msgButtons });
 }
 
 async function renderSinglePost(ctx: any, post: any) {
