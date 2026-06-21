@@ -111,7 +111,7 @@ export const postTitleOnlyListKeyboard = (posts: any[]) => {
 // Builds the post selection keyboard directly from the menu layout.
 // Only post-ref buttons are included, preserving the exact row/column structure.
 // The back button is always appended as the last row.
-export const buildPostListFromMenuLayout = (layout: any[][]) => {
+export const buildPostListFromMenuLayout = (layout: any[][], drafts?: any[]) => {
   const rows: string[][] = layout
     .filter(row => Array.isArray(row))
     .map(row =>
@@ -123,6 +123,22 @@ export const buildPostListFromMenuLayout = (layout: any[][]) => {
         })
     )
     .filter((row: string[]) => row.length > 0);
+  if (drafts && drafts.length > 0) {
+    const existingIds = new Set<number>();
+    for (const row of layout) {
+      if (!Array.isArray(row)) continue;
+      for (const btn of row) {
+        if (btn && btn.ref && btn.ref.startsWith('post:')) {
+          const id = parseInt(btn.ref.replace('post:', ''), 10);
+          if (!isNaN(id)) existingIds.add(id);
+        }
+      }
+    }
+    for (const draft of drafts) {
+      if (existingIds.has(draft.id)) continue;
+      rows.push([`📝 پیش‌نویس: ${sanitizeTelegramText(draft.title || 'بدون عنوان', 128)}`]);
+    }
+  }
   rows.push(['🔙 بازگشت به منوی پست‌ها']);
   return Markup.keyboard(rows).resize().persistent();
 };

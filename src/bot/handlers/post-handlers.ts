@@ -277,12 +277,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     clearEditorKeyState(ctx.from.id);
     const layout = await settingsService.getResolvedMenuLayout(false);
+    const drafts = await postService.getDrafts();
     const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
-    if (postButtons.length === 0) {
+    if (postButtons.length === 0 && drafts.length === 0) {
       return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
     cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout, drafts));
   });
 
   // ─── Post List (Reply Keyboard with Titles — built from menu layout) ──
@@ -291,13 +292,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     clearEditorKeyState(ctx.from.id);
     const layout = await settingsService.getResolvedMenuLayout(false);
+    const drafts = await postService.getDrafts();
     const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
-    if (postButtons.length === 0) {
+    if (postButtons.length === 0 && drafts.length === 0) {
       return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
     // Set flag so the menu button handler in index.ts skips this user's next text
     cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout, drafts));
   });
 
   // ─── Text: Post Title Selection / Edit Action / Back ────
@@ -339,8 +341,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
     }
 
-    // Match post title → select that post
-    const matched = await postService.findByTitle(text);
+    // Match post title → select that post (support draft prefix)
+    let searchTitle = text;
+    const draftPrefix = '📝 پیش‌نویس: ';
+    if (searchTitle.startsWith(draftPrefix)) {
+      searchTitle = searchTitle.slice(draftPrefix.length).trim();
+    }
+    const matched = await postService.findByTitle(searchTitle);
     if (matched) {
       const post = await postService.findById(matched.id);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
@@ -2032,12 +2039,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   async function showPostListFromLayout(ctx: any) {
     clearEditorKeyState(ctx.from.id);
     const layout = await settingsService.getResolvedMenuLayout(false);
+    const drafts = await postService.getDrafts();
     const postButtons = layout.flat().filter((btn: any) => btn?.ref?.startsWith('post:'));
-    if (postButtons.length === 0) {
+    if (postButtons.length === 0 && drafts.length === 0) {
       return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
     cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
-    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout));
+    await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout, drafts));
   }
 
   // ─── Clear all waiting states ───────────────────────────
