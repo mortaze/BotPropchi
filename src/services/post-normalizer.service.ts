@@ -205,9 +205,6 @@ function extractButtons(post: any): any {
   if (post.buttons && typeof post.buttons === 'object' && !Array.isArray(post.buttons) && post.buttons.messages) {
     return cloneJson(post.buttons);
   }
-  if (post.buttons && typeof post.buttons === 'object' && !Array.isArray(post.buttons)) {
-    return cloneJson(post.buttons);
-  }
   if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
     const rows: any[][] = [];
     for (const kb of post.keyboards) {
