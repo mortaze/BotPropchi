@@ -12,11 +12,17 @@ function buttonDisplayText(btn: any, fallback: string): string {
 export const postMainMenuKeyboard = () =>
   Markup.keyboard([
     ['➕ ایجاد پست'],
-    ['📋 مدیریت پست‌ها', '📦 پیش‌نویس‌ها'],
-    ['👻 پست‌های مخفی'],
-    ['👁 پیش‌نمایش', '📤 انتشار'],
-    ['🔎 جستجو', '📊 آمار پست'],
+    ['📋 مدیریت پست‌ها'],
+    ['📊 آمار پست'],
     ['↩️ بازگشت به پنل ادمین'],
+  ]).resize().persistent();
+
+export const postNewPostManagerReplyKeyboard = () =>
+  Markup.keyboard([
+    ['➕ افزودن پیام', 'افزودن دستور'],
+    ['📊 آمار', '✅ انتشار'],
+    ['🗑 حذف پست'],
+    ['🔙 بازگشت'],
   ]).resize().persistent();
 
 export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
@@ -375,7 +381,7 @@ export const postCancelOnlyReplyKeyboard = () =>
 export const postSingleMessageInlineKeyboard = (postId: number, msgIdx: number, totalMsgs: number) => {
   const rows: any[][] = [
     [
-      Markup.button.callback('✏️ ویرایش', `post:msg:edit:${postId}:${msgIdx}`),
+      Markup.button.callback('✏️ ویرایش پیام', `post:msg:edit:${postId}:${msgIdx}`),
       Markup.button.callback('🗑 حذف پیام', `post:msg:delete:${postId}:${msgIdx}`),
     ],
   ];

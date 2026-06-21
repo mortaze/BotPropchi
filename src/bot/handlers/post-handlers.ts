@@ -28,6 +28,7 @@ import {
   postAddMessageReplyKeyboard,
   postEditMessageReplyKeyboard,
   postCancelOnlyReplyKeyboard,
+  postNewPostManagerReplyKeyboard,
   postSingleMessageInlineKeyboard,
   buildNoButtonsReplyKeyboard,
   buildButtonTypeSelectionKeyboard,
@@ -462,7 +463,23 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     clearEditorKeyState(ctx.from.id);
     cache.set(pendingKey(ctx.from.id, 'creating'), true, 300);
-    await ctx.reply('📝 عنوان پست را وارد کنید:');
+    await ctx.reply('📝 عنوان پست را وارد کنید:', {
+      ...postCancelOnlyReplyKeyboard(),
+    });
+  });
+
+  // ─── Cancel Post Creation ────────────────────────────
+  bot.hears('❌ لغو', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
+    const creating = cache.get<boolean>(pendingKey(ctx.from.id, 'creating'));
+    if (creating) {
+      clearAllWaitingStates(ctx.from.id);
+      await ctx.reply('❌ ایجاد پست لغو شد.', postMainMenuKeyboard());
+      return;
+    }
+    return next();
   });
 
   // ─── Handle text input for post creation/editing ────────
@@ -506,8 +523,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const slug = slugify(title);
       try {
         const post = await postService.create({ title, slug, content: '', createdBy: BigInt(ctx.from.id) });
-        await ctx.reply(`✅ پست ساخته شد!\n\nعنوان: ${title}\nاسلاگ: ${slug}`);
-        await showPostEditor(ctx, post.id);
+        cache.set(editorKey(ctx.from.id, 'active'), post.id, 600);
+        cache.set(editorKey(ctx.from.id, 'mode'), 'new_post_manager', 600);
+        await ctx.reply(`✅ پست ساخته شد!\n\nعنوان: ${title}\nاسلاگ: ${slug}`, {
+          ...postNewPostManagerReplyKeyboard(),
+        });
       } catch (err: any) {
         if (err.code === 'P2002') {
           await ctx.reply(`❌ اسلاگ "${slug}" از قبل وجود دارد. عنوان دیگری انتخاب کنید.`);
@@ -1945,6 +1965,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const editorPostId = cache.get<number>(editorKey(ctx.from.id, 'active'));
     if (editorPostId) {
       const mode = cache.get<string>(editorKey(ctx.from.id, 'mode')) || 'main';
+
+      // New post manager mode → return to post main menu
+      if (mode === 'new_post_manager') {
+        clearAllWaitingStates(ctx.from.id);
+        clearEditorKeyState(ctx.from.id);
+        cache.del(editorKey(ctx.from.id, 'active'));
+        cache.del(editorKey(ctx.from.id, 'mode'));
+        await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+        return;
+      }
+
       if (mode === 'add_message' || mode === 'add_command' || mode === 'edit_message' || mode === 'edit_content' || mode === 'edit_title') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
         cache.del(editorKey(ctx.from.id, 'msg_idx'));
@@ -2386,6 +2417,68 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const mode = cache.get<string>(editorKey(ctx.from.id, 'mode')) || 'main';
     const text = ctx.message.text;
+
+    // ─── NEW POST MANAGER MODE ──────────────────────────
+    if (mode === 'new_post_manager') {
+      const post = await postService.findById(editorPostId);
+      if (!post) { clearEditorKeyState(ctx.from.id); return next(); }
+      switch (text) {
+        case '➕ افزودن پیام': {
+          cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+          await refreshEditorMessages(ctx, post);
+          return;
+        }
+        case 'افزودن دستور': {
+          cache.set(editorKey(ctx.from.id, 'mode'), 'add_command', 600);
+          await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', {
+            parse_mode: 'Markdown' as any,
+            ...postCancelOnlyReplyKeyboard(),
+          });
+          return;
+        }
+        case '📊 آمار': {
+          const analytics = await postService.getAnalytics(editorPostId);
+          const statsText = [
+            `📊 *آمار: ${post.title}*`,
+            '',
+            `👁 بازدید کل: ${analytics.totalViews}`,
+            `👆 کلیک کل: ${analytics.totalClicks}`,
+            `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
+          ].join('\n');
+          await ctx.reply(statsText, { parse_mode: 'Markdown' as any });
+          return;
+        }
+        case '✅ انتشار': {
+          await postService.publish(editorPostId);
+          await ctx.reply('✅ پست منتشر شد!');
+          return;
+        }
+        case '🗑 حذف پست': {
+          if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
+          cache.set(pendingKey(ctx.from.id, 'delete_post_id'), editorPostId, 600);
+          await ctx.reply(
+            '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +
+            'این عملیات غیرقابل بازگشت است.\n\n' +
+            'تمام موارد زیر حذف خواهند شد:\n' +
+            '📝 اطلاعات پست\n' +
+            '⌨️ دکمه‌ها\n' +
+            '🏷 دستورات\n' +
+            '🖼 مدیاهای وابسته\n' +
+            '🔗 ارتباطات\n' +
+            '📦 کش‌های مربوط\n\n' +
+            '❗ این عملیات قابل بازیابی نیست.',
+            Markup.keyboard([
+              ['✅ تایید حذف'],
+              ['❌ انصراف'],
+            ]).resize().persistent(),
+          );
+          return;
+        }
+        default:
+          return next();
+      }
+      return;
+    }
 
     // ─── MAIN MODE ───────────────────────────────────────
     if (mode === 'main') {
