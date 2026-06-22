@@ -39,6 +39,7 @@ import {
   paginationKeyboard,
   buildForceJoinKeyboard,
   buildReferralShareKeyboard,
+  buildReferralMenuKeyboard,
 } from '../keyboards';
 import {
   buildMenuEditorReplyKeyboard,
@@ -1464,12 +1465,44 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('🏆 لیدربورد', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('leaderboard'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
-    const board: any[] = await userService.getLeaderboard();
-    const medals = ['🥇', '🥈', '🥉'];
-    const text = board.map((u: any, i: number) => `${medals[i] || `${i + 1}.`} ${u.firstName} — ${u.points} امتیاز`).join('\n');
+    if (!(await settingsService.isFeatureEnabled('referrals'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
+    try {
+      const season = await leaderboardService.getActiveSeason();
+      if (!season) {
+        return ctx.reply('🏆 در حال حاضر هیچ فصل فعالی برای لیدربورد وجود ندارد.\nبه محض شروع فصل جدید، دعوت‌های شما در لیدربورد ثبت خواهند شد.');
+      }
 
-    await ctx.reply(`🏆 *برترین کاربران:*\n\n${text}`, { parse_mode: 'Markdown' });
+      const [leaderboard, stats] = await Promise.all([
+        leaderboardService.getLeaderboard(season.id, 15),
+        leaderboardService.getLeaderboardStats(season.id),
+      ]);
+
+      if (leaderboard.length === 0) {
+        return ctx.reply(
+          `🏆 *لیدربورد فصل ${season.name}*\n` +
+          `📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}\n\n` +
+          'هنوز دعوتی در این فصل ثبت نشده. اولین نفر باش!',
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      const medal = (rank: number) => rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
+
+      const lines = leaderboard.map((entry) =>
+        `${medal(entry.rank)} ${entry.firstName || entry.username || `کاربر ${entry.userId}`}\n` +
+        `📊 ${entry.inviteCount} دعوت | 💰 ${entry.points} امتیاز`
+      );
+
+      const header =
+        `🏆 *لیدربورد فصل ${season.name}*\n` +
+        `📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}\n\n`;
+      const footer = `\n📊 کل دعوت‌ها: ${stats.totalReferrals} | شرکت‌کنندگان: ${stats.totalInviters}`;
+
+      await ctx.reply(header + lines.join('\n\n') + footer, { parse_mode: 'Markdown' });
+    } catch (error) {
+      logger.error('Leaderboard Handler Error:', error);
+      await ctx.reply('❌ خطا در دریافت لیدربورد');
+    }
   });
 
  bot.hears('👥 دعوت دوستان', async (ctx) => {
@@ -1538,6 +1571,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply(
       'با دوستان خود به اشتراک بگذارید:',
       buildReferralShareKeyboard(shareUrl)
+    );
+
+    await ctx.reply(
+      'از منوی زیر گزینه مورد نظر را انتخاب کنید:',
+      buildReferralMenuKeyboard()
     );
   } catch (error) {
     logger.error(

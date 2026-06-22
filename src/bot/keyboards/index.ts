@@ -200,6 +200,14 @@ export function buildForceJoinKeyboard(
   return Markup.inlineKeyboard(buttons);
 }
 
+// ─── منوی دعوت دوستان (reply keyboard) ────────────────────
+export function buildReferralMenuKeyboard() {
+  return Markup.keyboard([
+    ['🏆 لیدربورد'],
+    ['🔙 بازگشت به منوی اصلی'],
+  ]).resize();
+}
+
 // ─── اشتراک‌گذاری دعوت ─────────────────────────────────────
 export function buildReferralShareKeyboard(shareUrl: string) {
   return Markup.inlineKeyboard([

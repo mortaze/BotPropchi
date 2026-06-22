@@ -15,6 +15,7 @@ export interface LeaderboardEntry {
   lastName: string | null;
   username: string | null;
   inviteCount: number;
+  points: number;
 }
 
 export interface SeasonInfo {
@@ -25,7 +26,7 @@ export interface SeasonInfo {
   endDate: Date;
 }
 
-function formatLeaderboard(cacheRows: { userId: number; score: number }[], users: { id: number; firstName: string; lastName: string | null; username: string | null }[]): LeaderboardEntry[] {
+function formatLeaderboard(cacheRows: { userId: number; score: number }[], users: { id: number; firstName: string; lastName: string | null; username: string | null }[], pointsMap?: Map<number, number>): LeaderboardEntry[] {
   const userMap = new Map(users.map((u) => [u.id, u]));
   return cacheRows.map((row, index) => {
     const user = userMap.get(row.userId);
@@ -36,8 +37,23 @@ function formatLeaderboard(cacheRows: { userId: number; score: number }[], users
       lastName: user?.lastName ?? null,
       username: user?.username ?? null,
       inviteCount: row.score,
+      points: pointsMap?.get(row.userId) ?? 0,
     };
   });
+}
+
+async function getSeasonPointsMap(seasonId: number): Promise<Map<number, number>> {
+  const season = await prisma.season.findUnique({ where: { id: seasonId } });
+  if (!season) return new Map();
+
+  const points = await prisma.$queryRaw<Array<{ inviter_id: number; total_points: bigint }>>`
+    SELECT rl."inviterId" as inviter_id, COALESCE(SUM(r."rewardPoints"), 0) as total_points
+    FROM referral_logs rl
+    INNER JOIN referrals r ON r."referredUserId" = rl."referredId"
+    WHERE rl."seasonId" = ${seasonId}
+    GROUP BY rl."inviterId"
+  `;
+  return new Map(points.map((p) => [Number(p.inviter_id), Number(p.total_points)]));
 }
 
 export const leaderboardService = {
@@ -146,12 +162,15 @@ export const leaderboardService = {
     if (cacheRows.length === 0) return [];
 
     const userIds = cacheRows.map((r) => r.userId);
-    const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, firstName: true, lastName: true, username: true },
-    });
+    const [users, pointsMap] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, firstName: true, lastName: true, username: true },
+      }),
+      getSeasonPointsMap(seasonId),
+    ]);
 
-    const leaderboard = formatLeaderboard(cacheRows, users);
+    const leaderboard = formatLeaderboard(cacheRows, users, pointsMap);
     await redisClient.set(cacheKey, leaderboard, LEADERBOARD_CACHE_TTL);
     return leaderboard;
   },
@@ -190,17 +209,20 @@ export const leaderboardService = {
     if (users.length === 0) return [];
 
     const userIds = users.map((u) => u.id);
-    const cacheRows = await prisma.leaderboardCache.findMany({
-      where: { seasonId, userId: { in: userIds }, score: { gt: 0 } },
-      orderBy: { score: 'desc' },
-    });
+    const [cacheRows, pointsMap] = await Promise.all([
+      prisma.leaderboardCache.findMany({
+        where: { seasonId, userId: { in: userIds }, score: { gt: 0 } },
+        orderBy: { score: 'desc' },
+      }),
+      getSeasonPointsMap(seasonId),
+    ]);
 
     if (cacheRows.length === 0) return [];
 
     const scoredUserIds = new Set(cacheRows.map((r) => r.userId));
     const matchedUsers = users.filter((u) => scoredUserIds.has(u.id));
 
-    return formatLeaderboard(cacheRows, matchedUsers);
+    return formatLeaderboard(cacheRows, matchedUsers, pointsMap);
   },
 
   async getLeaderboardStats(seasonId: number): Promise<{ totalReferrals: number; totalInviters: number }> {

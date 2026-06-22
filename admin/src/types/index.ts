@@ -213,6 +213,7 @@ export interface LeaderboardEntry {
   lastName: string | null;
   username: string | null;
   inviteCount: number;
+  points?: number;
 }
 
 export interface LeaderboardStats {

@@ -4,13 +4,14 @@ import { ChangeEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Plus, SquareStack, Trophy } from "lucide-react";
 import { toast } from "sonner";
-import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, TableRowSkeleton } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Modal, TableRowSkeleton } from "@/components/ui";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
 import { getApiError, seasonsApi } from "@/services/api";
 
 export default function SeasonsPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
@@ -22,21 +23,39 @@ export default function SeasonsPage() {
   const createMutation = useMutation({
     mutationFn: () => seasonsApi.create({ name: newName, startDate: newStart, endDate: newEnd }),
     onSuccess: () => {
-      toast.success("فصل جدید ایجاد شد");
+      toast.success("فصل جدید ایجاد و فعال شد");
       queryClient.invalidateQueries({ queryKey: ["seasons"] });
+      queryClient.invalidateQueries({ queryKey: ["active-season"] });
       setShowCreate(false);
+      setShowConfirm(false);
       setNewName("");
       setNewStart("");
       setNewEnd("");
     },
-    onError: (error) => toast.error(getApiError(error, "خطا در ایجاد فصل")),
+    onError: (error) => {
+      toast.error(getApiError(error, "خطا در ایجاد فصل"));
+      setShowConfirm(false);
+    },
   });
+
+  const handleCreateClick = () => {
+    if (!newName || !newStart || !newEnd) {
+      toast.error("لطفاً تمام فیلدها را پر کنید");
+      return;
+    }
+    setShowConfirm(true);
+  };
+
+  const handleConfirmCreate = () => {
+    createMutation.mutate();
+  };
 
   const endMutation = useMutation({
     mutationFn: (id: number) => seasonsApi.endSeason(id),
     onSuccess: () => {
       toast.success("فصل به پایان رسید");
       queryClient.invalidateQueries({ queryKey: ["seasons"] });
+      queryClient.invalidateQueries({ queryKey: ["active-season"] });
     },
     onError: (error) => toast.error(getApiError(error, "خطا در پایان فصل")),
   });
@@ -46,6 +65,7 @@ export default function SeasonsPage() {
     onSuccess: () => {
       toast.success("فصل فعال شد");
       queryClient.invalidateQueries({ queryKey: ["seasons"] });
+      queryClient.invalidateQueries({ queryKey: ["active-season"] });
     },
     onError: (error) => toast.error(getApiError(error, "خطا در فعال‌سازی فصل")),
   });
@@ -69,13 +89,27 @@ export default function SeasonsPage() {
               <Input label="تاریخ شروع" type="date" value={newStart} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewStart(e.target.value)} />
               <Input label="تاریخ پایان" type="date" value={newEnd} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewEnd(e.target.value)} />
               <div className="flex items-end gap-2">
-                <Button onClick={() => createMutation.mutate()} loading={createMutation.isPending}>ذخیره</Button>
+                <Button onClick={handleCreateClick}>ذخیره</Button>
                 <Button variant="outline" onClick={() => setShowCreate(false)}>لغو</Button>
               </div>
             </div>
           </CardContent>
         </Card>
       )}
+
+      <Modal
+        open={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        title="تأیید ایجاد فصل جدید"
+      >
+        <p className="text-sm text-foreground leading-relaxed">
+          با ایجاد فصل جدید، از این لحظه دعوت‌های جدید کاربران در این فصل ثبت و در لیدربورد همین فصل نمایش داده خواهند شد. آیا ادامه می‌دهید؟
+        </p>
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <Button variant="outline" onClick={() => setShowConfirm(false)}>انصراف</Button>
+          <Button onClick={handleConfirmCreate} loading={createMutation.isPending}>تایید</Button>
+        </div>
+      </Modal>
 
       <div className="grid gap-4">
         {query.isLoading ? (
@@ -199,7 +233,10 @@ function SeasonCard({
                         {entry.username && <p className="text-xs text-muted-foreground">@{entry.username}</p>}
                       </div>
                     </div>
-                    <span className="font-semibold text-primary">{formatNumber(entry.inviteCount)} دعوت</span>
+                    <div className="flex items-center gap-4 text-left">
+                      <span className="font-semibold text-primary">{formatNumber(entry.inviteCount)} دعوت</span>
+                      <span className="text-sm text-muted-foreground">{formatNumber((entry as any).points || 0)} امتیاز</span>
+                    </div>
                   </div>
                 ))}
               </div>
