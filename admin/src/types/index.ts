@@ -353,16 +353,6 @@ export interface UserAnalyticsResponse {
 }
 
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
-export interface MenuOrderItem {
-  id: number;
-  key: string;
-  label: string;
-  href: string;
-  order: number;
-  isActive: boolean;
-  ownerOnly: boolean;
-  featureKey?: string | null;
-}
 export interface FeatureToggleItem {
   id: number;
   key: string;

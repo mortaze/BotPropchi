@@ -369,14 +369,6 @@ export const scoringApi = {
 };
 
 export const settingsApi = {
-  async getMenus(): Promise<{ success: boolean; items: import("@/types").MenuOrderItem[] }> {
-    const { data } = await api.get("/api/settings/menus");
-    return data;
-  },
-  async reorderMenus(keys: string[]): Promise<{ success: boolean; items: import("@/types").MenuOrderItem[] }> {
-    const { data } = await api.put("/api/settings/menus/order", { keys });
-    return data;
-  },
   async getFeatures(): Promise<{ success: boolean; items: import("@/types").FeatureToggleItem[] }> {
     const { data } = await api.get("/api/settings/services");
     return data;

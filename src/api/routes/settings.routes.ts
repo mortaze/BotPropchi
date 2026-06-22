@@ -5,18 +5,6 @@ import { requireOwner } from '../middlewares/auth.middleware';
 
 export const settingsRouter = Router();
 
-settingsRouter.get('/menus', async (req, res) => {
-  const menus = await settingsService.getMenus(req.admin?.role);
-  res.json({ success: true, items: menus });
-});
-
-settingsRouter.put('/menus/order', requireOwner, async (req, res) => {
-  const parsed = z.object({ keys: z.array(z.string()).min(1) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
-  const menus = await settingsService.reorderMenus(parsed.data.keys);
-  res.json({ success: true, items: menus });
-});
-
 settingsRouter.get('/mini-app', requireOwner, async (_req, res) => {
   res.json({ success: true, settings: await settingsService.getMiniAppContentSettings() });
 });

@@ -4,59 +4,68 @@ import { useState } from "react";
 import { BRAND_NAME } from "@/config/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { Activity, BarChart3, Building2, ChevronDown, ChevronLeft, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Settings, ShieldCheck, Share2, Star, Ticket, Trophy, UserCog, Users, X } from "lucide-react";
+import { BarChart3, Bot, Building2, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, Percent, RadioTower, Settings, ShieldCheck, Share2, Star, Ticket, Trophy, UserCog, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
-import { settingsApi } from "@/services/api";
 
-const iconMap = { dashboard: LayoutDashboard, users: Users, posts: FileText, menu: Settings, lotteries: Ticket, discounts: Gift, "prop-firms": Building2, referrals: Share2, scoring: Star, "required-channels": RadioTower, groups: ShieldCheck, "keyword-replies": MessageSquareReply, "bot-admins": UserCog, "admin-users": UserCog, analytics: BarChart3, "system-logs": FileText, "mini-app-logs": Activity, settings: Settings, "force-join": Settings, seasons: Trophy, leaderboard: Trophy } as const;
+interface MenuItem {
+  key: string;
+  label: string;
+  href: string;
+  icon: any;
+  children?: { key: string; label: string; href: string; icon: any }[];
+}
 
-const subMenus: Record<string, { key: string; href: string; label: string }[]> = {
-  referrals: [
-    { key: "seasons", href: "/dashboard/seasons", label: "فصل‌ها" },
-    { key: "leaderboard", href: "/dashboard/leaderboard", label: "لیدربورد" },
-  ],
-};
-
-const fallback = [
-  { key: "dashboard", href: "/dashboard", label: "داشبورد" },
-  { key: "users", href: "/dashboard/users", label: "کاربران" },
-  { key: "lotteries", href: "/dashboard/lotteries", label: "قرعه‌کشی‌ها" },
-  { key: "discounts", href: "/dashboard/discounts", label: "تخفیف‌ها" },
-  { key: "referrals", href: "/dashboard/referrals", label: "دعوت دوستان" },
-  { key: "mini-app-logs", href: "/dashboard/mini-app-logs", label: "Mini App Logs" },
-  { key: "force-join", href: "/dashboard/force-join", label: "متن‌های عضویت اجباری" },
-  { key: "seasons", href: "/dashboard/seasons", label: "فصل‌ها" },
-  { key: "leaderboard", href: "/dashboard/leaderboard", label: "لیدربورد" },
+const menuItems: MenuItem[] = [
+  { key: "dashboard", label: "داشبورد", href: "/dashboard", icon: LayoutDashboard },
+  { key: "users", label: "کاربران", href: "/dashboard/users", icon: Users },
+  {
+    key: "posts", label: "پست‌ها", href: "/dashboard/posts", icon: FileText,
+    children: [
+      { key: "menu", label: "ویرایش منو", href: "/dashboard/menu", icon: Settings },
+    ],
+  },
+  { key: "lotteries", label: "قرعه‌کشی‌ها", href: "/dashboard/lotteries", icon: Ticket },
+  { key: "discounts", label: "تخفیف‌ها", href: "/dashboard/discounts", icon: Percent },
+  { key: "prop-firms", label: "پراپ فرم‌ها", href: "/dashboard/prop-firms", icon: Building2 },
+  {
+    key: "referrals", label: "دعوت دوستان", href: "/dashboard/referrals", icon: Share2,
+    children: [
+      { key: "seasons", label: "فصل‌ها", href: "/dashboard/seasons", icon: Trophy },
+      { key: "leaderboard", label: "لیدربورد", href: "/dashboard/leaderboard", icon: Trophy },
+    ],
+  },
+  { key: "scoring", label: "سیستم امتیازدهی", href: "/dashboard/scoring", icon: Star },
+  {
+    key: "required-channels", label: "عضویت اجباری", href: "/dashboard/required-channels", icon: RadioTower,
+    children: [
+      { key: "force-join", label: "متن‌های عضویت اجباری", href: "/dashboard/force-join", icon: Settings },
+      { key: "groups", label: "مدیریت گروه‌ها", href: "/dashboard/groups", icon: ShieldCheck },
+      { key: "keyword-replies", label: "پاسخ‌های خودکار", href: "/dashboard/keyword-replies", icon: MessageSquareReply },
+    ],
+  },
+  { key: "analytics", label: "گزارشات", href: "/dashboard/analytics", icon: BarChart3 },
+  {
+    key: "settings", label: "تنظیمات", href: "/dashboard/settings", icon: Settings,
+    children: [
+      { key: "bot-admins", label: "ادمین‌های ربات", href: "/dashboard/bot-admins", icon: UserCog },
+      { key: "admin-users", label: "مدیریت ادمین‌ها", href: "/dashboard/admin-users", icon: UserCog },
+      { key: "mini-app-logs", label: "Mini App Logs", href: "/dashboard/mini-app-logs", icon: BarChart3 },
+      { key: "system-logs", label: "لاگ سیستم", href: "/dashboard/system-logs", icon: FileText },
+      { key: "ai-assistant", label: "AI Assistant", href: "/dashboard/ai-assistant", icon: Bot },
+    ],
+  },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const query = useQuery({ queryKey: ["menu-orders"], queryFn: settingsApi.getMenus, staleTime: 30_000, retry: 1 });
-  const apiItems = query.data?.items?.length ? query.data.items : null;
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>(() => {
-    const expanded: Record<string, boolean> = {};
-    for (const parentKey of Object.keys(subMenus)) {
-      expanded[parentKey] = apiItems
-        ? apiItems.some((i) => i.key === parentKey || subMenus[parentKey].some((sub) => sub.key === i.key))
-        : fallback.some((i) => i.key === parentKey || subMenus[parentKey].some((sub) => sub.key === i.key));
-    }
-    return expanded;
-  });
-
-  const navItems = apiItems || fallback;
-
-  const visibleParents = new Set<string>();
-  for (const item of navItems) {
-    if (subMenus[item.key]) {
-      const hasVisibleChild = subMenus[item.key].some((sub) =>
-        navItems.some((n) => n.key === sub.key)
-      );
-      if (hasVisibleChild) visibleParents.add(item.key);
-    }
-  }
+  const toggleExpanded = (key: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
     <>
@@ -68,41 +77,48 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <button className="rounded-lg p-2 text-muted-foreground hover:bg-muted md:hidden" onClick={onNavigate} aria-label="بستن منو"><X className="h-5 w-5" /></button>
       </div>
       <nav className="space-y-1">
-        {navItems.map((item) => {
-          const submenu = subMenus[item.key];
-          const hasSubmenu = submenu && submenu.some((sub) => navItems.some((n) => n.key === sub.key));
-          const active = item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
-          const isExpanded = expandedMenus[item.key] ?? false;
-          const Icon = iconMap[item.key as keyof typeof iconMap] ?? LayoutDashboard;
+        {menuItems.map((item) => {
+          const isActive = item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
+          const hasSubmenu = item.children && item.children.length > 0;
+          const isExpanded = expanded[item.key] ?? false;
+          const Icon = item.icon;
 
           if (hasSubmenu) {
+            const anyChildActive = item.children!.some((child) => pathname.startsWith(child.href));
             return (
               <div key={item.key}>
-                <button
-                  onClick={() => setExpandedMenus((prev) => ({ ...prev, [item.key]: !prev[item.key] }))}
-                  className={cn("sidebar-item w-full text-right", active ? "sidebar-item-active" : "sidebar-item-inactive")}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="flex-1">{item.label}</span>
-                  <span className="text-muted-foreground transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </span>
-                </button>
+                <div className="flex items-center">
+                  <Link
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={cn("sidebar-item flex-1", isActive || anyChildActive ? "sidebar-item-active" : "sidebar-item-inactive")}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
+                  <button
+                    onClick={(e) => toggleExpanded(item.key, e)}
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted",
+                      (isActive || anyChildActive) && "text-sidebar-foreground"
+                    )}
+                  >
+                    <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", isExpanded && "rotate-0", !isExpanded && "-rotate-90")} />
+                  </button>
+                </div>
                 {isExpanded && (
                   <div className="mr-6 mt-1 space-y-1 border-r-2 border-sidebar-border pr-2">
-                    {submenu
-                      .filter((sub) => navItems.some((n) => n.key === sub.key))
-                      .map((sub) => {
-                        const subActive = pathname.startsWith(sub.href);
-                        const SubIcon = iconMap[sub.key as keyof typeof iconMap] ?? Trophy;
-                        return (
-                          <Link key={sub.key} href={sub.href} onClick={onNavigate}
-                            className={cn("sidebar-item", subActive ? "sidebar-item-active" : "sidebar-item-inactive")}
-                          >
-                            <SubIcon className="h-4 w-4" />{sub.label}
-                          </Link>
-                        );
-                      })}
+                    {item.children!.map((child) => {
+                      const childActive = pathname.startsWith(child.href);
+                      const ChildIcon = child.icon;
+                      return (
+                        <Link key={child.key} href={child.href} onClick={onNavigate}
+                          className={cn("sidebar-item", childActive ? "sidebar-item-active" : "sidebar-item-inactive")}
+                        >
+                          <ChildIcon className="h-4 w-4" />{child.label}
+                        </Link>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -111,7 +127,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
           return (
             <Link key={item.key} href={item.href} onClick={onNavigate}
-              className={cn("sidebar-item", active ? "sidebar-item-active" : "sidebar-item-inactive")}
+              className={cn("sidebar-item", isActive ? "sidebar-item-active" : "sidebar-item-inactive")}
             >
               <Icon className="h-4 w-4" />{item.label}
             </Link>
