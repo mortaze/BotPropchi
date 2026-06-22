@@ -10,6 +10,8 @@ import { DEFAULT_BOT_USERNAME } from '../constants';
 
 const SETTINGS_ID = 1;
 const DEFAULT_REWARD_POINTS = 20;
+const DEFAULT_SHARE_TEXT = 'این ربات بیشتر کد تخفیف پراپ فرم دارم استارش کن 👇';
+const CLEAN_START_PARAM = 'app';
 
 export function buildReferralCode(userId: number): string {
   return `REF_${userId.toString(36).toUpperCase().padStart(6, '0')}`;
@@ -39,11 +41,11 @@ export const referralService = {
     return prisma.referralSettings.upsert({
       where: { id: SETTINGS_ID },
       update: { inviteRewardPoints: scoring.referralRewardPoints },
-      create: { id: SETTINGS_ID, inviteRewardPoints: scoring.referralRewardPoints ?? DEFAULT_REWARD_POINTS, isEnabled: true },
+      create: { id: SETTINGS_ID, inviteRewardPoints: scoring.referralRewardPoints ?? DEFAULT_REWARD_POINTS, isEnabled: true, referralShareText: DEFAULT_SHARE_TEXT },
     });
   },
 
-  async updateSettings(data: { inviteRewardPoints?: number; isEnabled?: boolean }) {
+  async updateSettings(data: { inviteRewardPoints?: number; isEnabled?: boolean; referralShareText?: string }) {
     logger.info('Updating referral settings', data);
     if (typeof data.inviteRewardPoints === 'number') {
       await scoringService.updateSettings({ referralRewardPoints: data.inviteRewardPoints });
@@ -55,12 +57,22 @@ export const referralService = {
         id: SETTINGS_ID,
         inviteRewardPoints: data.inviteRewardPoints ?? DEFAULT_REWARD_POINTS,
         isEnabled: data.isEnabled ?? true,
+        referralShareText: data.referralShareText ?? DEFAULT_SHARE_TEXT,
       },
     });
   },
 
   async getReferralLink(userId: number, botUsername: string) {
     return `https://t.me/${botUsername}?start=${buildReferralCode(userId)}`;
+  },
+
+  async getCleanReferralLink(botUsername: string) {
+    return `https://t.me/${botUsername}?start=${CLEAN_START_PARAM}`;
+  },
+
+  async getShareText(): Promise<string> {
+    const settings = await this.getSettings();
+    return settings.referralShareText || DEFAULT_SHARE_TEXT;
   },
 
   async registerSuccessfulReferral(referrerId: number, referredUserId: number, referredFirstName?: string, membershipVerified = false) {

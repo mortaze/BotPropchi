@@ -25,7 +25,8 @@ const meQuerySchema = z.object({
 const settingsSchema = z.object({
   inviteRewardPoints: z.coerce.number().int().min(0).max(100000).optional(),
   isEnabled: z.boolean().optional(),
-}).refine((data) => data.inviteRewardPoints !== undefined || data.isEnabled !== undefined, {
+  referralShareText: z.string().optional(),
+}).refine((data) => data.inviteRewardPoints !== undefined || data.isEnabled !== undefined || data.referralShareText !== undefined, {
   message: 'حداقل یکی از فیلدهای تنظیمات باید ارسال شود',
 });
 
@@ -46,6 +47,16 @@ referralRouter.get('/me', async (req, res) => {
   } catch (error: any) {
     logger.error('❌ GET REFERRAL ME ERROR', error);
     return res.status(500).json({ success: false, error: error.message || 'خطا در دریافت اطلاعات دعوت' });
+  }
+});
+
+referralRouter.get('/share-text', async (_req, res) => {
+  try {
+    const shareText = await referralService.getShareText();
+    return res.json({ success: true, data: { shareText } });
+  } catch (error: any) {
+    logger.error('❌ GET REFERRAL SHARE TEXT ERROR', error);
+    return res.status(500).json({ success: false, error: error.message || 'خطا در دریافت متن اشتراک‌گذاری' });
   }
 });
 

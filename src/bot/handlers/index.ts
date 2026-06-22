@@ -38,6 +38,7 @@ import {
   buildMiniAppProfileKeyboard,
   paginationKeyboard,
   buildForceJoinKeyboard,
+  buildReferralShareKeyboard,
 } from '../keyboards';
 import {
   buildMenuEditorReplyKeyboard,
@@ -1475,6 +1476,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!(await settingsService.isFeatureEnabled('referrals'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
   try {
     const botInfo = await bot.telegram.getMe();
+    const botUsername = botInfo.username || DEFAULT_BOT_USERNAME;
 
     const profile: any = await userService.getProfile(
       BigInt(ctx.from.id)
@@ -1489,14 +1491,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const referralStats =
       await userService.getReferralStats(
         profile.id,
-        botInfo.username || DEFAULT_BOT_USERNAME
+        botUsername
       );
 
     const link =
       referralStats?.referralLink ||
       (await userService.getReferralLink(
         profile.id,
-        botInfo.username || DEFAULT_BOT_USERNAME
+        botUsername
       ));
 
     const referralSettings =
@@ -1522,8 +1524,20 @@ export function registerHandlers(bot: Telegraf<Context>) {
         `✅ پاداش هر دعوت موفق: ${rewardPoints} امتیاز`,
         `👤 دعوت‌شدگان تا کنون: ${totalReferrals} نفر`,
         `🎁 مجموع امتیاز دعوت‌ها: ${totalRewardPoints}`,
+        '',
+        '─── 📣 اشتراک‌گذاری ───',
       ].join('\n'),
       { link_preview_options: { is_disabled: true } }
+    );
+
+    const shareText = await referralService.getShareText();
+    const cleanLink = await referralService.getCleanReferralLink(botUsername);
+    const fullShareText = `${shareText}\n\n${cleanLink}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(cleanLink)}&text=${encodeURIComponent(shareText)}`;
+
+    await ctx.reply(
+      'با دوستان خود به اشتراک بگذارید:',
+      buildReferralShareKeyboard(shareUrl)
     );
   } catch (error) {
     logger.error(
@@ -1536,6 +1550,23 @@ export function registerHandlers(bot: Telegraf<Context>) {
     );
   }
 });
+
+  bot.action('referral:copy', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    try {
+      const botInfo = await bot.telegram.getMe();
+      const botUsername = botInfo.username || DEFAULT_BOT_USERNAME;
+      const shareText = await referralService.getShareText();
+      const cleanLink = await referralService.getCleanReferralLink(botUsername);
+      const fullText = `${shareText}\n\n${cleanLink}`;
+
+      await ctx.reply(fullText, { link_preview_options: { is_disabled: true } });
+      await ctx.reply('✅ متن آماده شد. برای کافی، متن بالا را لمس و نگه دارید سپس گزینه Copy را انتخاب کنید.');
+    } catch (error) {
+      logger.error('Referral Copy Handler Error:', error);
+      await ctx.reply('❌ خطا در آماده‌سازی متن اشتراک‌گذاری');
+    }
+  });
 
   bot.action('check:membership', async (ctx) => {
     const telegramId = ctx.from!.id;

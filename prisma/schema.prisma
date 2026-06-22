@@ -164,6 +164,7 @@ model ReferralSettings {
   id                 Int      @id @default(1)
   inviteRewardPoints Int      @default(20)
   isEnabled          Boolean  @default(true)
+  referralShareText  String   @default("این ربات بیشتر کد تخفیف پراپ فرم دارم استارش کن 👇")
   updatedAt          DateTime @updatedAt
   createdAt          DateTime @default(now())
 

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gift, Search, ToggleLeft, Trophy, Users } from "lucide-react";
 import { toast } from "sonner";
-import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Pagination, TableRowSkeleton, Toggle } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Pagination, TableRowSkeleton, Textarea, Toggle } from "@/components/ui";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
 import { getApiError, referralsApi, seasonsApi } from "@/services/api";
 import type { ReferralSettings } from "@/types";
@@ -41,7 +41,7 @@ export default function ReferralsPage() {
 
   const settings = query.data?.stats.settings;
   const updateSettings = useMutation({
-    mutationFn: (payload: Partial<Pick<ReferralSettings, "inviteRewardPoints" | "isEnabled">>) => referralsApi.updateSettings(payload),
+    mutationFn: (payload: Partial<Pick<ReferralSettings, "inviteRewardPoints" | "isEnabled" | "referralShareText">>) => referralsApi.updateSettings(payload),
     onSuccess: () => {
       toast.success("تنظیمات دعوت ذخیره شد");
       queryClient.invalidateQueries({ queryKey: ["referrals"] });
@@ -68,23 +68,35 @@ export default function ReferralsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h2 className="font-semibold">تنظیمات دعوت</h2>
-              <p className="text-xs text-muted-foreground">مقدار پاداش hardcode نیست و از تنظیمات backend خوانده می‌شود.</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-[180px_160px_auto] sm:items-end">
-              <Input
-                label="امتیاز هر دعوت"
-                type="number"
-                min={0}
-                value={settings?.inviteRewardPoints ?? 20}
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateSettings.mutate({ inviteRewardPoints: Number(event.target.value) })}
-              />
-              <div className="pb-2">
-                <Toggle checked={Boolean(settings?.isEnabled)} onChange={(value) => updateSettings.mutate({ isEnabled: value })} label="فعال بودن سیستم" />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="font-semibold">تنظیمات دعوت</h2>
+                <p className="text-xs text-muted-foreground">مقدار پاداش hardcode نیست و از تنظیمات backend خوانده می‌شود.</p>
               </div>
-              <Button variant="outline" loading={updateSettings.isPending} onClick={() => queryClient.invalidateQueries({ queryKey: ["referrals"] })}>بروزرسانی</Button>
+              <div className="grid gap-3 sm:grid-cols-[180px_160px_auto] sm:items-end">
+                <Input
+                  label="امتیاز هر دعوت"
+                  type="number"
+                  min={0}
+                  value={settings?.inviteRewardPoints ?? 20}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateSettings.mutate({ inviteRewardPoints: Number(event.target.value) })}
+                />
+                <div className="pb-2">
+                  <Toggle checked={Boolean(settings?.isEnabled)} onChange={(value) => updateSettings.mutate({ isEnabled: value })} label="فعال بودن سیستم" />
+                </div>
+                <Button variant="outline" loading={updateSettings.isPending} onClick={() => queryClient.invalidateQueries({ queryKey: ["referrals"] })}>بروزرسانی</Button>
+              </div>
+            </div>
+            <div className="border-t border-border pt-4">
+              <Textarea
+                label="متن اشتراک‌گذاری دعوت"
+                placeholder="این ربات بیشتر کد تخفیف پراپ فرم دارم استارش کن 👇"
+                value={settings?.referralShareText ?? ""}
+                onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => updateSettings.mutate({ referralShareText: event.target.value })}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground mt-1">این متن به همراه لینک ربات در دکمه‌های اشتراک‌گذاری و کپی استفاده می‌شود. قالب Markdown پشتیبانی می‌شود.</p>
             </div>
           </div>
         </CardHeader>

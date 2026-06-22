@@ -200,6 +200,14 @@ export function buildForceJoinKeyboard(
   return Markup.inlineKeyboard(buttons);
 }
 
+// ─── اشتراک‌گذاری دعوت ─────────────────────────────────────
+export function buildReferralShareKeyboard(shareUrl: string) {
+  return Markup.inlineKeyboard([
+    [Markup.button.url('📤 دعوت در تلگرام', shareUrl)],
+    [Markup.button.callback('📲 کپی متن آماده', 'referral:copy')],
+  ]);
+}
+
 // ─── قرعه‌کشی ─────────────────────────────────────────────
 export function lotteryKeyboard(lotteryId: number, currentTickets = 0) {
   const buttons = [

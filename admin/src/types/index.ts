@@ -157,6 +157,7 @@ export interface ReferralSettings {
   id: number;
   inviteRewardPoints: number;
   isEnabled: boolean;
+  referralShareText: string;
   createdAt: string;
   updatedAt: string;
 }

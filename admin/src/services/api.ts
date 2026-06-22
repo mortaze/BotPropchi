@@ -180,7 +180,7 @@ export const referralsApi = {
     const { data } = await api.get("/api/referrals/leaderboard", { params: { limit } });
     return data;
   },
-  async updateSettings(payload: Partial<Pick<ReferralSettings, "inviteRewardPoints" | "isEnabled">>): Promise<{ success: boolean; settings: ReferralSettings }> {
+  async updateSettings(payload: Partial<Pick<ReferralSettings, "inviteRewardPoints" | "isEnabled" | "referralShareText">>): Promise<{ success: boolean; settings: ReferralSettings }> {
     const { data } = await api.patch("/api/referrals/settings", payload);
     return data;
   },
