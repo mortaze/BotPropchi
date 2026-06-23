@@ -51,7 +51,6 @@ const menuItems: MenuItem[] = [
       { key: "analytics-users", label: "تحلیل کاربران", href: "/dashboard/analytics", icon: BarChart3 },
       { key: "analytics-acquisition", label: "منابع جذب", href: "/dashboard/analytics/acquisition", icon: Share2 },
       { key: "analytics-heatmap", label: "نقشه حرارتی", href: "/dashboard/analytics/heatmap", icon: BarChart3 },
-      { key: "analytics-attribution", label: "Attribution", href: "/dashboard/analytics/attribution", icon: Share2 },
     ],
   },
   {
@@ -59,7 +58,6 @@ const menuItems: MenuItem[] = [
     children: [
       { key: "bot-admins", label: "ادمین‌های ربات", href: "/dashboard/bot-admins", icon: UserCog },
       { key: "admin-users", label: "مدیریت ادمین‌ها", href: "/dashboard/admin-users", icon: UserCog },
-      { key: "mini-app-logs", label: "Mini App Logs", href: "/dashboard/mini-app-logs", icon: BarChart3 },
       { key: "system-integrity", label: "سلامت سیستم", href: "/dashboard/system-integrity", icon: Shield },
       { key: "broadcast-diagnostics", label: "آنالیز پیام همگانی", href: "/dashboard/broadcast-diagnostics", icon: BarChart3 },
       { key: "broadcast-trace", label: "Delivery Trace", href: "/dashboard/broadcast-diagnostics/trace", icon: BarChart3 },
