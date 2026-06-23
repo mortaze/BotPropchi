@@ -37,7 +37,18 @@ userRouter.get('/stats', async (_req, res) => {
     prisma.user.aggregate({ _sum: { points: true } }),
   ]);
 
-  res.json({ total, today, totalPoints: totalPoints._sum.points || 0 });
+  res.json(serializeBigInts({ total, today, totalPoints: totalPoints._sum.points || 0 }));
+});
+
+// Lookup by telegramId: GET /api/users/by-telegram/:telegramId
+userRouter.get('/by-telegram/:telegramId', async (req, res) => {
+  const telegramId = BigInt(req.params.telegramId);
+  const user = await prisma.user.findUnique({
+    where: { telegramId },
+    select: { id: true, telegramId: true, username: true, firstName: true, lastName: true, isBlocked: true },
+  });
+  if (!user) return res.status(404).json({ error: 'کاربر یافت نشد' });
+  res.json(serializeBigInts(user));
 });
 
 // پروفایل: GET /api/users/:id

@@ -74,14 +74,14 @@ export default function UserJourneyPage() {
   const [eventFilter, setEventFilter] = useState('');
   const [messageFilter, setMessageFilter] = useState('');
 
-  // Get user info
+  // Get user info by telegramId
   const userQuery = useQuery({
     queryKey: ["user-journey-user", telegramId],
-    queryFn: () => usersApi.getAll({ limit: 100 }),
+    queryFn: () => usersApi.getByTelegramId(telegramId),
     enabled: Boolean(telegramId),
   });
 
-  const user = userQuery.data?.users?.find(u => String(u.telegramId) === telegramId);
+  const user = userQuery.data;
   const userId = user?.id;
 
   // Timeline

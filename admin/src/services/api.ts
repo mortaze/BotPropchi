@@ -62,6 +62,14 @@ export const usersApi = {
     const { data } = await api.get("/api/users/stats");
     return data;
   },
+  async getByTelegramId(telegramId: string): Promise<{ id: number; telegramId: string; username: string | null; firstName: string; lastName: string | null; isBlocked: boolean } | null> {
+    try {
+      const { data } = await api.get(`/api/users/by-telegram/${telegramId}`);
+      return data;
+    } catch {
+      return null;
+    }
+  },
   async getById(id: number): Promise<UserDetails> {
     const { data } = await api.get(`/api/users/${id}`);
     return data;

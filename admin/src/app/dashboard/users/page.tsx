@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, Trash2, Eye, Pencil } from "lucide-react";
+import { Search, Trash2, Eye, Pencil, Route } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Pagination, TableRowSkeleton } from "@/components/ui";
 import { getApiError, usersApi, userDeleteApi } from "@/services/api";
@@ -250,6 +250,13 @@ export default function UsersPage() {
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </Link>
+                      {user.telegramId && (
+                        <Link href={`/dashboard/user-journey/${user.telegramId}`}>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-500/10" title="سفر کاربر">
+                            <Route className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      )}
                       <Button
                         size="sm"
                         variant={user.isBlocked ? "secondary" : "danger"}
