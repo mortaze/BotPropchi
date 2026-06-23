@@ -26,6 +26,12 @@ model User {
   realLastName               String?
   telegramFirstName          String?
   telegramLastName           String?
+  acquisitionSource          String?
+  startPayload               String?
+  referrerUserId             Int?
+  utmSource                  String?
+  utmCampaign                String?
+  lastActivityAt             DateTime?
   aiChatLogs                 AiChatLog[]
   broadcastLogs              BroadcastLog[]
   clickLogs                  ClickLog[]
@@ -46,6 +52,8 @@ model User {
   @@index([referredById])
   @@index([profileCompleted])
   @@index([phoneNumber])
+  @@index([acquisitionSource])
+  @@index([lastActivityAt])
   @@map("users")
 }
 

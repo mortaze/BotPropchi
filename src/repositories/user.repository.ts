@@ -6,7 +6,6 @@ import { prisma } from '../prisma/client';
 import { pointService } from '../services/point.service';
 
 export const userRepository = {
-  // پیدا کردن یا ساختن کاربر جدید (هنگام /start)
   async upsert(data: {
     telegramId: bigint;
     username?: string;
@@ -16,6 +15,11 @@ export const userRepository = {
     telegramLastName?: string;
     profileCompletedName?: boolean;
     referredById?: number;
+    acquisitionSource?: string;
+    startPayload?: string;
+    referrerUserId?: number;
+    utmSource?: string;
+    utmCampaign?: string;
   }) {
     return prisma.user.upsert({
       where: { telegramId: data.telegramId },
@@ -27,6 +31,7 @@ export const userRepository = {
         lastName: data.lastName,
         realFirstName: data.profileCompletedName ? data.firstName : undefined,
         realLastName: data.profileCompletedName ? data.lastName : undefined,
+        lastActivityAt: new Date(),
       },
       create: {
         telegramId: data.telegramId,
@@ -36,6 +41,12 @@ export const userRepository = {
         telegramFirstName: data.telegramFirstName ?? data.firstName,
         telegramLastName: data.telegramLastName ?? data.lastName,
         referredById: data.referredById,
+        acquisitionSource: data.acquisitionSource ?? 'direct',
+        startPayload: data.startPayload,
+        referrerUserId: data.referrerUserId,
+        utmSource: data.utmSource,
+        utmCampaign: data.utmCampaign,
+        lastActivityAt: new Date(),
       },
     });
   },

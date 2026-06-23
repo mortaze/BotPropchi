@@ -344,6 +344,34 @@ export interface UserAnalyticsResponse {
   days: string[];
 }
 
+export interface AcquisitionSourceItem {
+  source: string;
+  label: string;
+  count: number;
+  percentage: number;
+  activeUsers: number;
+  inactiveUsers: number;
+}
+export interface AcquisitionResponse {
+  sources: AcquisitionSourceItem[];
+  total: number;
+}
+
+export interface HeatmapHourlyItem {
+  hour: number;
+  count: number;
+}
+export interface HeatmapDailyItem {
+  date: string;
+  count: number;
+}
+export interface HeatmapResponse {
+  heatmap: number[][];
+  hourlyTotals: HeatmapHourlyItem[];
+  dailyData: HeatmapDailyItem[];
+  dayLabels: string[];
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface FeatureToggleItem {
   id: number;

@@ -27,6 +27,7 @@ export function userMiddleware() {
         firstName: ctx.from.first_name,
         lastName: ctx.from.last_name,
         referralCode,
+        startPayload: startPayload?.trim() || undefined,
       });
     } catch (err) {
       logger.error('خطا در userMiddleware:', err);

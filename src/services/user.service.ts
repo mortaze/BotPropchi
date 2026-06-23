@@ -36,10 +36,13 @@ export const userService = {
     firstName: string;
     lastName?: string;
     referralCode?: string;
+    startPayload?: string;
   }) {
     const existingUser = await userRepository.findByTelegramId(params.telegramId);
     let referredById: number | undefined = existingUser?.referredById ?? undefined;
     let shouldRegisterReferral = false;
+    let acquisitionSource = existingUser?.acquisitionSource ?? 'direct';
+    let referrerUserId: number | undefined = undefined;
 
     if (params.referralCode && !existingUser?.referredById) {
       const referrerId = parseReferralCode(params.referralCode);
@@ -49,7 +52,9 @@ export const userService = {
 
         if (referrer && referrer.telegramId !== params.telegramId) {
           referredById = referrer.id;
+          referrerUserId = referrer.id;
           shouldRegisterReferral = true;
+          acquisitionSource = 'referral';
           logger.info(
             `Referral code accepted telegramId=${params.telegramId.toString()}, referrerId=${referrer.id}, isNewUser=${!existingUser}`
           );
@@ -58,6 +63,22 @@ export const userService = {
         }
       } else {
         logger.warn(`Invalid referral code ignored. code=${params.referralCode}`);
+      }
+    }
+
+    // Detect acquisition source from start payload
+    if (!existingUser && params.startPayload) {
+      const payload = params.startPayload.trim();
+      if (payload.startsWith('utm_')) {
+        acquisitionSource = 'utm';
+      } else if (payload.startsWith('ad_') || payload.startsWith('campaign_')) {
+        acquisitionSource = 'ads';
+      } else if (payload.startsWith('site_') || payload.startsWith('web_')) {
+        acquisitionSource = 'website';
+      } else if (payload.startsWith('tg_') || payload.startsWith('channel_')) {
+        acquisitionSource = 'telegram';
+      } else if (!referredById) {
+        acquisitionSource = 'direct';
       }
     }
 
@@ -73,6 +94,9 @@ export const userService = {
       telegramLastName: params.lastName,
       profileCompletedName: Boolean(existingUser?.profileCompleted),
       referredById,
+      acquisitionSource,
+      startPayload: params.startPayload,
+      referrerUserId,
     });
 
     if (isNewUser) {

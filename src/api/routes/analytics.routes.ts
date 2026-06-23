@@ -33,6 +33,30 @@ analyticsRouter.get('/users', asyncHandler(async (req, res) => {
   res.json({ success: true, data: serializeBigInts(data) });
 }));
 
+analyticsRouter.get('/acquisition', asyncHandler(async (req, res) => {
+  const { startDate, endDate } = req.query as Record<string, string | undefined>;
+  const now = new Date();
+  const sDate = startDate || new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+  const eDate = endDate || now.toISOString().slice(0, 10);
+  const data = await analyticsService.acquisitionSources({
+    startDate: sDate,
+    endDate: eDate,
+  });
+  res.json({ success: true, data: serializeBigInts(data) });
+}));
+
+analyticsRouter.get('/heatmap', asyncHandler(async (req, res) => {
+  const { startDate, endDate } = req.query as Record<string, string | undefined>;
+  const now = new Date();
+  const sDate = startDate || new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+  const eDate = endDate || now.toISOString().slice(0, 10);
+  const data = await analyticsService.activityHeatmap({
+    startDate: sDate,
+    endDate: eDate,
+  });
+  res.json({ success: true, data: serializeBigInts(data) });
+}));
+
 analyticsRouter.post('/invalidate-cache', asyncHandler(async (_req, res) => {
   await analyticsService.invalidateCache();
   res.json({ success: true, message: 'Cache invalidated' });

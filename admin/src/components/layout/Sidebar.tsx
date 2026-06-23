@@ -44,7 +44,14 @@ const menuItems: MenuItem[] = [
       { key: "keyword-replies", label: "پاسخ‌های خودکار", href: "/dashboard/keyword-replies", icon: MessageSquareReply },
     ],
   },
-  { key: "analytics", label: "گزارشات", href: "/dashboard/analytics", icon: BarChart3 },
+  {
+    key: "analytics", label: "گزارشات", href: "/dashboard/analytics", icon: BarChart3,
+    children: [
+      { key: "analytics-users", label: "تحلیل کاربران", href: "/dashboard/analytics", icon: BarChart3 },
+      { key: "analytics-acquisition", label: "منابع جذب", href: "/dashboard/analytics/acquisition", icon: Share2 },
+      { key: "analytics-heatmap", label: "نقشه حرارتی", href: "/dashboard/analytics/heatmap", icon: BarChart3 },
+    ],
+  },
   {
     key: "settings", label: "تنظیمات", href: "/dashboard/settings", icon: Settings,
     children: [

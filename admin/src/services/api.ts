@@ -309,6 +309,14 @@ export const analyticsApi = {
     const { data } = await api.get("/api/analytics/users", { params });
     return data;
   },
+  async acquisition(params: { startDate: string; endDate: string }): Promise<{ success: boolean; data: import("@/types").AcquisitionResponse }> {
+    const { data } = await api.get("/api/analytics/acquisition", { params });
+    return data;
+  },
+  async heatmap(params: { startDate: string; endDate: string }): Promise<{ success: boolean; data: import("@/types").HeatmapResponse }> {
+    const { data } = await api.get("/api/analytics/heatmap", { params });
+    return data;
+  },
 };
 
 export interface BotAdminPayload {

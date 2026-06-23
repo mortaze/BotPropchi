@@ -351,4 +351,131 @@ export const analyticsService = {
     await redisClient.invalidateByPrefix(CACHE_PREFIX).catch(() => {});
     logger.info('[Analytics] Cache invalidated');
   },
+
+  async acquisitionSources(params: { startDate: string; endDate: string }) {
+    const start = utcStartOfDay(new Date(params.startDate + 'T12:00:00.000Z'));
+    const end = utcEndOfDay(new Date(params.endDate + 'T12:00:00.000Z'));
+
+    const rows = await prisma.$queryRawUnsafe<Array<{
+      source: string;
+      count: bigint;
+    }>>(
+      `SELECT COALESCE("acquisitionSource", 'direct') AS source, COUNT(*)::bigint AS count
+       FROM "users"
+       WHERE "createdAt" >= $1 AND "createdAt" <= $2
+       GROUP BY COALESCE("acquisitionSource", 'direct')
+       ORDER BY count DESC`,
+      start, end,
+    );
+
+    const total = rows.reduce((a, r) => a + safeNumber(r.count), 0);
+
+    const sources = rows.map((r) => ({
+      source: r.source || 'direct',
+      label: SOURCE_LABELS[r.source] || SOURCE_LABELS['direct'],
+      count: safeNumber(r.count),
+      percentage: total > 0 ? Math.round((safeNumber(r.count) / total) * 10000) / 100 : 0,
+    }));
+
+    // Get active users per source
+    const activeRows = await prisma.$queryRawUnsafe<Array<{
+      source: string;
+      count: bigint;
+    }>>(
+      `SELECT COALESCE("acquisitionSource", 'direct') AS source, COUNT(DISTINCT "userId")::bigint AS count
+       FROM "point_logs" pl
+       JOIN "users" u ON u.id = pl."userId"
+       WHERE pl."createdAt" >= $1 AND pl."createdAt" <= $2
+       GROUP BY COALESCE("acquisitionSource", 'direct')`,
+      start, end,
+    );
+
+    const activeMap = new Map<string, number>();
+    for (const r of activeRows) activeMap.set(r.source || 'direct', safeNumber(r.count));
+
+    // Get inactive users per source
+    const result = sources.map((s) => ({
+      ...s,
+      activeUsers: activeMap.get(s.source) ?? 0,
+      inactiveUsers: s.count - (activeMap.get(s.source) ?? 0),
+    }));
+
+    logger.info(`[Analytics] acquisitionSources: ${result.length} sources, total=${total}`);
+    return { sources: result, total };
+  },
+
+  async activityHeatmap(params: { startDate: string; endDate: string }) {
+    const start = utcStartOfDay(new Date(params.startDate + 'T12:00:00.000Z'));
+    const end = utcEndOfDay(new Date(params.endDate + 'T12:00:00.000Z'));
+
+    // Hourly activity (Asia/Tehran = UTC+3:30, but we use AT TIME ZONE for correctness)
+    const hourlyRows = await prisma.$queryRawUnsafe<Array<{
+      hour: number;
+      day_of_week: number;
+      count: bigint;
+    }>>(
+      `SELECT EXTRACT(HOUR FROM "createdAt" AT TIME ZONE 'Asia/Tehran')::int AS hour,
+              EXTRACT(DOW FROM "createdAt" AT TIME ZONE 'Asia/Tehran')::int AS day_of_week,
+              COUNT(DISTINCT "userId")::bigint AS count
+       FROM "point_logs"
+       WHERE "createdAt" >= $1 AND "createdAt" <= $2
+       GROUP BY hour, day_of_week
+       ORDER BY day_of_week, hour`,
+      start, end,
+    );
+
+    // Build heatmap grid: 7 days x 24 hours
+    const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+    for (const r of hourlyRows) {
+      const dow = r.day_of_week; // 0=Sun, 1=Mon, ..., 6=Sat
+      const hour = r.hour;
+      if (dow >= 0 && dow < 7 && hour >= 0 && hour < 24) {
+        heatmap[dow][hour] = safeNumber(r.count);
+      }
+    }
+
+    // Daily totals for the chart
+    const dailyRows = await prisma.$queryRawUnsafe<Array<{
+      day: string;
+      count: bigint;
+    }>>(
+      `SELECT DATE("createdAt" AT TIME ZONE 'Asia/Tehran')::text AS day,
+              COUNT(DISTINCT "userId")::bigint AS count
+       FROM "point_logs"
+       WHERE "createdAt" >= $1 AND "createdAt" <= $2
+       GROUP BY day
+       ORDER BY day`,
+      start, end,
+    );
+
+    const dailyData = dailyRows.map((r) => ({
+      date: typeof r.day === 'string' ? r.day.slice(0, 10) : String(r.day),
+      count: safeNumber(r.count),
+    }));
+
+    // Hourly totals for the chart
+    const hourlyTotals = Array(24).fill(0);
+    for (const r of hourlyRows) {
+      hourlyTotals[r.hour] += safeNumber(r.count);
+    }
+
+    logger.info(`[Analytics] activityHeatmap: ${hourlyRows.length} hourly rows, ${dailyRows.length} daily rows`);
+
+    return {
+      heatmap,
+      hourlyTotals: hourlyTotals.map((count, hour) => ({ hour, count })),
+      dailyData,
+      dayLabels: ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'],
+    };
+  },
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  referral: 'دعوت دوستان',
+  direct: 'استارت مستقیم',
+  ads: 'تبلیغات',
+  website: 'سایت',
+  telegram: 'تلگرام',
+  utm: 'کمپین',
+  unknown: 'ناشناس',
 };
