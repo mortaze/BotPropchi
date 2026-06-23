@@ -31,13 +31,22 @@ export const broadcastRepository = {
   },
 
   async createPendingLogs(broadcastId: number) {
-    const users = await prisma.user.findMany({ where: { isBlocked: false }, select: { id: true, telegramId: true } });
+    // PHASE: Only include users who have a valid start event
+    const users = await prisma.user.findMany({
+      where: {
+        isBlocked: false,
+        telegramId: { not: BigInt(0) },
+        startCount: { gt: 0 },
+      },
+      select: { id: true, telegramId: true },
+    });
     if (users.length) {
       await prisma.broadcastLog.createMany({
         data: users.map((user) => ({ broadcastId, userId: user.id, telegramId: user.telegramId, status: BroadcastLogStatus.PENDING })),
         skipDuplicates: true,
       });
     }
+    await broadcastRepository.refreshCounters(broadcastId);
     await prisma.broadcast.update({ where: { id: broadcastId }, data: { totalRecipients: users.length } });
     return users.length;
   },

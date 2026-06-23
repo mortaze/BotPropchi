@@ -240,6 +240,7 @@ class MiniAppService {
             lastName: telegramUser.last_name,
             telegramFirstName: telegramUser.first_name,
             telegramLastName: telegramUser.last_name,
+            acquisitionSource: 'mini_app',
           },
         });
 

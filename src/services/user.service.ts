@@ -40,12 +40,14 @@ export const userService = {
     referralCode?: string;
     startPayload?: string;
     deviceType?: string;
+    isStart?: boolean;
   }) {
     const existingUser = await userRepository.findByTelegramId(params.telegramId);
     let referredById: number | undefined = existingUser?.referredById ?? undefined;
     let shouldRegisterReferral = false;
     let acquisitionSource = existingUser?.acquisitionSource ?? 'direct';
     let referrerUserId: number | undefined = undefined;
+    const isStart = params.isStart ?? false;
 
     if (params.referralCode && !existingUser?.referredById) {
       const referrerId = parseReferralCode(params.referralCode);
@@ -139,11 +141,15 @@ export const userService = {
         await pointService.addPoints(user.id, scoring.startPoints, PointLogType.ADMIN_GRANT, 'امتیاز شروع ربات');
       }
       logger.info(`[NewUser] detected userId=${params.telegramId.toString()}`);
-      notifyNewUserFromService(params.telegramId, {
-        first_name: params.firstName,
-        last_name: params.lastName,
-        username: params.username,
-      }).catch((err: unknown) => logger.error(`[NewUser] notification error userId=${params.telegramId.toString()}`, err));
+
+      // Only send notification if this is actually a /start command (not just first interaction)
+      if (isStart) {
+        notifyNewUserFromService(params.telegramId, {
+          first_name: params.firstName,
+          last_name: params.lastName,
+          username: params.username,
+        }).catch((err: unknown) => logger.error(`[NewUser] notification error userId=${params.telegramId.toString()}`, err));
+      }
     }
 
     // ثبت Referral تا زمان تأیید عضویت اجباری انجام نمی‌شود؛ referredById نقش pending referral را دارد.
