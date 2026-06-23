@@ -365,6 +365,21 @@ export const broadcastRcaApi = {
   },
 };
 
+export const broadcastTraceApi = {
+  async liveTest(userId: number): Promise<{ success: boolean; data: import("@/types").LiveTestResult }> {
+    const { data } = await api.post(`/api/broadcast-trace/live-test/${userId}`);
+    return data;
+  },
+  async getChat(userId: number): Promise<{ success: boolean; data: import("@/types").LiveTestResult & { getChatResponse: any } }> {
+    const { data } = await api.post(`/api/broadcast-trace/get-chat/${userId}`);
+    return data;
+  },
+  async batchTrace(): Promise<{ success: boolean; data: import("@/types").ComparisonReport }> {
+    const { data } = await api.post("/api/broadcast-trace/batch-trace");
+    return data;
+  },
+};
+
 export const analyticsApi = {
   async dashboard(): Promise<{ success: boolean; data: import("@/types").AnalyticsDashboard }> {
     const { data } = await api.get("/api/analytics/dashboard");

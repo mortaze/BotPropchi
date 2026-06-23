@@ -627,6 +627,35 @@ export interface SystemErrorUser {
   telegramErrorCode: number | null;
 }
 
+export interface LiveTestResult {
+  userId: number;
+  databaseTelegramId: string;
+  databaseChatId: string | null;
+  databaseUsername: string | null;
+  resolvedChatId: string;
+  botTokenFingerprint: string;
+  apiEndpoint: string;
+  rawRequestPayload: any;
+  rawResponse: any;
+  httpStatus: number | null;
+  telegramErrorCode: number | null;
+  telegramDescription: string | null;
+  success: boolean;
+  error: string | null;
+  timestamp: string;
+}
+
+export interface ComparisonReport {
+  successfulUsers: LiveTestResult[];
+  failedUsers: LiveTestResult[];
+  summary: {
+    totalTested: number;
+    successCount: number;
+    failCount: number;
+    commonFailures: Array<{ description: string; count: number }>;
+  };
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface FeatureToggleItem {
   id: number;

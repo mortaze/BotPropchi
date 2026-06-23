@@ -42,6 +42,7 @@ import { searchRouter } from "./routes/search.routes";
 import { attributionRouter } from "./routes/attribution.routes";
 import { broadcastDiagnosticsRouter } from "./routes/broadcast-diagnostics.routes";
 import { broadcastRcaRouter } from "./routes/broadcast-rca.routes";
+import { createBroadcastTraceRouter } from "./routes/broadcast-trace.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -202,6 +203,7 @@ export function startAdminApi(bot?: Telegraf) {
   app.use("/api/attribution", authMiddleware, requireFeature("reports"), attributionRouter);
   app.use("/api/broadcast-diagnostics", authMiddleware, requireFeature("reports"), broadcastDiagnosticsRouter);
   app.use("/api/broadcast-rca", authMiddleware, requireFeature("reports"), broadcastRcaRouter);
+  app.use("/api/broadcast-trace", authMiddleware, requireFeature("reports"), createBroadcastTraceRouter(bot));
   app.use("/api/search", authMiddleware, searchRouter);
   app.use("/api/ai", createAiRouter(bot));
   app.use("/api/settings", authMiddleware, settingsRouter);
