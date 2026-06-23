@@ -13,6 +13,7 @@ model User {
   username                   String?
   firstName                  String
   lastName                   String?
+  languageCode               String?
   points                     Int                             @default(0)
   totalReferrals             Int                             @default(0)
   isBlocked                  Boolean                         @default(false)
@@ -32,6 +33,16 @@ model User {
   utmSource                  String?
   utmCampaign                String?
   lastActivityAt             DateTime?
+  firstActivityAt            DateTime?
+  firstStartPayload          String?
+  startCount                 Int                             @default(0)
+  activeDaysCount            Int                             @default(0)
+  messagesSentCount          Int                             @default(0)
+  activitiesCount            Int                             @default(0)
+  successfulReferrals        Int                             @default(0)
+  lastDeviceType             String?
+  attributionConfidence      Int                             @default(0)
+  attribution                UserAttribution?
   aiChatLogs                 AiChatLog[]
   broadcastLogs              BroadcastLog[]
   clickLogs                  ClickLog[]
@@ -48,13 +59,73 @@ model User {
   requiredChannelMemberships UserRequiredChannelMembership[]
   referredBy                 User?                           @relation("UserReferrals", fields: [referredById], references: [id])
   referrals                  User[]                          @relation("UserReferrals")
+  attributionEvents          AttributionEvent[]
 
   @@index([referredById])
   @@index([profileCompleted])
   @@index([phoneNumber])
   @@index([acquisitionSource])
   @@index([lastActivityAt])
+  @@index([attributionConfidence])
   @@map("users")
+}
+
+model UserAttribution {
+  id                         Int                             @id @default(autoincrement())
+  userId                     Int                             @unique
+  telegramId                 BigInt                          @unique
+  startedAt                  DateTime?
+  firstSeenAt                DateTime?
+  firstStartPayload          String?
+  acquisitionSource          String                          @default("direct")
+  referralCode               String?
+  inviterUserId              Int?
+  campaignId                 String?
+  inviteLinkId               String?
+  deepLinkPayload            String?
+  registrationDate           DateTime?
+  firstActivityAt            DateTime?
+  lastActivityAt             DateTime?
+  startCount                 Int                             @default(0)
+  activeDaysCount            Int                             @default(0)
+  messagesSentCount          Int                             @default(0)
+  activitiesCount            Int                             @default(0)
+  successfulReferrals        Int                             @default(0)
+  lastDeviceType             String?
+  confidenceScore            Int                             @default(0)
+  confidenceFlags            Json?
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @updatedAt
+  user                       User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events                     AttributionEvent[]
+
+  @@index([acquisitionSource])
+  @@index([inviterUserId])
+  @@index([confidenceScore])
+  @@index([startedAt])
+  @@map("user_attributions")
+}
+
+model AttributionEvent {
+  id                         Int                             @id @default(autoincrement())
+  userId                     Int
+  attributionId              Int?
+  eventType                  String
+  payload                    Json?
+  source                     String?
+  referralCode               String?
+  inviterUserId              Int?
+  campaignId                 String?
+  sessionId                  String?
+  confidenceContribution     Int?
+  createdAt                  DateTime                        @default(now())
+  user                       User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attribution                UserAttribution?                @relation(fields: [attributionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("attribution_events")
 }
 
 model PropFirm {

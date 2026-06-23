@@ -372,6 +372,67 @@ export interface HeatmapResponse {
   dayLabels: string[];
 }
 
+export interface AttributionEvent {
+  id: number;
+  userId: number;
+  attributionId: number | null;
+  eventType: string;
+  payload: any;
+  source: string | null;
+  referralCode: string | null;
+  inviterUserId: number | null;
+  campaignId: string | null;
+  sessionId: string | null;
+  confidenceContribution: number | null;
+  createdAt: string;
+}
+
+export interface UserAttributionResponse {
+  id: number;
+  userId: number;
+  telegramId: string;
+  startedAt: string | null;
+  firstSeenAt: string | null;
+  firstStartPayload: string | null;
+  acquisitionSource: string;
+  referralCode: string | null;
+  inviterUserId: number | null;
+  campaignId: string | null;
+  inviteLinkId: string | null;
+  deepLinkPayload: string | null;
+  registrationDate: string | null;
+  firstActivityAt: string | null;
+  lastActivityAt: string | null;
+  startCount: number;
+  activeDaysCount: number;
+  messagesSentCount: number;
+  activitiesCount: number;
+  successfulReferrals: number;
+  lastDeviceType: string | null;
+  confidenceScore: number;
+  confidenceFlags: any;
+  createdAt: string;
+  updatedAt: string;
+  events: AttributionEvent[];
+}
+
+export interface AttributionValidation {
+  valid: boolean;
+  issues: string[];
+  warnings: string[];
+  confidenceScore: number;
+}
+
+export interface LowConfidenceUser {
+  userId: number;
+  telegramId: string;
+  acquisitionSource: string;
+  confidenceScore: number;
+  confidenceFlags: any;
+  startedAt: string | null;
+  inviterUserId: number | null;
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface FeatureToggleItem {
   id: number;

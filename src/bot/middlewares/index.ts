@@ -26,6 +26,7 @@ export function userMiddleware() {
         username: ctx.from.username,
         firstName: ctx.from.first_name,
         lastName: ctx.from.last_name,
+        languageCode: (ctx.from as any).language_code,
         referralCode,
         startPayload: startPayload?.trim() || undefined,
       });

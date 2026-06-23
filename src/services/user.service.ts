@@ -10,6 +10,7 @@ import { systemLogService } from './system-log.service';
 import { pointService } from './point.service';
 import { scoringService } from './scoring.service';
 import { notifyNewUserFromService } from '../bot/notifications';
+import { attributionService } from './attribution.service';
 
 export const userService = {
   markMembershipVerified(telegramId: bigint) {
@@ -35,8 +36,10 @@ export const userService = {
     username?: string;
     firstName: string;
     lastName?: string;
+    languageCode?: string;
     referralCode?: string;
     startPayload?: string;
+    deviceType?: string;
   }) {
     const existingUser = await userRepository.findByTelegramId(params.telegramId);
     let referredById: number | undefined = existingUser?.referredById ?? undefined;
@@ -98,6 +101,37 @@ export const userService = {
       startPayload: params.startPayload,
       referrerUserId,
     });
+
+    // Record Attribution
+    try {
+      if (isNewUser) {
+        await attributionService.recordFirstStart({
+          userId: user.id,
+          telegramId: params.telegramId,
+          username: params.username,
+          firstName: params.firstName,
+          lastName: params.lastName,
+          languageCode: params.languageCode,
+          startPayload: params.startPayload,
+          referralCode: params.referralCode,
+          inviterUserId: referrerUserId,
+          deviceType: params.deviceType,
+        });
+      } else {
+        await attributionService.recordSubsequentStart({
+          userId: user.id,
+          telegramId: params.telegramId,
+          username: params.username,
+          firstName: params.firstName,
+          lastName: params.lastName,
+          languageCode: params.languageCode,
+          startPayload: params.startPayload,
+          deviceType: params.deviceType,
+        });
+      }
+    } catch (err) {
+      logger.error(`[Attribution] Failed to record for userId=${user.id}`, err);
+    }
 
     if (isNewUser) {
       const scoring = await scoringService.getSettings();

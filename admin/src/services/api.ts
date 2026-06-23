@@ -300,6 +300,25 @@ export const requiredChannelsApi = {
   },
 };
 
+export const attributionApi = {
+  async getUser(userId: number): Promise<{ success: boolean; data: import("@/types").UserAttributionResponse }> {
+    const { data } = await api.get(`/api/attribution/user/${userId}`);
+    return data;
+  },
+  async getByTelegramId(telegramId: string): Promise<{ success: boolean; data: import("@/types").UserAttributionResponse }> {
+    const { data } = await api.get(`/api/attribution/telegram/${telegramId}`);
+    return data;
+  },
+  async validate(userId: number): Promise<{ success: boolean; data: import("@/types").AttributionValidation }> {
+    const { data } = await api.get(`/api/attribution/validate/${userId}`);
+    return data;
+  },
+  async getLowConfidence(minConfidence?: number, limit?: number): Promise<{ success: boolean; data: import("@/types").LowConfidenceUser[] }> {
+    const { data } = await api.get("/api/attribution/low-confidence", { params: { minConfidence, limit } });
+    return data;
+  },
+};
+
 export const analyticsApi = {
   async dashboard(): Promise<{ success: boolean; data: import("@/types").AnalyticsDashboard }> {
     const { data } = await api.get("/api/analytics/dashboard");
