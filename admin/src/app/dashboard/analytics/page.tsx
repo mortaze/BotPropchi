@@ -9,7 +9,7 @@ import {
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Card, CardContent, EmptyState, StatCardSkeleton } from "@/components/ui";
 import { analyticsApi } from "@/services/api";
 import { formatNumber } from "@/lib/utils";
@@ -536,7 +536,6 @@ export default function AnalyticsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [tablePage, setTablePage] = useState(1);
   const rowsPerPage = 10;
-  const debugLogged = useRef(false);
 
   const presetRanges = useMemo(() => [
     { start: daysAgoIso(1), end: nowIso() },   // 24h
@@ -589,31 +588,35 @@ export default function AnalyticsPage() {
 
   const d = query.data?.data;
 
-  // Debug logging
-  useEffect(() => {
-    if (d && !debugLogged.current) {
-      debugLogged.current = true;
-      console.group("[Analytics Debug]");
-      console.log("Raw API Response:", d);
-      console.log("KPIs:", d.kpis);
-      console.log("Series length:", d.series?.length);
-      console.log("First 5 series items:", d.series?.slice(0, 5));
-      console.log("Series non-zero check:", d.series?.filter((s: any) => s.realUsers > 0 || s.newUsers > 0 || s.blocked > 0).length, "non-zero rows");
-      console.log("Compare Summary:", d.compareSummary);
-      console.groupEnd();
-    }
-  }, [d]);
-
-  // Also log when data changes
+  // Debug logging with validation
   useEffect(() => {
     if (d) {
-      console.log("[Analytics] Data updated:", {
-        kpis: d.kpis,
-        seriesLength: d.series?.length,
-        nonZeroRows: d.series?.filter((s: any) => s.realUsers > 0 || s.newUsers > 0).length,
-      });
+      const sumRealUsers = d.series?.reduce((a: number, s: any) => a + (s.realUsers || 0), 0) ?? 0;
+      const sumNewUsers = d.series?.reduce((a: number, s: any) => a + (s.newUsers || 0), 0) ?? 0;
+      const nonZeroRows = d.series?.filter((s: any) => s.realUsers > 0 || s.newUsers > 0).length ?? 0;
+
+      console.group("[Analytics Debug]");
+      console.log("StartDate:", startDate, "EndDate:", endDate);
+      console.log("KPIs:", d.kpis);
+      console.log("Series length:", d.series?.length);
+      console.log("Non-zero rows:", nonZeroRows);
+      console.log("Sum realUsers in series:", sumRealUsers);
+      console.log("Sum newUsers in series:", sumNewUsers);
+      console.log("First 5 series:", d.series?.slice(0, 5));
+
+      // Validation
+      if (d.kpis.realUsers > 0 && sumRealUsers === 0) {
+        console.error("[VALIDATION FAILED] KPI realUsers=" + d.kpis.realUsers + " but sum of chart realUsers=0");
+      }
+      if (d.kpis.newUsers > 0 && sumNewUsers === 0) {
+        console.error("[VALIDATION FAILED] KPI newUsers=" + d.kpis.newUsers + " but sum of chart newUsers=0");
+      }
+      if (nonZeroRows === 0 && d.series?.length > 0) {
+        console.error("[VALIDATION FAILED] All chart rows are zero!");
+      }
+      console.groupEnd();
     }
-  }, [d, queryParams]);
+  }, [d, startDate, endDate]);
 
   const toggleMetric = (key: string) => {
     setSelectedMetrics((prev) => {
