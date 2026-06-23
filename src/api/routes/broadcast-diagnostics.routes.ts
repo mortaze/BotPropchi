@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { broadcastDiagnosticsService } from '../../services/broadcast-diagnostics.service';
+import { repairBroadcastData, validateBroadcastRecipients } from '../../scripts/repair-broadcast-data';
 import { serializeBigInts } from '../../utils/serialize';
 import { logger } from '../../utils/logger';
 
@@ -58,5 +59,19 @@ broadcastDiagnosticsRouter.get('/validate/:broadcastId', asyncHandler(async (req
   const broadcastId = parseInt(req.params.broadcastId);
   if (isNaN(broadcastId)) return res.status(400).json({ success: false, error: 'شناسه نامعتبر' });
   const data = await broadcastDiagnosticsService.validateFailedSamples(broadcastId);
+  res.json({ success: true, data: serializeBigInts(data) });
+}));
+
+// PHASE 3: Database Repair
+broadcastDiagnosticsRouter.post('/repair', asyncHandler(async (_req, res) => {
+  const report = await repairBroadcastData();
+  res.json({ success: true, data: serializeBigInts(report) });
+}));
+
+// PHASE 5: Pre-broadcast Validation
+broadcastDiagnosticsRouter.get('/pre-validate/:broadcastId', asyncHandler(async (req, res) => {
+  const broadcastId = parseInt(req.params.broadcastId);
+  if (isNaN(broadcastId)) return res.status(400).json({ success: false, error: 'شناسه نامعتبر' });
+  const data = await validateBroadcastRecipients(broadcastId);
   res.json({ success: true, data: serializeBigInts(data) });
 }));

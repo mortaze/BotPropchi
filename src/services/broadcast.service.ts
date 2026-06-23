@@ -68,6 +68,15 @@ class BroadcastService {
     const broadcast = await broadcastRepository.findById(id);
     if (!broadcast) throw new Error('پیام همگانی یافت نشد');
     if (broadcast.totalRecipients === 0) await broadcastRepository.createPendingLogs(id);
+
+    // PHASE 5: Pre-broadcast validation
+    const { validateBroadcastRecipients } = await import('../scripts/repair-broadcast-data');
+    const validation = await validateBroadcastRecipients(id);
+    if (validation.hasIssues) {
+      logger.warn(`[Broadcast] Pre-validation warnings for broadcast ${id}: ${validation.issues.length} issues found`);
+      // Log but don't block — let the send proceed with valid recipients only
+    }
+
     await broadcastRepository.update(id, { status: BroadcastStatus.QUEUED });
     void this.process(id);
     return this.get(id);
@@ -167,10 +176,30 @@ class BroadcastService {
 
         for (const log of logs) {
           if (!this.running.has(id)) break;
+
+          // PHASE 2: Safe delivery logic — resolve target chatId
+          const targetChatId = this.resolveChatId(log.telegramId, log.userId);
+          if (targetChatId === null) {
+            // Cannot deliver — invalid target
+            await broadcastRepository.markLogFailed(log.id, 'INVALID_TARGET: telegramId is 0, null or invalid');
+            await broadcastDiagnosticsService.recordDeliveryLog({
+              broadcastId: id,
+              broadcastLogId: log.id,
+              userId: log.userId,
+              telegramUserId: log.telegramId,
+              chatId: null,
+              status: 'FAILED',
+              errorMessage: 'INVALID_TARGET: telegramId is 0, null or invalid',
+              httpStatusCode: 400,
+              correlationId: `bc_${id}_${log.id}_${Date.now()}`,
+            });
+            continue;
+          }
+
           const startTime = Date.now();
           const correlationId = `bc_${id}_${log.id}_${Date.now()}`;
           try {
-            await this.sendToTelegram(broadcast, log.telegramId);
+            await this.sendToTelegram(broadcast, BigInt(targetChatId));
             await broadcastRepository.markLogSuccess(log.id);
             const responseTimeMs = Date.now() - startTime;
             await broadcastDiagnosticsService.recordDeliveryLog({
@@ -178,6 +207,7 @@ class BroadcastService {
               broadcastLogId: log.id,
               userId: log.userId,
               telegramUserId: log.telegramId,
+              chatId: String(targetChatId),
               status: 'SUCCESS',
               responseTimeMs,
               correlationId,
@@ -185,7 +215,7 @@ class BroadcastService {
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const responseTimeMs = Date.now() - startTime;
-            logger.warn(`Broadcast ${id} failed for ${log.telegramId.toString()}: ${message}`);
+            logger.warn(`Broadcast ${id} failed for ${targetChatId}: ${message}`);
             await broadcastRepository.markLogFailed(log.id, message.slice(0, 900));
             await systemLogService.log({ eventType: SystemEventType.BROADCAST, level: SystemLogLevel.WARN, telegramId: log.telegramId, message: 'Broadcast delivery failed', metadata: { broadcastId: id, error: message.slice(0, 900) } });
 
@@ -207,6 +237,7 @@ class BroadcastService {
               broadcastLogId: log.id,
               userId: log.userId,
               telegramUserId: log.telegramId,
+              chatId: String(targetChatId),
               status: 'FAILED',
               errorMessage: message.slice(0, 2000),
               httpStatusCode,
@@ -230,6 +261,13 @@ class BroadcastService {
         await broadcastRepository.refreshCounters(id);
       }
     }
+  }
+
+  // PHASE 2: Safe chatId resolution with fallback
+  private resolveChatId(telegramId: bigint, userId: number): number | null {
+    const tid = Number(telegramId);
+    if (!tid || tid <= 0 || !Number.isFinite(tid)) return null;
+    return tid;
   }
 
   private keyboardMarkup(broadcast: Broadcast) {
