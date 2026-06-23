@@ -18,3 +18,8 @@ systemIntegrityRouter.get('/health', asyncHandler(async (_req, res) => {
   const data = await systemIntegrityService.getHealthReport();
   res.json({ success: true, data: serializeBigInts(data) });
 }));
+
+systemIntegrityRouter.get('/debug', asyncHandler(async (_req, res) => {
+  const data = await systemIntegrityService.getDebugReport();
+  res.json({ success: true, data: serializeBigInts(data) });
+}));
