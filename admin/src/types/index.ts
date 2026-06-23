@@ -317,12 +317,8 @@ export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: 
 export interface UserAnalyticsKPI {
   totalUsers: number;
   realUsers: number;
-  dau: number;
-  wau: number;
-  mau: number;
   newUsers: number;
   blocked: number;
-  bots: number;
   inactive30: number;
   inactive60: number;
   inactive90: number;
@@ -332,18 +328,14 @@ export interface UserAnalyticsKPI {
 export interface UserAnalyticsSeriesItem {
   date: string;
   realUsers: number;
-  dau: number;
-  wau: number;
-  mau: number;
   newUsers: number;
   blocked: number;
-  bots: number;
   growthRate: number | null;
   healthScore: number;
 }
 export interface UserAnalyticsCompareSummary {
   totalNewUsers: number;
-  totalDAU: number;
+  prevTotalUsers: number;
 }
 export interface UserAnalyticsResponse {
   kpis: UserAnalyticsKPI;
