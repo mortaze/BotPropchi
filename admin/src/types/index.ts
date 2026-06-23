@@ -322,7 +322,7 @@ export interface UserAnalyticsKPI {
   mau: number;
   newUsers: number;
   blocked: number;
-  deleted: number;
+  bots: number;
   inactive30: number;
   inactive60: number;
   inactive90: number;
@@ -337,7 +337,7 @@ export interface UserAnalyticsSeriesItem {
   mau: number;
   newUsers: number;
   blocked: number;
-  deleted: number;
+  bots: number;
   growthRate: number | null;
   healthScore: number;
 }

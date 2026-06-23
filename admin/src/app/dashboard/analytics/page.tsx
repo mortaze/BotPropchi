@@ -2,60 +2,93 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  Activity, Users, BarChart3, Download, ArrowUpDown, UsersRound,
-  UserPlus, Ban, TrendingUp, HeartPulse, Calendar,
-  LineChart as LineChartIcon,
+  Users, UserPlus, Ban, TrendingUp, HeartPulse,
+  LineChart as LineChartIcon, ChevronDown, Calendar,
+  Download, ArrowUpDown, Bot,
 } from "lucide-react";
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { useMemo, useState, type ReactNode } from "react";
-import { Card, CardContent, CardHeader, EmptyState, StatCardSkeleton } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Card, CardContent, EmptyState, StatCardSkeleton } from "@/components/ui";
 import { analyticsApi } from "@/services/api";
 import { formatNumber } from "@/lib/utils";
 import type { UserAnalyticsSeriesItem } from "@/types";
 
-// ─── Helpers ────────────────────────────────────────────────
-const now = () => {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
-};
-const daysAgo = (n: number) => {
-  const d = new Date(Date.now() - n * 86400000);
-  return d.toISOString().slice(0, 10);
-};
-const defaultStart = daysAgo(29);
-const defaultEnd = now();
-
-function percentChange(current: number, previous: number | undefined): number | null {
-  if (previous === undefined || previous === null || previous === 0) return null;
-  return Math.round(((current - previous) / previous) * 10000) / 100;
+// ─── Jalali Helpers ────────────────────────────────────────
+function toJalaliDate(iso: string): string {
+  try {
+    const d = new Date(iso + "T00:00:00Z");
+    const parts = new Intl.DateTimeFormat("fa-IR", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(d);
+    const y = parts.find((p) => p.type === "year")?.value ?? "";
+    const m = parts.find((p) => p.type === "month")?.value ?? "";
+    const dd = parts.find((p) => p.type === "day")?.value ?? "";
+    return `${y}/${m}/${dd}`;
+  } catch {
+    return iso;
+  }
 }
 
-const METRICS_CONFIG: Record<string, { label: string; color: string }> = {
-  realUsers: { label: "کاربران واقعی", color: "#3b82f6" },
-  mau: { label: "MAU", color: "#22c55e" },
-  wau: { label: "WAU", color: "#a855f7" },
-  dau: { label: "DAU", color: "#f59e0b" },
-  newUsers: { label: "کاربران جدید", color: "#06b6d4" },
-  blocked: { label: "مسدود شده", color: "#ef4444" },
-  growthRate: { label: "نرخ رشد %", color: "#ec4899" },
-  healthScore: { label: "سلامت", color: "#14b8a6" },
-};
-
-function toJalali(iso: string) {
+function toJalaliShort(iso: string): string {
   try {
-    const d = new Date(iso + "T00:00:00");
+    const d = new Date(iso + "T00:00:00Z");
     return d.toLocaleDateString("fa-IR", { month: "short", day: "numeric" });
   } catch {
     return iso;
   }
 }
 
+// ─── Helpers ────────────────────────────────────────────────
+const now = () => new Date().toISOString().slice(0, 10);
+const daysAgo = (n: number) => {
+  const d = new Date(Date.now() - n * 86400000);
+  return d.toISOString().slice(0, 10);
+};
+
+function percentChange(current: number, previous: number | undefined): number | null {
+  if (previous === undefined || previous === null || previous === 0) return null;
+  return Math.round(((current - previous) / previous) * 10000) / 100;
+}
+
+// ─── Time Range Presets ─────────────────────────────────────
+interface TimePreset {
+  label: string;
+  shortLabel: string;
+  startDate: string;
+  endDate: string;
+}
+
+function getTimePresets(): TimePreset[] {
+  return [
+    { label: "۲۴ ساعت", shortLabel: "۲۴س", startDate: daysAgo(1), endDate: now() },
+    { label: "۷ روز", shortLabel: "۷ر", startDate: daysAgo(7), endDate: now() },
+    { label: "۲۸ روز", shortLabel: "۲۸ر", startDate: daysAgo(28), endDate: now() },
+    { label: "۳ ماه", shortLabel: "۳م", startDate: daysAgo(90), endDate: now() },
+  ];
+}
+
+// ─── Metrics Config ─────────────────────────────────────────
+const METRICS_CONFIG: Record<string, { label: string; color: string; icon: ReactNode }> = {
+  realUsers: { label: "کاربران واقعی", color: "#3b82f6", icon: <Users className="h-4 w-4" /> },
+  mau: { label: "ماهانه", color: "#22c55e", icon: <Users className="h-4 w-4" /> },
+  wau: { label: "هفتگی", color: "#a855f7", icon: <Users className="h-4 w-4" /> },
+  dau: { label: "روزانه", color: "#f59e0b", icon: <Users className="h-4 w-4" /> },
+  newUsers: { label: "کاربران جدید", color: "#06b6d4", icon: <UserPlus className="h-4 w-4" /> },
+  blocked: { label: "مسدود شده", color: "#ef4444", icon: <Ban className="h-4 w-4" /> },
+  bots: { label: "ربات‌ها", color: "#6b7280", icon: <Bot className="h-4 w-4" /> },
+  growthRate: { label: "نرخ رشد", color: "#ec4899", icon: <TrendingUp className="h-4 w-4" /> },
+  healthScore: { label: "سلامت", color: "#14b8a6", icon: <HeartPulse className="h-4 w-4" /> },
+};
+
 // ─── Export ──────────────────────────────────────────────────
 function downloadCSV(series: UserAnalyticsSeriesItem[], metrics: string[]) {
   const header = ["تاریخ", ...metrics.map((m) => METRICS_CONFIG[m]?.label ?? m)];
-  const rows = series.map((row) => [row.date, ...metrics.map((m) => String((row as any)[m] ?? ""))]);
+  const rows = series.map((row) => [
+    toJalaliDate(row.date),
+    ...metrics.map((m) => String((row as any)[m] ?? "")),
+  ]);
   const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -76,57 +109,194 @@ function downloadJSON(series: UserAnalyticsSeriesItem[]) {
   URL.revokeObjectURL(url);
 }
 
-// ─── KPI Card ────────────────────────────────────────────────
-function KpiCard({
-  title, value, icon, trend, trendLabel, colorClass, delay = 0,
+// ─── Time Range Bar ─────────────────────────────────────────
+function TimeRangeBar({
+  activePreset,
+  onSelect,
+  startDate,
+  endDate,
+  onCustomDateChange,
+}: {
+  activePreset: number | null;
+  onSelect: (index: number) => void;
+  startDate: string;
+  endDate: string;
+  onCustomDateChange: (start: string, end: string) => void;
+}) {
+  const [showMore, setShowMore] = useState(false);
+  const presets = getTimePresets();
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
+        {presets.map((p, i) => (
+          <button
+            key={i}
+            onClick={() => onSelect(i)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+              activePreset === i
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+          >
+            {p.shortLabel}
+          </button>
+        ))}
+        <button
+          onClick={() => setShowMore(!showMore)}
+          className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+            activePreset === null
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
+        >
+          بیشتر
+          <ChevronDown className={`h-3 w-3 transition-transform ${showMore ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {showMore && (
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-background p-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => onCustomDateChange(e.target.value, endDate)}
+            className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+          />
+          <span className="text-xs text-muted-foreground">تا</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => onCustomDateChange(startDate, e.target.value)}
+            className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Metric Card ────────────────────────────────────────────
+function MetricCard({
+  title,
+  value,
+  icon,
+  color,
+  enabled,
+  onToggle,
+  trend,
+  delay = 0,
 }: {
   title: string;
   value: string | number;
   icon: React.ReactNode;
+  color: string;
+  enabled: boolean;
+  onToggle: () => void;
   trend?: number | null;
-  trendLabel?: string;
-  colorClass: string;
   delay?: number;
 }) {
-  const positive = (trend ?? 0) >= 0;
   return (
-    <div className="stat-card animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
-      <div className="mb-3 flex items-start justify-between">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorClass}`}>
-          {icon}
-        </div>
-        {trend !== null && trend !== undefined && (
-          <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-            positive ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"
-          }`}>
-            {positive ? "▲" : "▼"} {Math.abs(trend)}%
+    <div
+      className={`group relative rounded-xl border p-4 transition-all cursor-pointer ${
+        enabled
+          ? "border-border bg-card shadow-sm hover:shadow-md"
+          : "border-border/50 bg-muted/30 opacity-60 hover:opacity-80"
+      }`}
+      style={{ animationDelay: `${delay}ms` }}
+      onClick={onToggle}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+            style={{
+              backgroundColor: enabled ? `${color}15` : "#6b728015",
+              color: enabled ? color : "#6b7280",
+            }}
+          >
+            {icon}
           </div>
-        )}
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">{title}</p>
+            <p className="text-lg font-bold tabular-nums text-foreground">
+              {typeof value === "number" ? formatNumber(value) : value}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {trend !== null && trend !== undefined && (
+            <span className={`text-xs font-medium ${trend >= 0 ? "text-green-500" : "text-red-500"}`}>
+              {trend >= 0 ? "▲" : "▼"} {Math.abs(trend)}%
+            </span>
+          )}
+          <div
+            className={`h-4 w-4 rounded border-2 transition-all flex items-center justify-center ${
+              enabled ? "border-primary bg-primary" : "border-muted-foreground/30"
+            }`}
+          >
+            {enabled && (
+              <svg className="h-2.5 w-2.5 text-primary-foreground" viewBox="0 0 12 12" fill="none">
+                <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        </div>
       </div>
-      <p className="text-2xl font-bold tabular-nums text-foreground">
-        {typeof value === "number" ? formatNumber(value) : value}
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">{title}</p>
-      {trendLabel && <p className="mt-0.5 text-xs text-muted-foreground">{trendLabel}</p>}
     </div>
   );
 }
 
 // ─── Main Page ───────────────────────────────────────────────
 export default function AnalyticsPage() {
-  const [startDate, setStartDate] = useState(defaultStart);
-  const [endDate, setEndDate] = useState(defaultEnd);
-  const [compareMode, setCompareMode] = useState(false);
-  const [compareStart, setCompareStart] = useState(daysAgo(59));
-  const [compareEnd, setCompareEnd] = useState(daysAgo(30));
-  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set(["realUsers", "mau", "dau", "newUsers"]));
+  const [activePreset, setActivePreset] = useState<number | null>(2); // default: 28 days
+  const [startDate, setStartDate] = useState(daysAgo(28));
+  const [endDate, setEndDate] = useState(now());
+  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(
+    new Set(["realUsers", "mau", "dau", "newUsers"])
+  );
   const [sortKey, setSortKey] = useState<string>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [tablePage, setTablePage] = useState(1);
+  const rowsPerPage = 10;
 
-  const queryParams = useMemo(() => ({
-    startDate, endDate,
-    ...(compareMode ? { compareStart, compareEnd } : {}),
-  }), [startDate, endDate, compareMode, compareStart, compareEnd]);
+  const presets = getTimePresets();
+
+  const handlePresetSelect = useCallback((index: number) => {
+    setActivePreset(index);
+    setStartDate(presets[index].startDate);
+    setEndDate(presets[index].endDate);
+  }, [presets]);
+
+  const handleCustomDateChange = useCallback((start: string, end: string) => {
+    setActivePreset(null);
+    setStartDate(start);
+    setEndDate(end);
+  }, []);
+
+  // Sync URL params
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get("start");
+    const e = params.get("end");
+    if (s && e) {
+      setStartDate(s);
+      setEndDate(e);
+      const matchIdx = presets.findIndex((p) => p.startDate === s && p.endDate === e);
+      setActivePreset(matchIdx >= 0 ? matchIdx : null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("start", startDate);
+    url.searchParams.set("end", endDate);
+    window.history.replaceState({}, "", url.toString());
+  }, [startDate, endDate]);
+
+  const queryParams = useMemo(() => ({ startDate, endDate }), [startDate, endDate]);
 
   const query = useQuery({
     queryKey: ["analytics-users", queryParams],
@@ -157,6 +327,13 @@ export default function AnalyticsPage() {
     });
   }, [d?.series, sortKey, sortDir]);
 
+  const paginatedSeries = useMemo(() => {
+    const start = (tablePage - 1) * rowsPerPage;
+    return sortedSeries.slice(start, start + rowsPerPage);
+  }, [sortedSeries, tablePage]);
+
+  const totalPages = Math.ceil(sortedSeries.length / rowsPerPage);
+
   const handleSort = (key: string) => {
     if (key === sortKey) setSortDir((p) => (p === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir("desc"); }
@@ -165,8 +342,13 @@ export default function AnalyticsPage() {
   if (query.isLoading) {
     return (
       <div className="space-y-6">
-        <div className="page-header"><div><h1 className="section-title">آمار کاربران</h1></div></div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="page-header">
+          <div>
+            <h1 className="section-title">تحلیل کاربران</h1>
+            <p className="text-sm text-muted-foreground">داشبورد پیشرفته عملکرد کاربران</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {Array.from({ length: 9 }).map((_, i) => <StatCardSkeleton key={i} />)}
         </div>
       </div>
@@ -177,15 +359,29 @@ export default function AnalyticsPage() {
   const { kpis, compareSummary, series } = d;
 
   const kpiCards = [
-    { key: "totalUsers", title: "کل کاربران", value: kpis.totalUsers, icon: <Users className="h-5 w-5" />, colorClass: "bg-primary/10 text-primary", trend: null },
-    { key: "realUsers", title: "کاربران واقعی", value: kpis.realUsers, icon: <UsersRound className="h-5 w-5" />, colorClass: "bg-blue-500/10 text-blue-500", trend: null },
-    { key: "mau", title: "MAU", value: kpis.mau, icon: <Activity className="h-5 w-5" />, colorClass: "bg-green-500/10 text-green-500", trend: null },
-    { key: "wau", title: "WAU", value: kpis.wau, icon: <Activity className="h-5 w-5" />, colorClass: "bg-purple-500/10 text-purple-500", trend: null },
-    { key: "dau", title: "DAU", value: kpis.dau, icon: <Activity className="h-5 w-5" />, colorClass: "bg-amber-500/10 text-amber-500", trend: null },
-    { key: "newUsers", title: "کاربران جدید", value: kpis.newUsers, icon: <UserPlus className="h-5 w-5" />, colorClass: "bg-cyan-500/10 text-cyan-500", trend: compareSummary ? percentChange(kpis.newUsers, compareSummary.totalNewUsers) : null },
-    { key: "blocked", title: "مسدود شده", value: kpis.blocked, icon: <Ban className="h-5 w-5" />, colorClass: "bg-red-500/10 text-red-500", trend: null },
-    { key: "growthRate", title: "نرخ رشد %", value: `${kpis.growthRate}%`, icon: <TrendingUp className="h-5 w-5" />, colorClass: "bg-pink-500/10 text-pink-500", trend: null },
-    { key: "healthScore", title: "سلامت", value: `${kpis.healthScore}`, icon: <HeartPulse className="h-5 w-5" />, colorClass: "bg-teal-500/10 text-teal-500", trend: null },
+    { key: "realUsers", title: "کاربران واقعی", value: kpis.realUsers, icon: <Users className="h-4 w-4" />, color: "#3b82f6" },
+    { key: "totalUsers", title: "کل کاربران", value: kpis.totalUsers, icon: <Users className="h-4 w-4" />, color: "#6366f1" },
+    { key: "newUsers", title: "کاربران جدید", value: kpis.newUsers, icon: <UserPlus className="h-4 w-4" />, color: "#06b6d4" },
+    { key: "dau", title: "روزانه", value: kpis.dau, icon: <Users className="h-4 w-4" />, color: "#f59e0b" },
+    { key: "wau", title: "هفتگی", value: kpis.wau, icon: <Users className="h-4 w-4" />, color: "#a855f7" },
+    { key: "mau", title: "ماهانه", value: kpis.mau, icon: <Users className="h-4 w-4" />, color: "#22c55e" },
+    { key: "blocked", title: "مسدود شده", value: kpis.blocked, icon: <Ban className="h-4 w-4" />, color: "#ef4444" },
+    { key: "bots", title: "ربات‌ها", value: kpis.bots, icon: <Bot className="h-4 w-4" />, color: "#6b7280" },
+    { key: "growthRate", title: "نرخ رشد", value: `${kpis.growthRate}%`, icon: <TrendingUp className="h-4 w-4" />, color: "#ec4899" },
+    { key: "healthScore", title: "سلامت", value: `${kpis.healthScore}`, icon: <HeartPulse className="h-4 w-4" />, color: "#14b8a6" },
+  ];
+
+  const tableColumns = [
+    { key: "date", label: "تاریخ" },
+    { key: "realUsers", label: "واقعی" },
+    { key: "dau", label: "روزانه" },
+    { key: "wau", label: "هفتگی" },
+    { key: "mau", label: "ماهانه" },
+    { key: "newUsers", label: "جدید" },
+    { key: "blocked", label: "مسدود" },
+    { key: "bots", label: "ربات‌ها" },
+    { key: "growthRate", label: "رشد" },
+    { key: "healthScore", label: "سلامت" },
   ];
 
   return (
@@ -193,69 +389,48 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="section-title">آمار کاربران</h1>
+          <h1 className="section-title">تحلیل کاربران</h1>
           <p className="text-sm text-muted-foreground">
             داشبورد پیشرفته عملکرد کاربران با قابلیت مقایسه و خروجی
           </p>
         </div>
       </div>
 
-      {/* Date Range & Compare */}
-      <Card>
-        <CardContent className="flex flex-wrap items-end gap-4 pt-6">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">از تاریخ</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-              className="rounded-md border bg-background px-3 py-2 text-sm" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">تا تاریخ</label>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-              className="rounded-md border bg-background px-3 py-2 text-sm" />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={compareMode} onChange={(e) => setCompareMode(e.target.checked)}
-              className="rounded" />
-            حالت مقایسه
-          </label>
-          {compareMode && (
-            <>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">مقایسه از</label>
-                <input type="date" value={compareStart} onChange={(e) => setCompareStart(e.target.value)}
-                  className="rounded-md border bg-background px-3 py-2 text-sm" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">مقایسه تا</label>
-                <input type="date" value={compareEnd} onChange={(e) => setCompareEnd(e.target.value)}
-                  className="rounded-md border bg-background px-3 py-2 text-sm" />
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      {/* Time Range Bar */}
+      <TimeRangeBar
+        activePreset={activePreset}
+        onSelect={handlePresetSelect}
+        startDate={startDate}
+        endDate={endDate}
+        onCustomDateChange={handleCustomDateChange}
+      />
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {kpiCards.map((k, i) => {
-          const { key, ...cardProps } = k;
-          return (
-            <KpiCard key={key} {...cardProps} trendLabel={compareMode ? "نسبت به دوره قبل" : undefined} delay={i * 50} />
-          );
-        })}
+      {/* Metric Cards Grid */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {kpiCards.map((k, i) => (
+          <MetricCard
+            key={k.key}
+            title={k.title}
+            value={k.value}
+            icon={k.icon}
+            color={k.color}
+            enabled={selectedMetrics.has(k.key)}
+            onToggle={() => toggleMetric(k.key)}
+            delay={i * 30}
+          />
+        ))}
       </div>
 
       {/* Compare Summary */}
-      {compareMode && compareSummary && (
+      {compareSummary && (
         <Card>
-          <CardHeader><h2 className="font-semibold">مقایسه با دوره قبل</h2></CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg bg-muted/40 p-4">
               <p className="text-sm text-muted-foreground">کاربران جدید دوره قبل</p>
               <p className="text-xl font-bold">{formatNumber(compareSummary.totalNewUsers)}</p>
             </div>
             <div className="rounded-lg bg-muted/40 p-4">
-              <p className="text-sm text-muted-foreground">مجموع DAU دوره قبل</p>
+              <p className="text-sm text-muted-foreground">مجموع روزانه دوره قبل</p>
               <p className="text-xl font-bold">{formatNumber(compareSummary.totalDAU)}</p>
             </div>
           </CardContent>
@@ -264,7 +439,9 @@ export default function AnalyticsPage() {
 
       {/* Inactive Users */}
       <Card>
-        <CardHeader><h2 className="font-semibold">کاربران غیرفعال</h2></CardHeader>
+        <div className="p-5 border-b border-border">
+          <h2 className="font-semibold text-foreground">کاربران غیرفعال</h2>
+        </div>
         <CardContent className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-lg bg-muted/40 p-4">
             <p className="text-sm text-muted-foreground">۳۰ روز</p>
@@ -281,40 +458,47 @@ export default function AnalyticsPage() {
         </CardContent>
       </Card>
 
-      {/* Metric Selector */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-muted-foreground">نمودار:</span>
-        {Object.entries(METRICS_CONFIG).map(([key, cfg]) => (
-          <label key={key} className="flex cursor-pointer items-center gap-2 text-sm">
-            <input type="checkbox" checked={selectedMetrics.has(key)}
-              onChange={() => toggleMetric(key)} className="rounded" />
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: cfg.color }} />
-              {cfg.label}
-            </span>
-          </label>
-        ))}
-      </div>
-
       {/* Line Chart */}
       <Card>
-        <CardHeader>
-          <h2 className="flex items-center gap-2 font-semibold">
-            <LineChartIcon className="h-4 w-4" /> روند زمانی
+        <div className="p-5 border-b border-border">
+          <h2 className="flex items-center gap-2 font-semibold text-foreground">
+            <LineChartIcon className="h-4 w-4" /> نمودار روند زمانی
           </h2>
-        </CardHeader>
+        </div>
         <CardContent className="h-80">
           {selectedMetrics.size === 0 ? (
-            <EmptyState />
+            <EmptyState title="هیچ شاخصی انتخاب نشده" description="روی کارت‌های بالا کلیک کنید تا نمودار نمایش داده شود" />
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={series}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => toJalali(v)} />
-                <YAxis tick={{ fontSize: 10 }} />
+                <defs>
+                  {Array.from(selectedMetrics).map((metric) => (
+                    <linearGradient key={metric} id={`grad-${metric}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={METRICS_CONFIG[metric]?.color ?? "#888"} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={METRICS_CONFIG[metric]?.color ?? "#888"} stopOpacity={0} />
+                    </linearGradient>
+                  ))}
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: "#888" }}
+                  tickFormatter={(v: string) => toJalaliShort(v)}
+                  interval="preserveStartEnd"
+                />
+                <YAxis tick={{ fontSize: 10, fill: "#888" }} width={50} />
                 <Tooltip
-                  labelFormatter={(label: ReactNode) => toJalali(String(label ?? ""))}
-                  formatter={(value: any, name: any) => [formatNumber(Number(value ?? 0)), METRICS_CONFIG[name as string]?.label ?? String(name)]}
+                  labelFormatter={(label: ReactNode) => `تاریخ: ${toJalaliDate(String(label ?? ""))}`}
+                  formatter={(value: any, name: any) => [
+                    formatNumber(Number(value ?? 0)),
+                    METRICS_CONFIG[name as string]?.label ?? String(name),
+                  ]}
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                  }}
                 />
                 {Array.from(selectedMetrics).map((metric) => (
                   <Area
@@ -323,9 +507,10 @@ export default function AnalyticsPage() {
                     dataKey={metric}
                     name={metric}
                     stroke={METRICS_CONFIG[metric]?.color ?? "#888"}
-                    fill={METRICS_CONFIG[metric]?.color ?? "#888"}
-                    fillOpacity={0.1}
+                    fill={`url(#grad-${metric})`}
                     strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
                   />
                 ))}
               </AreaChart>
@@ -335,58 +520,110 @@ export default function AnalyticsPage() {
       </Card>
 
       {/* Export */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-3">
         <span className="text-sm font-medium text-muted-foreground">خروجی:</span>
-        <button onClick={() => downloadCSV(series, Array.from(selectedMetrics))}
-          className="flex items-center gap-2 rounded-lg border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted">
+        <button
+          onClick={() => downloadCSV(series, Array.from(selectedMetrics))}
+          className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+        >
           <Download className="h-4 w-4" /> CSV
         </button>
-        <button onClick={() => downloadJSON(series)}
-          className="flex items-center gap-2 rounded-lg border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted">
+        <button
+          onClick={() => downloadJSON(series)}
+          className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+        >
           <Download className="h-4 w-4" /> JSON
         </button>
       </div>
 
       {/* Data Table */}
       <Card>
-        <CardHeader>
-          <h2 className="flex items-center gap-2 font-semibold">
-            <BarChart3 className="h-4 w-4" /> جدول داده‌ها
-          </h2>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <div className="p-5 border-b border-border flex items-center justify-between">
+          <h2 className="font-semibold text-foreground">جدول داده‌ها</h2>
+          <span className="text-sm text-muted-foreground">{formatNumber(series.length)} ردیف</span>
+        </div>
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-muted-foreground">
-                {["date", "realUsers", "dau", "wau", "mau", "newUsers", "blocked", "growthRate", "healthScore"].map((key) => (
-                  <th key={key} className="cursor-pointer px-3 py-2 text-right font-medium" onClick={() => handleSort(key)}>
+              <tr className="border-b border-border bg-muted/30">
+                {tableColumns.map((col) => (
+                  <th
+                    key={col.key}
+                    className="cursor-pointer px-4 py-3 text-right font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => handleSort(col.key)}
+                  >
                     <span className="flex items-center gap-1">
-                      {METRICS_CONFIG[key]?.label ?? {
-                        date: "تاریخ",
-                      }[key] ?? key}
-                      <ArrowUpDown className="h-3 w-3" />
+                      {col.label}
+                      <ArrowUpDown className={`h-3 w-3 ${sortKey === col.key ? "text-primary" : ""}`} />
                     </span>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {sortedSeries.map((row) => (
-                <tr key={row.date} className="border-b transition-colors hover:bg-muted/40">
-                  <td className="px-3 py-2">{toJalali(row.date)}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatNumber(row.realUsers)}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatNumber(row.dau)}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatNumber(row.wau)}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatNumber(row.mau)}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatNumber(row.newUsers)}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatNumber(row.blocked)}</td>
-                  <td className="px-3 py-2 tabular-nums">{row.growthRate !== null ? `${row.growthRate}%` : "-"}</td>
-                  <td className="px-3 py-2 tabular-nums">{row.healthScore}</td>
+              {paginatedSeries.map((row) => (
+                <tr key={row.date} className="border-b border-border/50 transition-colors hover:bg-muted/20">
+                  <td className="px-4 py-3 font-medium">{toJalaliDate(row.date)}</td>
+                  <td className="px-4 py-3 tabular-nums">{formatNumber(row.realUsers)}</td>
+                  <td className="px-4 py-3 tabular-nums">{formatNumber(row.dau)}</td>
+                  <td className="px-4 py-3 tabular-nums">{formatNumber(row.wau)}</td>
+                  <td className="px-4 py-3 tabular-nums">{formatNumber(row.mau)}</td>
+                  <td className="px-4 py-3 tabular-nums">{formatNumber(row.newUsers)}</td>
+                  <td className="px-4 py-3 tabular-nums">{formatNumber(row.blocked)}</td>
+                  <td className="px-4 py-3 tabular-nums">{formatNumber(row.bots)}</td>
+                  <td className="px-4 py-3 tabular-nums">
+                    {row.growthRate !== null ? (
+                      <span className={row.growthRate >= 0 ? "text-green-500" : "text-red-500"}>
+                        {row.growthRate >= 0 ? "+" : ""}{row.growthRate}%
+                      </span>
+                    ) : "-"}
+                  </td>
+                  <td className="px-4 py-3 tabular-nums">{row.healthScore}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </CardContent>
+        </div>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+            <p className="text-sm text-muted-foreground">
+              صفحه {formatNumber(tablePage)} از {formatNumber(totalPages)}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+                disabled={tablePage === 1}
+                className="px-3 py-1.5 rounded-lg text-sm hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                قبلی
+              </button>
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                const start = Math.max(1, Math.min(tablePage - 2, totalPages - 4));
+                return start + i;
+              }).filter((p) => p <= totalPages).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setTablePage(p)}
+                  className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                    p === tablePage
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                onClick={() => setTablePage((p) => Math.min(totalPages, p + 1))}
+                disabled={tablePage === totalPages}
+                className="px-3 py-1.5 rounded-lg text-sm hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                بعدی
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

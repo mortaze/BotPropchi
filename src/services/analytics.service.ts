@@ -7,7 +7,8 @@ const CACHE_TTL = 300;
 const CACHE_PREFIX = 'analytics:';
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-const startOfDay = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const startOfDay = (date?: Date) => { const d = date ? new Date(date) : new Date(); d.setHours(0, 0, 0, 0); return d; };
+const endOfDay = (date?: Date) => { const d = date ? new Date(date) : new Date(); d.setHours(23, 59, 59, 999); return d; };
 const dayKey = (date: Date) => date.toISOString().slice(0, 10);
 
 function fillDaily(rows: Array<{ createdAt: Date; _count: { id?: number; _all?: number } }>, days = 30) {
@@ -21,21 +22,22 @@ function fillDaily(rows: Array<{ createdAt: Date; _count: { id?: number; _all?: 
 
 function dateRange(start: string, end: string): string[] {
   const days: string[] = [];
-  const cursor = new Date(start);
-  const endDate = new Date(end);
+  const cursor = new Date(start + 'T00:00:00Z');
+  const endDate = new Date(end + 'T00:00:00Z');
   while (cursor <= endDate) {
-    days.push(cursor.toISOString().slice(0, 10));
+    days.push(dayKey(cursor));
     cursor.setDate(cursor.getDate() + 1);
   }
   return days;
 }
 
-function rollingActiveUsers(dayIdx: number, days: string[], activeByDay: Map<string, number>, window: number): number {
-  let total = 0;
+function rollingUniqueUsers(dayIdx: number, days: string[], userSetsByDay: Map<string, Set<number>>, window: number): number {
+  const combined = new Set<number>();
   for (let j = Math.max(0, dayIdx - window + 1); j <= dayIdx; j++) {
-    total += activeByDay.get(days[j]) ?? 0;
+    const daySet = userSetsByDay.get(days[j]);
+    if (daySet) daySet.forEach((id) => combined.add(id));
   }
-  return total;
+  return combined.size;
 }
 
 function safeNumber(val: unknown, fallback = 0): number {
@@ -51,36 +53,36 @@ export const analyticsService = {
     if (cached) return cached;
 
     try {
-      const start = new Date(params.startDate);
-      const end = new Date(params.endDate);
-      end.setHours(23, 59, 59, 999);
+      const start = startOfDay(new Date(params.startDate));
+      const end = endOfDay(new Date(params.endDate));
       const periodDays = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
 
-      let compareActiveByDay: Map<string, number> | null = null;
+      let compareActiveSets: Map<string, Set<number>> | null = null;
       let compareNewUsersByDay: Map<string, number> | null = null;
       let compareDays: string[] | null = null;
       if (params.compareStart && params.compareEnd) {
-        const cStart = new Date(params.compareStart);
-        const cEnd = new Date(params.compareEnd);
-        cEnd.setHours(23, 59, 59, 999);
+        const cStart = startOfDay(new Date(params.compareStart));
+        const cEnd = endOfDay(new Date(params.compareEnd));
         compareNewUsersByDay = await dailyNewUsers(cStart, cEnd);
-        compareActiveByDay = await dailyActiveUsers(cStart, cEnd);
+        compareActiveSets = await dailyActiveUserSets(cStart, cEnd);
         compareDays = dateRange(params.compareStart, params.compareEnd);
       }
 
       const newUsersByDay = await dailyNewUsers(start, end);
-      const activeByDay = await dailyActiveUsers(start, end);
+      const activeSetsByDay = await dailyActiveUserSets(start, end);
       const days = dateRange(params.startDate, params.endDate);
 
       const now = new Date();
-      const todayStr = now.toISOString().slice(0, 10);
-      const weekAgo = new Date(now.getTime() - 7 * 86400000);
-      const monthAgo = new Date(now.getTime() - 30 * 86400000);
-      const sixtyDaysAgo = new Date(now.getTime() - 60 * 86400000);
+      const todayStart = startOfDay(now);
+      const todayEnd = endOfDay(now);
+      const weekAgoStart = startOfDay(daysAgo(6));
+      const monthAgoStart = startOfDay(daysAgo(29));
+      const sixtyDaysAgoStart = startOfDay(daysAgo(59));
 
       const [
         totalUsers,
         currentBlocked,
+        blockedBotsCount,
         realUsersCount,
         dauTodayCount,
         wauCount,
@@ -91,30 +93,49 @@ export const analyticsService = {
       ] = await Promise.all([
         prisma.user.count().catch(() => 0),
         prisma.user.count({ where: { isBlocked: true } }).catch(() => 0),
-        prisma.pointLog.groupBy({ by: ['userId'], where: { createdAt: { gte: sixtyDaysAgo } }, _count: { userId: true } }).then(r => r.length).catch(() => 0),
-        prisma.pointLog.groupBy({ by: ['userId'], where: { createdAt: { gte: now } }, _count: { userId: true } }).then(r => r.length).catch(() => 0),
-        prisma.pointLog.groupBy({ by: ['userId'], where: { createdAt: { gte: weekAgo } }, _count: { userId: true } }).then(r => r.length).catch(() => 0),
-        prisma.pointLog.groupBy({ by: ['userId'], where: { createdAt: { gte: monthAgo } }, _count: { userId: true } }).then(r => r.length).catch(() => 0),
-        prisma.user.count({ where: { updatedAt: { lt: monthAgo } } }).catch(() => 0),
-        prisma.user.count({ where: { updatedAt: { lt: sixtyDaysAgo } } }).catch(() => 0),
-        prisma.user.count({ where: { updatedAt: { lt: new Date(now.getTime() - 90 * 86400000) } } }).catch(() => 0),
+        prisma.user.count({ where: { isBlocked: true, username: null } }).catch(() => 0),
+        prisma.user.count({
+          where: {
+            updatedAt: { gte: sixtyDaysAgoStart },
+            isBlocked: false,
+          },
+        }).catch(() => 0),
+        prisma.pointLog.findMany({
+          where: { createdAt: { gte: todayStart, lte: todayEnd } },
+          select: { userId: true },
+          distinct: ['userId'],
+        }).then((r) => r.length).catch(() => 0),
+        prisma.pointLog.findMany({
+          where: { createdAt: { gte: weekAgoStart } },
+          select: { userId: true },
+          distinct: ['userId'],
+        }).then((r) => r.length).catch(() => 0),
+        prisma.pointLog.findMany({
+          where: { createdAt: { gte: monthAgoStart } },
+          select: { userId: true },
+          distinct: ['userId'],
+        }).then((r) => r.length).catch(() => 0),
+        prisma.user.count({ where: { updatedAt: { lt: monthAgoStart } } }).catch(() => 0),
+        prisma.user.count({ where: { updatedAt: { lt: sixtyDaysAgoStart } } }).catch(() => 0),
+        prisma.user.count({ where: { updatedAt: { lt: startOfDay(daysAgo(89)) } } }).catch(() => 0),
       ]);
 
       const series: Array<{
         date: string; realUsers: number; dau: number; wau: number; mau: number;
-        newUsers: number; blocked: number; deleted: number; growthRate: number | null; healthScore: number;
+        newUsers: number; blocked: number; bots: number; growthRate: number | null; healthScore: number;
       }> = [];
 
       let prevTotalUsers = 0;
       for (let i = 0; i < days.length; i++) {
         const day = days[i];
-        const dayActive = activeByDay.get(day) ?? 0;
-        const dayWau = rollingActiveUsers(i, days, activeByDay, 7);
-        const dayMau = rollingActiveUsers(i, days, activeByDay, 30);
+        const dayActiveSet = activeSetsByDay.get(day);
+        const dayActiveCount = dayActiveSet?.size ?? 0;
+        const dayWau = rollingUniqueUsers(i, days, activeSetsByDay, 7);
+        const dayMau = rollingUniqueUsers(i, days, activeSetsByDay, 30);
         const dayNew = newUsersByDay.get(day) ?? 0;
         const dayRealUsers = i >= 59
-          ? rollingActiveUsers(i, days, activeByDay, 60)
-          : rollingActiveUsers(i, days, activeByDay, i + 1);
+          ? rollingUniqueUsers(i, days, activeSetsByDay, 60)
+          : rollingUniqueUsers(i, days, activeSetsByDay, i + 1);
 
         let growthRate: number | null = null;
         if (prevTotalUsers > 0) {
@@ -136,30 +157,30 @@ export const analyticsService = {
         series.push({
           date: day,
           realUsers: dayRealUsers,
-          dau: dayActive,
+          dau: dayActiveCount,
           wau: dayWau,
           mau: dayMau,
           newUsers: dayNew,
           blocked: currentBlocked,
-          deleted: 0,
+          bots: blockedBotsCount,
           growthRate,
           healthScore,
         });
       }
 
       let compareSummary: any = null;
-      if (compareDays) {
+      if (compareDays && compareActiveSets) {
         let compareTotalNew = 0;
         let compareTotalDau = 0;
         for (const day of compareDays) {
           compareTotalNew += compareNewUsersByDay?.get(day) ?? 0;
-          compareTotalDau += compareActiveByDay?.get(day) ?? 0;
+          compareTotalDau += compareActiveSets.get(day)?.size ?? 0;
         }
         compareSummary = { totalNewUsers: compareTotalNew, totalDAU: compareTotalDau };
       }
 
       const periodTotalNew = Array.from(newUsersByDay.values()).reduce((a, b) => a + b, 0);
-      const periodTotalDau = Array.from(activeByDay.values()).reduce((a, b) => a + b, 0);
+      const periodTotalDau = Array.from(activeSetsByDay.values()).reduce((a, b) => a + b.size, 0);
 
       const result = {
         kpis: {
@@ -170,7 +191,7 @@ export const analyticsService = {
           mau: mauCount,
           newUsers: periodTotalNew,
           blocked: currentBlocked,
-          deleted: 0,
+          bots: blockedBotsCount,
           inactive30,
           inactive60,
           inactive90,
@@ -194,7 +215,7 @@ export const analyticsService = {
       return {
         kpis: {
           totalUsers: 0, realUsers: 0, dau: 0, wau: 0, mau: 0,
-          newUsers: 0, blocked: 0, deleted: 0,
+          newUsers: 0, blocked: 0, bots: 0,
           inactive30: 0, inactive60: 0, inactive90: 0,
           growthRate: 0, healthScore: 0,
         },
@@ -312,17 +333,27 @@ async function dailyNewUsers(startDate: Date, endDate: Date): Promise<Map<string
   }
 }
 
-async function dailyActiveUsers(startDate: Date, endDate: Date): Promise<Map<string, number>> {
+async function dailyActiveUserSets(startDate: Date, endDate: Date): Promise<Map<string, Set<number>>> {
   try {
-    const rows = await prisma.$queryRawUnsafe<Array<{ day: string; cnt: bigint }>>(
-      `SELECT DATE(created_at)::text AS day, COUNT(DISTINCT user_id)::bigint AS cnt FROM point_logs WHERE created_at >= $1 AND created_at <= $2 GROUP BY DATE(created_at) ORDER BY day`,
+    const rows = await prisma.$queryRawUnsafe<Array<{ day: string; user_id: number }>>(
+      `SELECT DATE(created_at)::text AS day, user_id FROM point_logs WHERE created_at >= $1 AND created_at <= $2 GROUP BY DATE(created_at), user_id ORDER BY day`,
       startDate, endDate,
     );
-    const map = new Map<string, number>();
-    for (const r of rows) map.set(r.day, safeNumber(r.cnt));
+    const map = new Map<string, Set<number>>();
+    for (const r of rows) {
+      if (!map.has(r.day)) map.set(r.day, new Set());
+      map.get(r.day)!.add(Number(r.user_id));
+    }
     return map;
   } catch (error) {
-    logger.error('[Analytics] dailyActiveUsers error:', error);
+    logger.error('[Analytics] dailyActiveUserSets error:', error);
     return new Map();
   }
+}
+
+async function dailyActiveUserCounts(startDate: Date, endDate: Date): Promise<Map<string, number>> {
+  const sets = await dailyActiveUserSets(startDate, endDate);
+  const counts = new Map<string, number>();
+  sets.forEach((s, k) => counts.set(k, s.size));
+  return counts;
 }
