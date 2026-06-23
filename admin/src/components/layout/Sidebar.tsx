@@ -4,7 +4,7 @@ import { useState } from "react";
 import { BRAND_NAME } from "@/config/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, Building2, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, Percent, RadioTower, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X } from "lucide-react";
+import { BarChart3, Bot, Building2, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, Percent, RadioTower, Route, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
 
@@ -20,6 +20,7 @@ const menuItems: MenuItem[] = [
   { key: "dashboard", label: "داشبورد", href: "/dashboard", icon: LayoutDashboard },
       { key: "users", label: "کاربران", href: "/dashboard/users", icon: Users },
       { key: "deleted-users", label: "حذف‌شده‌ها", href: "/dashboard/deleted-users", icon: Trash2 },
+      { key: "user-journey", label: "سفر کاربر", href: "/dashboard/user-journey", icon: Route },
   {
     key: "posts", label: "پست‌ها", href: "/dashboard/posts", icon: FileText,
     children: [
@@ -45,8 +46,7 @@ const menuItems: MenuItem[] = [
       { key: "keyword-replies", label: "پاسخ‌های خودکار", href: "/dashboard/keyword-replies", icon: MessageSquareReply },
     ],
   },
-  {
-    key: "analytics", label: "گزارشات", href: "/dashboard/analytics", icon: BarChart3,
+  { key: "analytics", label: "گزارشات", href: "/dashboard/analytics", icon: BarChart3,
     children: [
       { key: "analytics-users", label: "تحلیل کاربران", href: "/dashboard/analytics", icon: BarChart3 },
       { key: "analytics-acquisition", label: "منابع جذب", href: "/dashboard/analytics/acquisition", icon: Share2 },

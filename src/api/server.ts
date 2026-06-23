@@ -45,6 +45,7 @@ import { broadcastRcaRouter } from "./routes/broadcast-rca.routes";
 import { createBroadcastTraceRouter } from "./routes/broadcast-trace.routes";
 import { systemIntegrityRouter } from "./routes/system-integrity.routes";
 import { userDeleteRouter } from "./routes/user-delete.routes";
+import { userEventRouter } from "./routes/user-event.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -208,6 +209,7 @@ export function startAdminApi(bot?: Telegraf) {
   app.use("/api/broadcast-trace", authMiddleware, requireFeature("reports"), createBroadcastTraceRouter(bot));
   app.use("/api/system-integrity", authMiddleware, requireFeature("reports"), systemIntegrityRouter);
   app.use("/api/admin/users", authMiddleware, userDeleteRouter);
+  app.use("/api/user-events", authMiddleware, userEventRouter);
   app.use("/api/search", authMiddleware, searchRouter);
   app.use("/api/ai", createAiRouter(bot));
   app.use("/api/settings", authMiddleware, settingsRouter);

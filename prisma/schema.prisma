@@ -60,6 +60,8 @@ model User {
   referredBy                 User?                           @relation("UserReferrals", fields: [referredById], references: [id])
   referrals                  User[]                          @relation("UserReferrals")
   attributionEvents          AttributionEvent[]
+  userEvents                 UserEvent[]
+  userMessageHistory         UserMessageHistory[]
 
   @@index([referredById])
   @@index([profileCompleted])
@@ -1081,4 +1083,38 @@ model DeletedUsersAudit {
   @@index([telegramId])
   @@index([deletedAt])
   @@map("deleted_users_audit")
+}
+
+model UserEvent {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  telegramId  BigInt
+  eventType   String
+  eventData   Json?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([telegramId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("user_events")
+}
+
+model UserMessageHistory {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  telegramId  BigInt
+  messageId   Int?
+  messageType String
+  text        String?
+  rawUpdate   Json?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([telegramId])
+  @@index([messageType])
+  @@index([createdAt])
+  @@map("user_message_history")
 }

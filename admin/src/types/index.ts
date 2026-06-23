@@ -707,6 +707,35 @@ export interface DeletedUserAudit {
   reason: string | null;
 }
 
+export interface UserEvent {
+  id: number;
+  userId: number;
+  telegramId: string;
+  eventType: string;
+  eventData: any;
+  createdAt: string;
+}
+
+export interface UserMessageHistory {
+  id: number;
+  userId: number;
+  telegramId: string;
+  messageId: number | null;
+  messageType: string;
+  text: string | null;
+  rawUpdate: any;
+  createdAt: string;
+}
+
+export interface UserTimelineItem {
+  type: 'event' | 'message';
+  id: number;
+  label: string;
+  detail: string;
+  timestamp: string;
+  rawData: any;
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface FeatureToggleItem {
   id: number;

@@ -402,6 +402,21 @@ export const userDeleteApi = {
   },
 };
 
+export const userEventApi = {
+  async getEvents(userId: number, params: { page?: number; limit?: number; eventType?: string } = {}): Promise<{ success: boolean; data: { items: import("@/types").UserEvent[]; total: number; pages: number } }> {
+    const { data } = await api.get(`/api/user-events/${userId}/events`, { params });
+    return data;
+  },
+  async getMessages(userId: number, params: { page?: number; limit?: number; messageType?: string } = {}): Promise<{ success: boolean; data: { items: import("@/types").UserMessageHistory[]; total: number; pages: number } }> {
+    const { data } = await api.get(`/api/user-events/${userId}/messages`, { params });
+    return data;
+  },
+  async getTimeline(userId: number, limit?: number): Promise<{ success: boolean; data: import("@/types").UserTimelineItem[] }> {
+    const { data } = await api.get(`/api/user-events/${userId}/timeline`, { params: { limit } });
+    return data;
+  },
+};
+
 export const analyticsApi = {
   async dashboard(): Promise<{ success: boolean; data: import("@/types").AnalyticsDashboard }> {
     const { data } = await api.get("/api/analytics/dashboard");

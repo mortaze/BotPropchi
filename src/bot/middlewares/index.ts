@@ -4,6 +4,7 @@
 import { Context, Telegraf } from 'telegraf';
 import { userService } from '../../services/user.service';
 import { attributionService } from '../../services/attribution.service';
+import { userEventService } from '../../services/user-event.service';
 import { logger } from '../../utils/logger';
 import { groupService } from '../../services/group.service';
 import { settingsService } from '../../services/settings.service';
@@ -14,7 +15,7 @@ export function userMiddleware() {
   return async (ctx: Context, next: () => Promise<void>) => {
     if (!ctx.from) return next();
 
-    // PHASE: Pre-start blocking — only allow /start to create new users
+    // Pre-start blocking — only allow /start to create new users
     const text = (ctx.message as any)?.text as string | undefined;
     const isStart = text === '/start' || text?.startsWith('/start ');
     const updateType = (ctx as any).updateType || 'unknown';
@@ -48,11 +49,21 @@ export function userMiddleware() {
         isStart,
       });
 
-      // Track activity only for existing users
+      // Track activity
       if (user?.id) {
         const activityType = (ctx as any).updateType === 'callback_query' ? 'callback' : 'message';
         attributionService.recordActivity(user.id, activityType).catch((err: unknown) => {
           logger.error('[Attribution] recordActivity failed:', err);
+        });
+
+        // PHASE: Track all events
+        trackEvent(ctx, user.id, BigInt(ctx.from.id)).catch((err: unknown) => {
+          logger.error('[EventTracking] trackEvent failed:', err);
+        });
+
+        // PHASE: Track messages
+        trackMessage(ctx, user.id, BigInt(ctx.from.id)).catch((err: unknown) => {
+          logger.error('[EventTracking] trackMessage failed:', err);
         });
       }
     } catch (err) {
@@ -61,6 +72,80 @@ export function userMiddleware() {
 
     return next();
   };
+}
+
+// ─── Event Tracking ────────────────────────────────────────
+async function trackEvent(ctx: Context, userId: number, telegramId: bigint) {
+  const updateType = (ctx as any).updateType || 'unknown';
+
+  if (updateType === 'callback_query') {
+    const data = (ctx.callbackQuery as any)?.data || '';
+    await userEventService.recordEvent({
+      userId,
+      telegramId,
+      eventType: 'BUTTON_CLICK',
+      eventData: { callbackData: data, messageId: (ctx.callbackQuery as any)?.message?.message_id },
+    });
+  } else if (updateType === 'message') {
+    const msg = ctx.message as any;
+    if (msg?.text) {
+      const text = msg.text;
+      if (text === '/start' || text.startsWith('/start ')) {
+        await userEventService.recordEvent({
+          userId,
+          telegramId,
+          eventType: 'BOT_START',
+          eventData: { text, payload: text.split(' ').slice(1).join(' ') || null },
+        });
+      } else {
+        await userEventService.recordEvent({
+          userId,
+          telegramId,
+          eventType: 'MESSAGE_SENT',
+          eventData: { text: text.slice(0, 200) },
+        });
+      }
+    }
+  }
+}
+
+// ─── Message Tracking ──────────────────────────────────────
+async function trackMessage(ctx: Context, userId: number, telegramId: bigint) {
+  const msg = ctx.message as any;
+  if (!msg) return;
+
+  let messageType = 'text';
+  let text: string | undefined;
+
+  if (msg.text) {
+    messageType = 'text';
+    text = msg.text;
+  } else if (msg.photo) {
+    messageType = 'photo';
+    text = msg.caption;
+  } else if (msg.video) {
+    messageType = 'video';
+    text = msg.caption;
+  } else if (msg.voice || msg.audio) {
+    messageType = 'voice';
+  } else if (msg.document) {
+    messageType = 'document';
+  } else if (msg.contact) {
+    messageType = 'contact';
+    text = `${msg.contact.first_name} ${msg.contact.phone_number}`;
+  } else if (msg.location) {
+    messageType = 'location';
+    text = `${msg.location.latitude},${msg.location.longitude}`;
+  }
+
+  await userEventService.recordMessage({
+    userId,
+    telegramId,
+    messageId: msg.message_id,
+    messageType,
+    text,
+    rawUpdate: { date: msg.date, chat_id: msg.chat?.id },
+  });
 }
 
 
