@@ -3,6 +3,7 @@
 
 import { Context, Telegraf } from 'telegraf';
 import { userService } from '../../services/user.service';
+import { attributionService } from '../../services/attribution.service';
 import { logger } from '../../utils/logger';
 import { groupService } from '../../services/group.service';
 import { settingsService } from '../../services/settings.service';
@@ -21,7 +22,7 @@ export function userMiddleware() {
         (text?.startsWith('/start') ? text.split(/\s+/).slice(1).join(' ').trim() : '') ||
         undefined;
 
-      await userService.registerOrUpdate({
+      const user = await userService.registerOrUpdate({
         telegramId: BigInt(ctx.from.id),
         username: ctx.from.username,
         firstName: ctx.from.first_name,
@@ -30,6 +31,14 @@ export function userMiddleware() {
         referralCode,
         startPayload: startPayload?.trim() || undefined,
       });
+
+      // Track activity
+      if (user?.id) {
+        const activityType = (ctx as any).updateType === 'callback_query' ? 'callback' : 'message';
+        attributionService.recordActivity(user.id, activityType).catch((err: unknown) => {
+          logger.error('[Attribution] recordActivity failed:', err);
+        });
+      }
     } catch (err) {
       logger.error('خطا در userMiddleware:', err);
     }

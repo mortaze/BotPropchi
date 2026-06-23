@@ -33,20 +33,22 @@ function isoToJalaliFull(iso: string | null): string {
   if (!iso) return "-";
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
     const [jy, jm, jd] = gregorianToJalali(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
     return `${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")}`;
-  } catch { return iso; }
+  } catch { return "-"; }
 }
 
 function isoToJalaliDateTime(iso: string | null): string {
   if (!iso) return "-";
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
     const [jy, jm, jd] = gregorianToJalali(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
     const hours = String(d.getUTCHours()).padStart(2, "0");
     const mins = String(d.getUTCMinutes()).padStart(2, "0");
     return `${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")} ${hours}:${mins}`;
-  } catch { return iso; }
+  } catch { return "-"; }
 }
 
 const SOURCE_LABELS: Record<string, string> = {

@@ -656,6 +656,25 @@ export interface ComparisonReport {
   };
 }
 
+export interface HealthIssue {
+  severity: string;
+  message: string;
+  count: number;
+}
+
+export interface HealthSection {
+  name: string;
+  score: number;
+  maxScore: number;
+  issues: HealthIssue[];
+}
+
+export interface SystemHealthReport {
+  overallScore: number;
+  sections: HealthSection[];
+  timestamp: string;
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface FeatureToggleItem {
   id: number;

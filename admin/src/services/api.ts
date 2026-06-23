@@ -380,6 +380,13 @@ export const broadcastTraceApi = {
   },
 };
 
+export const systemIntegrityApi = {
+  async getHealth(): Promise<{ success: boolean; data: import("@/types").SystemHealthReport }> {
+    const { data } = await api.get("/api/system-integrity/health");
+    return data;
+  },
+};
+
 export const analyticsApi = {
   async dashboard(): Promise<{ success: boolean; data: import("@/types").AnalyticsDashboard }> {
     const { data } = await api.get("/api/analytics/dashboard");

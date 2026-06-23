@@ -40,17 +40,16 @@ function calculateConfidence(params: {
   startCount: number;
   hasFirstActivity: boolean;
   hasLastActivity: boolean;
+  hasMultipleInteractions: boolean;
+  hasSessionHistory: boolean;
 }): number {
   let score = 0;
-  if (params.source && params.source !== 'unknown' && params.source !== 'direct') score += 25;
-  if (params.hasReferralCode) score += 20;
-  if (params.hasInviter) score += 15;
-  if (params.hasStartPayload) score += 10;
-  if (params.hasUsername) score += 5;
-  if (params.hasLanguageCode) score += 5;
-  if (params.hasFirstActivity) score += 10;
-  if (params.hasLastActivity) score += 5;
-  if (params.startCount > 1) score += 5;
+  // PHASE 5: Evidence-based confidence only
+  if (params.hasFirstActivity) score += 40;        // First start event exists
+  if (params.hasLastActivity && params.hasFirstActivity) score += 20;  // Activity exists
+  if (params.hasReferralCode || params.hasInviter) score += 20;  // Referral evidence
+  if (params.hasSessionHistory) score += 10;        // Session history exists
+  if (params.hasMultipleInteractions) score += 10;  // Multiple interactions
   return Math.min(100, score);
 }
 
@@ -96,6 +95,8 @@ export const attributionService = {
       startCount: 1,
       hasFirstActivity: true,
       hasLastActivity: true,
+      hasMultipleInteractions: false,
+      hasSessionHistory: false,
     });
 
     const confidenceFlags: Record<string, boolean> = {
@@ -128,7 +129,7 @@ export const attributionService = {
         startCount: 1,
         activeDaysCount: 1,
         messagesSentCount: 0,
-        activitiesCount: 0,
+        activitiesCount: 1, // First start counts as activity
         successfulReferrals: 0,
         lastDeviceType: params.deviceType,
         confidenceScore: confidence,
@@ -201,6 +202,8 @@ export const attributionService = {
       startCount: newStartCount,
       hasFirstActivity: Boolean(attribution.firstActivityAt),
       hasLastActivity: true,
+      hasMultipleInteractions: newStartCount > 1 || (attribution.activitiesCount ?? 0) > 0,
+      hasSessionHistory: (attribution.startCount ?? 0) > 1 || (attribution.messagesSentCount ?? 0) > 0,
     });
 
     await prisma.userAttribution.update({
