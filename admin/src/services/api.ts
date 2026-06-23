@@ -346,6 +346,25 @@ export const broadcastDiagnosticsApi = {
   },
 };
 
+export const broadcastRcaApi = {
+  async analyze(broadcastId: number): Promise<{ success: boolean; data: import("@/types").BroadcastRcaResult }> {
+    const { data } = await api.get(`/api/broadcast-rca/analyze/${broadcastId}`);
+    return data;
+  },
+  async getIntegrity(): Promise<{ success: boolean; data: import("@/types").DataIntegrityReport }> {
+    const { data } = await api.get("/api/broadcast-rca/integrity");
+    return data;
+  },
+  async getExplorer(broadcastId: number, category: string): Promise<{ success: boolean; data: import("@/types").ErrorExplorerItem[] }> {
+    const { data } = await api.get(`/api/broadcast-rca/explorer/${broadcastId}/${category}`);
+    return data;
+  },
+  async getSystemErrors(broadcastId?: number): Promise<{ success: boolean; data: import("@/types").SystemErrorUser[] }> {
+    const { data } = await api.get("/api/broadcast-rca/system-errors", { params: { broadcastId } });
+    return data;
+  },
+};
+
 export const analyticsApi = {
   async dashboard(): Promise<{ success: boolean; data: import("@/types").AnalyticsDashboard }> {
     const { data } = await api.get("/api/analytics/dashboard");

@@ -529,6 +529,104 @@ export interface ValidationResult {
   }>;
 }
 
+export interface ValidationCheck {
+  name: string;
+  passed: boolean;
+  details: string;
+}
+
+export interface ErrorAnalysis {
+  deliveryLogId: number;
+  userId: number;
+  telegramUserId: string;
+  chatId: string | null;
+  username: string | null;
+  userCreatedAt: string | null;
+  lastActivityAt: string | null;
+  lastStartAt: string | null;
+  userStatus: string;
+  errorMessage: string | null;
+  httpStatusCode: number | null;
+  telegramErrorCode: number | null;
+  telegramDescription: string | null;
+  rootCause: string;
+  rootCauseLabel: string;
+  rootCauseDescription: string;
+  severity: string;
+  validationChecks: ValidationCheck[];
+}
+
+export interface RootCauseSummary {
+  cause: string;
+  label: string;
+  description: string;
+  severity: string;
+  count: number;
+  percentage: number;
+}
+
+export interface BroadcastRcaResult {
+  broadcastId: number;
+  totalErrors: number;
+  analyses: ErrorAnalysis[];
+  byRootCause: RootCauseSummary[];
+  byErrorCategory: Array<{ category: string; count: number; percentage: number }>;
+  summary: {
+    userBehaviorErrors: number;
+    userBehaviorPercentage: number;
+    databaseErrors: number;
+    databasePercentage: number;
+    codeErrors: number;
+    codePercentage: number;
+    telegramApiErrors: number;
+    telegramApiPercentage: number;
+    unknownErrors: number;
+    unknownPercentage: number;
+  };
+}
+
+export interface DataIntegrityReport {
+  totalUsers: number;
+  validTelegramId: number;
+  validChatIdCount: number;
+  incompleteData: number;
+  duplicateCount: number;
+  duplicateTelegramIds: string[];
+  zeroChatId: number;
+  invalidTelegramId: number;
+  healthScore: number;
+}
+
+export interface ErrorExplorerItem {
+  deliveryLogId: number;
+  userId: number;
+  telegramUserId: string;
+  chatId: string | null;
+  username: string | null;
+  firstName: string | null;
+  userCreatedAt: string | null;
+  lastActivityAt: string | null;
+  lastStartAt: string | null;
+  userStatus: string;
+  errorMessage: string | null;
+  httpStatusCode: number | null;
+  telegramErrorCode: number | null;
+  telegramDescription: string | null;
+}
+
+export interface SystemErrorUser {
+  deliveryLogId: number;
+  userId: number;
+  telegramUserId: string;
+  chatId: string | null;
+  username: string | null;
+  firstName: string | null;
+  errorCategory: string | null;
+  errorMessage: string | null;
+  httpStatusCode: number | null;
+  telegramErrorCode: number | null;
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface FeatureToggleItem {
   id: number;
