@@ -14,6 +14,7 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   q: z.string().trim().optional(),
   referrerId: z.coerce.number().int().positive().optional(),
+  seasonId: z.coerce.number().int().positive().optional(),
 });
 
 const meQuerySchema = z.object({

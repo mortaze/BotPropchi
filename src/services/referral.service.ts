@@ -236,11 +236,57 @@ export const referralService = {
     }));
   },
 
-  async getAdminList(params: { page?: number; limit?: number; q?: string; referrerId?: number }) {
+  async getAdminList(params: { page?: number; limit?: number; q?: string; referrerId?: number; seasonId?: number }) {
     const page = Math.max(1, params.page || 1);
     const limit = Math.min(100, Math.max(1, params.limit || 20));
     const skip = (page - 1) * limit;
     const q = params.q?.trim();
+
+    // If season filter is applied, use ReferralLog instead of Referral
+    if (params.seasonId) {
+      const where: any = {
+        seasonId: params.seasonId,
+        ...(params.referrerId ? { inviterId: params.referrerId } : {}),
+        ...(q ? {
+          OR: [
+            { inviter: { firstName: { contains: q, mode: 'insensitive' } } },
+            { inviter: { lastName: { contains: q, mode: 'insensitive' } } },
+            { inviter: { username: { contains: q, mode: 'insensitive' } } },
+            { referred: { firstName: { contains: q, mode: 'insensitive' } } },
+            { referred: { lastName: { contains: q, mode: 'insensitive' } } },
+            { referred: { username: { contains: q, mode: 'insensitive' } } },
+          ],
+        } : {}),
+      };
+
+      const [items, total] = await Promise.all([
+        prisma.referralLog.findMany({
+          where,
+          include: {
+            inviter: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true, points: true, totalReferrals: true } },
+            referred: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true, createdAt: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        prisma.referralLog.count({ where }),
+      ]);
+
+      // Map to match referral format
+      const mapped = items.map(log => ({
+        id: log.id,
+        referrerId: log.inviterId,
+        referredUserId: log.referredId,
+        rewardPoints: 0,
+        createdAt: log.createdAt,
+        membershipVerificationStatus: 'VERIFIED',
+        referrer: log.inviter,
+        referredUser: log.referred,
+      }));
+
+      return { items: mapped, total, pages: Math.ceil(total / limit), stats: await this.getStats(), leaderboard: await this.getLeaderboard(10) };
+    }
 
     const where: any = {
       ...(params.referrerId ? { referrerId: params.referrerId } : {}),

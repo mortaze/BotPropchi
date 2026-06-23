@@ -1472,15 +1472,18 @@ export function registerHandlers(bot: Telegraf<Context>) {
         return ctx.reply('🏆 در حال حاضر هیچ فصل فعالی برای لیدربورد وجود ندارد.\nبه محض شروع فصل جدید، دعوت‌های شما در لیدربورد ثبت خواهند شد.');
       }
 
-      const [leaderboard, stats] = await Promise.all([
+      const [leaderboard, stats, userRank] = await Promise.all([
         leaderboardService.getLeaderboard(season.id, 15),
         leaderboardService.getLeaderboardStats(season.id),
+        (async () => {
+          const profile = await userService.getProfile(BigInt(ctx.from.id));
+          return profile ? leaderboardService.getUserRank(season.id, profile.id) : null;
+        })(),
       ]);
 
       if (leaderboard.length === 0) {
         return ctx.reply(
-          `🏆 *لیدربورد فصل ${season.name}*\n` +
-          `📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}\n\n` +
+          `🏆 *لیدربورد فصل ${season.name}*\n\n` +
           'هنوز دعوتی در این فصل ثبت نشده. اولین نفر باش!',
           { parse_mode: 'Markdown' }
         );
@@ -1490,15 +1493,20 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
       const lines = leaderboard.map((entry) =>
         `${medal(entry.rank)} ${entry.firstName || entry.username || `کاربر ${entry.userId}`}\n` +
-        `📊 ${entry.inviteCount} دعوت | 💰 ${entry.points} امتیاز`
+        `📊 ${entry.inviteCount} دعوت`
       );
 
-      const header =
-        `🏆 *لیدربورد فصل ${season.name}*\n` +
-        `📅 ${season.startDate.toLocaleDateString('fa-IR')} — ${season.endDate.toLocaleDateString('fa-IR')}\n\n`;
+      const header = `🏆 *لیدربورد فصل ${season.name}*\n\n`;
       const footer = `\n📊 کل دعوت‌ها: ${stats.totalReferrals} | شرکت‌کنندگان: ${stats.totalInviters}`;
 
-      await ctx.reply(header + lines.join('\n\n') + footer, { parse_mode: 'Markdown' });
+      let rankLine = '';
+      if (userRank && userRank.rank > 15) {
+        rankLine = `\n\n👤 رتبه شما: #${userRank.rank}\n🎯 تعداد دعوت: ${userRank.score}`;
+      } else if (userRank) {
+        rankLine = `\n\n🎯 تعداد دعوت شما: ${userRank.score}`;
+      }
+
+      await ctx.reply(header + lines.join('\n\n') + footer + rankLine, { parse_mode: 'Markdown' });
     } catch (error) {
       logger.error('Leaderboard Handler Error:', error);
       await ctx.reply('❌ خطا در دریافت لیدربورد');
@@ -1540,42 +1548,50 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const rewardPoints =
       referralSettings?.inviteRewardPoints ?? 0;
 
-    const totalReferrals =
-      referralStats?.inviteCount ??
-      profile.totalReferrals ??
-      0;
+    // Season-aware stats: only show current season invites
+    const season = await leaderboardService.getActiveSeason();
+    let seasonInvites = 0;
+    let seasonPoints = 0;
+    if (season) {
+      const userRank = await leaderboardService.getUserRank(season.id, profile.id);
+      if (userRank) {
+        seasonInvites = userRank.score;
+        // Calculate season points from referral logs
+        const seasonLogs = await prisma.referralLog.findMany({
+          where: { inviterId: profile.id, seasonId: season.id },
+          select: { referredId: true },
+        });
+        const referredIds = seasonLogs.map(l => l.referredId);
+        if (referredIds.length > 0) {
+          const rewards = await prisma.referral.aggregate({
+            where: { referredUserId: { in: referredIds } },
+            _sum: { rewardPoints: true },
+          });
+          seasonPoints = rewards._sum.rewardPoints || 0;
+        }
+      }
+    }
 
-    const totalRewardPoints =
-      referralStats?.totalRewardPoints ?? 0;
+    const shareText = await referralService.getShareText();
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(shareText)}`;
 
     await ctx.reply(
       [
-        '👥 لینک دعوت اختصاصی شما:',
+        '🎁 لینک دعوت اختصاصی شما:',
         '',
         link,
         '',
-        `✅ پاداش هر دعوت موفق: ${rewardPoints} امتیاز`,
-        `👤 دعوت‌شدگان تا کنون: ${totalReferrals} نفر`,
-        `🎁 مجموع امتیاز دعوت‌ها: ${totalRewardPoints}`,
-        '',
-        '─── 📣 اشتراک‌گذاری ───',
+        `🏆 پاداش هر دعوت موفق: ${rewardPoints} امتیاز`,
+        season ? `👥 دعوت‌شدگان این فصل: ${seasonInvites} نفر` : `👥 دعوت‌شدگان تاکنون: ${referralStats?.inviteCount ?? 0} نفر`,
+        season ? `⭐ مجموع امتیاز دعوت‌ها: ${seasonPoints}` : `⭐ مجموع امتیاز دعوت‌ها: ${referralStats?.totalRewardPoints ?? 0}`,
       ].join('\n'),
-      { link_preview_options: { is_disabled: true } }
-    );
-
-    const shareText = await referralService.getShareText();
-    const cleanLink = await referralService.getCleanReferralLink(botUsername);
-    const fullShareText = `${shareText}\n\n${cleanLink}`;
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(cleanLink)}&text=${encodeURIComponent(shareText)}`;
-
-    await ctx.reply(
-      'با دوستان خود به اشتراک بگذارید:',
-      buildReferralShareKeyboard(shareUrl)
-    );
-
-    await ctx.reply(
-      'از منوی زیر گزینه مورد نظر را انتخاب کنید:',
-      buildReferralMenuKeyboard()
+      {
+        link_preview_options: { is_disabled: true },
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('📤 دعوت در تلگرام', shareUrl)],
+          [Markup.button.callback('🏆 لیدربورد', 'referral:show_leaderboard')],
+        ]),
+      }
     );
   } catch (error) {
     logger.error(
@@ -1603,6 +1619,44 @@ export function registerHandlers(bot: Telegraf<Context>) {
     } catch (error) {
       logger.error('Referral Copy Handler Error:', error);
       await ctx.reply('❌ خطا در آماده‌سازی متن اشتراک‌گذاری');
+    }
+  });
+
+  bot.action('referral:show_leaderboard', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    try {
+      const season = await leaderboardService.getActiveSeason();
+      if (!season) {
+        return ctx.reply('🏆 در حال حاضر هیچ فصل فعالی برای لیدربورد وجود ندارد.');
+      }
+
+      const [leaderboard, stats] = await Promise.all([
+        leaderboardService.getLeaderboard(season.id, 15),
+        leaderboardService.getLeaderboardStats(season.id),
+      ]);
+
+      if (leaderboard.length === 0) {
+        return ctx.reply(
+          `🏆 *لیدربورد فصل ${season.name}*\n\n` +
+          'هنوز دعوتی در این فصل ثبت نشده. اولین نفر باش!',
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      const medal = (rank: number) => rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
+
+      const lines = leaderboard.map((entry) =>
+        `${medal(entry.rank)} ${entry.firstName || entry.username || `کاربر ${entry.userId}`}\n` +
+        `📊 ${entry.inviteCount} دعوت`
+      );
+
+      const header = `🏆 *لیدربورد فصل ${season.name}*\n\n`;
+      const footer = `\n📊 کل دعوت‌ها: ${stats.totalReferrals} | شرکت‌کنندگان: ${stats.totalInviters}`;
+
+      await ctx.reply(header + lines.join('\n\n') + footer, { parse_mode: 'Markdown' });
+    } catch (error) {
+      logger.error('Referral Leaderboard Action Error:', error);
+      await ctx.reply('❌ خطا در دریافت لیدربورد');
     }
   });
 
