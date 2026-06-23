@@ -433,6 +433,102 @@ export interface LowConfidenceUser {
   inviterUserId: number | null;
 }
 
+export interface BroadcastKPIs {
+  totalUsers: number;
+  totalLogs: number;
+  successCount: number;
+  failedCount: number;
+  successRate: number;
+  errorBreakdown: Array<{ category: string; count: number }>;
+  criticalErrors: number;
+  criticalErrorRate: number;
+  hasCriticalBug: boolean;
+}
+
+export interface BroadcastDiagnosticsItem {
+  id: number;
+  title: string;
+  messageType: string;
+  status: string;
+  totalRecipients: number;
+  successCount: number;
+  failedCount: number;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  _count?: { logs: number };
+}
+
+export interface BroadcastDeliveryLog {
+  id: number;
+  broadcastId: number;
+  broadcastLogId: number;
+  userId: number;
+  telegramUserId: string;
+  chatId: string | null;
+  username: string | null;
+  attemptedAt: string | null;
+  finalStatus: string;
+  rawTelegramResponse: any;
+  errorMessage: string | null;
+  httpStatusCode: number | null;
+  telegramErrorCode: number | null;
+  telegramDescription: string | null;
+  responseTimeMs: number | null;
+  retryCount: number;
+  botVersion: string | null;
+  serverName: string | null;
+  jobId: string | null;
+  correlationId: string | null;
+  errorCategory: string | null;
+  createdAt: string;
+}
+
+export interface BroadcastDetails {
+  broadcast: BroadcastDiagnosticsItem;
+  deliveryStats: Array<{ errorCategory: string | null; finalStatus: string; _count: { id: number } }>;
+  errorSamples: BroadcastDeliveryLog[];
+  recentLogs: Array<BroadcastDeliveryLog & { broadcastLog: { user: { id: number; telegramId: string; username: string | null; firstName: string } } }>;
+}
+
+export interface IntegrityAudit {
+  issues: Array<{ type: string; severity: string; message: string; userId?: number; telegramId?: string }>;
+  totalUsers: number;
+  blockedUsers: number;
+  healthyUsers: number;
+  healthScore: number;
+  duplicateCount: number;
+}
+
+export interface DryRunResult {
+  broadcastId: number;
+  totalRecipients: number;
+  issuesCount: number;
+  issues: Array<{ userId: number; telegramId: string; username: string; issue: string; severity: string }>;
+}
+
+export interface ValidationResult {
+  totalSamples: number;
+  userBehaviorCount: number;
+  systemBugCount: number;
+  unknownCount: number;
+  userBehaviorRate: number;
+  systemBugRate: number;
+  analysis: Array<{
+    id: number;
+    userId: number;
+    telegramId: string;
+    username: string;
+    firstName: string;
+    error: string | null;
+    category: string;
+    isUserBehavior: boolean;
+    isSystemBug: boolean;
+    httpStatusCode: number | null;
+    telegramErrorCode: number | null;
+  }>;
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface FeatureToggleItem {
   id: number;

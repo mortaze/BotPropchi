@@ -59,6 +59,7 @@ const menuItems: MenuItem[] = [
       { key: "bot-admins", label: "ادمین‌های ربات", href: "/dashboard/bot-admins", icon: UserCog },
       { key: "admin-users", label: "مدیریت ادمین‌ها", href: "/dashboard/admin-users", icon: UserCog },
       { key: "mini-app-logs", label: "Mini App Logs", href: "/dashboard/mini-app-logs", icon: BarChart3 },
+      { key: "broadcast-diagnostics", label: "آنالیز پیام همگانی", href: "/dashboard/broadcast-diagnostics", icon: BarChart3 },
       { key: "system-logs", label: "لاگ سیستم", href: "/dashboard/system-logs", icon: FileText },
       { key: "ai-assistant", label: "AI Assistant", href: "/dashboard/ai-assistant", icon: Bot },
     ],

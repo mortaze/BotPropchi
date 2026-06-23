@@ -319,6 +319,33 @@ export const attributionApi = {
   },
 };
 
+export const broadcastDiagnosticsApi = {
+  async getKPIs(broadcastId?: number): Promise<{ success: boolean; data: import("@/types").BroadcastKPIs }> {
+    const { data } = await api.get("/api/broadcast-diagnostics/kpis", { params: { broadcastId } });
+    return data;
+  },
+  async getHistory(params: { page?: number; limit?: number } = {}): Promise<{ success: boolean; data: { items: import("@/types").BroadcastDiagnosticsItem[]; total: number; pages: number } }> {
+    const { data } = await api.get("/api/broadcast-diagnostics/history", { params });
+    return data;
+  },
+  async getDetails(broadcastId: number): Promise<{ success: boolean; data: import("@/types").BroadcastDetails }> {
+    const { data } = await api.get(`/api/broadcast-diagnostics/details/${broadcastId}`);
+    return data;
+  },
+  async getIntegrity(): Promise<{ success: boolean; data: import("@/types").IntegrityAudit }> {
+    const { data } = await api.get("/api/broadcast-diagnostics/integrity");
+    return data;
+  },
+  async dryRun(broadcastId: number): Promise<{ success: boolean; data: import("@/types").DryRunResult }> {
+    const { data } = await api.get(`/api/broadcast-diagnostics/dry-run/${broadcastId}`);
+    return data;
+  },
+  async validate(broadcastId: number): Promise<{ success: boolean; data: import("@/types").ValidationResult }> {
+    const { data } = await api.get(`/api/broadcast-diagnostics/validate/${broadcastId}`);
+    return data;
+  },
+};
+
 export const analyticsApi = {
   async dashboard(): Promise<{ success: boolean; data: import("@/types").AnalyticsDashboard }> {
     const { data } = await api.get("/api/analytics/dashboard");

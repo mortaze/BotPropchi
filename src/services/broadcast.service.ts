@@ -5,6 +5,7 @@ import { broadcastRepository } from '../repositories/broadcast.repository';
 import { logger } from '../utils/logger';
 import { systemLogService } from './system-log.service';
 import { sendFormattedMessageToChat } from '../shared/message-format';
+import { broadcastDiagnosticsService } from './broadcast-diagnostics.service';
 
 const TELEGRAM_DELAY_MS = Number(process.env.BROADCAST_DELAY_MS || 70);
 const BATCH_SIZE = Number(process.env.BROADCAST_BATCH_SIZE || 25);
@@ -166,14 +167,54 @@ class BroadcastService {
 
         for (const log of logs) {
           if (!this.running.has(id)) break;
+          const startTime = Date.now();
+          const correlationId = `bc_${id}_${log.id}_${Date.now()}`;
           try {
             await this.sendToTelegram(broadcast, log.telegramId);
             await broadcastRepository.markLogSuccess(log.id);
+            const responseTimeMs = Date.now() - startTime;
+            await broadcastDiagnosticsService.recordDeliveryLog({
+              broadcastId: id,
+              broadcastLogId: log.id,
+              userId: log.userId,
+              telegramUserId: log.telegramId,
+              status: 'SUCCESS',
+              responseTimeMs,
+              correlationId,
+            });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            const responseTimeMs = Date.now() - startTime;
             logger.warn(`Broadcast ${id} failed for ${log.telegramId.toString()}: ${message}`);
             await broadcastRepository.markLogFailed(log.id, message.slice(0, 900));
             await systemLogService.log({ eventType: SystemEventType.BROADCAST, level: SystemLogLevel.WARN, telegramId: log.telegramId, message: 'Broadcast delivery failed', metadata: { broadcastId: id, error: message.slice(0, 900) } });
+
+            // Parse Telegram API error details
+            let httpStatusCode: number | undefined;
+            let telegramErrorCode: number | undefined;
+            let telegramDescription: string | undefined;
+            try {
+              const errorObj = JSON.parse(message);
+              if (errorObj.response) {
+                httpStatusCode = errorObj.response.status;
+                telegramErrorCode = errorObj.response.parameters?.error_code;
+                telegramDescription = errorObj.response.description;
+              }
+            } catch {}
+
+            await broadcastDiagnosticsService.recordDeliveryLog({
+              broadcastId: id,
+              broadcastLogId: log.id,
+              userId: log.userId,
+              telegramUserId: log.telegramId,
+              status: 'FAILED',
+              errorMessage: message.slice(0, 2000),
+              httpStatusCode,
+              telegramErrorCode,
+              telegramDescription,
+              responseTimeMs,
+              correlationId,
+            });
           }
           await sleep(TELEGRAM_DELAY_MS);
         }

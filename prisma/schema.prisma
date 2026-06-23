@@ -397,11 +397,46 @@ model BroadcastLog {
   updatedAt   DateTime           @updatedAt
   broadcast   Broadcast          @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
   user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveryLog BroadcastDeliveryLog?
 
   @@unique([broadcastId, userId])
   @@index([broadcastId, status])
   @@index([telegramId])
   @@map("broadcast_logs")
+}
+
+model BroadcastDeliveryLog {
+  id                    Int       @id @default(autoincrement())
+  broadcastId           Int
+  broadcastLogId        Int       @unique
+  userId                Int
+  telegramUserId        BigInt
+  chatId                String?
+  username              String?
+  attemptedAt           DateTime?
+  finalStatus           String
+  rawTelegramResponse   Json?
+  errorMessage          String?
+  httpStatusCode        Int?
+  telegramErrorCode    Int?
+  telegramDescription   String?
+  responseTimeMs        Int?
+  retryCount            Int       @default(0)
+  botVersion            String?
+  serverName            String?
+  jobId                 String?
+  correlationId         String?
+  errorCategory         String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  broadcastLog          BroadcastLog @relation(fields: [broadcastLogId], references: [id], onDelete: Cascade)
+
+  @@index([broadcastId])
+  @@index([errorCategory])
+  @@index([finalStatus])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("broadcast_delivery_logs")
 }
 
 model ClickLog {
