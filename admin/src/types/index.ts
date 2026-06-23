@@ -675,6 +675,38 @@ export interface SystemHealthReport {
   timestamp: string;
 }
 
+export interface DeletePreview {
+  user: {
+    id: number;
+    telegramId: string;
+    username: string | null;
+    firstName: string;
+    createdAt: string;
+  } | null;
+  willDelete: Record<string, number>;
+  safetyWarnings: string[];
+}
+
+export interface DeleteResult {
+  success: boolean;
+  deletedUserId: number;
+  auditId: number;
+  recordsDeleted: Record<string, number>;
+}
+
+export interface DeletedUserAudit {
+  id: number;
+  deletedUserId: number;
+  telegramId: string;
+  username: string | null;
+  firstName: string | null;
+  deletedByAdminId: number;
+  deletedByAdminName: string | null;
+  deletedAt: string;
+  snapshot: any;
+  reason: string | null;
+}
+
 export type PanelAdminRole = "OWNER" | "ADMIN" | "SUPER_ADMIN" | "MODERATOR";
 export interface FeatureToggleItem {
   id: number;

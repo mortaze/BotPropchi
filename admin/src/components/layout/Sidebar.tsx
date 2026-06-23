@@ -4,7 +4,7 @@ import { useState } from "react";
 import { BRAND_NAME } from "@/config/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, Building2, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, Percent, RadioTower, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trophy, UserCog, Users, X } from "lucide-react";
+import { BarChart3, Bot, Building2, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, Percent, RadioTower, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
 
@@ -18,7 +18,8 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { key: "dashboard", label: "داشبورد", href: "/dashboard", icon: LayoutDashboard },
-  { key: "users", label: "کاربران", href: "/dashboard/users", icon: Users },
+      { key: "users", label: "کاربران", href: "/dashboard/users", icon: Users },
+      { key: "deleted-users", label: "حذف‌شده‌ها", href: "/dashboard/deleted-users", icon: Trash2 },
   {
     key: "posts", label: "پست‌ها", href: "/dashboard/posts", icon: FileText,
     children: [

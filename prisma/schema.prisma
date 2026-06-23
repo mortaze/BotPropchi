@@ -1064,3 +1064,21 @@ enum PostButtonType {
   SEND_COMMAND
   INTERNAL_NAV
 }
+
+model DeletedUsersAudit {
+  id                Int      @id @default(autoincrement())
+  deletedUserId     Int
+  telegramId        BigInt
+  username          String?
+  firstName         String?
+  deletedByAdminId  Int
+  deletedByAdminName String?
+  deletedAt         DateTime @default(now())
+  snapshot          Json
+  reason            String?
+
+  @@index([deletedUserId])
+  @@index([telegramId])
+  @@index([deletedAt])
+  @@map("deleted_users_audit")
+}

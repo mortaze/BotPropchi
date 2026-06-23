@@ -387,6 +387,21 @@ export const systemIntegrityApi = {
   },
 };
 
+export const userDeleteApi = {
+  async getPreview(userId: number): Promise<{ success: boolean; data: import("@/types").DeletePreview }> {
+    const { data } = await api.get(`/api/admin/users/${userId}/delete-preview`);
+    return data;
+  },
+  async deleteUser(userId: number): Promise<{ success: boolean; data: import("@/types").DeleteResult }> {
+    const { data } = await api.delete(`/api/admin/users/${userId}`);
+    return data;
+  },
+  async getDeletedUsers(params: { page?: number; limit?: number } = {}): Promise<{ success: boolean; data: { items: import("@/types").DeletedUserAudit[]; total: number; pages: number } }> {
+    const { data } = await api.get("/api/admin/users/deleted", { params });
+    return data;
+  },
+};
+
 export const analyticsApi = {
   async dashboard(): Promise<{ success: boolean; data: import("@/types").AnalyticsDashboard }> {
     const { data } = await api.get("/api/analytics/dashboard");
