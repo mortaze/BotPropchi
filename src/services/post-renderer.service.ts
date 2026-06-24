@@ -214,11 +214,16 @@ function resolveEntitiesForMessage(
   segment: ContentSegment,
   allSegments?: ContentSegment[],
 ): any[] {
+  // Priority 1: post_entities (richEntities) with absolute offset extraction
+  // These are per-message entities stored in post_entities table
   const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
-  if (fromContent.length > 0) return fromContent;
+  if (fromContent.length > 0) {
+    logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) content entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+    return fromContent;
+  }
 
+  // Priority 2: telegramMessageSnapshot entities (fallback)
   if (post.telegramMessageSnapshot) {
-    // Compute occurrence index: how many segments before this one have the same text
     let occurrenceIndex = 0;
     if (allSegments) {
       for (const s of allSegments) {
@@ -226,13 +231,18 @@ function resolveEntitiesForMessage(
         if (s.text === segment.text) occurrenceIndex++;
       }
     }
-    return extractSnapshotEntitiesForSegment(
+    const snapshotEntities = extractSnapshotEntitiesForSegment(
       post.telegramMessageSnapshot.text,
       post.telegramMessageSnapshot.entities,
       segment.text,
       occurrenceIndex,
     );
+    if (snapshotEntities.length > 0) {
+      logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) snapshot entities=${snapshotEntities.length} types=${snapshotEntities.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+      return snapshotEntities;
+    }
   }
+
   return [];
 }
 
