@@ -12,7 +12,7 @@ function ensureMessagesFormat(raw: any): any {
 function getMessageButtons(raw: any, messageIdx: number): any[][] {
   if (!raw) return [];
   if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
+    return raw.messages[String(messageIdx)] || [];
   }
   if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
   return [];
@@ -161,8 +161,8 @@ describe('getMessageButtons', () => {
     expect(getMessageButtons(msgFormat, 1)).toEqual([[{ text: 'Btn1', type: 'URL' }], [{ text: 'Btn1b', type: 'URL' }]]);
   });
 
-  it('falls back to _shared for missing message index', () => {
-    expect(getMessageButtons(msgFormat, 99)).toEqual([[{ text: 'Shared', type: 'URL' }]]);
+  it('returns empty for missing message index (no _shared fallback)', () => {
+    expect(getMessageButtons(msgFormat, 99)).toEqual([]);
   });
 
   it('extracts message 0 buttons from array format', () => {

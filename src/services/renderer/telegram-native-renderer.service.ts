@@ -110,7 +110,7 @@ export class TelegramNativeRenderer {
     const caption = snapshot.caption ?? payload.caption ?? post.caption ?? undefined;
     const textEntities = nonEmptyEntities(snapshot.entities) || nonEmptyEntities(payload.entities) || nonEmptyEntities(entitiesFromRows(post.postEntities || post.richEntities, 'text')) || nonEmptyEntities(cleanEntities(post.contentEntities)) || nonEmptyEntities(cleanEntities(post.entities));
     const captionEntities = nonEmptyEntities(snapshot.caption_entities) || nonEmptyEntities(payload.captionEntities) || nonEmptyEntities(entitiesFromRows(post.postEntities || post.richEntities, 'caption')) || (caption ? nonEmptyEntities(cleanEntities(post.contentEntities)) || nonEmptyEntities(cleanEntities(post.entities)) : undefined);
-    const media = Array.isArray(payload.media) && payload.media.length ? cloneJson(payload.media) : extractTelegramSnapshot(snapshot).media;
+    const media = Array.isArray(payload.media) && payload.media.length ? cloneJson(payload.media) : (Array.isArray(post.media) && post.media.length ? cloneJson(post.media) : []) || extractTelegramSnapshot(snapshot).media;
     const keyboard = payload.keyboard || (Array.isArray(post.buttons) ? post.buttons : []) || snapshot.reply_markup?.inline_keyboard || [];
     const buttons = buildTelegramKeyboard(keyboard, post.id);
     const markup = buttons.length ? Markup.inlineKeyboard(buttons) : {};

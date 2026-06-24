@@ -143,7 +143,7 @@ function ensureMessagesFormat(raw: any): any {
 function getMessageButtons(raw: any, messageIdx: number): any[][] {
   if (!raw) return [];
   if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
+    return raw.messages[String(messageIdx)] || [];
   }
   if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
   return [];

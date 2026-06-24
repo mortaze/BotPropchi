@@ -14,7 +14,6 @@ import {
   MEDIA_SENDERS,
 } from './renderer';
 import { sendFormattedMessage } from '../shared/message-format';
-import { normalizePost } from './post-normalizer.service';
 
 export function validateTelegramHtml(html?: string | null): string[] {
   return telegramRequestValidator.validateHtml(html);
@@ -45,62 +44,110 @@ export function comparePostNativeRoundtrip(post: any) {
   return telegramSnapshotComparator.compare(post);
 }
 
-function splitContentMessages(content: string): string[] {
+type ContentSegment = {
+  text: string;
+  offset: number;
+};
+
+function splitContentMessagesWithOffsets(content: string): ContentSegment[] {
   if (!content || !content.trim()) return [];
-  const messages: string[] = [];
+  const segments: ContentSegment[] = [];
   const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
+
   while ((match = regex.exec(content)) !== null) {
     if (match.index > lastIndex) {
-      const before = content.slice(lastIndex, match.index).trim();
-      if (before) messages.push(before);
+      const raw = content.slice(lastIndex, match.index);
+      const trimmed = raw.trim();
+      if (trimmed) {
+        const leadingWs = raw.length - raw.trimStart().length;
+        segments.push({ text: trimmed, offset: lastIndex + leadingWs });
+      }
     }
-    messages.push(match[1].trim());
+    const innerRaw = match[1];
+    const trimmed = innerRaw.trim();
+    if (trimmed) {
+      const innerOffset = match.index + match[0].indexOf(match[1]);
+      const leadingWs = innerRaw.length - innerRaw.trimStart().length;
+      segments.push({ text: trimmed, offset: innerOffset + leadingWs });
+    }
     lastIndex = match.index + match[0].length;
   }
+
   if (lastIndex < content.length) {
-    const remaining = content.slice(lastIndex).trim();
-    if (remaining) messages.push(remaining);
+    const raw = content.slice(lastIndex);
+    const trimmed = raw.trim();
+    if (trimmed) {
+      const leadingWs = raw.length - raw.trimStart().length;
+      segments.push({ text: trimmed, offset: lastIndex + leadingWs });
+    }
   }
-  if (messages.length === 0 && content.trim()) messages.push(content.trim());
-  return messages;
+
+  if (segments.length === 0 && content.trim()) {
+    const trimmed = content.trim();
+    const leadingWs = content.length - content.trimStart().length;
+    segments.push({ text: trimmed, offset: leadingWs });
+  }
+
+  return segments;
+}
+
+function splitContentMessages(content: string): string[] {
+  return splitContentMessagesWithOffsets(content).map(s => s.text);
+}
+
+function adjustEntitiesForMessage(
+  entities: any[] | null | undefined,
+  segmentOffset: number,
+  segmentLength: number,
+): any[] | undefined {
+  if (!Array.isArray(entities) || entities.length === 0) return undefined;
+  const adjusted: any[] = [];
+  for (const e of entities) {
+    if (e.offset >= segmentOffset && e.offset + e.length <= segmentOffset + segmentLength) {
+      adjusted.push({ ...e, offset: e.offset - segmentOffset });
+    }
+  }
+  return adjusted.length > 0 ? adjusted : undefined;
 }
 
 function getMessageButtonsFromPost(post: any, messageIdx: number): any[][] {
   const raw = post.buttons;
   if (!raw) return [];
   if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
+    return raw.messages[String(messageIdx)] || [];
   }
   if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
   return [];
 }
 
 export async function renderPostToTelegram(ctx: any, post: any) {
-  const messages = splitContentMessages(post.content || '');
-  if (messages.length > 1) {
-    for (let i = 0; i < messages.length; i++) {
+  const segments = splitContentMessagesWithOffsets(post.content || '');
+  if (segments.length > 1) {
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
       const msgButtons = getMessageButtonsFromPost(post, i);
-      const msgPost = {
-        ...post,
-        content: messages[i],
+      const msgPost: any = {
+        id: post.id,
+        title: post.title,
+        content: seg.text,
         buttons: msgButtons,
-        telegramPayload: undefined,
-        telegramMessageSnapshot: post.telegramMessageSnapshot
-          ? { ...post.telegramMessageSnapshot, reply_markup: undefined }
-          : undefined,
+        entities: adjustEntitiesForMessage(post.entities, seg.offset, seg.text.length),
+        media: i === 0 ? post.media : undefined,
+        renderMode: post.renderMode,
+        contentFormat: post.contentFormat,
       };
       try {
         if (i === 0) {
           await renderSinglePost(ctx, msgPost);
         } else {
-          await sendFormattedMessage(ctx, { text: messages[i] }, {
+          await sendFormattedMessage(ctx, { text: seg.text, entities: msgPost.entities }, {
             buttons: buildTelegramKeyboard(msgButtons, post.id),
           });
         }
       } catch (e) {
-        logger.error(`[Pipeline] post=${post.id} message ${i + 1}/${messages.length} FAILED — aborting: ${e}`);
+        logger.error(`[Pipeline] post=${post.id} message ${i + 1}/${segments.length} FAILED — aborting: ${e}`);
         throw e;
       }
     }
