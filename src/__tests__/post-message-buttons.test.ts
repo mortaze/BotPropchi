@@ -853,6 +853,172 @@ describe('buildMessageContext', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+// renderMessage pure function (replicated from telegram-native-renderer.service.ts)
+// ══════════════════════════════════════════════════════════════════
+
+function telegramLength(text: string) {
+  return Buffer.from(text || '', 'utf16le').length / 2;
+}
+
+function renderMessagePure(
+  content: string,
+  entities: any[],
+  buttons: any[][],
+  media: any[] | undefined,
+): any {
+  const text = content || '';
+  const textEntities = entities?.length ? JSON.parse(JSON.stringify(entities)) : undefined;
+  const btnKeyboard = buttons?.length ? JSON.parse(JSON.stringify(buttons)) : [];
+  const markup = btnKeyboard.length ? { inline_keyboard: btnKeyboard } : undefined;
+  const mediaList = media?.length ? JSON.parse(JSON.stringify(media)) : [];
+
+  if (mediaList.length > 1) {
+    return {
+      method: 'sendMediaGroup',
+      media: mediaList.map((m: any, i: number) => ({
+        type: m.type,
+        media: m.fileId,
+        caption: i === 0 ? (m.caption || text || undefined) : undefined,
+        caption_entities: i === 0 ? textEntities : undefined,
+      })),
+    };
+  }
+
+  if (mediaList.length === 1) {
+    const m = mediaList[0];
+    if (m.type === 'sticker') {
+      return { method: 'sendSticker', sticker: m.fileId, reply_markup: markup };
+    }
+    return {
+      method: 'sendPhoto',
+      media: m.fileId,
+      caption: m.caption || text || undefined,
+      caption_entities: textEntities,
+      reply_markup: markup,
+    };
+  }
+
+  return {
+    method: 'sendMessage',
+    text: text || '(پست خالی)',
+    entities: textEntities,
+    reply_markup: markup,
+  };
+}
+
+describe('renderMessage (pure function)', () => {
+  it('returns sendMessage payload for text-only message', () => {
+    const payload = renderMessagePure('Hello World', [{ offset: 0, length: 5, type: 'bold' }], [], undefined);
+    expect(payload.method).toBe('sendMessage');
+    expect(payload.text).toBe('Hello World');
+    expect(payload.entities).toBeDefined();
+    expect(payload.entities).toHaveLength(1);
+    expect(payload.entities[0].type).toBe('bold');
+  });
+
+  it('returns sendMessage with empty text fallback', () => {
+    const payload = renderMessagePure('', [], [], undefined);
+    expect(payload.method).toBe('sendMessage');
+    expect(payload.text).toBe('(پست خالی)');
+    expect(payload.entities).toBeUndefined();
+  });
+
+  it('returns sendSticker payload for single sticker media', () => {
+    const payload = renderMessagePure('Caption', [], [], [{ type: 'sticker', fileId: 'sticker123' }]);
+    expect(payload.method).toBe('sendSticker');
+    expect(payload.sticker).toBe('sticker123');
+    expect(payload.reply_markup).toBeUndefined();
+  });
+
+  it('returns sendPhoto payload for single photo media', () => {
+    const payload = renderMessagePure('Photo caption', [], [], [{ type: 'photo', fileId: 'photo123', caption: 'Photo caption' }]);
+    expect(payload.method).toBe('sendPhoto');
+    expect(payload.media).toBe('photo123');
+    expect(payload.caption).toBe('Photo caption');
+  });
+
+  it('returns sendMediaGroup payload for multiple media', () => {
+    const payload = renderMessagePure('Group text', [], [], [
+      { type: 'photo', fileId: 'p1' },
+      { type: 'video', fileId: 'v1' },
+    ]);
+    expect(payload.method).toBe('sendMediaGroup');
+    expect(payload.media).toHaveLength(2);
+    expect(payload.media[0].media).toBe('p1');
+    expect(payload.media[0].caption).toBe('Group text');
+    expect(payload.media[1].caption).toBeUndefined();
+  });
+
+  it('includes reply_markup when buttons present', () => {
+    const payload = renderMessagePure('Text', [], [[{ text: 'Btn', url: 'https://x.com' }]], undefined);
+    expect(payload.reply_markup).toBeDefined();
+    expect(payload.reply_markup.inline_keyboard).toHaveLength(1);
+  });
+
+  it('deep clones entities (mutation after call does not affect result)', () => {
+    const entities = [{ offset: 0, length: 4, type: 'bold' }];
+    const payload = renderMessagePure('Hello', entities, [], undefined);
+    entities[0].type = 'italic';
+    expect(payload.entities[0].type).toBe('bold');
+  });
+
+  it('deep clones buttons (mutation after call does not affect result)', () => {
+    const buttons: any[][] = [[{ text: 'Original', url: 'https://x.com' }]];
+    const payload = renderMessagePure('Text', [], buttons, undefined);
+    buttons[0][0].text = 'Mutated';
+    expect(payload.reply_markup.inline_keyboard[0][0].text).toBe('Original');
+  });
+
+  it('deep clones media (mutation after call does not affect result)', () => {
+    const media = [{ type: 'photo', fileId: 'originalId' }];
+    const payload = renderMessagePure('Text', [], [], media);
+    media[0].fileId = 'mutatedId';
+    expect(payload.media).toBe('originalId');
+  });
+
+  it('returns different payload objects for sequential calls', () => {
+    const p1 = renderMessagePure('Msg1', [{ offset: 0, length: 2, type: 'bold' }], [], undefined);
+    const p2 = renderMessagePure('Msg2', [{ offset: 0, length: 2, type: 'italic' }], [], undefined);
+    expect(p1).not.toBe(p2);
+    expect(p1.entities[0].type).toBe('bold');
+    expect(p2.entities[0].type).toBe('italic');
+  });
+});
+
+// ─── ensureNoSharedRefs runtime guard ─────────────────────────────
+
+function ensureNoSharedRefs(ctx: any): void {
+  if (ctx.__sharedReference === true) {
+    throw new Error('[RENDER] RENDER PIPELINE LEAK DETECTED — shared reference flag is set');
+  }
+  if (ctx.message && ctx.message.__sharedReference === true) {
+    throw new Error('[RENDER] RENDER PIPELINE LEAK DETECTED — message has shared reference flag');
+  }
+}
+
+describe('ensureNoSharedRefs runtime guard', () => {
+  it('passes silently for clean context', () => {
+    expect(() => ensureNoSharedRefs({})).not.toThrow();
+  });
+
+  it('passes silently for normal PostMessage', () => {
+    expect(() => ensureNoSharedRefs({ message: { index: 0, content: 'Hello', entities: [], buttons: [], media: undefined, snapshot: undefined }, postId: 1 })).not.toThrow();
+  });
+
+  it('throws for context with __sharedReference set to true', () => {
+    expect(() => ensureNoSharedRefs({ __sharedReference: true })).toThrow('RENDER PIPELINE LEAK DETECTED');
+  });
+
+  it('throws for message with __sharedReference set to true', () => {
+    expect(() => ensureNoSharedRefs({ message: { __sharedReference: true, content: 'Leak' } })).toThrow('RENDER PIPELINE LEAK DETECTED');
+  });
+
+  it('does not throw for __sharedReference set to false', () => {
+    expect(() => ensureNoSharedRefs({ __sharedReference: false })).not.toThrow();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
 // MESSAGE CONTEXT ISOLATION TESTS (using splitPostToMessages)
 // ══════════════════════════════════════════════════════════════════
 

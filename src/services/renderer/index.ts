@@ -7,6 +7,9 @@ export {
   cleanEntities,
   cloneJson,
   buildTelegramKeyboard,
+  renderMessage,
+  ensureNoSharedRefs,
+  TelegramPayload,
   MEDIA_SENDERS,
 } from './telegram-native-renderer.service';
 export { TelegramRequestValidator, telegramRequestValidator } from './telegram-request-validator.service';

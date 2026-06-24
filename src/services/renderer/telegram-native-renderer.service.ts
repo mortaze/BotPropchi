@@ -8,6 +8,18 @@ const ENTITY_TYPES = new Set([
   'text_link', 'text_mention', 'custom_emoji',
 ]);
 
+export interface TelegramPayload {
+  method: string;
+  text?: string;
+  entities?: any[];
+  caption?: string;
+  caption_entities?: any[];
+  media?: any;
+  reply_markup?: any;
+  link_preview_options?: any;
+  [key: string]: any;
+}
+
 const SNAPSHOT_FIELDS = [
   'message_id', 'text', 'caption', 'entities', 'caption_entities', 'media_group_id', 'reply_markup',
   'photo', 'video', 'animation', 'document', 'audio', 'voice', 'sticker', 'quote', 'forward_origin',
@@ -160,6 +172,67 @@ export class TelegramNativeRenderer {
     const request: any = { method: 'sendMessage', text: p.text || '(پست خالی)', ...p.common, entities: p.textEntities || undefined };
     return request;
   }
+}
+
+// ─── PURE RENDER MESSAGE (no cascade, no shared state) ────────────
+
+export function ensureNoSharedRefs(ctx: any): void {
+  if (ctx.__sharedReference === true) {
+    throw new Error('[RENDER] RENDER PIPELINE LEAK DETECTED — shared reference flag is set');
+  }
+  if (ctx.message && ctx.message.__sharedReference === true) {
+    throw new Error('[RENDER] RENDER PIPELINE LEAK DETECTED — message has shared reference flag');
+  }
+}
+
+export function renderMessage(
+  content: string,
+  entities: any[],
+  buttons: any[][],
+  media: any[] | undefined,
+  postId: number,
+): TelegramPayload {
+  const text = content || '';
+  const textEntities = nonEmptyEntities(entities && entities.length ? cloneJson(entities) : undefined);
+  const btnKeyboard = buttons && buttons.length > 0 ? buildTelegramKeyboard(cloneJson(buttons), postId) : [];
+  const markup = btnKeyboard.length ? Markup.inlineKeyboard(btnKeyboard) : undefined;
+  const mediaList = media && media.length > 0 ? cloneJson(media) : [];
+
+  if (mediaList.length > 1) {
+    return {
+      method: 'sendMediaGroup',
+      media: mediaList.map((m: any, i: number) => ({
+        type: MEDIA_SENDERS[m.type]?.inputType || m.type,
+        media: m.fileId,
+        caption: i === 0 ? (m.caption || text || undefined) : undefined,
+        caption_entities: i === 0 ? (nonEmptyEntities(cloneJson(m.captionEntities)) || textEntities) : undefined,
+      })),
+    };
+  }
+
+  if (mediaList.length === 1) {
+    const m = mediaList[0];
+    if (m.type === 'sticker') {
+      return { method: 'sendSticker', sticker: m.fileId, reply_markup: markup, link_preview_options: { is_disabled: true } };
+    }
+    const sender = MEDIA_SENDERS[m.type] || MEDIA_SENDERS.document;
+    return {
+      method: sender.apiMethod,
+      media: m.fileId,
+      caption: m.caption || text || undefined,
+      caption_entities: nonEmptyEntities(cloneJson(m.captionEntities)) || textEntities,
+      reply_markup: markup,
+      link_preview_options: { is_disabled: true },
+    };
+  }
+
+  return {
+    method: 'sendMessage',
+    text: text || '(پست خالی)',
+    entities: textEntities,
+    reply_markup: markup,
+    link_preview_options: { is_disabled: true },
+  };
 }
 
 export { telegramLength, nonEmptyEntities, cleanEntities, cloneJson, buildTelegramKeyboard, MEDIA_SENDERS, ENTITY_TYPES };

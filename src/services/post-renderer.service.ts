@@ -2,6 +2,7 @@ import { Markup } from 'telegraf';
 import { logger } from '../utils/logger';
 import {
   TelegramNativeRenderer,
+  TelegramPayload,
   telegramRequestValidator,
   telegramSnapshotComparator,
   deliveryDebugService,
@@ -11,6 +12,8 @@ import {
   cleanEntities,
   cloneJson,
   buildTelegramKeyboard,
+  renderMessage,
+  ensureNoSharedRefs,
   MEDIA_SENDERS,
 } from './renderer';
 import { sendFormattedMessage } from '../shared/message-format';
@@ -254,6 +257,40 @@ function buildMessagePostForRender(
   };
 }
 
+// ─── Internal: send a pure TelegramPayload ────────────────────────
+
+async function sendPayload(ctx: any, payload: TelegramPayload, postId: number): Promise<boolean> {
+  const { method, ...params } = payload;
+
+  logger.info(`[TelegramSend] post=${postId} method=${method}`);
+
+  if (method === 'sendMessage') {
+    await sendFormattedMessage(ctx, {
+      text: params.text || '',
+      entities: params.entities,
+    }, {
+      buttons: (payload.reply_markup?.inline_keyboard) || undefined,
+      link_preview: !params.link_preview_options?.is_disabled,
+      protect_content: params.protect_content,
+    });
+    return true;
+  }
+
+  if (method === 'sendMediaGroup') {
+    logger.info(`[TelegramSend] post=${postId} sendMediaGroup items=${(params.media || []).length}`);
+    await ctx.replyWithMediaGroup(params.media);
+    if (payload.reply_markup?.inline_keyboard?.length) {
+      await ctx.reply('عملیات:', Markup.inlineKeyboard(payload.reply_markup.inline_keyboard));
+    }
+    return true;
+  }
+
+  await sendFormattedMessage(ctx, { text: params.text || '', caption: params.caption, entities: params.entities, caption_entities: params.caption_entities }, {
+    buttons: (payload.reply_markup?.inline_keyboard) || undefined,
+  });
+  return true;
+}
+
 // ─── Main entry: renderPostToTelegram ──────────────────────────────
 
 export async function renderPostToTelegram(ctx: any, post: any) {
@@ -262,19 +299,16 @@ export async function renderPostToTelegram(ctx: any, post: any) {
     logger.info(`[Pipeline] post=${post.id} multiMessage count=${messages.length}`);
     for (const msg of messages) {
       try {
-        if (msg.index === 0) {
-          const msgPost = buildMessagePostForRender(post, msg);
-          await renderSinglePost(ctx, msgPost);
-        } else {
-          await sendFormattedMessage(ctx, {
-            text: msg.content,
-            entities: msg.entities.length > 0 ? msg.entities : undefined,
-          }, {
-            buttons: msg.buttons.length > 0
-              ? buildTelegramKeyboard(msg.buttons, post.id)
-              : undefined,
-          });
-        }
+        ensureNoSharedRefs(msg);
+        const payload = renderMessage(
+          msg.content,
+          msg.entities,
+          msg.buttons,
+          msg.media,
+          post.id,
+        );
+        const safePayload = cloneJson(payload);
+        await sendPayload(ctx, safePayload, post.id);
       } catch (e) {
         logger.error(`[Pipeline] post=${post.id} message ${msg.index + 1}/${messages.length} FAILED — aborting: ${e}`);
         throw e;
