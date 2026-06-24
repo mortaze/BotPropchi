@@ -127,8 +127,9 @@ function extractContentEntitiesForSegment(
   if (!Array.isArray(entities) || entities.length === 0) return [];
   const adjusted: any[] = [];
   for (const e of entities) {
-    if (e.offset >= segmentOffset && e.offset + e.length <= segmentOffset + segmentLength) {
-      adjusted.push({ ...e, offset: e.offset - segmentOffset });
+    if (e.offset >= segmentOffset && e.offset < segmentOffset + segmentLength) {
+      const clampedEnd = Math.min(e.offset + e.length, segmentOffset + segmentLength);
+      adjusted.push({ ...e, offset: e.offset - segmentOffset, length: clampedEnd - e.offset });
     }
   }
   return adjusted;
@@ -138,12 +139,19 @@ function extractSnapshotEntitiesForSegment(
   snapshotText: string | undefined,
   snapshotEntities: any[] | null | undefined,
   segmentText: string,
+  occurrenceIndex?: number,
 ): any[] {
   if (!snapshotText || !Array.isArray(snapshotEntities) || snapshotEntities.length === 0) {
     return [];
   }
-  const pos = snapshotText.indexOf(segmentText);
-  if (pos < 0) return [];
+  // Find the nth occurrence to handle duplicate text across messages.
+  // Without occurrenceIndex, falls back to first occurrence (original behavior).
+  let pos = -1;
+  const targetOccurrence = occurrenceIndex ?? 0;
+  for (let i = 0; i <= targetOccurrence; i++) {
+    pos = snapshotText.indexOf(segmentText, pos + 1);
+    if (pos < 0) return [];
+  }
   const end = pos + segmentText.length;
   const adjusted: any[] = [];
   for (const e of snapshotEntities) {
@@ -184,15 +192,25 @@ function splitTelegramSnapshotForMessage(
 function resolveEntitiesForMessage(
   post: any,
   segment: ContentSegment,
+  allSegments?: ContentSegment[],
 ): any[] {
   const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
   if (fromContent.length > 0) return fromContent;
 
   if (post.telegramMessageSnapshot) {
+    // Compute occurrence index: how many segments before this one have the same text
+    let occurrenceIndex = 0;
+    if (allSegments) {
+      for (const s of allSegments) {
+        if (s.offset >= segment.offset) break;
+        if (s.text === segment.text) occurrenceIndex++;
+      }
+    }
     return extractSnapshotEntitiesForSegment(
       post.telegramMessageSnapshot.text,
       post.telegramMessageSnapshot.entities,
       segment.text,
+      occurrenceIndex,
     );
   }
   return [];
@@ -206,7 +224,7 @@ export function splitPostToMessages(post: any): PostMessage[] {
   if (segments.length === 0) return [];
 
   return segments.map((seg, i) => {
-    const entities = resolveEntitiesForMessage(post, seg);
+    const entities = resolveEntitiesForMessage(post, seg, segments);
     const rawButtons = extractButtonsForMessage(post.buttons, i);
     const buttons = rawButtons.length > 0 ? cloneJson(rawButtons) : [];
 
