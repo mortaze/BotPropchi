@@ -15,13 +15,14 @@ const lotterySchema = z.object({
   title: z.string().min(2),
   description: z.string().optional().nullable(),
   prize: z.string().min(1),
-  startAt: dateField,
-  endAt: dateField,
+  startAt: dateField.optional().nullable(),
+  endAt: dateField.optional().nullable(),
   winnersCount: numberField.positive().default(1),
   minPoints: numberField.min(0).default(0),
   entryCost: numberField.min(0).default(10),
   isActive: z.boolean().default(true),
   announcementMsg: z.string().optional().nullable(),
+  winnerMessage: z.string().optional().nullable(),
 });
 
 function serializeBigInts(value: any): any {
@@ -51,10 +52,6 @@ router.post('/', async (req, res) => {
     const parsed = lotterySchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.flatten() });
-    }
-
-    if (parsed.data.endAt <= parsed.data.startAt) {
-      return res.status(400).json({ success: false, error: 'تاریخ پایان باید بعد از تاریخ شروع باشد' });
     }
 
     const lottery = await lotteryService.createLottery(parsed.data);
@@ -92,12 +89,6 @@ router.put('/:id', async (req, res) => {
     const current = await lotteryService.getById(Number(req.params.id));
     if (!current) {
       return res.status(404).json({ success: false, error: 'قرعه‌کشی یافت نشد' });
-    }
-
-    const startAt = parsed.data.startAt ?? current.startAt;
-    const endAt = parsed.data.endAt ?? current.endAt;
-    if (endAt <= startAt) {
-      return res.status(400).json({ success: false, error: 'تاریخ پایان باید بعد از تاریخ شروع باشد' });
     }
 
     const lottery = await lotteryService.updateLottery(Number(req.params.id), parsed.data);
@@ -140,6 +131,82 @@ router.get('/:id/winners', async (req, res) => {
   } catch (error) {
     logger.error('❌ GET WINNERS ERROR', error);
     return res.status(500).json({ success: false, error: 'خطا در دریافت برندگان' });
+  }
+});
+
+// ─── Wheel Lottery Endpoints ─────────────────────────────────
+
+router.get('/:id/wheel/participants', async (req, res) => {
+  try {
+    const participants = await lotteryService.getWheelParticipants(Number(req.params.id));
+    return res.json({ success: true, data: serializeBigInts(participants) });
+  } catch (error) {
+    logger.error('❌ GET WHEEL PARTICIPANTS ERROR', error);
+    return res.status(500).json({ success: false, error: 'خطا در دریافت شرکت‌کنندگان' });
+  }
+});
+
+router.get('/:id/wheel/segments', async (req, res) => {
+  try {
+    const segments = await lotteryService.getWheelSegments(Number(req.params.id));
+    return res.json({ success: true, data: serializeBigInts(segments) });
+  } catch (error) {
+    logger.error('❌ GET WHEEL SEGMENTS ERROR', error);
+    return res.status(500).json({ success: false, error: 'خطا در دریافت بخش‌های گردونه' });
+  }
+});
+
+router.post('/:id/wheel/spin', async (req, res) => {
+  try {
+    const result = await lotteryService.spinWheel(Number(req.params.id));
+    return res.json({ success: true, data: serializeBigInts(result) });
+  } catch (error: any) {
+    logger.error('❌ WHEEL SPIN ERROR', error);
+    return res.status(400).json({ success: false, error: error.message || 'خطا در چرخش گردونه' });
+  }
+});
+
+router.post('/:id/wheel/complete', async (req, res) => {
+  try {
+    await lotteryService.updateLottery(Number(req.params.id), { isCompleted: true, isActive: false });
+    return res.json({ success: true, message: 'قرعه‌کشی پایان یافت' });
+  } catch (error: any) {
+    logger.error('❌ COMPLETE LOTTERY ERROR', error);
+    return res.status(400).json({ success: false, error: error.message || 'خطا در پایان قرعه‌کشی' });
+  }
+});
+
+router.post('/:id/wheel/participants', async (req, res) => {
+  try {
+    const { userId, chances } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'userId الزامی است' });
+    }
+    const participant = await lotteryService.addParticipant(Number(req.params.id), Number(userId), Number(chances || 1));
+    return res.json({ success: true, data: serializeBigInts(participant) });
+  } catch (error: any) {
+    logger.error('❌ ADD PARTICIPANT ERROR', error);
+    return res.status(400).json({ success: false, error: error.message || 'خطا در اضافه کردن شرکت‌کننده' });
+  }
+});
+
+router.delete('/:id/wheel/participants/:userId', async (req, res) => {
+  try {
+    await lotteryService.removeParticipant(Number(req.params.id), Number(req.params.userId));
+    return res.json({ success: true, message: 'شرکت‌کننده حذف شد' });
+  } catch (error: any) {
+    logger.error('❌ REMOVE PARTICIPANT ERROR', error);
+    return res.status(400).json({ success: false, error: error.message || 'خطا در حذف شرکت‌کننده' });
+  }
+});
+
+router.post('/:id/notifications/send', async (req, res) => {
+  try {
+    const result = await lotteryService.sendWinnerNotifications(Number(req.params.id));
+    return res.json({ success: true, data: result, message: `${result.sentCount} پیام ارسال شد` });
+  } catch (error: any) {
+    logger.error('❌ SEND NOTIFICATIONS ERROR', error);
+    return res.status(400).json({ success: false, error: error.message || 'خطا در ارسال پیام‌ها' });
   }
 });
 

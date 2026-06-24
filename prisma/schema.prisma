@@ -49,6 +49,7 @@ model User {
   leaderboardCacheEntries    LeaderboardCache[]              @relation("LeaderboardCacheUser")
   lotteryEntries             LotteryEntry[]
   lotteryWins                LotteryWinner[]
+  winnerNotifications        WinnerNotification[]
   miniAppDebugLogs           MiniAppDebugLog[]
   pointLogs                  PointLog[]
   referralLogsAsInviter      ReferralLog[]                   @relation("ReferralLogInviter")
@@ -253,22 +254,24 @@ model ReferralSettings {
 }
 
 model Lottery {
-  id              Int             @id @default(autoincrement())
+  id              Int                 @id @default(autoincrement())
   title           String
   description     String?
   prize           String
-  startAt         DateTime
-  endAt           DateTime
-  winnersCount    Int             @default(1)
-  minPoints       Int             @default(0)
-  isActive        Boolean         @default(true)
-  isCompleted     Boolean         @default(false)
+  startAt         DateTime?
+  endAt           DateTime?
+  winnersCount    Int                 @default(1)
+  minPoints       Int                 @default(0)
+  isActive        Boolean             @default(true)
+  isCompleted     Boolean             @default(false)
   announcementMsg String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  entryCost       Int             @default(10)
+  winnerMessage   String?             @default("تبریک 🎉\nشما برنده قرعه‌کشی شدید.\nبرای دریافت جایزه با پشتیبانی تماس بگیرید.")
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  entryCost       Int                 @default(10)
   entries         LotteryEntry[]
   winners         LotteryWinner[]
+  notifications   WinnerNotification[]
 
   @@map("lotteries")
 }
@@ -303,6 +306,7 @@ model LotteryWinner {
   winnerLastName   String?
   notified         Boolean  @default(false)
   prizeDelivered   Boolean  @default(false)
+  roundNumber      Int      @default(1)
   wonAt            DateTime @default(now())
   lottery          Lottery  @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -311,6 +315,21 @@ model LotteryWinner {
   @@index([lotteryId])
   @@index([userId])
   @@map("lottery_winners")
+}
+
+model WinnerNotification {
+  id         Int      @id @default(autoincrement())
+  lotteryId  Int
+  userId     Int
+  sentAt     DateTime @default(now())
+  status     String   @default("PENDING")
+  lottery    Lottery  @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([lotteryId, userId])
+  @@index([lotteryId])
+  @@index([userId])
+  @@map("winner_notifications")
 }
 
 model RequiredChannel {

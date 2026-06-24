@@ -134,13 +134,35 @@ export interface LotteryPayload {
   title: string;
   description?: string | null;
   prize: string;
-  startAt: string;
-  endAt: string;
+  startAt?: string | null;
+  endAt?: string | null;
   winnersCount: number;
   minPoints: number;
   entryCost: number;
   isActive: boolean;
   announcementMsg?: string | null;
+  winnerMessage?: string | null;
+}
+
+export interface WheelParticipant {
+  userId: number;
+  user: { id: number; firstName: string; lastName: string | null; username: string | null; telegramId: string };
+  chances: number;
+  isRemoved: boolean;
+}
+
+export interface WheelSegment {
+  userId: number;
+  firstName: string;
+  lastName: string | null;
+  username: string | null;
+  chances: number;
+}
+
+export interface SpinResult {
+  winner: LotteryWinner | null;
+  remainingParticipants: number;
+  isCompleted: boolean;
 }
 
 export const lotteriesApi = {
@@ -170,6 +192,35 @@ export const lotteriesApi = {
   },
   async getWinners(id: number): Promise<{ success: boolean; winners: LotteryWinner[] }> {
     const { data } = await api.get(`/api/lotteries/${id}/winners`);
+    return data;
+  },
+  // ─── Wheel Lottery API ─────────────────────────────────────
+  async getWheelParticipants(id: number): Promise<{ success: boolean; data: WheelParticipant[] }> {
+    const { data } = await api.get(`/api/lotteries/${id}/wheel/participants`);
+    return data;
+  },
+  async getWheelSegments(id: number): Promise<{ success: boolean; data: WheelSegment[] }> {
+    const { data } = await api.get(`/api/lotteries/${id}/wheel/segments`);
+    return data;
+  },
+  async spinWheel(id: number): Promise<{ success: boolean; data: SpinResult }> {
+    const { data } = await api.post(`/api/lotteries/${id}/wheel/spin`);
+    return data;
+  },
+  async completeLottery(id: number): Promise<{ success: boolean; message: string }> {
+    const { data } = await api.post(`/api/lotteries/${id}/wheel/complete`);
+    return data;
+  },
+  async addParticipant(lotteryId: number, userId: number, chances = 1): Promise<{ success: boolean; data: WheelParticipant }> {
+    const { data } = await api.post(`/api/lotteries/${lotteryId}/wheel/participants`, { userId, chances });
+    return data;
+  },
+  async removeParticipant(lotteryId: number, userId: number): Promise<{ success: boolean; message: string }> {
+    const { data } = await api.delete(`/api/lotteries/${lotteryId}/wheel/participants/${userId}`);
+    return data;
+  },
+  async sendNotifications(id: number): Promise<{ success: boolean; data: { sentCount: number; totalWinners: number }; message: string }> {
+    const { data } = await api.post(`/api/lotteries/${id}/notifications/send`);
     return data;
   },
 };

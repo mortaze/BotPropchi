@@ -102,20 +102,22 @@ export interface Lottery {
   title: string;
   description?: string | null;
   prize: string;
-  startAt: string;
-  endAt: string;
+  startAt?: string | null;
+  endAt?: string | null;
   winnersCount: number;
   minPoints: number;
   entryCost: number;
   isActive: boolean;
   isCompleted: boolean;
   announcementMsg?: string | null;
+  winnerMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: LotteryCount;
   ticketStats?: LotteryTicketStats;
   entries?: LotteryEntry[];
   winners?: LotteryWinner[];
+  notifications?: WinnerNotification[];
 }
 
 export interface LotteryEntry {
@@ -148,9 +150,19 @@ export interface LotteryWinner {
   winnerLastName?: string | null;
   notified: boolean;
   prizeDelivered: boolean;
+  roundNumber: number;
   wonAt: string;
   user?: User;
   lottery?: Lottery;
+}
+
+export interface WinnerNotification {
+  id: number;
+  lotteryId: number;
+  userId: number;
+  sentAt: string;
+  status: string;
+  user?: User;
 }
 
 export interface ReferralSettings {
