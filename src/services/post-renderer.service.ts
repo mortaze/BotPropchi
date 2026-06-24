@@ -14,6 +14,7 @@ import {
   buildTelegramKeyboard,
   renderMessage,
   ensureNoSharedRefs,
+  sanitizeForSend,
   MEDIA_SENDERS,
 } from './renderer';
 import { sendFormattedMessage } from '../shared/message-format';
@@ -265,11 +266,12 @@ async function sendPayload(ctx: any, payload: TelegramPayload, postId: number): 
   logger.info(`[TelegramSend] post=${postId} method=${method}`);
 
   if (method === 'sendMessage') {
+    const sendEntities = params.entities ? structuredClone(params.entities) : undefined;
     await sendFormattedMessage(ctx, {
       text: params.text || '',
-      entities: params.entities,
+      entities: sendEntities,
     }, {
-      buttons: (payload.reply_markup?.inline_keyboard) || undefined,
+      buttons: payload.reply_markup?.inline_keyboard ? structuredClone(payload.reply_markup.inline_keyboard) : undefined,
       link_preview: !params.link_preview_options?.is_disabled,
       protect_content: params.protect_content,
     });
@@ -277,16 +279,22 @@ async function sendPayload(ctx: any, payload: TelegramPayload, postId: number): 
   }
 
   if (method === 'sendMediaGroup') {
-    logger.info(`[TelegramSend] post=${postId} sendMediaGroup items=${(params.media || []).length}`);
-    await ctx.replyWithMediaGroup(params.media);
+    const clonedMedia = params.media ? structuredClone(params.media) : [];
+    logger.info(`[TelegramSend] post=${postId} sendMediaGroup items=${clonedMedia.length}`);
+    await ctx.replyWithMediaGroup(clonedMedia);
     if (payload.reply_markup?.inline_keyboard?.length) {
-      await ctx.reply('عملیات:', Markup.inlineKeyboard(payload.reply_markup.inline_keyboard));
+      await ctx.reply('عملیات:', Markup.inlineKeyboard(structuredClone(payload.reply_markup.inline_keyboard)));
     }
     return true;
   }
 
-  await sendFormattedMessage(ctx, { text: params.text || '', caption: params.caption, entities: params.entities, caption_entities: params.caption_entities }, {
-    buttons: (payload.reply_markup?.inline_keyboard) || undefined,
+  await sendFormattedMessage(ctx, {
+    text: params.text || '',
+    caption: params.caption ? structuredClone(params.caption) : undefined,
+    entities: params.entities ? structuredClone(params.entities) : undefined,
+    caption_entities: params.caption_entities ? structuredClone(params.caption_entities) : undefined,
+  }, {
+    buttons: payload.reply_markup?.inline_keyboard ? structuredClone(payload.reply_markup.inline_keyboard) : undefined,
   });
   return true;
 }
@@ -307,7 +315,7 @@ export async function renderPostToTelegram(ctx: any, post: any) {
           msg.media,
           post.id,
         );
-        const safePayload = cloneJson(payload);
+        const safePayload = sanitizeForSend(payload);
         await sendPayload(ctx, safePayload, post.id);
       } catch (e) {
         logger.error(`[Pipeline] post=${post.id} message ${msg.index + 1}/${messages.length} FAILED — aborting: ${e}`);

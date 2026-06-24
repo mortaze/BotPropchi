@@ -9,6 +9,7 @@ export {
   buildTelegramKeyboard,
   renderMessage,
   ensureNoSharedRefs,
+  sanitizeForSend,
   TelegramPayload,
   MEDIA_SENDERS,
 } from './telegram-native-renderer.service';

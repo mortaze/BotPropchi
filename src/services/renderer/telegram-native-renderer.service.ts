@@ -174,6 +174,22 @@ export class TelegramNativeRenderer {
   }
 }
 
+// ─── HARD ISOLATION BEFORE SEND ────────────────────────────────────
+
+export function sanitizeForSend(payload: TelegramPayload): TelegramPayload {
+  const safe: TelegramPayload = {
+    ...payload,
+    entities: payload.entities ? structuredClone(payload.entities) : undefined,
+    reply_markup: payload.reply_markup ? structuredClone(payload.reply_markup) : undefined,
+    caption_entities: payload.caption_entities ? structuredClone(payload.caption_entities) : undefined,
+  };
+  if (payload.media) {
+    safe.media = structuredClone(payload.media);
+  }
+  logger.info(`[Sanitize] method=${payload.method} entities=${Array.isArray(payload.entities) ? payload.entities.length : 'none'} refCheck=${payload.entities !== safe.entities}`);
+  return safe;
+}
+
 // ─── PURE RENDER MESSAGE (no cascade, no shared state) ────────────
 
 export function ensureNoSharedRefs(ctx: any): void {
