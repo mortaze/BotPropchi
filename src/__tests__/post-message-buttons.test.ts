@@ -435,3 +435,275 @@ describe('Integration: Full multi-message flow', () => {
     expect(Array.isArray(result)).toBe(true);
   });
 });
+
+// ─── Replicate MessageRenderContext isolation functions ────────────
+
+type ContentSegment = { text: string; offset: number };
+
+function splitContentMessagesWithOffsets(content: string): ContentSegment[] {
+  if (!content || !content.trim()) return [];
+  const segments: ContentSegment[] = [];
+  const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const raw = content.slice(lastIndex, match.index);
+      const trimmed = raw.trim();
+      if (trimmed) {
+        const leadingWs = raw.length - raw.trimStart().length;
+        segments.push({ text: trimmed, offset: lastIndex + leadingWs });
+      }
+    }
+    const innerRaw = match[1];
+    const trimmed = innerRaw.trim();
+    if (trimmed) {
+      const innerOffset = match.index + match[0].indexOf(match[1]);
+      const leadingWs = innerRaw.length - innerRaw.trimStart().length;
+      segments.push({ text: trimmed, offset: innerOffset + leadingWs });
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    const raw = content.slice(lastIndex);
+    const trimmed = raw.trim();
+    if (trimmed) {
+      const leadingWs = raw.length - raw.trimStart().length;
+      segments.push({ text: trimmed, offset: lastIndex + leadingWs });
+    }
+  }
+  if (segments.length === 0 && content.trim()) {
+    const trimmed = content.trim();
+    const leadingWs = content.length - content.trimStart().length;
+    segments.push({ text: trimmed, offset: leadingWs });
+  }
+  return segments;
+}
+
+function extractContentEntitiesForSegment(
+  entities: any[] | null | undefined,
+  segmentOffset: number,
+  segmentLength: number,
+): any[] {
+  if (!Array.isArray(entities) || entities.length === 0) return [];
+  const adjusted: any[] = [];
+  for (const e of entities) {
+    if (e.offset >= segmentOffset && e.offset + e.length <= segmentOffset + segmentLength) {
+      adjusted.push({ ...e, offset: e.offset - segmentOffset });
+    }
+  }
+  return adjusted;
+}
+
+function extractSnapshotEntitiesForSegment(
+  snapshotText: string | undefined,
+  snapshotEntities: any[] | null | undefined,
+  segmentText: string,
+): any[] {
+  if (!snapshotText || !Array.isArray(snapshotEntities) || snapshotEntities.length === 0) return [];
+  const pos = snapshotText.indexOf(segmentText);
+  if (pos < 0) return [];
+  const end = pos + segmentText.length;
+  const adjusted: any[] = [];
+  for (const e of snapshotEntities) {
+    if (e.offset >= pos && e.offset + e.length <= end) {
+      adjusted.push({ ...e, offset: e.offset - pos });
+    }
+  }
+  return adjusted;
+}
+
+function extractButtonsForMessage(raw: any, messageIndex: number): any[][] {
+  if (!raw) return [];
+  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
+    return Array.isArray(raw.messages[String(messageIndex)]) ? raw.messages[String(messageIndex)] : [];
+  }
+  if (Array.isArray(raw)) return messageIndex === 0 ? raw : [];
+  return [];
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MESSAGE RENDER CONTEXT ISOLATION TESTS
+// ══════════════════════════════════════════════════════════════════
+
+describe('MessageRenderContext Isolation', () => {
+  function buildMsgContext(post: any, messageIndex: number, segment: ContentSegment) {
+    const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
+    const entities = fromContent.length > 0
+      ? JSON.parse(JSON.stringify(fromContent))
+      : post.telegramMessageSnapshot
+        ? extractSnapshotEntitiesForSegment(post.telegramMessageSnapshot.text, post.telegramMessageSnapshot.entities, segment.text)
+        : [];
+    const buttons = JSON.parse(JSON.stringify(extractButtonsForMessage(post.buttons, messageIndex)));
+    const media = messageIndex === 0 && Array.isArray(post.media) && post.media.length > 0
+      ? JSON.parse(JSON.stringify(post.media))
+      : undefined;
+    return { text: segment.text, entities, buttons, media };
+  }
+
+  const multiMsgPost = {
+    id: 1,
+    content: 'First msg[[copy]]Second msg[[/copy]]',
+    entities: [
+      { offset: 0, length: 4, type: 'bold' },                    // "First" in msg 0
+      { offset: 17, length: 6, type: 'italic' },                  // "Second" in msg 1 (offset in marked content)
+    ],
+    buttons: {
+      messages: {
+        '0': [[{ text: 'Btn0', type: 'URL', value: 'https://a.com' }]],
+        '1': [[{ text: 'Btn1', type: 'URL', value: 'https://b.com' }]],
+      },
+    },
+    media: [{ type: 'photo', fileId: 'photoid' }],
+  };
+
+  const segments = splitContentMessagesWithOffsets(multiMsgPost.content);
+  const ctx0 = buildMsgContext(multiMsgPost, 0, segments[0]);
+  const ctx1 = buildMsgContext(multiMsgPost, 1, segments[1]);
+
+  it('splits 2 messages with correct segments', () => {
+    expect(segments).toHaveLength(2);
+    expect(segments[0].text).toBe('First msg');
+    expect(segments[1].text).toBe('Second msg');
+  });
+
+  it('message 0 has its own entities', () => {
+    expect(ctx0.entities).toHaveLength(1);
+    expect(ctx0.entities[0].type).toBe('bold');
+    expect(ctx0.entities[0].offset).toBe(0);
+    expect(ctx0.entities[0].length).toBe(4);
+  });
+
+  it('message 1 has its own entities (different from msg 0)', () => {
+    expect(ctx1.entities).toHaveLength(1);
+    expect(ctx1.entities[0].type).toBe('italic');
+    expect(ctx1.entities[0].offset).toBe(0);
+    expect(ctx1.entities[0].length).toBe(6);
+  });
+
+  it('message 0 and message 1 have different entity arrays (no shared reference)', () => {
+    expect(ctx0.entities).not.toBe(ctx1.entities);
+    expect(ctx0.entities[0].type).not.toBe(ctx1.entities[0].type);
+  });
+
+  it('mutating message 0 entities does NOT affect message 1 entities', () => {
+    const entities0 = ctx0.entities;
+    const originalLen1 = ctx1.entities.length;
+    const originalType1 = ctx1.entities[0].type;
+    entities0.push({ offset: 5, length: 3, type: 'code' });
+    expect(ctx0.entities).toHaveLength(2);
+    expect(ctx1.entities).toHaveLength(originalLen1);
+    expect(ctx1.entities[0].type).toBe(originalType1);
+  });
+
+  it('mutating message 1 entities does NOT affect message 0 entities', () => {
+    const entities1 = ctx1.entities;
+    const originalLen0 = ctx0.entities.length;
+    entities1.splice(0, 1);
+    expect(ctx1.entities).toHaveLength(0);
+    expect(ctx0.entities).toHaveLength(originalLen0);
+  });
+
+  it('message 0 gets media, message 1 does not', () => {
+    expect(ctx0.media).toBeDefined();
+    expect(ctx0.media).toHaveLength(1);
+    expect(ctx1.media).toBeUndefined();
+  });
+
+  it('mutating message 0 media does NOT affect post.media', () => {
+    const originalMediaLen = (multiMsgPost.media as any[]).length;
+    (ctx0.media as any[]).push({ type: 'video', fileId: 'other' });
+    expect(ctx0.media).toHaveLength(originalMediaLen + 1);
+    expect(multiMsgPost.media).toHaveLength(originalMediaLen);
+  });
+
+  it('message 0 has its own buttons', () => {
+    expect(ctx0.buttons).toHaveLength(1);
+    expect(ctx0.buttons[0][0].text).toBe('Btn0');
+  });
+
+  it('message 1 has its own buttons', () => {
+    expect(ctx1.buttons).toHaveLength(1);
+    expect(ctx1.buttons[0][0].text).toBe('Btn1');
+  });
+
+  it('message 0 and message 1 have different button arrays (no shared reference)', () => {
+    expect(ctx0.buttons).not.toBe(ctx1.buttons);
+  });
+
+  it('array-format buttons: message 0 gets buttons, message 1 gets empty', () => {
+    const arrPost = {
+      content: 'A[[copy]]B[[/copy]]',
+      entities: [],
+      buttons: [[{ text: 'OnlyBtn', type: 'URL', value: 'https://x.com' }]],
+    };
+    const segs = splitContentMessagesWithOffsets(arrPost.content);
+    const arrCtx0 = buildMsgContext(arrPost, 0, segs[0]);
+    const arrCtx1 = buildMsgContext(arrPost, 1, segs[1]);
+    expect(arrCtx0.buttons).toHaveLength(1);
+    expect(arrCtx1.buttons).toHaveLength(0);
+  });
+
+  it('extractButtonsForMessage: messages format returns per-message', () => {
+    const raw = { messages: { '0': [[{ text: 'A' }]], '1': [[{ text: 'B' }]] } };
+    expect(extractButtonsForMessage(raw, 0)).toEqual([[{ text: 'A' }]]);
+    expect(extractButtonsForMessage(raw, 1)).toEqual([[{ text: 'B' }]]);
+  });
+
+  it('extractButtonsForMessage: array format returns for msg0 only', () => {
+    const raw = [[{ text: 'A' }], [{ text: 'B' }]];
+    expect(extractButtonsForMessage(raw, 0)).toEqual([[{ text: 'A' }], [{ text: 'B' }]]);
+    expect(extractButtonsForMessage(raw, 1)).toEqual([]);
+  });
+
+  it('extractContentEntitiesForSegment: filters by offset range', () => {
+    const ents = [
+      { offset: 0, length: 3, type: 'bold' },
+      { offset: 10, length: 4, type: 'italic' },
+      { offset: 20, length: 5, type: 'code' },
+    ];
+    const result = extractContentEntitiesForSegment(ents, 10, 4);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('italic');
+    expect(result[0].offset).toBe(0);
+  });
+
+  it('extractSnapshotEntitiesForSegment: finds segment text and adjusts offsets', () => {
+    const snapText = 'Hello World Foo';
+    const snapEnts = [
+      { offset: 0, length: 5, type: 'bold' },
+      { offset: 6, length: 5, type: 'italic' },
+    ];
+    const result = extractSnapshotEntitiesForSegment(snapText, snapEnts, 'World');
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('italic');
+    expect(result[0].offset).toBe(0);
+  });
+
+  it('supports bold, italic, code, blockquote, link, custom_emoji per message', () => {
+    const ents = [
+      { offset: 0, length: 4, type: 'bold' },
+      { offset: 5, length: 6, type: 'italic' },
+      { offset: 12, length: 4, type: 'code' },
+      { offset: 17, length: 9, type: 'blockquote' },
+    ];
+    const allSegment: ContentSegment = { text: 'Bold Italic Code Blockquote', offset: 0 };
+    const result = extractContentEntitiesForSegment(ents, allSegment.offset, allSegment.text.length);
+    expect(result).toHaveLength(4);
+    expect(result.map((e: any) => e.type)).toEqual(['bold', 'italic', 'code', 'blockquote']);
+  });
+
+  it('nested entities: bold inside italic inside blockquote — all scoped per message', () => {
+    const ents = [
+      { offset: 0, length: 10, type: 'blockquote' },
+      { offset: 1, length: 8, type: 'italic' },
+      { offset: 2, length: 6, type: 'bold' },
+    ];
+    const seg: ContentSegment = { text: 'NESTED TXT', offset: 0 };
+    const result = extractContentEntitiesForSegment(ents, seg.offset, seg.text.length);
+    expect(result).toHaveLength(3);
+    expect(result[0].type).toBe('blockquote');
+    expect(result[1].type).toBe('italic');
+    expect(result[2].type).toBe('bold');
+  });
+});

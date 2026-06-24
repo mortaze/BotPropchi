@@ -49,6 +49,14 @@ type ContentSegment = {
   offset: number;
 };
 
+interface MessageRenderContext {
+  text: string;
+  entities: any[];
+  buttons: any[][];
+  media: any[] | undefined;
+  telegramMessageSnapshot: any;
+}
+
 function splitContentMessagesWithOffsets(content: string): ContentSegment[] {
   if (!content || !content.trim()) return [];
   const segments: ContentSegment[] = [];
@@ -97,31 +105,31 @@ function splitContentMessages(content: string): string[] {
   return splitContentMessagesWithOffsets(content).map(s => s.text);
 }
 
-function adjustEntitiesForMessage(
+function extractContentEntitiesForSegment(
   entities: any[] | null | undefined,
   segmentOffset: number,
   segmentLength: number,
-): any[] | undefined {
-  if (!Array.isArray(entities) || entities.length === 0) return undefined;
+): any[] {
+  if (!Array.isArray(entities) || entities.length === 0) return [];
   const adjusted: any[] = [];
   for (const e of entities) {
     if (e.offset >= segmentOffset && e.offset + e.length <= segmentOffset + segmentLength) {
       adjusted.push({ ...e, offset: e.offset - segmentOffset });
     }
   }
-  return adjusted.length > 0 ? adjusted : undefined;
+  return adjusted;
 }
 
 function extractSnapshotEntitiesForSegment(
   snapshotText: string | undefined,
   snapshotEntities: any[] | null | undefined,
   segmentText: string,
-): any[] | undefined {
+): any[] {
   if (!snapshotText || !Array.isArray(snapshotEntities) || snapshotEntities.length === 0) {
-    return undefined;
+    return [];
   }
   const pos = snapshotText.indexOf(segmentText);
-  if (pos < 0) return undefined;
+  if (pos < 0) return [];
   const end = pos + segmentText.length;
   const adjusted: any[] = [];
   for (const e of snapshotEntities) {
@@ -129,35 +137,85 @@ function extractSnapshotEntitiesForSegment(
       adjusted.push({ ...e, offset: e.offset - pos });
     }
   }
-  return adjusted.length > 0 ? adjusted : undefined;
+  return adjusted;
 }
 
-function resolveEntitiesForSegment(
-  post: any,
-  segmentText: string,
-  segmentOffset: number,
-): any[] | undefined {
-  const fromContent = adjustEntitiesForMessage(post.entities, segmentOffset, segmentText.length);
-  if (fromContent) return fromContent;
-  if (post.telegramMessageSnapshot) {
-    const fromSnapshot = extractSnapshotEntitiesForSegment(
-      post.telegramMessageSnapshot.text,
-      post.telegramMessageSnapshot.entities,
-      segmentText,
-    );
-    if (fromSnapshot) return fromSnapshot;
-  }
-  return undefined;
-}
-
-function getMessageButtonsFromPost(post: any, messageIdx: number): any[][] {
-  const raw = post.buttons;
+function extractButtonsForMessage(raw: any, messageIndex: number): any[][] {
   if (!raw) return [];
   if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return raw.messages[String(messageIdx)] || [];
+    return Array.isArray(raw.messages[String(messageIndex)]) ? raw.messages[String(messageIndex)] : [];
   }
-  if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
+  if (Array.isArray(raw)) return messageIndex === 0 ? raw : [];
   return [];
+}
+
+function splitTelegramSnapshotForMessage(
+  snapshot: any,
+  segmentText: string,
+): any {
+  if (!snapshot) return undefined;
+  const scopedEntities = snapshot.text
+    ? extractSnapshotEntitiesForSegment(snapshot.text, snapshot.entities, segmentText)
+    : [];
+  return {
+    text: segmentText,
+    entities: scopedEntities,
+    caption: snapshot.caption,
+    caption_entities: snapshot.caption_entities,
+  };
+}
+
+function buildMessageRenderContext(
+  post: any,
+  messageIndex: number,
+  segment: ContentSegment,
+): MessageRenderContext {
+  const rawButtons = extractButtonsForMessage(post.buttons, messageIndex);
+  const buttons = rawButtons.length > 0 ? cloneJson(rawButtons) : [];
+
+  const media = messageIndex === 0 && Array.isArray(post.media) && post.media.length > 0
+    ? cloneJson(post.media)
+    : undefined;
+
+  const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
+  const entities = fromContent.length > 0
+    ? fromContent
+    : post.telegramMessageSnapshot
+      ? extractSnapshotEntitiesForSegment(post.telegramMessageSnapshot.text, post.telegramMessageSnapshot.entities, segment.text)
+      : [];
+
+  const telegramMessageSnapshot = messageIndex === 0 && post.telegramMessageSnapshot
+    ? splitTelegramSnapshotForMessage(post.telegramMessageSnapshot, segment.text)
+    : undefined;
+
+  logger.info(`[MessageCtx] post=${post.id} msg=${messageIndex} text="${segment.text.slice(0, 30)}" entities=${entities.length} buttons=${buttons.length} hasSnapshot=${!!telegramMessageSnapshot}`);
+
+  return {
+    text: segment.text,
+    entities,
+    buttons,
+    media,
+    telegramMessageSnapshot,
+  };
+}
+
+function buildMessagePostForRender(
+  post: any,
+  ctx: MessageRenderContext,
+  messageIndex: number,
+): any {
+  return {
+    id: post.id,
+    title: post.title,
+    content: ctx.text,
+    entities: ctx.entities,
+    buttons: ctx.buttons,
+    media: ctx.media,
+    renderMode: post.renderMode,
+    contentFormat: post.contentFormat,
+    telegramMessageSnapshot: ctx.telegramMessageSnapshot,
+    telegramPayload: undefined,
+  };
 }
 
 export async function renderPostToTelegram(ctx: any, post: any) {
@@ -165,26 +223,19 @@ export async function renderPostToTelegram(ctx: any, post: any) {
   if (segments.length > 1) {
     logger.info(`[Pipeline] post=${post.id} multiMessage segments=${segments.length}`);
     for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      const msgButtons = getMessageButtonsFromPost(post, i);
-      const msgEntities = resolveEntitiesForSegment(post, seg.text, seg.offset);
-      const msgPost: any = {
-        id: post.id,
-        title: post.title,
-        content: seg.text,
-        buttons: Array.isArray(msgButtons) ? cloneJson(msgButtons) : msgButtons,
-        entities: msgEntities,
-        media: i === 0 ? (Array.isArray(post.media) ? cloneJson(post.media) : undefined) : undefined,
-        renderMode: post.renderMode,
-        contentFormat: post.contentFormat,
-      };
-      logger.info(`[PerMessage] post=${post.id} msg=${i} text="${seg.text.slice(0, 30)}" entities=${msgEntities ? msgEntities.length : 0} buttons=${Array.isArray(msgButtons) ? msgButtons.length : 0}`);
+      const msgCtx = buildMessageRenderContext(post, i, segments[i]);
       try {
         if (i === 0) {
+          const msgPost = buildMessagePostForRender(post, msgCtx, i);
           await renderSinglePost(ctx, msgPost);
         } else {
-          await sendFormattedMessage(ctx, { text: seg.text, entities: msgEntities }, {
-            buttons: buildTelegramKeyboard(msgButtons, post.id),
+          await sendFormattedMessage(ctx, {
+            text: msgCtx.text,
+            entities: msgCtx.entities.length > 0 ? msgCtx.entities : undefined,
+          }, {
+            buttons: msgCtx.buttons.length > 0
+              ? buildTelegramKeyboard(msgCtx.buttons, post.id)
+              : undefined,
           });
         }
       } catch (e) {
@@ -194,8 +245,7 @@ export async function renderPostToTelegram(ctx: any, post: any) {
     }
     return true;
   }
-  const msgButtons = getMessageButtonsFromPost(post, 0);
-  return renderSinglePost(ctx, { ...post, buttons: msgButtons });
+  return renderSinglePost(ctx, { ...post, buttons: extractButtonsForMessage(post.buttons, 0) });
 }
 
 async function renderSinglePost(ctx: any, post: any) {
