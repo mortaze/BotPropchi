@@ -131,20 +131,30 @@ function moveButtonInLayout(
   }
 }
 
+// ─── Convert array-format buttons to messages-format ────
+function ensureMessagesFormat(raw: any): any {
+  if (!raw) return raw;
+  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) return raw;
+  if (Array.isArray(raw)) return { messages: { '0': raw } };
+  return raw;
+}
+
 // ─── Per-message button helpers ──────────────────────────
 function getMessageButtons(raw: any, messageIdx: number): any[][] {
   if (!raw) return [];
-  if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
-  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
+  const formatted = ensureMessagesFormat(raw);
+  if (formatted && formatted.messages) {
+    return formatted.messages[String(messageIdx)] || formatted.messages['_shared'] || [];
   }
   return [];
 }
 
 function setMessageButtons(raw: any, messageIdx: number, buttons: any[][]): any {
+  const formatted = ensureMessagesFormat(raw);
   const result: any = { messages: {} };
-  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    for (const [k, v] of Object.entries(raw.messages)) {
+  // Preserve existing message entries, including _shared
+  if (formatted && formatted.messages) {
+    for (const [k, v] of Object.entries(formatted.messages)) {
       result.messages[k] = v;
     }
   }
@@ -153,9 +163,9 @@ function setMessageButtons(raw: any, messageIdx: number, buttons: any[][]): any 
 }
 
 function swapMessageButtons(raw: any, idxA: number, idxB: number): any {
-  if (!raw || Array.isArray(raw)) return raw;
-  if (typeof raw !== 'object' || !raw.messages) return raw;
-  const msgs = { ...raw.messages };
+  const formatted = ensureMessagesFormat(raw);
+  if (!formatted || !formatted.messages) return raw;
+  const msgs = { ...formatted.messages };
   const a = String(idxA);
   const b = String(idxB);
   const temp = msgs[a];
@@ -165,15 +175,19 @@ function swapMessageButtons(raw: any, idxA: number, idxB: number): any {
 }
 
 function removeMessageButtons(raw: any, messageIdx: number): any {
-  if (!raw || Array.isArray(raw)) return raw;
-  if (typeof raw !== 'object' || !raw.messages) return raw;
+  const formatted = ensureMessagesFormat(raw);
+  if (!formatted || !formatted.messages) return raw;
   const msgs: any = {};
-  const keys = Object.keys(raw.messages).sort((a, b) => Number(a) - Number(b));
+  const keys = Object.keys(formatted.messages).sort((a, b) => Number(a) - Number(b));
   let skip = String(messageIdx);
   let shift = 0;
   for (const k of keys) {
     if (k === skip) { shift = 1; continue; }
-    msgs[String(Number(k) - shift)] = raw.messages[k];
+    msgs[String(Number(k) - shift)] = formatted.messages[k];
+  }
+  // Preserve _shared key
+  if (formatted.messages['_shared']) {
+    msgs['_shared'] = formatted.messages['_shared'];
   }
   return { messages: msgs };
 }

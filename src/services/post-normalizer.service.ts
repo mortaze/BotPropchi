@@ -23,26 +23,45 @@ function extractEntities(post: any): any[] | undefined {
   return undefined;
 }
 
+function hasMultiMessageContent(content: string | null | undefined): boolean {
+  if (!content) return false;
+  return /\[\[copy\]\]/.test(content);
+}
+
 function extractButtons(post: any): any {
-  if (Array.isArray(post.buttons) && post.buttons.length > 0) return cloneJson(post.buttons);
-  if (post.buttons && typeof post.buttons === 'object' && !Array.isArray(post.buttons) && post.buttons.messages) {
-    return cloneJson(post.buttons);
-  }
-  if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
+  const content = post.content || post.contentText || '';
+  const isMulti = hasMultiMessageContent(content);
+
+  let raw: any = undefined;
+
+  if (post.buttons !== undefined) {
+    raw = post.buttons;
+  } else if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
     const rows: any[][] = [];
     for (const kb of post.keyboards) {
       if (!rows[kb.row]) rows[kb.row] = [];
       rows[kb.row][kb.col] = { text: kb.text, type: kb.type || 'URL', value: kb.value || '' };
     }
-    return rows;
+    raw = rows;
+  } else if (post.telegramPayload?.keyboard && Array.isArray(post.telegramPayload.keyboard)) {
+    raw = cloneJson(post.telegramPayload.keyboard);
+  } else if (post.telegramMessageSnapshot?.reply_markup?.inline_keyboard) {
+    raw = cloneJson(post.telegramMessageSnapshot.reply_markup.inline_keyboard);
   }
-  if (post.telegramPayload?.keyboard && Array.isArray(post.telegramPayload.keyboard)) {
-    return cloneJson(post.telegramPayload.keyboard);
+
+  if (!raw) return [];
+
+  // If already in messages format, return as-is
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
+    return cloneJson(raw);
   }
-  if (post.telegramMessageSnapshot?.reply_markup?.inline_keyboard) {
-    return cloneJson(post.telegramMessageSnapshot.reply_markup.inline_keyboard);
+
+  // If array format but post has multiple messages, normalize to messages format
+  if (Array.isArray(raw) && isMulti) {
+    return { messages: { '0': cloneJson(raw) } };
   }
-  return [];
+
+  return cloneJson(raw);
 }
 
 function extractMedia(post: any): any[] {
