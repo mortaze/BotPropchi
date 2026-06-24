@@ -112,6 +112,44 @@ function adjustEntitiesForMessage(
   return adjusted.length > 0 ? adjusted : undefined;
 }
 
+function extractSnapshotEntitiesForSegment(
+  snapshotText: string | undefined,
+  snapshotEntities: any[] | null | undefined,
+  segmentText: string,
+): any[] | undefined {
+  if (!snapshotText || !Array.isArray(snapshotEntities) || snapshotEntities.length === 0) {
+    return undefined;
+  }
+  const pos = snapshotText.indexOf(segmentText);
+  if (pos < 0) return undefined;
+  const end = pos + segmentText.length;
+  const adjusted: any[] = [];
+  for (const e of snapshotEntities) {
+    if (e.offset >= pos && e.offset + e.length <= end) {
+      adjusted.push({ ...e, offset: e.offset - pos });
+    }
+  }
+  return adjusted.length > 0 ? adjusted : undefined;
+}
+
+function resolveEntitiesForSegment(
+  post: any,
+  segmentText: string,
+  segmentOffset: number,
+): any[] | undefined {
+  const fromContent = adjustEntitiesForMessage(post.entities, segmentOffset, segmentText.length);
+  if (fromContent) return fromContent;
+  if (post.telegramMessageSnapshot) {
+    const fromSnapshot = extractSnapshotEntitiesForSegment(
+      post.telegramMessageSnapshot.text,
+      post.telegramMessageSnapshot.entities,
+      segmentText,
+    );
+    if (fromSnapshot) return fromSnapshot;
+  }
+  return undefined;
+}
+
 function getMessageButtonsFromPost(post: any, messageIdx: number): any[][] {
   const raw = post.buttons;
   if (!raw) return [];
@@ -125,24 +163,27 @@ function getMessageButtonsFromPost(post: any, messageIdx: number): any[][] {
 export async function renderPostToTelegram(ctx: any, post: any) {
   const segments = splitContentMessagesWithOffsets(post.content || '');
   if (segments.length > 1) {
+    logger.info(`[Pipeline] post=${post.id} multiMessage segments=${segments.length}`);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const msgButtons = getMessageButtonsFromPost(post, i);
+      const msgEntities = resolveEntitiesForSegment(post, seg.text, seg.offset);
       const msgPost: any = {
         id: post.id,
         title: post.title,
         content: seg.text,
-        buttons: msgButtons,
-        entities: adjustEntitiesForMessage(post.entities, seg.offset, seg.text.length),
-        media: i === 0 ? post.media : undefined,
+        buttons: Array.isArray(msgButtons) ? cloneJson(msgButtons) : msgButtons,
+        entities: msgEntities,
+        media: i === 0 ? (Array.isArray(post.media) ? cloneJson(post.media) : undefined) : undefined,
         renderMode: post.renderMode,
         contentFormat: post.contentFormat,
       };
+      logger.info(`[PerMessage] post=${post.id} msg=${i} text="${seg.text.slice(0, 30)}" entities=${msgEntities ? msgEntities.length : 0} buttons=${Array.isArray(msgButtons) ? msgButtons.length : 0}`);
       try {
         if (i === 0) {
           await renderSinglePost(ctx, msgPost);
         } else {
-          await sendFormattedMessage(ctx, { text: seg.text, entities: msgPost.entities }, {
+          await sendFormattedMessage(ctx, { text: seg.text, entities: msgEntities }, {
             buttons: buildTelegramKeyboard(msgButtons, post.id),
           });
         }
