@@ -11,6 +11,7 @@ import { pointService } from './point.service';
 import { scoringService } from './scoring.service';
 import { notifyNewUserFromService } from '../bot/notifications';
 import { attributionService } from './attribution.service';
+import { requiredChannelsService } from './requiredChannels.service';
 
 export const userService = {
   markMembershipVerified(telegramId: bigint) {
@@ -152,9 +153,19 @@ export const userService = {
       }
     }
 
-    // ثبت Referral تا زمان تأیید عضویت اجباری انجام نمی‌شود؛ referredById نقش pending referral را دارد.
+    // ثبت Referral: اگر عضویت اجباری فعال باشد، تا تأیید عضویت صبر می‌کنیم.
+    // اگر غیرفعال باشد، همان لحظه ثبت می‌شود.
     if (shouldRegisterReferral && referredById) {
-      logger.info(`Referral pending membership verification referrerId=${referredById}, referredUserId=${user.id}`);
+      const channels = requiredChannelsService.getChannels();
+      if (channels.length === 0) {
+        // عضویت اجباری فعال نیست → ثبت مستقیم referral
+        referralService.registerSuccessfulReferral(referredById, user.id, user.firstName, false).catch((err) => {
+          logger.error(`[Referral] Direct registration failed referrerId=${referredById}, referredUserId=${user.id}`, err);
+        });
+      } else {
+        // عضویت اجباری فعال است → تا تأیید عضویت صبر کن (check:membership handler فراخوانی می‌کند)
+        logger.info(`Referral pending membership verification referrerId=${referredById}, referredUserId=${user.id}`);
+      }
     }
 
     await this.checkDailyBonus(user.id);

@@ -303,6 +303,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const scoring = await scoringService.getSettings();
     const userId = ctx.from!.id;
 
+    userService.processPendingReferral(BigInt(userId)).catch(() => {});
+
     // ─── Reset all user state ────────────────────────────
     for (const key of cache.keys) {
       if (key.startsWith(`post:pending:${userId}:`) || key.startsWith(`post:editor:${userId}:`)) {
@@ -1682,6 +1684,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
           await ctx.reply(settings.verifiedMessage, await adminReplyOptions(ctx.from?.id));
         }
         await ctx.answerCbQuery('✅').catch(() => {});
+
+        userService.processPendingReferral(BigInt(telegramId)).catch(() => {});
       } else {
         const settings = await forcedMembershipSettingsService.getSettings();
         await ctx.answerCbQuery(settings.retryMessage, { show_alert: true });

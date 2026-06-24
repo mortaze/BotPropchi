@@ -31,6 +31,10 @@ export const userRepository = {
         lastName: data.lastName,
         realFirstName: data.profileCompletedName ? data.firstName : undefined,
         realLastName: data.profileCompletedName ? data.lastName : undefined,
+        referredById: data.referredById,
+        acquisitionSource: data.acquisitionSource,
+        startPayload: data.startPayload,
+        referrerUserId: data.referrerUserId,
         lastActivityAt: new Date(),
       },
       create: {
