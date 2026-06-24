@@ -125,12 +125,24 @@ function extractContentEntitiesForSegment(
   segmentLength: number,
 ): any[] {
   if (!Array.isArray(entities) || entities.length === 0) return [];
+  const segEnd = segmentOffset + segmentLength;
   const adjusted: any[] = [];
   for (const e of entities) {
-    if (e.offset >= segmentOffset && e.offset < segmentOffset + segmentLength) {
-      const clampedEnd = Math.min(e.offset + e.length, segmentOffset + segmentLength);
-      adjusted.push({ ...e, offset: e.offset - segmentOffset, length: clampedEnd - e.offset });
+    const entityEnd = e.offset + e.length;
+    // Entity overlaps this segment if it starts before segment ends AND ends after segment starts
+    if (e.offset < segEnd && entityEnd > segmentOffset) {
+      // Clamp to segment boundaries
+      const clampedStart = Math.max(e.offset, segmentOffset);
+      const clampedEnd = Math.min(entityEnd, segEnd);
+      const newOffset = clampedStart - segmentOffset;
+      const newLength = clampedEnd - clampedStart;
+      if (newLength > 0) {
+        adjusted.push({ ...e, offset: newOffset, length: newLength });
+      }
     }
+  }
+  if (adjusted.length > 0) {
+    logger.debug(`[EntityExtract] segment=[${segmentOffset},${segEnd}) entities=${adjusted.length} types=${adjusted.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
   }
   return adjusted;
 }
@@ -155,8 +167,16 @@ function extractSnapshotEntitiesForSegment(
   const end = pos + segmentText.length;
   const adjusted: any[] = [];
   for (const e of snapshotEntities) {
-    if (e.offset >= pos && e.offset + e.length <= end) {
-      adjusted.push({ ...e, offset: e.offset - pos });
+    const entityEnd = e.offset + e.length;
+    // Entity overlaps this segment if it starts before segment ends AND ends after segment starts
+    if (e.offset < end && entityEnd > pos) {
+      const clampedStart = Math.max(e.offset, pos);
+      const clampedEnd = Math.min(entityEnd, end);
+      const newOffset = clampedStart - pos;
+      const newLength = clampedEnd - clampedStart;
+      if (newLength > 0) {
+        adjusted.push({ ...e, offset: newOffset, length: newLength });
+      }
     }
   }
   return adjusted;
