@@ -67,20 +67,13 @@ function splitContentMessages(content: string): string[] {
   return messages;
 }
 
-function ensureMessagesFormat(raw: any): any {
-  if (!raw) return raw;
-  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) return raw;
-  if (Array.isArray(raw)) return { messages: { '0': raw } };
-  return raw;
-}
-
 function getMessageButtonsFromPost(post: any, messageIdx: number): any[][] {
   const raw = post.buttons;
   if (!raw) return [];
-  const formatted = ensureMessagesFormat(raw);
-  if (formatted && formatted.messages) {
-    return formatted.messages[String(messageIdx)] || formatted.messages['_shared'] || [];
+  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
+    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
   }
+  if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
   return [];
 }
 
@@ -89,7 +82,15 @@ export async function renderPostToTelegram(ctx: any, post: any) {
   if (messages.length > 1) {
     for (let i = 0; i < messages.length; i++) {
       const msgButtons = getMessageButtonsFromPost(post, i);
-      const msgPost = { ...post, content: messages[i], buttons: msgButtons };
+      const msgPost = {
+        ...post,
+        content: messages[i],
+        buttons: msgButtons,
+        telegramPayload: undefined,
+        telegramMessageSnapshot: post.telegramMessageSnapshot
+          ? { ...post.telegramMessageSnapshot, reply_markup: undefined }
+          : undefined,
+      };
       try {
         if (i === 0) {
           await renderSinglePost(ctx, msgPost);

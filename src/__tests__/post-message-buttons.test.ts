@@ -11,10 +11,10 @@ function ensureMessagesFormat(raw: any): any {
 
 function getMessageButtons(raw: any, messageIdx: number): any[][] {
   if (!raw) return [];
-  const formatted = ensureMessagesFormat(raw);
-  if (formatted && formatted.messages) {
-    return formatted.messages[String(messageIdx)] || formatted.messages['_shared'] || [];
+  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
+    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
   }
+  if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
   return [];
 }
 
@@ -61,43 +61,25 @@ function removeMessageButtons(raw: any, messageIdx: number): any {
 
 // ─── Replicate post-normalizer helpers ─────────────────────────────
 
-function hasMultiMessageContent(content: string | null | undefined): boolean {
-  if (!content) return false;
-  return /\[\[copy\]\]/.test(content);
-}
-
 function extractButtons(post: any): any {
-  const content = post.content || post.contentText || '';
-  const isMulti = hasMultiMessageContent(content);
-
-  let raw: any = undefined;
-
   if (post.buttons !== undefined) {
-    raw = post.buttons;
-  } else if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
+    return JSON.parse(JSON.stringify(post.buttons));
+  }
+  if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
     const rows: any[][] = [];
     for (const kb of post.keyboards) {
       if (!rows[kb.row]) rows[kb.row] = [];
       rows[kb.row][kb.col] = { text: kb.text, type: kb.type || 'URL', value: kb.value || '' };
     }
-    raw = rows;
-  } else if (post.telegramPayload?.keyboard && Array.isArray(post.telegramPayload.keyboard)) {
-    raw = JSON.parse(JSON.stringify(post.telegramPayload.keyboard));
-  } else if (post.telegramMessageSnapshot?.reply_markup?.inline_keyboard) {
-    raw = JSON.parse(JSON.stringify(post.telegramMessageSnapshot.reply_markup.inline_keyboard));
+    return rows;
   }
-
-  if (!raw) return [];
-
-  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return JSON.parse(JSON.stringify(raw));
+  if (post.telegramPayload?.keyboard && Array.isArray(post.telegramPayload.keyboard)) {
+    return JSON.parse(JSON.stringify(post.telegramPayload.keyboard));
   }
-
-  if (Array.isArray(raw) && isMulti) {
-    return { messages: { '0': JSON.parse(JSON.stringify(raw)) } };
+  if (post.telegramMessageSnapshot?.reply_markup?.inline_keyboard) {
+    return JSON.parse(JSON.stringify(post.telegramMessageSnapshot.reply_markup.inline_keyboard));
   }
-
-  return JSON.parse(JSON.stringify(raw));
+  return [];
 }
 
 // ─── Replicate splitContentMessages from post-renderer.service.ts ──
@@ -136,17 +118,6 @@ function serializePostMessages(messages: string[]): string {
     return `[[copy]]\n${msg}\n[[/copy]]`;
   });
   return segments.join('\n\n');
-}
-
-// ─── Replicate normalizeButtons from telegram-native-renderer.service.ts ──
-
-function normalizeButtons(raw: any): any[][] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return raw.messages['0'] || raw.messages['_shared'] || [];
-  }
-  return [];
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -301,25 +272,6 @@ describe('removeMessageButtons', () => {
   });
 });
 
-describe('hasMultiMessageContent', () => {
-  it('detects [[copy]] markers', () => {
-    expect(hasMultiMessageContent('Hello[[copy]]World[[/copy]]')).toBe(true);
-  });
-
-  it('returns false for single message content', () => {
-    expect(hasMultiMessageContent('Hello World')).toBe(false);
-  });
-
-  it('returns false for null/undefined', () => {
-    expect(hasMultiMessageContent(null)).toBe(false);
-    expect(hasMultiMessageContent(undefined)).toBe(false);
-  });
-
-  it('returns false for empty string', () => {
-    expect(hasMultiMessageContent('')).toBe(false);
-  });
-});
-
 describe('extractButtons (normalizer)', () => {
   it('returns array format for single-message post', () => {
     const post = {
@@ -331,13 +283,14 @@ describe('extractButtons (normalizer)', () => {
     expect(result).toEqual(post.buttons);
   });
 
-  it('converts array format to messages format for multi-message post', () => {
+  it('passes through array format for multi-message post (no conversion)', () => {
     const post = {
       content: 'Msg1[[copy]]Msg2[[/copy]]',
       buttons: [[{ text: 'Btn', type: 'URL', value: 'https://example.com' }]],
     };
     const result = extractButtons(post);
-    expect(result).toEqual({ messages: { '0': post.buttons } });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual(post.buttons);
   });
 
   it('passes through messages format for multi-message post', () => {
@@ -369,7 +322,7 @@ describe('extractButtons (normalizer)', () => {
     expect(result[1][0].text).toBe('Btn2');
   });
 
-  it('converts keyboards to messages format for multi-message', () => {
+  it('normalizes keyboards to array format for multi-message (no messages conversion)', () => {
     const post = {
       content: 'Msg1[[copy]]Msg2[[/copy]]',
       keyboards: [
@@ -377,9 +330,8 @@ describe('extractButtons (normalizer)', () => {
       ],
     };
     const result = extractButtons(post);
-    expect(result).toEqual({
-      messages: { '0': [[{ text: 'Btn1', type: 'URL', value: 'https://ex.com' }]] },
-    });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result[0][0].text).toBe('Btn1');
   });
 });
 
@@ -411,31 +363,6 @@ describe('splitContentMessages / serializePostMessages roundtrip', () => {
   it('handles empty messages', () => {
     expect(serializePostMessages([])).toBe('');
     expect(splitContentMessages('')).toEqual([]);
-  });
-});
-
-describe('normalizeButtons (renderer)', () => {
-  it('extracts message 0 buttons from messages format', () => {
-    const input = { messages: { '0': [[{ text: 'A' }]], '1': [[{ text: 'B' }]] } };
-    expect(normalizeButtons(input)).toEqual([[{ text: 'A' }]]);
-  });
-
-  it('falls back to _shared if message 0 not present', () => {
-    const input = { messages: { '1': [[{ text: 'B' }]], '_shared': [[{ text: 'S' }]] } };
-    expect(normalizeButtons(input)).toEqual([[{ text: 'S' }]]);
-  });
-
-  it('passes through array format', () => {
-    expect(normalizeButtons([[{ text: 'A' }]])).toEqual([[{ text: 'A' }]]);
-  });
-
-  it('returns empty for null/undefined', () => {
-    expect(normalizeButtons(null)).toEqual([]);
-    expect(normalizeButtons(undefined)).toEqual([]);
-  });
-
-  it('returns empty for empty messages', () => {
-    expect(normalizeButtons({ messages: {} })).toEqual([]);
   });
 });
 
@@ -489,14 +416,14 @@ describe('Integration: Full multi-message flow', () => {
     }
   });
 
-  it('normalizer converts array buttons to messages format for multi-message', () => {
+  it('normalizer keeps array buttons for multi-message (no conversion)', () => {
     const post = {
       content: 'Msg1[[copy]]Msg2[[/copy]]',
       buttons: [[{ text: 'SharedBtn', type: 'URL', value: 'https://ex.com' }]],
     };
     const result = extractButtons(post);
-    expect(result.messages).toBeDefined();
-    expect(result.messages['0']).toEqual(post.buttons);
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual(post.buttons);
   });
 
   it('normalizer keeps array buttons for single message', () => {

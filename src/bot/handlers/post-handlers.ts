@@ -142,10 +142,10 @@ function ensureMessagesFormat(raw: any): any {
 // ─── Per-message button helpers ──────────────────────────
 function getMessageButtons(raw: any, messageIdx: number): any[][] {
   if (!raw) return [];
-  const formatted = ensureMessagesFormat(raw);
-  if (formatted && formatted.messages) {
-    return formatted.messages[String(messageIdx)] || formatted.messages['_shared'] || [];
+  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
+    return raw.messages[String(messageIdx)] || raw.messages['_shared'] || [];
   }
+  if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
   return [];
 }
 

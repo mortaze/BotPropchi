@@ -76,19 +76,9 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number)
   return result;
 }
 
-function normalizeButtons(raw: any): any[][] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
-    return raw.messages['0'] || raw.messages['_shared'] || [];
-  }
-  return [];
-}
-
 function buildTelegramKeyboard(buttons: any[] | null | undefined, postId?: number): any[][] {
-  const normalized = normalizeButtons(buttons);
-  if (!Array.isArray(normalized)) return [];
-  return normalized.map((row, r) => (Array.isArray(row) ? row : []).map((btn, c) => buttonToTelegram(btn, postId, r, c)).filter(Boolean));
+  if (!Array.isArray(buttons)) return [];
+  return buttons.map((row, r) => (Array.isArray(row) ? row : []).map((btn, c) => buttonToTelegram(btn, postId, r, c)).filter(Boolean));
 }
 
 export function extractTelegramSnapshot(message: any) {
@@ -121,7 +111,7 @@ export class TelegramNativeRenderer {
     const textEntities = nonEmptyEntities(snapshot.entities) || nonEmptyEntities(payload.entities) || nonEmptyEntities(entitiesFromRows(post.postEntities || post.richEntities, 'text')) || nonEmptyEntities(cleanEntities(post.contentEntities)) || nonEmptyEntities(cleanEntities(post.entities));
     const captionEntities = nonEmptyEntities(snapshot.caption_entities) || nonEmptyEntities(payload.captionEntities) || nonEmptyEntities(entitiesFromRows(post.postEntities || post.richEntities, 'caption')) || (caption ? nonEmptyEntities(cleanEntities(post.contentEntities)) || nonEmptyEntities(cleanEntities(post.entities)) : undefined);
     const media = Array.isArray(payload.media) && payload.media.length ? cloneJson(payload.media) : extractTelegramSnapshot(snapshot).media;
-    const keyboard = payload.keyboard || snapshot.reply_markup?.inline_keyboard || normalizeButtons(post.buttons) || [];
+    const keyboard = payload.keyboard || (Array.isArray(post.buttons) ? post.buttons : []) || snapshot.reply_markup?.inline_keyboard || [];
     const buttons = buildTelegramKeyboard(keyboard, post.id);
     const markup = buttons.length ? Markup.inlineKeyboard(buttons) : {};
 
