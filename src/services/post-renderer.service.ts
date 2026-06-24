@@ -44,18 +44,28 @@ export function comparePostNativeRoundtrip(post: any) {
   return telegramSnapshotComparator.compare(post);
 }
 
+// ─── New Data Model ────────────────────────────────────────────────
+
+export interface PostMessage {
+  index: number;
+  content: string;
+  entities: any[];
+  buttons: any[][];
+  media: any[] | undefined;
+  snapshot: any | undefined;
+}
+
+export interface MessageRenderContext {
+  message: PostMessage;
+  postId: number;
+}
+
+// ─── Internal: content splitting ───────────────────────────────────
+
 type ContentSegment = {
   text: string;
   offset: number;
 };
-
-interface MessageRenderContext {
-  text: string;
-  entities: any[];
-  buttons: any[][];
-  media: any[] | undefined;
-  telegramMessageSnapshot: any;
-}
 
 function splitContentMessagesWithOffsets(content: string): ContentSegment[] {
   if (!content || !content.trim()) return [];
@@ -165,87 +175,119 @@ function splitTelegramSnapshotForMessage(
   };
 }
 
-function buildMessageRenderContext(
+// ─── Core: resolve entities for a message (two-tier) ──────────────
+
+function resolveEntitiesForMessage(
   post: any,
-  messageIndex: number,
   segment: ContentSegment,
-): MessageRenderContext {
-  const rawButtons = extractButtonsForMessage(post.buttons, messageIndex);
-  const buttons = rawButtons.length > 0 ? cloneJson(rawButtons) : [];
-
-  const media = messageIndex === 0 && Array.isArray(post.media) && post.media.length > 0
-    ? cloneJson(post.media)
-    : undefined;
-
+): any[] {
   const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
-  const entities = fromContent.length > 0
-    ? fromContent
-    : post.telegramMessageSnapshot
-      ? extractSnapshotEntitiesForSegment(post.telegramMessageSnapshot.text, post.telegramMessageSnapshot.entities, segment.text)
-      : [];
+  if (fromContent.length > 0) return fromContent;
 
-  const telegramMessageSnapshot = messageIndex === 0 && post.telegramMessageSnapshot
-    ? splitTelegramSnapshotForMessage(post.telegramMessageSnapshot, segment.text)
-    : undefined;
-
-  logger.info(`[MessageCtx] post=${post.id} msg=${messageIndex} text="${segment.text.slice(0, 30)}" entities=${entities.length} buttons=${buttons.length} hasSnapshot=${!!telegramMessageSnapshot}`);
-
-  return {
-    text: segment.text,
-    entities,
-    buttons,
-    media,
-    telegramMessageSnapshot,
-  };
+  if (post.telegramMessageSnapshot) {
+    return extractSnapshotEntitiesForSegment(
+      post.telegramMessageSnapshot.text,
+      post.telegramMessageSnapshot.entities,
+      segment.text,
+    );
+  }
+  return [];
 }
+
+// ─── Core: splitPostToMessages ─────────────────────────────────────
+
+export function splitPostToMessages(post: any): PostMessage[] {
+  if (!post) return [];
+  const segments = splitContentMessagesWithOffsets(post.content || '');
+  if (segments.length === 0) return [];
+
+  return segments.map((seg, i) => {
+    const entities = resolveEntitiesForMessage(post, seg);
+    const rawButtons = extractButtonsForMessage(post.buttons, i);
+    const buttons = rawButtons.length > 0 ? cloneJson(rawButtons) : [];
+
+    const media = i === 0 && Array.isArray(post.media) && post.media.length > 0
+      ? cloneJson(post.media)
+      : undefined;
+
+    const snapshot = splitTelegramSnapshotForMessage(post.telegramMessageSnapshot, seg.text);
+
+    return {
+      index: i,
+      content: seg.text,
+      entities,
+      buttons,
+      media,
+      snapshot,
+    };
+  });
+}
+
+// ─── Core: buildMessageContext ─────────────────────────────────────
+
+export function buildMessageContext(post: any, messageIndex: number): MessageRenderContext {
+  const messages = splitPostToMessages(post);
+  const message = messages[messageIndex];
+  if (!message) {
+    throw new Error(`[MessageCtx] post=${post.id} message index ${messageIndex} not found (total ${messages.length})`);
+  }
+  return { message, postId: post.id };
+}
+
+// ─── Internal: build post-like object for native renderer ─────────
 
 function buildMessagePostForRender(
   post: any,
-  ctx: MessageRenderContext,
-  messageIndex: number,
+  msg: PostMessage,
 ): any {
   return {
     id: post.id,
     title: post.title,
-    content: ctx.text,
-    entities: ctx.entities,
-    buttons: ctx.buttons,
-    media: ctx.media,
+    content: msg.content,
+    entities: msg.entities,
+    buttons: msg.buttons,
+    media: msg.media,
     renderMode: post.renderMode,
     contentFormat: post.contentFormat,
-    telegramMessageSnapshot: ctx.telegramMessageSnapshot,
+    telegramMessageSnapshot: msg.snapshot,
     telegramPayload: undefined,
   };
 }
 
+// ─── Main entry: renderPostToTelegram ──────────────────────────────
+
 export async function renderPostToTelegram(ctx: any, post: any) {
-  const segments = splitContentMessagesWithOffsets(post.content || '');
-  if (segments.length > 1) {
-    logger.info(`[Pipeline] post=${post.id} multiMessage segments=${segments.length}`);
-    for (let i = 0; i < segments.length; i++) {
-      const msgCtx = buildMessageRenderContext(post, i, segments[i]);
+  const messages = splitPostToMessages(post);
+  if (messages.length > 1) {
+    logger.info(`[Pipeline] post=${post.id} multiMessage count=${messages.length}`);
+    for (const msg of messages) {
       try {
-        if (i === 0) {
-          const msgPost = buildMessagePostForRender(post, msgCtx, i);
+        if (msg.index === 0) {
+          const msgPost = buildMessagePostForRender(post, msg);
           await renderSinglePost(ctx, msgPost);
         } else {
           await sendFormattedMessage(ctx, {
-            text: msgCtx.text,
-            entities: msgCtx.entities.length > 0 ? msgCtx.entities : undefined,
+            text: msg.content,
+            entities: msg.entities.length > 0 ? msg.entities : undefined,
           }, {
-            buttons: msgCtx.buttons.length > 0
-              ? buildTelegramKeyboard(msgCtx.buttons, post.id)
+            buttons: msg.buttons.length > 0
+              ? buildTelegramKeyboard(msg.buttons, post.id)
               : undefined,
           });
         }
       } catch (e) {
-        logger.error(`[Pipeline] post=${post.id} message ${i + 1}/${segments.length} FAILED — aborting: ${e}`);
+        logger.error(`[Pipeline] post=${post.id} message ${msg.index + 1}/${messages.length} FAILED — aborting: ${e}`);
         throw e;
       }
     }
     return true;
   }
-  return renderSinglePost(ctx, { ...post, buttons: extractButtonsForMessage(post.buttons, 0) });
+
+  // Single message path
+  const msg = messages[0];
+  if (!msg) return false;
+  const msgPost = buildMessagePostForRender(post, msg);
+  return renderSinglePost(ctx, msgPost);
 }
 
 async function renderSinglePost(ctx: any, post: any) {

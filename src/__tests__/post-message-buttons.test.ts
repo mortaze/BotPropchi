@@ -436,6 +436,76 @@ describe('Integration: Full multi-message flow', () => {
   });
 });
 
+// ─── New Data Model: PostMessage, MessageRenderContext ─────────────
+
+interface PostMessage {
+  index: number;
+  content: string;
+  entities: any[];
+  buttons: any[][];
+  media: any[] | undefined;
+  snapshot: any | undefined;
+}
+
+interface MessageRenderContext {
+  message: PostMessage;
+  postId: number;
+}
+
+// ─── Replicate splitPostToMessages from post-renderer.service.ts ──
+
+function resolveEntitiesForMessage(
+  post: any,
+  segment: ContentSegment,
+): any[] {
+  const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
+  if (fromContent.length > 0) return fromContent;
+  if (post.telegramMessageSnapshot) {
+    return extractSnapshotEntitiesForSegment(
+      post.telegramMessageSnapshot.text,
+      post.telegramMessageSnapshot.entities,
+      segment.text,
+    );
+  }
+  return [];
+}
+
+function splitPostToMessages(post: any): PostMessage[] {
+  if (!post) return [];
+  const segments = splitContentMessagesWithOffsets(post.content || '');
+  if (segments.length === 0) return [];
+  return segments.map((seg, i) => {
+    const entities = resolveEntitiesForMessage(post, seg);
+    const rawButtons = extractButtonsForMessage(post.buttons, i);
+    const buttons = rawButtons.length > 0 ? JSON.parse(JSON.stringify(rawButtons)) : [];
+    const media = i === 0 && Array.isArray(post.media) && post.media.length > 0
+      ? JSON.parse(JSON.stringify(post.media))
+      : undefined;
+    const snapshot = msgSnapshotResolver(post.telegramMessageSnapshot, seg.text);
+    return { index: i, content: seg.text, entities, buttons, media, snapshot };
+  });
+}
+
+function msgSnapshotResolver(snapshot: any, segmentText: string): any {
+  if (!snapshot) return undefined;
+  const scopedEntities = snapshot.text
+    ? extractSnapshotEntitiesForSegment(snapshot.text, snapshot.entities, segmentText)
+    : [];
+  return {
+    text: segmentText,
+    entities: scopedEntities,
+    caption: snapshot.caption,
+    caption_entities: snapshot.caption_entities,
+  };
+}
+
+function buildMessageContext(post: any, messageIndex: number): MessageRenderContext {
+  const messages = splitPostToMessages(post);
+  const message = messages[messageIndex];
+  if (!message) throw new Error(`Message index ${messageIndex} not found`);
+  return { message, postId: post.id };
+}
+
 // ─── Replicate MessageRenderContext isolation functions ────────────
 
 type ContentSegment = { text: string; offset: number };
@@ -523,30 +593,276 @@ function extractButtonsForMessage(raw: any, messageIndex: number): any[][] {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// MESSAGE RENDER CONTEXT ISOLATION TESTS
+// NEW DATA MODEL: splitPostToMessages
+// ══════════════════════════════════════════════════════════════════
+
+describe('splitPostToMessages', () => {
+  it('returns empty array for null/undefined post', () => {
+    expect(splitPostToMessages(null)).toEqual([]);
+    expect(splitPostToMessages(undefined)).toEqual([]);
+  });
+
+  it('returns empty array for post with empty content', () => {
+    expect(splitPostToMessages({ content: '' })).toEqual([]);
+    expect(splitPostToMessages({ content: '   ' })).toEqual([]);
+  });
+
+  it('single message returns one PostMessage with correct fields', () => {
+    const result = splitPostToMessages({
+      id: 1,
+      content: 'Hello World',
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].index).toBe(0);
+    expect(result[0].content).toBe('Hello World');
+    expect(result[0].entities).toEqual([]);
+    expect(result[0].buttons).toEqual([]);
+    expect(result[0].media).toBeUndefined();
+    expect(result[0].snapshot).toBeUndefined();
+  });
+
+  it('multiple messages return correct PostMessage[]', () => {
+    const post = {
+      id: 1,
+      content: 'First[[copy]]Second[[/copy]]',
+    };
+    const result = splitPostToMessages(post);
+    expect(result).toHaveLength(2);
+    expect(result[0].index).toBe(0);
+    expect(result[0].content).toBe('First');
+    expect(result[1].index).toBe(1);
+    expect(result[1].content).toBe('Second');
+  });
+
+  it('indexes are sequential starting from 0', () => {
+    const post = {
+      content: 'A[[copy]]B[[/copy]][[copy]]C[[/copy]]',
+    };
+    const result = splitPostToMessages(post);
+    expect(result).toHaveLength(3);
+    expect(result.map(m => m.index)).toEqual([0, 1, 2]);
+  });
+
+  it('entities are per-message and offset-adjusted', () => {
+    const post = {
+      content: 'Hello[[copy]]World[[/copy]]',
+      entities: [
+        { offset: 0, length: 2, type: 'bold' },    // "He" in msg 0
+        { offset: 13, length: 3, type: 'italic' },  // "Wor" in msg 1
+      ],
+    };
+    const result = splitPostToMessages(post);
+    expect(result[0].entities).toHaveLength(1);
+    expect(result[0].entities[0].type).toBe('bold');
+    expect(result[0].entities[0].offset).toBe(0);
+    expect(result[0].entities[0].length).toBe(2);
+    expect(result[1].entities).toHaveLength(1);
+    expect(result[1].entities[0].type).toBe('italic');
+    expect(result[1].entities[0].offset).toBe(0);
+    expect(result[1].entities[0].length).toBe(3);
+  });
+
+  it('buttons are per-message from messages format', () => {
+    const post = {
+      content: 'A[[copy]]B[[/copy]]',
+      buttons: {
+        messages: {
+          '0': [[{ text: 'Btn0' }]],
+          '1': [[{ text: 'Btn1' }]],
+        },
+      },
+    };
+    const result = splitPostToMessages(post);
+    expect(result[0].buttons).toHaveLength(1);
+    expect(result[0].buttons[0][0].text).toBe('Btn0');
+    expect(result[1].buttons).toHaveLength(1);
+    expect(result[1].buttons[0][0].text).toBe('Btn1');
+  });
+
+  it('only msg 0 gets media', () => {
+    const post = {
+      content: 'A[[copy]]B[[/copy]]',
+      media: [{ type: 'photo', fileId: 'x' }],
+    };
+    const result = splitPostToMessages(post);
+    expect(result[0].media).toBeDefined();
+    expect(result[0].media).toHaveLength(1);
+    expect(result[1].media).toBeUndefined();
+  });
+
+  it('no shared entity reference between messages', () => {
+    const post = {
+      content: 'A[[copy]]B[[/copy]]',
+      entities: [
+        { offset: 0, length: 1, type: 'bold' },
+        { offset: 6, length: 1, type: 'italic' },
+      ],
+    };
+    const result = splitPostToMessages(post);
+    expect(result[0].entities).not.toBe(result[1].entities);
+  });
+
+  it('no shared button reference between messages', () => {
+    const post = {
+      content: 'A[[copy]]B[[/copy]]',
+      buttons: {
+        messages: {
+          '0': [[{ text: 'A' }]],
+          '1': [[{ text: 'B' }]],
+        },
+      },
+    };
+    const result = splitPostToMessages(post);
+    expect(result[0].buttons).not.toBe(result[1].buttons);
+  });
+
+  it('mutating msg 0 entities does not affect msg 1', () => {
+    const post = {
+      content: 'A[[copy]]B[[/copy]]',
+      entities: [
+        { offset: 0, length: 1, type: 'bold' },
+        { offset: 6, length: 1, type: 'italic' },
+      ],
+    };
+    const result = splitPostToMessages(post);
+    const originalLen1 = result[1].entities.length;
+    result[0].entities.push({ offset: 1, length: 1, type: 'code' });
+    expect(result[0].entities).toHaveLength(2);
+    expect(result[1].entities).toHaveLength(originalLen1);
+  });
+
+  it('mutating msg 0 buttons does not affect msg 1', () => {
+    const post = {
+      content: 'A[[copy]]B[[/copy]]',
+      buttons: {
+        messages: {
+          '0': [[{ text: 'A' }]],
+          '1': [[{ text: 'B' }]],
+        },
+      },
+    };
+    const result = splitPostToMessages(post);
+    result[0].buttons[0][0].text = 'Mutated';
+    expect(result[1].buttons[0][0].text).toBe('B');
+  });
+
+  it('mutating msg 0 media does not affect post.media', () => {
+    const post = {
+      content: 'A[[copy]]B[[/copy]]',
+      media: [{ type: 'photo', fileId: 'x' }],
+    };
+    const result = splitPostToMessages(post);
+    (result[0].media as any[]).push({ type: 'video', fileId: 'y' });
+    expect(result[0].media).toHaveLength(2);
+    expect(post.media).toHaveLength(1);
+  });
+
+  it('snapshot is scoped per message with correct text and entities', () => {
+    const post = {
+      content: 'Hello[[copy]]World[[/copy]]',
+      telegramMessageSnapshot: {
+        text: 'HelloWorld',
+        entities: [
+          { offset: 0, length: 5, type: 'bold' },
+          { offset: 5, length: 5, type: 'italic' },
+        ],
+      },
+    };
+    const result = splitPostToMessages(post);
+    expect(result[0].snapshot).toBeDefined();
+    expect(result[0].snapshot.text).toBe('Hello');
+    expect(result[0].snapshot.entities).toHaveLength(1);
+    expect(result[0].snapshot.entities[0].type).toBe('bold');
+    expect(result[0].snapshot.entities[0].offset).toBe(0);
+    expect(result[1].snapshot).toBeDefined();
+    expect(result[1].snapshot.text).toBe('World');
+    expect(result[1].snapshot.entities).toHaveLength(1);
+    expect(result[1].snapshot.entities[0].type).toBe('italic');
+    expect(result[1].snapshot.entities[0].offset).toBe(0);
+  });
+
+  it('snapshot fallback: post-level entities used when no snapshot present', () => {
+    const post = {
+      content: 'Hello[[copy]]World[[/copy]]',
+      entities: [
+        { offset: 0, length: 5, type: 'bold' },   // "Hello" in msg 0
+        { offset: 13, length: 5, type: 'italic' }, // "World" in msg 1
+      ],
+      telegramMessageSnapshot: undefined,
+    };
+    const result = splitPostToMessages(post);
+    expect(result[0].entities).toHaveLength(1);
+    expect(result[0].entities[0].type).toBe('bold');
+    expect(result[1].entities).toHaveLength(1);
+    expect(result[1].entities[0].type).toBe('italic');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// NEW DATA MODEL: buildMessageContext
+// ══════════════════════════════════════════════════════════════════
+
+describe('buildMessageContext', () => {
+  const post = {
+    id: 42,
+    content: 'First[[copy]]Second[[/copy]]',
+    entities: [
+      { offset: 0, length: 5, type: 'bold' },    // "First" in msg 0
+      { offset: 13, length: 6, type: 'italic' },  // "Second" in msg 1
+    ],
+    buttons: {
+      messages: {
+        '0': [[{ text: 'A' }]],
+        '1': [[{ text: 'B' }]],
+      },
+    },
+  };
+
+  it('returns context with correct postId', () => {
+    const ctx = buildMessageContext(post, 0);
+    expect(ctx.postId).toBe(42);
+  });
+
+  it('returns context wrapping correct PostMessage for index 0', () => {
+    const ctx = buildMessageContext(post, 0);
+    expect(ctx.message.index).toBe(0);
+    expect(ctx.message.content).toBe('First');
+    expect(ctx.message.entities).toHaveLength(1);
+    expect(ctx.message.entities[0].type).toBe('bold');
+    expect(ctx.message.buttons).toHaveLength(1);
+  });
+
+  it('returns context wrapping correct PostMessage for index 1', () => {
+    const ctx = buildMessageContext(post, 1);
+    expect(ctx.message.index).toBe(1);
+    expect(ctx.message.content).toBe('Second');
+    expect(ctx.message.entities).toHaveLength(1);
+    expect(ctx.message.entities[0].type).toBe('italic');
+    expect(ctx.message.buttons).toHaveLength(1);
+  });
+
+  it('throws for out-of-range index', () => {
+    expect(() => buildMessageContext(post, 99)).toThrow();
+  });
+
+  it('contexts for different indices have different PostMessage references', () => {
+    const ctx0 = buildMessageContext(post, 0);
+    const ctx1 = buildMessageContext(post, 1);
+    expect(ctx0.message).not.toBe(ctx1.message);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// MESSAGE CONTEXT ISOLATION TESTS (using splitPostToMessages)
 // ══════════════════════════════════════════════════════════════════
 
 describe('MessageRenderContext Isolation', () => {
-  function buildMsgContext(post: any, messageIndex: number, segment: ContentSegment) {
-    const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
-    const entities = fromContent.length > 0
-      ? JSON.parse(JSON.stringify(fromContent))
-      : post.telegramMessageSnapshot
-        ? extractSnapshotEntitiesForSegment(post.telegramMessageSnapshot.text, post.telegramMessageSnapshot.entities, segment.text)
-        : [];
-    const buttons = JSON.parse(JSON.stringify(extractButtonsForMessage(post.buttons, messageIndex)));
-    const media = messageIndex === 0 && Array.isArray(post.media) && post.media.length > 0
-      ? JSON.parse(JSON.stringify(post.media))
-      : undefined;
-    return { text: segment.text, entities, buttons, media };
-  }
-
   const multiMsgPost = {
     id: 1,
     content: 'First msg[[copy]]Second msg[[/copy]]',
     entities: [
-      { offset: 0, length: 4, type: 'bold' },                    // "First" in msg 0
-      { offset: 17, length: 6, type: 'italic' },                  // "Second" in msg 1 (offset in marked content)
+      { offset: 0, length: 4, type: 'bold' },
+      { offset: 17, length: 6, type: 'italic' },
     ],
     buttons: {
       messages: {
@@ -557,78 +873,78 @@ describe('MessageRenderContext Isolation', () => {
     media: [{ type: 'photo', fileId: 'photoid' }],
   };
 
-  const segments = splitContentMessagesWithOffsets(multiMsgPost.content);
-  const ctx0 = buildMsgContext(multiMsgPost, 0, segments[0]);
-  const ctx1 = buildMsgContext(multiMsgPost, 1, segments[1]);
+  const messages = splitPostToMessages(multiMsgPost);
+  const ctx0 = { message: messages[0], postId: 1 };
+  const ctx1 = { message: messages[1], postId: 1 };
 
   it('splits 2 messages with correct segments', () => {
-    expect(segments).toHaveLength(2);
-    expect(segments[0].text).toBe('First msg');
-    expect(segments[1].text).toBe('Second msg');
+    expect(messages).toHaveLength(2);
+    expect(messages[0].content).toBe('First msg');
+    expect(messages[1].content).toBe('Second msg');
   });
 
   it('message 0 has its own entities', () => {
-    expect(ctx0.entities).toHaveLength(1);
-    expect(ctx0.entities[0].type).toBe('bold');
-    expect(ctx0.entities[0].offset).toBe(0);
-    expect(ctx0.entities[0].length).toBe(4);
+    expect(ctx0.message.entities).toHaveLength(1);
+    expect(ctx0.message.entities[0].type).toBe('bold');
+    expect(ctx0.message.entities[0].offset).toBe(0);
+    expect(ctx0.message.entities[0].length).toBe(4);
   });
 
   it('message 1 has its own entities (different from msg 0)', () => {
-    expect(ctx1.entities).toHaveLength(1);
-    expect(ctx1.entities[0].type).toBe('italic');
-    expect(ctx1.entities[0].offset).toBe(0);
-    expect(ctx1.entities[0].length).toBe(6);
+    expect(ctx1.message.entities).toHaveLength(1);
+    expect(ctx1.message.entities[0].type).toBe('italic');
+    expect(ctx1.message.entities[0].offset).toBe(0);
+    expect(ctx1.message.entities[0].length).toBe(6);
   });
 
   it('message 0 and message 1 have different entity arrays (no shared reference)', () => {
-    expect(ctx0.entities).not.toBe(ctx1.entities);
-    expect(ctx0.entities[0].type).not.toBe(ctx1.entities[0].type);
+    expect(ctx0.message.entities).not.toBe(ctx1.message.entities);
+    expect(ctx0.message.entities[0].type).not.toBe(ctx1.message.entities[0].type);
   });
 
   it('mutating message 0 entities does NOT affect message 1 entities', () => {
-    const entities0 = ctx0.entities;
-    const originalLen1 = ctx1.entities.length;
-    const originalType1 = ctx1.entities[0].type;
+    const entities0 = ctx0.message.entities;
+    const originalLen1 = ctx1.message.entities.length;
+    const originalType1 = ctx1.message.entities[0].type;
     entities0.push({ offset: 5, length: 3, type: 'code' });
-    expect(ctx0.entities).toHaveLength(2);
-    expect(ctx1.entities).toHaveLength(originalLen1);
-    expect(ctx1.entities[0].type).toBe(originalType1);
+    expect(ctx0.message.entities).toHaveLength(2);
+    expect(ctx1.message.entities).toHaveLength(originalLen1);
+    expect(ctx1.message.entities[0].type).toBe(originalType1);
   });
 
   it('mutating message 1 entities does NOT affect message 0 entities', () => {
-    const entities1 = ctx1.entities;
-    const originalLen0 = ctx0.entities.length;
+    const entities1 = ctx1.message.entities;
+    const originalLen0 = ctx0.message.entities.length;
     entities1.splice(0, 1);
-    expect(ctx1.entities).toHaveLength(0);
-    expect(ctx0.entities).toHaveLength(originalLen0);
+    expect(ctx1.message.entities).toHaveLength(0);
+    expect(ctx0.message.entities).toHaveLength(originalLen0);
   });
 
   it('message 0 gets media, message 1 does not', () => {
-    expect(ctx0.media).toBeDefined();
-    expect(ctx0.media).toHaveLength(1);
-    expect(ctx1.media).toBeUndefined();
+    expect(ctx0.message.media).toBeDefined();
+    expect(ctx0.message.media).toHaveLength(1);
+    expect(ctx1.message.media).toBeUndefined();
   });
 
   it('mutating message 0 media does NOT affect post.media', () => {
     const originalMediaLen = (multiMsgPost.media as any[]).length;
-    (ctx0.media as any[]).push({ type: 'video', fileId: 'other' });
-    expect(ctx0.media).toHaveLength(originalMediaLen + 1);
+    (ctx0.message.media as any[]).push({ type: 'video', fileId: 'other' });
+    expect(ctx0.message.media).toHaveLength(originalMediaLen + 1);
     expect(multiMsgPost.media).toHaveLength(originalMediaLen);
   });
 
   it('message 0 has its own buttons', () => {
-    expect(ctx0.buttons).toHaveLength(1);
-    expect(ctx0.buttons[0][0].text).toBe('Btn0');
+    expect(ctx0.message.buttons).toHaveLength(1);
+    expect(ctx0.message.buttons[0][0].text).toBe('Btn0');
   });
 
   it('message 1 has its own buttons', () => {
-    expect(ctx1.buttons).toHaveLength(1);
-    expect(ctx1.buttons[0][0].text).toBe('Btn1');
+    expect(ctx1.message.buttons).toHaveLength(1);
+    expect(ctx1.message.buttons[0][0].text).toBe('Btn1');
   });
 
   it('message 0 and message 1 have different button arrays (no shared reference)', () => {
-    expect(ctx0.buttons).not.toBe(ctx1.buttons);
+    expect(ctx0.message.buttons).not.toBe(ctx1.message.buttons);
   });
 
   it('array-format buttons: message 0 gets buttons, message 1 gets empty', () => {
@@ -637,11 +953,9 @@ describe('MessageRenderContext Isolation', () => {
       entities: [],
       buttons: [[{ text: 'OnlyBtn', type: 'URL', value: 'https://x.com' }]],
     };
-    const segs = splitContentMessagesWithOffsets(arrPost.content);
-    const arrCtx0 = buildMsgContext(arrPost, 0, segs[0]);
-    const arrCtx1 = buildMsgContext(arrPost, 1, segs[1]);
-    expect(arrCtx0.buttons).toHaveLength(1);
-    expect(arrCtx1.buttons).toHaveLength(0);
+    const arrMsgs = splitPostToMessages(arrPost);
+    expect(arrMsgs[0].buttons).toHaveLength(1);
+    expect(arrMsgs[1].buttons).toHaveLength(0);
   });
 
   it('extractButtonsForMessage: messages format returns per-message', () => {
