@@ -1,6 +1,6 @@
 import axios, { AxiosError } from "axios";
 import Cookies from "js-cookie";
-import type { AdminUser, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails, PostItem, MenuLayoutButton, MenuLayoutResponse, Season, LeaderboardEntry, LeaderboardStats } from "@/types";
+import type { AdminUser, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails, PostItem, MenuLayoutButton, MenuLayoutResponse, Season, LeaderboardEntry, LeaderboardStats, WheelSegment, WheelParticipant, SpinResult } from "@/types";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://botprophub-production.up.railway.app";
 
@@ -142,27 +142,6 @@ export interface LotteryPayload {
   isActive: boolean;
   announcementMsg?: string | null;
   winnerMessage?: string | null;
-}
-
-export interface WheelParticipant {
-  userId: number;
-  user: { id: number; firstName: string; lastName: string | null; username: string | null; telegramId: string };
-  chances: number;
-  isRemoved: boolean;
-}
-
-export interface WheelSegment {
-  userId: number;
-  firstName: string;
-  lastName: string | null;
-  username: string | null;
-  chances: number;
-}
-
-export interface SpinResult {
-  winner: LotteryWinner | null;
-  remainingParticipants: number;
-  isCompleted: boolean;
 }
 
 export const lotteriesApi = {

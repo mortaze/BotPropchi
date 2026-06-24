@@ -71,7 +71,7 @@ export default function LotteriesPage() {
                     <div className="flex flex-wrap gap-2">
                       {!lottery.isCompleted && (
                         <Link href={`/dashboard/lotteries/${lottery.id}/execute`}>
-                          <Button size="sm" variant="default">
+                          <Button size="sm" variant="primary">
                             <Play className="h-3 w-3 ml-1" />
                             اجرا
                           </Button>
@@ -85,7 +85,7 @@ export default function LotteriesPage() {
                       </Link>
                       <Button
                         size="sm"
-                        variant="destructive"
+                        variant="danger"
                         loading={deleteMutation.isPending}
                         onClick={() => {
                           if (confirm("آیا از حذف این قرعه‌کشی مطمئن هستید؟")) {

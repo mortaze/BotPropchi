@@ -165,6 +165,27 @@ export interface WinnerNotification {
   user?: User;
 }
 
+export interface WheelSegment {
+  userId: number;
+  firstName: string;
+  lastName: string | null;
+  username: string | null;
+  chances: number;
+}
+
+export interface WheelParticipant {
+  userId: number;
+  user: { id: number; firstName: string; lastName: string | null; username: string | null; telegramId: string };
+  chances: number;
+  isRemoved: boolean;
+}
+
+export interface SpinResult {
+  winner: LotteryWinner | null;
+  remainingParticipants: number;
+  isCompleted: boolean;
+}
+
 export interface ReferralSettings {
   id: number;
   inviteRewardPoints: number;

@@ -183,7 +183,7 @@ export default function LotteryExecutePage() {
                     {!isCompleted && winners.length > 0 && (
                       <Button
                         size="lg"
-                        variant="destructive"
+                        variant="danger"
                         onClick={() => {
                           if (confirm("آیا می‌خواهید قرعه‌کشی را پایان دهید؟")) {
                             lotteriesApi.completeLottery(id).then(() => {
@@ -207,7 +207,7 @@ export default function LotteryExecutePage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold">شرکت‌کنندگان</h2>
-                <Badge variant="secondary">
+                <Badge variant="default">
                   {participantsQuery.data?.data?.length ?? 0} نفر
                 </Badge>
               </div>
