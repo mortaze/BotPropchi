@@ -3,6 +3,7 @@ import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
 import { normalizeEntities, telegramLength } from '../shared/message-format/normalizer';
 import { buildTelegramKeyboard, MEDIA_SENDERS, TelegramPayload } from './renderer';
+import { postService } from './post.service';
 
 export type TelegramEntity = { type: string; offset: number; length: number; [key: string]: any };
 
@@ -308,16 +309,214 @@ function applyVarsToRow(row: any, vars: Record<string, string>): any {
   };
 }
 
+export async function legacyBuildVirtualMessages(post: any): Promise<any[]> {
+  logger.info(`[LegacyPostMigration] post=${post.id} "${post.title}" building virtual messages from legacy fields`);
+
+  const content = post.content || post.contentText || '';
+  const entities = post.entities || post.contentEntities || [];
+  const caption = post.caption ?? null;
+  const captionEntities = post.captionEntities ?? [];
+  const buttons = post.buttons ?? null;
+  const mediaFileId = post.mediaFileId ?? null;
+  const mediaGroupId = post.mediaGroupId ?? null;
+  const mediaType = post.mediaType ?? null;
+  const parseMode = post.parseMode ?? 'None';
+
+  // Check for explicit telegramPayload.messages first
+  const explicitMessages = post.telegramPayload?.messages;
+  if (Array.isArray(explicitMessages) && explicitMessages.length > 0) {
+    logger.info(`[LegacyPostMigration] post=${post.id} using telegramPayload.messages (${explicitMessages.length})`);
+    return explicitMessages.map((m: any, i: number) => ({
+      id: `${post.id}:${i}`,
+      postId: post.id,
+      order: i,
+      messageType: m.messageType ?? m.type ?? 'text',
+      text: m.text ?? m.content ?? '',
+      entities: Array.isArray(m.entities) ? m.entities : [],
+      parseMode: m.parseMode ?? 'None',
+      mediaFileId: m.mediaFileId ?? mediaFileId,
+      mediaGroupId: m.mediaGroupId ?? mediaGroupId,
+      caption: m.caption ?? caption,
+      captionEntities: Array.isArray(m.captionEntities) ? m.captionEntities : captionEntities,
+      replyMarkup: m.replyMarkup ?? m.buttons ?? (i === 0 ? buttons : null),
+      delayMs: m.delayMs ?? 0,
+    }));
+  }
+
+  // Check for telegramMessageSnapshot
+  const snapshot = post.telegramMessageSnapshot;
+  if (snapshot && (snapshot.text || snapshot.caption)) {
+    logger.info(`[LegacyPostMigration] post=${post.id} using telegramMessageSnapshot`);
+    const snapshotText = snapshot.text || '';
+    const snapshotEntities = snapshot.entities || [];
+    const snapshotCaption = snapshot.caption || caption;
+    const snapshotCaptionEntities = snapshot.caption_entities || captionEntities;
+    return [{
+      id: `${post.id}:0`,
+      postId: post.id,
+      order: 0,
+      messageType: mediaFileId ? (mediaType || 'text') : 'text',
+      text: snapshotText || content,
+      entities: snapshotEntities,
+      parseMode: 'None',
+      mediaFileId,
+      mediaGroupId,
+      caption: snapshotCaption,
+      captionEntities: snapshotCaptionEntities,
+      replyMarkup: buttons,
+      delayMs: 0,
+    }];
+  }
+
+  // Content splitting for [[copy]] markers (multi-message legacy format)
+  if (content.includes('[[copy]]')) {
+    logger.info(`[LegacyPostMigration] post=${post.id} splitting content by [[copy]] markers`);
+    const segments = splitLegacyContent(content);
+    return segments.map((seg, i) => {
+      const segEntities = extractRelativeEntities(entities, seg.offset, seg.text.length);
+      const segCaption = i === 0 ? caption : null;
+      const segCaptionEntities = i === 0 ? captionEntities : [];
+      const segButtons = i === 0 ? buttons : null;
+      return {
+        id: `${post.id}:${i}`,
+        postId: post.id,
+        order: i,
+        messageType: 'text',
+        text: seg.text,
+        entities: segEntities,
+        parseMode: 'None',
+        mediaFileId: i === 0 ? mediaFileId : null,
+        mediaGroupId: i === 0 ? mediaGroupId : null,
+        caption: segCaption,
+        captionEntities: segCaptionEntities,
+        replyMarkup: segButtons,
+        delayMs: 0,
+      };
+    });
+  }
+
+  // Single plain message
+  if (content || mediaFileId) {
+    logger.info(`[LegacyPostMigration] post=${post.id} single legacy message content=${content.length}ch entities=${entities.length}`);
+    let resolvedMessageType = 'text';
+    if (mediaFileId && mediaType) {
+      resolvedMessageType = mediaType;
+    } else if (mediaFileId) {
+      resolvedMessageType = 'document';
+    }
+    return [{
+      id: `${post.id}:0`,
+      postId: post.id,
+      order: 0,
+      messageType: resolvedMessageType,
+      text: content,
+      entities: Array.isArray(entities) ? entities : [],
+      parseMode: 'None',
+      mediaFileId: mediaFileId,
+      mediaGroupId: mediaGroupId,
+      caption: caption,
+      captionEntities: Array.isArray(captionEntities) ? captionEntities : [],
+      replyMarkup: buttons,
+      delayMs: 0,
+    }];
+  }
+
+  logger.warn(`[LegacyPostMigration] post=${post.id} no legacy content found to build virtual messages`);
+  return [];
+}
+
+function splitLegacyContent(content: string): { text: string; offset: number }[] {
+  const segments: { text: string; offset: number }[] = [];
+  const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const raw = content.slice(lastIndex, match.index);
+      const trimmed = raw.trim();
+      if (trimmed) {
+        const leadingWs = raw.length - raw.trimStart().length;
+        segments.push({ text: trimmed, offset: lastIndex + leadingWs });
+      }
+    }
+    const innerRaw = match[1];
+    const trimmed = innerRaw.trim();
+    if (trimmed) {
+      const innerOffset = match.index + match[0].indexOf(match[1]);
+      const leadingWs = innerRaw.length - innerRaw.trimStart().length;
+      segments.push({ text: trimmed, offset: innerOffset + leadingWs });
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    const raw = content.slice(lastIndex);
+    const trimmed = raw.trim();
+    if (trimmed) {
+      const leadingWs = raw.length - raw.trimStart().length;
+      segments.push({ text: trimmed, offset: lastIndex + leadingWs });
+    }
+  }
+
+  if (segments.length === 0 && content.trim()) {
+    const trimmed = content.trim();
+    const leadingWs = content.length - content.trimStart().length;
+    segments.push({ text: trimmed, offset: leadingWs });
+  }
+
+  return segments;
+}
+
+function extractRelativeEntities(entities: any[], segmentOffset: number, segmentLength: number): any[] {
+  if (!Array.isArray(entities) || entities.length === 0) return [];
+  const segEnd = segmentOffset + segmentLength;
+  const adjusted: any[] = [];
+  for (const e of entities) {
+    const entityEnd = e.offset + e.length;
+    if (e.offset < segEnd && entityEnd > segmentOffset) {
+      const clampedStart = Math.max(e.offset, segmentOffset);
+      const clampedEnd = Math.min(entityEnd, segEnd);
+      const newOffset = clampedStart - segmentOffset;
+      const newLength = clampedEnd - clampedStart;
+      if (newLength > 0) {
+        adjusted.push({ ...e, offset: newOffset, length: newLength });
+      }
+    }
+  }
+  return adjusted;
+}
+
 export async function sendPostToChat(ctx: any, postId: number, templateVars?: Record<string, string>): Promise<void> {
   const rows = await loadPostMessages(postId);
-  if (rows.length === 0) {
-    logger.error(`[SendPost] post=${postId} has no post_messages — cannot send.`);
-    await ctx.reply('❌ این پست مشکل ساختاری دارد. لطفاً به ادمین اطلاع دهید.');
-    return;
+  let messagesToSend: any[];
+  let source: string;
+
+  if (rows.length > 0) {
+    messagesToSend = rows;
+    source = 'post_messages';
+  } else {
+    logger.warn(`[SendPostFallback] post=${postId} has no post_messages — attempting legacy fallback`);
+    const post = await postService.findById(postId);
+    if (!post) {
+      logger.error(`[SendPostFallback] post=${postId} not found in DB`);
+      await ctx.reply('❌ پست مورد نظر یافت نشد.');
+      return;
+    }
+    const virtualRows = await legacyBuildVirtualMessages(post);
+    if (virtualRows.length === 0) {
+      logger.error(`[SendPostFallback] post=${postId} cannot build any virtual message from legacy data`);
+      await ctx.reply('❌ این پست مشکل ساختاری دارد. لطفاً به ادمین اطلاع دهید.');
+      return;
+    }
+    messagesToSend = virtualRows;
+    source = 'legacy_fallback';
+    logger.info(`[SendPostFallback] post=${postId} built ${virtualRows.length} virtual messages from legacy fields`);
   }
-  const withVars = templateVars ? rows.map(r => applyVarsToRow(r, templateVars)) : rows;
+
+  const withVars = templateVars ? messagesToSend.map(r => applyVarsToRow(r, templateVars)) : messagesToSend;
   const validated = validateMessages(withVars, postId);
-  logger.info(`[SendPost] postId=${postId} messageCount=${validated.length}`);
+  logger.info(`[SendPost] postId=${postId} messageCount=${validated.length} source=${source}`);
   for (const row of validated) {
     const msg = normalizeSingleMessage(row);
     if (msg.delayMs > 0) await sleep(msg.delayMs);

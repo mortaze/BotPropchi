@@ -13,10 +13,12 @@ vi.mock('../prisma/client', () => ({
 vi.mock('../services/post.service', () => ({
   postService: {
     incrementViews: vi.fn().mockResolvedValue(undefined),
+    findById: vi.fn(),
   },
 }));
 
 import { prisma } from '../prisma/client';
+import { postService } from '../services/post.service';
 import { sendPostToUser } from '../bot/shared';
 import { validateMessages, loadPostMessages } from '../services/post-message.service';
 
@@ -48,12 +50,14 @@ function makeMockCtx() {
 }
 
 const mockFindMany = prisma.postMessage.findMany as ReturnType<typeof vi.fn>;
+const mockFindById = postService.findById as ReturnType<typeof vi.fn>;
 
 // ─── Tests ──────────────────────────────────────────────────────────
 
 describe('sendPostToUser — message-first architecture', () => {
   beforeEach(() => {
     mockFindMany.mockReset();
+    mockFindById.mockReset();
   });
 
   afterEach(() => {
@@ -129,8 +133,13 @@ describe('sendPostToUser — message-first architecture', () => {
     expect(validated[0].entities[0].type).toBe('bold');
   });
 
-  it('shows error when post has no messages', async () => {
+  it('shows error when post has no messages and legacy fallback has no content', async () => {
     mockFindMany.mockResolvedValue([]);
+    mockFindById.mockResolvedValue({
+      id: 99, title: 'Empty', content: '', contentText: '', entities: [],
+      caption: null, captionEntities: [], mediaFileId: null, mediaType: null,
+      buttons: null, telegramPayload: null, telegramMessageSnapshot: null,
+    });
 
     const { ctx, calls } = makeMockCtx();
     await sendPostToUser(ctx, { id: 99 });
