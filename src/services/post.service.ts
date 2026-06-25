@@ -10,6 +10,7 @@ import { logger } from '../utils/logger';
 import { sanitizeTelegramText, sanitizeJsonStrings, validateDbInput } from '../utils/unicode';
 import { extractTelegramSnapshot, validateTelegramEntities, validateTelegramHtml } from './post-renderer.service';
 import { normalizePost, sanitizePost } from './post-normalizer.service';
+import { postMessageService } from './post-message.service';
 
 const CACHE_KEY_PUBLISHED = cacheKey('posts:published');
 const CACHE_KEY_COMMANDS = cacheKey('posts:commands');
@@ -731,10 +732,12 @@ export const postService = {
   async saveVersion(postId: number) {
     const post = await postRepository.findById(postId);
     if (!post) return null;
+    const messages = await postMessageService.list(postId);
     const snapshot = {
       id: post.id,
       title: post.title,
       slug: post.slug,
+      messages,
       content: post.content,
       caption: post.caption,
       mediaFileId: post.mediaFileId,

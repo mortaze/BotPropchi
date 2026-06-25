@@ -323,7 +323,7 @@ export const postRepository = {
     return prisma.$transaction(async (tx) => {
       const original = await tx.post.findUnique({
         where: { id },
-        include: { commands: true },
+        include: { commands: true, messages: true },
       });
       if (!original) return null;
       const post = await tx.post.create({
@@ -355,6 +355,24 @@ export const postRepository = {
             postId: post.id,
             command: `${cmd.command}_copy_${post.id}`,
             aliases: cmd.aliases,
+          },
+        });
+      }
+      for (const msg of original.messages) {
+        await tx.postMessage.create({
+          data: {
+            postId: post.id,
+            order: msg.order,
+            messageType: msg.messageType,
+            text: msg.text,
+            entities: msg.entities,
+            parseMode: msg.parseMode,
+            mediaFileId: msg.mediaFileId,
+            mediaGroupId: msg.mediaGroupId,
+            caption: msg.caption,
+            captionEntities: msg.captionEntities,
+            replyMarkup: msg.replyMarkup,
+            delayMs: msg.delayMs,
           },
         });
       }

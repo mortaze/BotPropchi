@@ -48,29 +48,28 @@ describe('multi-message post isolation', () => {
     expect(post.telegramPayload.messages[1].entities[0].type).toBe('code');
   });
 
-  it('deep clones legacy grouped entities for each split content message', () => {
+  it('deep clones messages array so each message and source remain isolated', () => {
+    const sourceEntity = { type: 'bold', offset: 0, length: 5 };
     const post = {
       id: 88,
-      content: 'پیام اول\n\n[[copy]]\nپیام دوم\n[[/copy]]\n\n[[copy]]\nپیام سوم\n[[/copy]]',
-      entities: {
-        messages: {
-          '0': [{ type: 'bold', offset: 0, length: 7 }, { type: 'blockquote', offset: 0, length: 7 }],
-          '1': [{ type: 'code', offset: 0, length: 7 }],
-          '2': [],
-        },
-      },
+      title: 'multi',
+      messages: [
+        { text: 'first', entities: [sourceEntity] },
+        { text: 'second', entities: [{ type: 'code', offset: 0, length: 6 }] },
+      ],
     };
 
     const messages = splitPostToMessages(post);
-    expect(messages.map((m) => m.entities.map((e) => e.type))).toEqual([
-      ['bold', 'blockquote'],
-      ['code'],
-      [],
-    ]);
+    expect(messages).toHaveLength(2);
+    expect(messages[0].entities.map((e) => e.type)).toEqual(['bold']);
+    expect(messages[1].entities.map((e) => e.type)).toEqual(['code']);
 
     messages[0].entities[0].type = 'italic';
-    expect((post.entities as any).messages['0'][0].type).toBe('bold');
+    expect(sourceEntity.type).toBe('bold');
     expect(messages[1].entities[0].type).toBe('code');
+
+    messages[1].entities[0].type = 'pre';
+    expect((post.messages[1].entities[0] as any).type).toBe('code');
   });
 
   it('normalizes a message without preserving shared references into render payloads', () => {

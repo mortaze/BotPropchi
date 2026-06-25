@@ -108,37 +108,26 @@ export function extractTelegramSnapshot(message: any) {
   return { text: message.text || '', caption: message.caption, entities: textEntities, captionEntities, media, keyboard, message: nativeSnapshot, rawMessage: cloneJson(message) };
 }
 
-function entitiesFromRows(rows: any[] | undefined, source: 'text' | 'caption') {
-  if (!Array.isArray(rows)) return undefined;
-  const result = cleanEntities(rows.filter((r: any) => !r.source || r.source === source).map((r: any) => r.payload || r));
-  return result && result.length > 0 ? result : undefined;
-}
-
 export class TelegramNativeRenderer {
   render(post: any) {
     const snapshot = post.telegramMessageSnapshot || {};
     const payload = post.telegramPayload || {};
-    const text = snapshot.text ?? payload.text ?? post.contentText ?? post.content ?? post.caption ?? post.title ?? '';
-    const caption = snapshot.caption ?? payload.caption ?? post.caption ?? undefined;
-    const textEntities = nonEmptyEntities(snapshot.entities) || nonEmptyEntities(payload.entities) || nonEmptyEntities(entitiesFromRows(post.postEntities || post.richEntities, 'text')) || nonEmptyEntities(cleanEntities(post.contentEntities)) || nonEmptyEntities(cleanEntities(post.entities));
-    const captionEntities = nonEmptyEntities(snapshot.caption_entities) || nonEmptyEntities(payload.captionEntities) || nonEmptyEntities(entitiesFromRows(post.postEntities || post.richEntities, 'caption')) || (caption ? nonEmptyEntities(cleanEntities(post.contentEntities)) || nonEmptyEntities(cleanEntities(post.entities)) : undefined);
-    const media = Array.isArray(payload.media) && payload.media.length ? cloneJson(payload.media) : (Array.isArray(post.media) && post.media.length ? cloneJson(post.media) : []) || extractTelegramSnapshot(snapshot).media;
-    const keyboard = payload.keyboard || (Array.isArray(post.buttons) ? post.buttons : []) || snapshot.reply_markup?.inline_keyboard || [];
+    const text = snapshot.text ?? payload.text ?? post.title ?? '';
+    const caption = snapshot.caption ?? payload.caption ?? undefined;
+    const textEntities = nonEmptyEntities(snapshot.entities) || nonEmptyEntities(payload.entities) || undefined;
+    const captionEntities = nonEmptyEntities(snapshot.caption_entities) || nonEmptyEntities(payload.captionEntities) || undefined;
+    const media = Array.isArray(payload.media) && payload.media.length ? cloneJson(payload.media) : extractTelegramSnapshot(snapshot).media;
+    const keyboard = payload.keyboard || snapshot.reply_markup?.inline_keyboard || [];
     const buttons = buildTelegramKeyboard(keyboard, post.id);
     const markup = buttons.length ? Markup.inlineKeyboard(buttons) : {};
 
-    let detectedRenderer = 'raw content';
+    let detectedRenderer = 'snapshot';
     if (post.telegramMessageSnapshot) detectedRenderer = 'telegramMessageSnapshot';
     else if (post.telegramPayload) detectedRenderer = 'telegramPayload';
-    else if (post.contentEntities) detectedRenderer = 'contentEntities';
-    else if (post.contentFormat === 'telegram_entities') detectedRenderer = 'contentFormat=telegram_entities';
-    else if (textEntities || captionEntities) detectedRenderer = 'entities table';
+    else if (textEntities || captionEntities) detectedRenderer = 'inline entities';
 
     if (textEntities && textEntities.length === 0) {
       logger.warn(`[Renderer] post=${post.id} textEntities is empty array — will be dropped before Telegram API call`);
-    }
-    if (Array.isArray(post.contentEntities) && post.contentEntities.length > 0 && (!textEntities || textEntities.length === 0)) {
-      logger.warn(`[Renderer] post=${post.id} contentEntities has ${post.contentEntities.length} items but textEntities is empty — OR short-circuit bug`);
     }
 
     return { text, caption, textEntities, captionEntities, media, buttons, common: { link_preview_options: { is_disabled: true }, ...markup }, renderer: detectedRenderer };

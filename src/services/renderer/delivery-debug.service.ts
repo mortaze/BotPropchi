@@ -20,10 +20,8 @@ export class DeliveryDebugService {
   } {
     const pipeline: string[] = [];
 
-    pipeline.push(`[Pipeline] post=${post.id} title="${post.title}" status=${post.status}`);
+    pipeline.push(`[Pipeline] post=${post.id} title="${post.title}" status=${post.status} messages=${(post.messages || []).length}`);
     pipeline.push(`[Pipeline] telegramPayload=${!!post.telegramPayload} telegramMessageSnapshot=${!!post.telegramMessageSnapshot}`);
-    pipeline.push(`[Pipeline] entities=${Array.isArray(post.entities) ? post.entities.length : typeof post.entities} contentFormat=${post.contentFormat}`);
-    pipeline.push(`[Pipeline] richEntities=${Array.isArray(post.richEntities) ? post.richEntities.length : 'N/A'} postEntities=${Array.isArray(post.postEntities) ? post.postEntities.length : 'N/A'}`);
 
     pipeline.push(`[Pipeline] rendererChoice=native`);
 
@@ -45,10 +43,6 @@ export class DeliveryDebugService {
     pipeline.push(`[Snapshot] exists=${!!post.telegramMessageSnapshot}`);
     pipeline.push(`[Payload] exists=${!!post.telegramPayload}`);
 
-    pipeline.push(`[Entities] json=${Array.isArray(post.entities) ? post.entities.length : 'N/A'}`);
-    pipeline.push(`[Entities] rendered=${rendered.textEntities?.length || 0}`);
-    pipeline.push(`[Entities] caption=${rendered.captionEntities?.length || 0}`);
-
     pipeline.push(`[FinalRequest] method=${finalRequest.method}`);
     if (finalRequest.entities) pipeline.push(`[FinalRequest] entities=${finalRequest.entities.length}`);
     if (finalRequest.caption_entities) pipeline.push(`[FinalRequest] caption_entities=${finalRequest.caption_entities.length}`);
@@ -68,19 +62,15 @@ export class DeliveryDebugService {
       renderer: 'native',
       dbContent: {
         title: post.title,
-        content: post.content,
-        caption: post.caption,
-        rawContent: post.rawContent,
-        renderedContent: post.renderedContent,
+        messages: post.messages,
         contentFormat: post.contentFormat,
       },
       entities: {
-        post: post.entities,
         textEntities: rendered.textEntities,
         captionEntities: rendered.captionEntities,
       },
       captionEntities: rendered.captionEntities,
-      parseMode: post.parseMode,
+      parseMode: null,
       telegramPayload: post.telegramPayload,
       telegramMessageSnapshot: post.telegramMessageSnapshot,
       finalTelegramApiRequest: finalRequest,
