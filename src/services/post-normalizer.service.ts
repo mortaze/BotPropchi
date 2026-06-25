@@ -9,16 +9,22 @@ function cloneJson<T>(value: T): T {
 }
 
 function extractEntities(post: any): any[] | undefined {
-  const sources = [
-    post.contentEntities,
-    post.entities,
-    post.richEntities,
-    post.postEntities,
-    post.telegramPayload?.entities,
-    post.telegramMessageSnapshot?.entities,
+  const sources: Array<{ data: any[]; tagSnapshot: boolean }> = [
+    { data: post.contentEntities, tagSnapshot: false },
+    { data: post.entities, tagSnapshot: false },
+    { data: post.richEntities, tagSnapshot: false },
+    { data: post.postEntities, tagSnapshot: false },
+    { data: post.telegramPayload?.entities, tagSnapshot: false },
+    { data: post.telegramMessageSnapshot?.entities, tagSnapshot: true },
   ];
-  for (const source of sources) {
-    if (Array.isArray(source) && source.length > 0) return cloneJson(source);
+  for (const { data, tagSnapshot } of sources) {
+    if (Array.isArray(data) && data.length > 0) {
+      const cloned = cloneJson(data);
+      if (tagSnapshot) {
+        return cloned.map((e: any) => ({ ...e, _snapshot: true }));
+      }
+      return cloned;
+    }
   }
   return undefined;
 }

@@ -207,6 +207,49 @@ function splitTelegramSnapshotForMessage(
   };
 }
 
+/**
+ * For each segment, compute its original position in the pre-[[copy]] text.
+ * This allows mapping entity offsets (stored w.r.t. original text) to
+ * positions in the current content (with markers).
+ */
+function computeSegmentOrigins(
+  content: string,
+  segments: ContentSegment[],
+): { segIndex: number; origStart: number; curStart: number }[] {
+  const result: { segIndex: number; origStart: number; curStart: number }[] = [];
+  let origPos = 0;
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const curStart = seg.offset;
+    result.push({ segIndex: i, origStart: origPos, curStart });
+
+    origPos += seg.text.length;
+
+    // Compute original separator between this and the next segment
+    if (i + 1 < segments.length) {
+      const curEnd = curStart + seg.text.length;
+      const nextSeg = segments[i + 1];
+      const gap = content.slice(curEnd, nextSeg.offset);
+      const copyIdx = gap.indexOf('[[copy]]');
+      const sepLen = copyIdx >= 0 ? copyIdx : gap.length;
+      origPos += sepLen;
+    }
+  }
+
+  return result;
+}
+
+// ─── Helper: get numeric message index from entity ────────────────
+// Only returns a value when source is a numeric string (PostEntity messageIndex
+// convention) or messageIndex is set.  Non-numeric source values like 'text'
+// (the default PostEntity source) are treated as "no message affinity".
+function getEntityMsgIdx(e: any): number | null | undefined {
+  if (e.messageIndex != null) return e.messageIndex;
+  if (e.source != null && !isNaN(Number(e.source))) return Number(e.source);
+  return null;
+}
+
 // ─── Core: resolve entities for a message (two-tier) ──────────────
 
 function resolveEntitiesForMessage(
@@ -216,33 +259,60 @@ function resolveEntitiesForMessage(
   segmentIndex?: number,
 ): any[] {
   const totalMessages = allSegments?.length || 1;
+  const idx = segmentIndex ?? 0;
 
-  // Single message: use absolute offset extraction
+  // ── Mode 1: Single message ─────────────────────────────────────────
   if (totalMessages === 1) {
     const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
     if (fromContent.length > 0) {
-      logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) content entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+      logger.debug(`[EntityResolve] post=${post.id} singleMessage segment=[${segment.offset},${segment.offset + segment.text.length}) entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
       return fromContent;
     }
+    return [];
   }
 
-  // Multi-message with entities: filter by absolute offset range and adjust
+  // ── Mode 2: Multi-message — filter by source / messageIndex ──────
+  // When entities are tagged with source (PostEntity) or messageIndex (JSON blob)
+  // matching the current segment index, use them with their LOCAL offsets as-is.
   if (totalMessages > 1 && Array.isArray(post.entities) && post.entities.length > 0) {
-    const idx = segmentIndex ?? 0;
-    const segStart = segment.offset;
-    const segEnd = segment.offset + segment.text.length;
-    const chunkEntities = post.entities.filter(e =>
-      e.offset >= segStart && e.offset + e.length <= segEnd,
-    );
-    if (chunkEntities.length > 0) {
-      const cloned = chunkEntities.map(e => ({ ...e, offset: e.offset - segStart }));
-      logger.debug(`[EntityResolve] post=${post.id} multiMessage idx=${idx} entities=${cloned.length} types=${cloned.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+    const bySourceMsg = post.entities.filter((e: any) => {
+      const msgIdx = getEntityMsgIdx(e);
+      return msgIdx != null && String(msgIdx) === String(idx);
+    });
+    if (bySourceMsg.length > 0) {
+      const cloned = bySourceMsg.map((e: any) => ({ ...e, source: undefined, messageIndex: undefined }));
+      logger.debug(`[EntityResolve] post=${post.id} sourceMatch idx=${idx} entities=${cloned.length} types=${cloned.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
       return cloned;
     }
   }
 
-  // Fallback: snapshot entities with occurrence-based extraction
-  // (handles absolute offsets from telegramMessageSnapshot)
+  // ── Mode 3: Absolute offset overlap ─────────────────────────────
+  // Handles post.entities with absolute offsets (relative to full content
+  // including markers).  Entities with messageIndex/source that doesn't
+  // match the current segment are filtered out to prevent contamination.
+  // Snapshot-derived entities (_snapshot: true) are skipped — their offsets
+  // are in the snapshot text frame, not the content frame.
+  if (totalMessages > 1 && Array.isArray(post.entities) && post.entities.length > 0) {
+    const absEntities = extractContentEntitiesForSegment(
+      post.entities.filter((e: any) => {
+        if (e._snapshot) return false;
+        const msgIdx = getEntityMsgIdx(e);
+        return msgIdx == null || String(msgIdx) === String(idx);
+      }),
+      segment.offset,
+      segment.text.length,
+    );
+    if (absEntities.length > 0) {
+      logger.debug(`[EntityResolve] post=${post.id} absOverlap idx=${idx} chunkStart=${segment.offset} entities=${absEntities.length} types=${absEntities.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+      return absEntities;
+    }
+  }
+
+  // ── Mode 4: Snapshot text-matching ───────────────────────────────
+  // When a snapshot exists, its text and entity offsets are from the
+  // ORIGINAL imported message.  Text-matching (finding each segment's
+  // text within the snapshot) correctly assigns entities to segments
+  // regardless of [[copy]]-induced content shifts.
   if (post.telegramMessageSnapshot) {
     let occurrenceIndex = 0;
     if (allSegments) {
@@ -258,15 +328,79 @@ function resolveEntitiesForMessage(
       occurrenceIndex,
     );
     if (snapshotEntities.length > 0) {
-      logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) snapshot entities=${snapshotEntities.length} types=${snapshotEntities.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+      logger.debug(`[EntityResolve] post=${post.id} snapshotMatch idx=${idx} entities=${snapshotEntities.length} types=${snapshotEntities.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
       return snapshotEntities;
     }
   }
 
-  // Final fallback: absolute offset extraction
-  const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
+  // ── Mode 5: Original-frame remapping (Mode 4b) ──────────────────
+  // Handles entities whose offsets are in the pre-[[copy]] text frame.
+  // Uses segment origin reconstruction to map original offsets to current
+  // content positions.
+  if (totalMessages > 1 && Array.isArray(post.entities) && post.entities.length > 0) {
+    const segText = segment.text;
+    const segLen = segText.length;
+
+    const origins = post.content && allSegments
+      ? computeSegmentOrigins(post.content, allSegments)
+      : [];
+
+    if (origins.length > 0) {
+      let chunkStart = segment.offset;
+      {
+        let occIdx = 0;
+        for (let i = 0; i < idx; i++) {
+          if (allSegments![i].text === segText) occIdx++;
+        }
+        let found = -1;
+        for (let i = 0; i <= occIdx; i++) {
+          found = post.content!.indexOf(segText, found + 1);
+        }
+        if (found >= 0) chunkStart = found;
+      }
+
+      const mode5Entities = post.entities.filter((e: any) => {
+        const msgIdx = getEntityMsgIdx(e);
+        return msgIdx == null || String(msgIdx) === String(idx);
+      });
+
+      const remapped = mode5Entities.map((e: any) => {
+        const eEnd = e.offset + e.length;
+        for (const o of origins) {
+          const oEnd = o.origStart + allSegments![o.segIndex].text.length;
+          if (e.offset < oEnd && eEnd > o.origStart) {
+            const clampedStart = Math.max(e.offset, o.origStart);
+            const clampedEnd = Math.min(eEnd, oEnd);
+            return {
+              ...e,
+              offset: o.curStart + (clampedStart - o.origStart),
+              length: clampedEnd - clampedStart,
+              _segIdx: o.segIndex,
+            };
+          }
+        }
+        return { ...e, _segIdx: -1 };
+      });
+
+      const adjusted = remapped
+        .filter((e: any) => e._segIdx === idx && e.length > 0)
+        .map((e: any) => ({ ...e, offset: e.offset - chunkStart, _segIdx: undefined }));
+
+      if (adjusted.length > 0) {
+        logger.debug(`[EntityResolve] post=${post.id} origFrame idx=${idx} chunkStart=${chunkStart} entities=${adjusted.length} types=${adjusted.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+        return adjusted;
+      }
+    }
+  }
+
+  // ── Mode 6: Final fallback ───────────────────────────────────────
+  const fallbackEntities = post.entities.filter((e: any) => {
+    const msgIdx = getEntityMsgIdx(e);
+    return msgIdx == null || String(msgIdx) === String(idx);
+  });
+  const fromContent = extractContentEntitiesForSegment(fallbackEntities, segment.offset, segment.text.length);
   if (fromContent.length > 0) {
-    logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) content entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+    logger.debug(`[EntityResolve] post=${post.id} fallback segment=[${segment.offset},${segment.offset + segment.text.length}) entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
     return fromContent;
   }
 
@@ -280,8 +414,15 @@ export function splitPostToMessages(post: any): PostMessage[] {
   const segments = splitContentMessagesWithOffsets(post.content || '');
   if (segments.length === 0) return [];
 
+  const totalLen = segments.reduce((s, seg) => s + seg.text.length, 0);
+
   return segments.map((seg, i) => {
+    const rawEntities = Array.isArray(post.entities) ? post.entities : [];
     const entities = resolveEntitiesForMessage(post, seg, segments, i);
+
+    const chunkStart = seg.offset;
+    logger.debug(`[ChunkEntities] post=${post.id} chunk=${i} chunkStart=${chunkStart} chunkText="${seg.text.slice(0, 30)}" rawEntities=${rawEntities.length} filteredEntities=${entities.length} adjustedEntities=${entities.map(e => `${e.type}@${e.offset}:${e.length}`).join(',') || '(none)'}`);
+
     const rawButtons = extractButtonsForMessage(post.buttons, i);
     const buttons = rawButtons.length > 0 ? cloneJson(rawButtons) : [];
 

@@ -17,6 +17,89 @@ const CACHE_KEY_MENU = cacheKey('posts:menu');
 const CACHE_KEY_TITLE = cacheKey('posts:title');
 let _cacheListenersRegistered = false;
 
+/**
+ * Tag each entity with the messageIndex of the segment it belongs to,
+ * based on the content's [[copy]] markers. Handles both local and absolute
+ * offset frames by checking which segment's original range contains the entity.
+ */
+function tagEntitiesWithMessageIndex(content: string | undefined | null, entities: any[] | undefined | null): any[] | undefined {
+  if (!content || !Array.isArray(entities) || entities.length === 0) return entities;
+  const copyRegex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
+  const segments: { text: string; offset: number }[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = copyRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const raw = content.slice(lastIndex, match.index);
+      const trimmed = raw.trim();
+      if (trimmed) {
+        const leadingWs = raw.length - raw.trimStart().length;
+        segments.push({ text: trimmed, offset: lastIndex + leadingWs });
+      }
+    }
+    const innerRaw = match[1];
+    const trimmed = innerRaw.trim();
+    if (trimmed) {
+      const innerOffset = match.index + match[0].indexOf(match[1]);
+      const leadingWs = innerRaw.length - innerRaw.trimStart().length;
+      segments.push({ text: trimmed, offset: innerOffset + leadingWs });
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    const raw = content.slice(lastIndex);
+    const trimmed = raw.trim();
+    if (trimmed) {
+      const leadingWs = raw.length - raw.trimStart().length;
+      segments.push({ text: trimmed, offset: lastIndex + leadingWs });
+    }
+  }
+  if (segments.length === 0 && content.trim()) {
+    const trimmed = content.trim();
+    const leadingWs = content.length - content.trimStart().length;
+    segments.push({ text: trimmed, offset: leadingWs });
+  }
+
+  // Single message — no tagging needed
+  if (segments.length <= 1) return entities;
+
+  // Compute segment origins (original frame positions)
+  const origins: { segIndex: number; origStart: number; curStart: number }[] = [];
+  let origPos = 0;
+  for (let i = 0; i < segments.length; i++) {
+    origins.push({ segIndex: i, origStart: origPos, curStart: segments[i].offset });
+    origPos += segments[i].text.length;
+    if (i + 1 < segments.length) {
+      const curEnd = segments[i].offset + segments[i].text.length;
+      const gap = content.slice(curEnd, segments[i + 1].offset);
+      const copyIdx = gap.indexOf('[[copy]]');
+      origPos += copyIdx >= 0 ? copyIdx : gap.length;
+    }
+  }
+
+  // Tag each entity by finding which segment's original range contains its offset
+  const tagged = entities.map((e: any) => {
+    if (e.messageIndex != null) return e; // already tagged
+    const eEnd = e.offset + e.length;
+    for (const o of origins) {
+      const oEnd = o.origStart + segments[o.segIndex].text.length;
+      if (e.offset < oEnd && eEnd > o.origStart) {
+        return { ...e, messageIndex: o.segIndex };
+      }
+    }
+    // If entity offset doesn't match any segment's original range, try absolute match
+    // (entity offset is position in full content with markers)
+    for (const seg of segments) {
+      if (e.offset >= seg.offset && e.offset + e.length <= seg.offset + seg.text.length) {
+        return { ...e, messageIndex: seg === segments[0] ? 0 : 1 }; // approximate
+      }
+    }
+    return e; // untagged — fallback to offset-based resolution at render time
+  });
+
+  return tagged;
+}
+
 export const postService = {
   async create(data: {
     title: string;
@@ -42,6 +125,9 @@ export const postService = {
     sortOrder?: number;
     createdBy?: bigint;
   }) {
+    // Tag entities with messageIndex when content has [[copy]] markers
+    const taggedEntities = data.entities ? tagEntitiesWithMessageIndex(data.content, data.entities) : undefined;
+
     const sanitized: any = {
       title: validateDbInput(data.title, 'post.title'),
       slug: data.slug,
@@ -52,7 +138,7 @@ export const postService = {
       albumMediaIds: data.albumMediaIds ? JSON.parse(JSON.stringify(data.albumMediaIds)) : undefined,
       parseMode: data.parseMode ?? 'Markdown',
       buttons: data.buttons ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
-      entities: data.entities ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.entities))) : undefined,
+      entities: taggedEntities ? sanitizeJsonStrings(JSON.parse(JSON.stringify(taggedEntities))) : undefined,
       telegramPayload: data.telegramPayload ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramPayload))) : undefined,
       telegramMessageSnapshot: data.telegramMessageSnapshot ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramMessageSnapshot))) : undefined,
       contentFormat: data.contentFormat,
@@ -110,7 +196,13 @@ export const postService = {
     if (typeof data.content === 'string') data.content = sanitizeTelegramText(data.content);
     if (typeof data.caption === 'string') data.caption = sanitizeTelegramText(data.caption);
     if (data.buttons) data.buttons = sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons)));
-    if ((data as any).entities) (data as any).entities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).entities)));
+    if ((data as any).entities) {
+      const taggedForUpdate = tagEntitiesWithMessageIndex(
+        typeof data.content === 'string' ? data.content : (existing as any)?.content,
+        (data as any).entities,
+      );
+      (data as any).entities = sanitizeJsonStrings(JSON.parse(JSON.stringify(taggedForUpdate)));
+    }
     if ((data as any).telegramPayload) (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
     if ((data as any).telegramMessageSnapshot) (data as any).telegramMessageSnapshot = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramMessageSnapshot)));
     if (typeof (data as any).contentText === 'string') (data as any).contentText = sanitizeTelegramText((data as any).contentText);
@@ -125,15 +217,13 @@ export const postService = {
       if ((data as any).contentEntities === undefined) {
         (data as any).contentEntities = [];
       }
-      // If existing post had imported Telegram data and content is being rewritten,
-      // clear the Telegram snapshot/payload since they no longer match.
-      // Also reset contentFormat/renderMode so the resolver can correctly choose
-      // legacy renderer (with parse_mode) instead of native (without entities).
-      if ((existing as any).contentText || (existing as any).telegramPayload || (existing as any).telegramMessageSnapshot) {
+      // Do NOT clear telegramMessageSnapshot — it is needed for text-matching
+      // entity resolution (Mode 3 in resolveEntitiesForMessage). Without the
+      // snapshot the renderer cannot assign entities to the correct segment
+      // when [[copy]] markers are added after import.
+      // telegramPayload is redundant after normalization but clearing it is safe.
+      if ((existing as any).telegramPayload) {
         (data as any).telegramPayload = null;
-        (data as any).telegramMessageSnapshot = null;
-        (data as any).contentFormat = null;
-        (data as any).renderMode = null;
       }
     }
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
