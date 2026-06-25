@@ -50,13 +50,65 @@ export function comparePostNativeRoundtrip(post: any) {
 
 // ─── New Data Model ────────────────────────────────────────────────
 
+export type MessageStyle = {
+  bold: boolean;
+  italic: boolean;
+  code: boolean;
+  blockquote: boolean;
+};
+
 export interface PostMessage {
+  id: string;
   index: number;
+  text: string;
   content: string;
   entities: any[];
+  parseMode?: 'HTML' | 'Markdown' | null;
+  style: MessageStyle;
   buttons: any[][];
   media: any[] | undefined;
   snapshot: any | undefined;
+}
+
+export interface MultiMessagePost {
+  id: string | number;
+  title: string;
+  messages: PostMessage[];
+}
+
+const DEFAULT_STYLE: MessageStyle = {
+  bold: false,
+  italic: false,
+  code: false,
+  blockquote: false,
+};
+
+function deepClone<T>(value: T): T {
+  if (value == null) return value;
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+export function normalizeMessage(msg: any, index = 0): PostMessage {
+  const cloned = deepClone(msg || {});
+  const text = cloned.text ?? cloned.content ?? '';
+  return {
+    id: String(cloned.id ?? `message-${index}`),
+    index: Number.isFinite(Number(cloned.index)) ? Number(cloned.index) : index,
+    text,
+    content: text,
+    entities: Array.isArray(cloned.entities) ? deepClone(cloned.entities) : [],
+    parseMode: cloned.parseMode ?? null,
+    style: { ...DEFAULT_STYLE, ...(cloned.style ? deepClone(cloned.style) : {}) },
+    buttons: Array.isArray(cloned.buttons) ? deepClone(cloned.buttons) : [],
+    media: Array.isArray(cloned.media) ? deepClone(cloned.media) : undefined,
+    snapshot: cloned.snapshot ? deepClone(cloned.snapshot) : undefined,
+  };
+}
+
+export function normalizePostMessages(messages: any[] | null | undefined): PostMessage[] {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((message, index) => normalizeMessage(message, index));
 }
 
 export interface MessageRenderContext {
@@ -182,6 +234,15 @@ function extractSnapshotEntitiesForSegment(
   return adjusted;
 }
 
+function extractEntitiesForMessage(raw: any, messageIndex: number): any[] | undefined {
+  if (!raw || !Array.isArray(raw) && typeof raw !== 'object') return undefined;
+  if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
+    const value = raw.messages[String(messageIndex)];
+    return Array.isArray(value) ? deepClone(value) : [];
+  }
+  return undefined;
+}
+
 function extractButtonsForMessage(raw: any, messageIndex: number): any[][] {
   if (!raw) return [];
   if (typeof raw === 'object' && !Array.isArray(raw) && raw.messages) {
@@ -216,6 +277,11 @@ function resolveEntitiesForMessage(
   segmentIndex?: number,
 ): any[] {
   const totalMessages = allSegments?.length || 1;
+  const groupedEntities = extractEntitiesForMessage(post.entities, segmentIndex ?? 0);
+  if (groupedEntities) {
+    logger.debug(`[EntityResolve] post=${post.id} multiMessage idx=${segmentIndex ?? 0} grouped entities=${groupedEntities.length}`);
+    return groupedEntities;
+  }
 
   // Single message: use absolute offset extraction
   if (totalMessages === 1) {
@@ -226,19 +292,11 @@ function resolveEntitiesForMessage(
     }
   }
 
-  // Multi-message with entities: try split by message count first
-  // (handles per-message-relative offsets from post_entities table)
-  if (totalMessages > 1 && Array.isArray(post.entities) && post.entities.length > 0) {
-    const idx = segmentIndex ?? 0;
-    const perMessageCount = Math.ceil(post.entities.length / totalMessages);
-    const start = idx * perMessageCount;
-    const end = Math.min(start + perMessageCount, post.entities.length);
-    const chunkEntities = post.entities.slice(start, end);
-    if (chunkEntities.length > 0) {
-      const cloned = chunkEntities.map(e => ({ ...e }));
-      logger.debug(`[EntityResolve] post=${post.id} multiMessage idx=${idx} entities=${cloned.length} types=${cloned.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
-      return cloned;
-    }
+  // Absolute content entities have priority over snapshot fallback.
+  const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
+  if (fromContent.length > 0) {
+    logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) content entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+    return fromContent;
   }
 
   // Fallback: snapshot entities with occurrence-based extraction
@@ -263,13 +321,6 @@ function resolveEntitiesForMessage(
     }
   }
 
-  // Final fallback: absolute offset extraction
-  const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
-  if (fromContent.length > 0) {
-    logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) content entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
-    return fromContent;
-  }
-
   return [];
 }
 
@@ -277,6 +328,15 @@ function resolveEntitiesForMessage(
 
 export function splitPostToMessages(post: any): PostMessage[] {
   if (!post) return [];
+  const explicitMessages = normalizePostMessages(post.messages || post.telegramPayload?.messages);
+  if (explicitMessages.length > 0) {
+    return explicitMessages.map((message, i) => normalizeMessage({
+      ...message,
+      index: i,
+      buttons: message.buttons?.length ? message.buttons : extractButtonsForMessage(post.buttons, i),
+      media: i === 0 && !message.media && Array.isArray(post.media) && post.media.length > 0 ? post.media : message.media,
+    }, i));
+  }
   const segments = splitContentMessagesWithOffsets(post.content || '');
   if (segments.length === 0) return [];
 
@@ -292,9 +352,13 @@ export function splitPostToMessages(post: any): PostMessage[] {
     const snapshot = splitTelegramSnapshotForMessage(post.telegramMessageSnapshot, seg.text);
 
     return {
+      id: `${post.id ?? 'post'}:${i}`,
       index: i,
+      text: seg.text,
       content: seg.text,
-      entities,
+      entities: deepClone(entities),
+      parseMode: post.parseMode ?? null,
+      style: deepClone(DEFAULT_STYLE),
       buttons,
       media,
       snapshot,
@@ -323,9 +387,9 @@ function buildMessagePostForRender(
     id: post.id,
     title: post.title,
     content: msg.content,
-    entities: msg.entities,
-    buttons: msg.buttons,
-    media: msg.media,
+    entities: deepClone(msg.entities),
+    buttons: deepClone(msg.buttons),
+    media: msg.media ? deepClone(msg.media) : undefined,
     renderMode: post.renderMode,
     contentFormat: post.contentFormat,
     telegramMessageSnapshot: msg.snapshot,
@@ -380,7 +444,8 @@ export async function renderPostToTelegram(ctx: any, post: any) {
   const messages = splitPostToMessages(post);
   if (messages.length > 1) {
     logger.info(`[Pipeline] post=${post.id} multiMessage count=${messages.length}`);
-    for (const msg of messages) {
+    for (const rawMsg of messages) {
+      const msg = normalizeMessage(rawMsg, rawMsg.index);
       try {
         ensureNoSharedRefs(msg);
         const payload = renderMessage(

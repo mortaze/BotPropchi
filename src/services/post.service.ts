@@ -30,6 +30,7 @@ export const postService = {
     buttons?: any[];
     entities?: any[];
     telegramPayload?: any;
+    messages?: any[];
     telegramMessageSnapshot?: any;
     contentFormat?: string;
     contentVersion?: number;
@@ -43,6 +44,16 @@ export const postService = {
     createdBy?: bigint;
   }) {
     const isDraft = (data.status ?? PostStatus.DRAFT) === PostStatus.DRAFT;
+    const clonedMessages = Array.isArray(data.messages) && data.messages.length > 0
+      ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.messages)))
+      : undefined;
+    const telegramPayload = data.telegramPayload
+      ? {
+          ...sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramPayload))),
+          ...(clonedMessages ? { messages: clonedMessages } : {}),
+        }
+      : (clonedMessages ? { messages: clonedMessages } : undefined);
+
     const sanitized: any = {
       title: data.title ? validateDbInput(data.title, 'post.title') : (isDraft ? 'بدون عنوان' : validateDbInput(data.title ?? '', 'post.title')),
       slug: data.slug ?? (isDraft ? `draft-${Date.now()}` : ''),
@@ -54,7 +65,7 @@ export const postService = {
       parseMode: data.parseMode ?? 'HTML',
       buttons: Array.isArray(data.buttons) && (data.buttons?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
       entities: Array.isArray(data.entities) && (data.entities?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.entities))) : undefined,
-      telegramPayload: data.telegramPayload ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramPayload))) : undefined,
+      telegramPayload,
       telegramMessageSnapshot: data.telegramMessageSnapshot ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramMessageSnapshot))) : undefined,
       contentFormat: data.contentFormat ?? null,
       contentVersion: data.contentVersion ?? 1,
@@ -112,7 +123,15 @@ export const postService = {
     if (typeof data.caption === 'string') data.caption = sanitizeTelegramText(data.caption);
     if (data.buttons) data.buttons = sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons)));
     if ((data as any).entities) (data as any).entities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).entities)));
-    if ((data as any).telegramPayload) (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
+    if (Array.isArray((data as any).messages)) {
+      const clonedMessages = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).messages)));
+      delete (data as any).messages;
+      (data as any).telegramPayload = (data as any).telegramPayload
+        ? { ...sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload))), messages: clonedMessages }
+        : { messages: clonedMessages };
+    } else if ((data as any).telegramPayload) {
+      (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
+    }
     if ((data as any).telegramMessageSnapshot) (data as any).telegramMessageSnapshot = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramMessageSnapshot)));
     if (typeof (data as any).contentText === 'string') (data as any).contentText = sanitizeTelegramText((data as any).contentText);
     if ((data as any).contentEntities) (data as any).contentEntities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).contentEntities)));

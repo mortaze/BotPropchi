@@ -17,6 +17,7 @@ const schema = z.object({
   contentFormat: z.string().optional(),
   entitiesJson: z.string().optional(),
   telegramPayloadJson: z.string().optional(),
+  messagesJson: z.string().optional(),
   buttonsJson: z.string().optional(),
   command: z.string().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "SCHEDULED", "ARCHIVED", "HIDDEN"]),
@@ -52,6 +53,7 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
       contentFormat: initial?.contentFormat ?? "HTML",
       entitiesJson: Array.isArray(initial?.entities) ? JSON.stringify(initial.entities, null, 2) : "",
       telegramPayloadJson: initial?.telegramPayload ? JSON.stringify(initial.telegramPayload, null, 2) : "",
+      messagesJson: Array.isArray((initial as any)?.telegramPayload?.messages) ? JSON.stringify((initial as any).telegramPayload.messages, null, 2) : "",
       buttonsJson: Array.isArray(initial?.buttons) ? JSON.stringify(initial.buttons, null, 2) : "",
       command: initial?.command ?? "",
       status: initial?.status ?? "DRAFT",
@@ -78,6 +80,7 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
         contentFormat: values.contentFormat || undefined,
         entities: parseJson(values.entitiesJson),
         telegramPayload: parseJson(values.telegramPayloadJson),
+        messages: parseJson(values.messagesJson),
         buttons: parseJson(values.buttonsJson),
         command: values.command || undefined,
         status: values.status,
@@ -96,12 +99,13 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
         <option value="Markdown">Markdown</option>
         <option value="HTML">HTML</option>
       </Select>
-      <div className="md:col-span-2 grid gap-4 md:grid-cols-3">
-        <Textarea label="Entity editor (JSON)" className="min-h-32 font-mono" {...register("entitiesJson")} />
+      <div className="md:col-span-2 grid gap-4 md:grid-cols-2">
+        <Textarea label="پیام‌های مستقل (JSON)" className="min-h-48 font-mono" placeholder={'[{"id":"1","text":"...","entities":[],"style":{"bold":false,"italic":false,"code":false,"blockquote":false}}]'} {...register("messagesJson")} />
+        <Textarea label="Entity editor legacy (JSON)" className="min-h-48 font-mono" {...register("entitiesJson")} />
         <Textarea label="Media/Payload snapshot (JSON)" className="min-h-32 font-mono" {...register("telegramPayloadJson")} />
         <Textarea label="Button manager (JSON)" className="min-h-32 font-mono" {...register("buttonsJson")} />
       </div>
-      <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">Preview mode: ذخیره کنید و از دکمه پیش‌نمایش داخل ربات استفاده کنید تا همان رندر native تلگرام با entityها، custom emoji، مدیا و keyboard ارسال شود.</div>
+      <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">Preview mode: برای پست چندپیامی، هر آیتم messages به‌صورت sandbox مستقل با text/entities/style جداگانه رندر می‌شود؛ ذخیره کنید و از دکمه پیش‌نمایش داخل ربات استفاده کنید.</div>
       <Input label="دستور (اختیاری)" placeholder="/mycommand" error={errors.command?.message} {...register("command")} />
       <Select label="وضعیت" error={errors.status?.message} {...register("status")}>
         <option value="DRAFT">پیش‌نویس</option>
