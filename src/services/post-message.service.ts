@@ -378,7 +378,12 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
     const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
     const { method, ...params } = payload as any;
     logger.debug(`[PreviewRender] postId=${msg.postId} order=${msg.order} textLength=${telegramLength(msg.text ?? '')} entityCount=${msg.entities.length} captionEntityCount=${msg.captionEntities.length}`);
-    logger.info(`[SendSingleMessage] postId=${msg.postId} order=${msg.order} type=${msg.messageType} entities=${msg.entities.length}`);
+    logger.info(`[SendSingleMessage] postId=${msg.postId} order=${msg.order} type=${msg.messageType} entities=${msg.entities.length} hasReplyMarkup=${!!params.reply_markup}`);
+    if (params.reply_markup) {
+      const kbRows = params.reply_markup.inline_keyboard?.length ?? 0;
+      const kbBtns = params.reply_markup.inline_keyboard?.reduce((a: number, r: any[]) => a + r.length, 0) ?? 0;
+      logger.info(`[KeyboardDebug] postId=${msg.postId} order=${msg.order} reply_markup: ${kbRows} rows, ${kbBtns} buttons`);
+    }
     if (method === 'sendMessage') {
       await ctx.reply(params.text, params);
     } else if (method === 'sendMediaGroup') {

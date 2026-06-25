@@ -178,6 +178,50 @@ export const postService = {
       ]);
       logger.info(`[PostEditor][MessageUpdate] post=${post.id} replaced ${messageRows.length} post_messages`);
     }
+
+    // ─── Sync post.buttons to post_messages.replyMarkup ───
+    // When buttons are updated via the bot editor (without explicit messages),
+    // sync to the corresponding post_message row(s).
+    // The bot editor stores buttons as {messages: {"0": [[...]], "1": [[...]]}}
+    // which buildTelegramPayload cannot parse. We extract and store the simple
+    // array format per message.
+    const rawButtons = (data as any).buttons;
+    if (rawButtons && !clonedMessages) {
+      try {
+        const existingMessages = await prisma.postMessage.findMany({
+          where: { postId: post.id },
+          orderBy: { order: 'asc' },
+        });
+        if (existingMessages.length > 0) {
+          const messagesFormat = (rawButtons as any)?.messages;
+          if (messagesFormat && typeof messagesFormat === 'object') {
+            let syncedCount = 0;
+            for (const msg of existingMessages) {
+              const idx = String(msg.order);
+              const perMsgButtons = (messagesFormat as any)[idx];
+              if (perMsgButtons !== undefined && perMsgButtons !== null) {
+                await prisma.postMessage.update({
+                  where: { id: msg.id },
+                  data: { replyMarkup: perMsgButtons } as any,
+                });
+                syncedCount++;
+              }
+            }
+            logger.info(`[KeyboardSync] post=${post.id} synced ${syncedCount}/${existingMessages.length} messages (messages format)`);
+          } else if (Array.isArray(rawButtons)) {
+            const lastMsg = existingMessages[existingMessages.length - 1];
+            await prisma.postMessage.update({
+              where: { id: lastMsg.id },
+              data: { replyMarkup: rawButtons } as any,
+            });
+            logger.info(`[KeyboardSync] post=${post.id} synced buttons to messageId=${lastMsg.id} (array format)`);
+          }
+        }
+      } catch (e) {
+        logger.warn(`[KeyboardSync] post=${post.id} failed to sync buttons: ${e}`);
+      }
+    }
+
     this.invalidateCache();
 
     // Auto-sync published posts to menu (single source of truth = post database — title resolved at render time)
