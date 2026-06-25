@@ -1,6 +1,5 @@
 import { sanitizeTelegramText, sanitizeTelegramExtra } from '../utils/unicode';
 import { logger } from '../utils/logger';
-import { normalizePost } from '../services/post-normalizer.service';
 import { postService } from '../services/post.service';
 import { renderPostToTelegram } from '../services/post-renderer.service';
 import { buildTelegramPayload, normalizeSingleMessage, sanitizeEntities } from '../services/post-message.service';
@@ -20,16 +19,17 @@ export async function safeEdit(ctx: any, text: string, extra?: any): Promise<voi
 }
 
 export async function sendPostToUser(ctx: any, rawPost: any) {
-  const post = normalizePost(rawPost);
-  await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+  await postService.incrementViews(rawPost.id, undefined, BigInt(ctx.from.id));
 
-  if (Array.isArray((rawPost as any).messages) && (rawPost as any).messages.length > 0) {
-    for (const row of (rawPost as any).messages) {
+  const messages = (rawPost as any).messages;
+  if (Array.isArray(messages) && messages.length > 0) {
+    logger.info(`[PostMessages] postId=${rawPost.id} messageCount=${messages.length}`);
+    for (const row of messages) {
       const msg = normalizeSingleMessage(row);
       if (msg.delayMs > 0) await new Promise(resolve => setTimeout(resolve, msg.delayMs));
       const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
       const { method, ...params } = payload as any;
-      logger.info(`[PostSender] post=${msg.postId} messageId=${msg.id} method=${method}`);
+      logger.info(`[SendSingleMessage] postId=${msg.postId} order=${msg.order} type=${msg.messageType} entities=${msg.entities.length}`);
       if (method === 'sendMessage') await ctx.reply(params.text, params);
       else if (method === 'sendMediaGroup') await ctx.replyWithMediaGroup(params.media);
       else {
@@ -42,6 +42,7 @@ export async function sendPostToUser(ctx: any, rawPost: any) {
     return;
   }
 
-  await renderPostToTelegram(ctx, post);
+  logger.warn(`[LegacyFallback] post=${rawPost.id} has no post_messages rows, using deprecated single-content path — RUN MIGRATION`);
+  await renderPostToTelegram(ctx, rawPost);
 }
 
