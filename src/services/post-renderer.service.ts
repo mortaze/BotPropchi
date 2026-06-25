@@ -171,6 +171,55 @@ function splitContentMessages(content: string): string[] {
   return splitContentMessagesWithOffsets(content).map(s => s.text);
 }
 
+
+function normalizeEntityRow(entity: any): any {
+  if (!entity || typeof entity !== 'object') return entity;
+  const payload = entity.payload && typeof entity.payload === 'object' ? entity.payload : {};
+  return {
+    ...payload,
+    ...entity,
+    custom_emoji_id: entity.custom_emoji_id ?? entity.customEmojiId ?? payload.custom_emoji_id ?? payload.customEmojiId,
+  };
+}
+
+function isMessageScopedSource(source: unknown): source is string {
+  return typeof source === 'string' && /^(?:caption[_-])?message[_-]?\d+$/i.test(source.trim());
+}
+
+function messageSourceCandidates(messageIndex: number, mediaCaption = false): Set<string> {
+  const zeroBased = messageIndex;
+  const oneBased = messageIndex + 1;
+  const prefixes = mediaCaption ? ['caption_message', 'caption-message'] : ['message', 'msg'];
+  const candidates = new Set<string>();
+  for (const prefix of prefixes) {
+    candidates.add(`${prefix}_${oneBased}`);
+    candidates.add(`${prefix}-${oneBased}`);
+    candidates.add(`${prefix}_${zeroBased}`);
+    candidates.add(`${prefix}-${zeroBased}`);
+  }
+  candidates.add(String(oneBased));
+  candidates.add(String(zeroBased));
+  return candidates;
+}
+
+function filterEntitiesByMessageSource(
+  entities: any[] | null | undefined,
+  messageIndex: number,
+  mediaCaption = false,
+): { scoped: any[]; before: number; hasMessageScopedEntities: boolean; sourceFilter: string } {
+  const rows = Array.isArray(entities) ? entities : [];
+  const candidates = messageSourceCandidates(messageIndex, mediaCaption);
+  const scoped = rows
+    .filter((entity: any) => candidates.has(String(entity?.source ?? '').trim()))
+    .map(normalizeEntityRow);
+  return {
+    scoped: deepClone(scoped),
+    before: rows.length,
+    hasMessageScopedEntities: rows.some((entity: any) => isMessageScopedSource(entity?.source)),
+    sourceFilter: mediaCaption ? `caption_message_${messageIndex + 1}` : `message_${messageIndex + 1}`,
+  };
+}
+
 function extractContentEntitiesForSegment(
   entities: any[] | null | undefined,
   segmentOffset: number,
@@ -277,10 +326,17 @@ function resolveEntitiesForMessage(
   segmentIndex?: number,
 ): any[] {
   const totalMessages = allSegments?.length || 1;
-  const groupedEntities = extractEntitiesForMessage(post.entities, segmentIndex ?? 0);
+  const currentIndex = segmentIndex ?? 0;
+  const groupedEntities = extractEntitiesForMessage(post.entities, currentIndex);
   if (groupedEntities) {
-    logger.debug(`[EntityResolve] post=${post.id} multiMessage idx=${segmentIndex ?? 0} grouped entities=${groupedEntities.length}`);
-    return groupedEntities;
+    logger.debug(`[EntityResolve] post=${post.id} multiMessage idx=${currentIndex} grouped entities=${groupedEntities.length}`);
+    return groupedEntities.map(normalizeEntityRow);
+  }
+
+  const sourceFiltered = filterEntitiesByMessageSource(post.entities, currentIndex);
+  if (sourceFiltered.hasMessageScopedEntities) {
+    logger.debug(`[EntityResolve] post=${post.id} source_filter=${sourceFiltered.sourceFilter} before=${sourceFiltered.before} after=${sourceFiltered.scoped.length}`);
+    return sourceFiltered.scoped;
   }
 
   // Single message: use absolute offset extraction
