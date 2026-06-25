@@ -185,6 +185,26 @@ describe('FIX VERIFICATION: Entity Inheritance Contamination', () => {
     expect(messages[2].entities[0].type).toBe('underline');
   });
 
+  it('FIX: message-scoped post_entities sources do not bleed across segments', () => {
+    const post = {
+      id: 9997,
+      content: 'First plain\n\n[[copy]]\nSecond bold\n[[/copy]]',
+      entities: [
+        { source: 'message_2', offset: 0, length: 6, type: 'bold' },
+      ],
+      buttons: [],
+    };
+
+    const normalized = normalizePost(post);
+    const messages = splitPostToMessages(normalized);
+
+    expect(messages.length).toBe(2);
+    expect(messages[0].entities).toEqual([]);
+    expect(messages[1].entities).toEqual([
+      expect.objectContaining({ source: 'message_2', offset: 0, length: 6, type: 'bold' }),
+    ]);
+  });
+
   // ─── Test 6: Persian text (RTL) with same content in both messages ─
   it('FIX: Persian text with duplicate content - no inheritance', () => {
     const post = {
