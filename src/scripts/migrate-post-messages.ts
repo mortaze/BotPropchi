@@ -9,6 +9,12 @@ interface ContentSegment {
   offset: number;
 }
 
+interface MigrateLog {
+  type: 'MIGRATED' | 'SKIP' | 'WARNING' | 'ERROR';
+  postId: number;
+  message: string;
+}
+
 function splitContentWithOffsets(content: string): ContentSegment[] {
   if (!content || !content.trim()) return [];
   const segments: ContentSegment[] = [];
@@ -53,10 +59,33 @@ function splitContentWithOffsets(content: string): ContentSegment[] {
   return segments;
 }
 
+function validateEntityAgainstText(
+  entity: any,
+  segmentText: string,
+  postId: number,
+  messageOrder: number,
+): boolean {
+  const textLen = segmentText.length;
+  if (
+    !Number.isInteger(entity.offset) ||
+    !Number.isInteger(entity.length) ||
+    entity.offset < 0 ||
+    entity.length <= 0 ||
+    entity.offset + entity.length > textLen
+  ) {
+    console.log(`  [MigrationWarning] post=${postId} msg_order=${messageOrder} entity type=${entity.type} offset=${entity.offset} length=${entity.length} textLen=${textLen} — offset mismatch, dropped`);
+    return false;
+  }
+  return true;
+}
+
 function extractEntitiesForSegment(
   entities: any[] | null | undefined,
   segmentOffset: number,
   segmentLength: number,
+  segmentText: string,
+  postId: number,
+  messageOrder: number,
 ): any[] {
   if (!Array.isArray(entities) || entities.length === 0) return [];
   const segEnd = segmentOffset + segmentLength;
@@ -76,6 +105,9 @@ function extractEntitiesForSegment(
         }
         cleaned.offset = newOffset;
         cleaned.length = newLength;
+        if (!validateEntityAgainstText(cleaned, segmentText, postId, messageOrder)) {
+          continue;
+        }
         adjusted.push(cleaned);
       }
     }
@@ -115,12 +147,12 @@ async function migratePostMessages() {
 
   let migrated = 0;
   let skipped = 0;
-  const logLines: string[] = [];
+  const logs: MigrateLog[] = [];
 
   for (const post of posts) {
     const content = post.content || post.contentText || post.caption || '';
     if (!content.trim()) {
-      logLines.push(`[SKIP] post=${post.id} "${post.title}" — empty content`);
+      logs.push({ type: 'SKIP', postId: post.id, message: `"${post.title}" — empty content` });
       skipped++;
       continue;
     }
@@ -140,9 +172,15 @@ async function migratePostMessages() {
     const mediaFileId = post.mediaFileId || null;
     const albumMediaIds = post.albumMediaIds ? (post.albumMediaIds as string[]) : null;
 
+    if (segments.length === 1 && entities.length === 0 && !mediaFileId) {
+      logs.push({ type: 'SKIP', postId: post.id, message: `"${post.title}" — single segment, no entities, no media (no migration needed)` });
+      skipped++;
+      continue;
+    }
+
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
-      const segEntities = extractEntitiesForSegment(entities, seg.offset, seg.text.length);
+      const segEntities = extractEntitiesForSegment(entities, seg.offset, seg.text.length, seg.text, post.id, i);
       const msgButtons = extractButtonsForMessage(buttons, i);
       const isFirst = i === 0;
 
@@ -164,20 +202,27 @@ async function migratePostMessages() {
       });
     }
 
-    logLines.push(`[MIGRATED] post=${post.id} "${post.title}" → ${segments.length} messages (${segments.map(s => `${s.text.length}ch`).join(', ')})`);
+    const detail = segments.map(s => `${s.text.length}ch e=${(entities as any[]).length > 0 ? 'ent' : '0'}`).join(', ');
+    logs.push({ type: 'MIGRATED', postId: post.id, message: `"${post.title}" → ${segments.length} messages (${detail})` });
     migrated++;
   }
 
   console.log();
-  for (const line of logLines) {
-    console.log(line);
+  for (const log of logs) {
+    const tag = `[${log.type}]`;
+    console.log(`  ${tag} post=${log.postId} ${log.message}`);
   }
   console.log();
   console.log(`Migrated: ${migrated} posts`);
   console.log(`Skipped:  ${skipped} posts`);
 
   const reportPath = path.join(process.cwd(), 'logs', 'migrate-post-messages-report.log');
-  fs.writeFileSync(reportPath, logLines.join('\n'), 'utf-8');
+  const reportContent = logs.map(l => `[${l.type}] post=${l.postId} ${l.message}`).join('\n');
+  const dir = path.dirname(reportPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(reportPath, reportContent, 'utf-8');
   console.log(`Report saved to: ${reportPath}`);
 
   await prisma.$disconnect();
