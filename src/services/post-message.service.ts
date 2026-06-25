@@ -372,6 +372,7 @@ export async function legacyBuildVirtualMessages(post: any): Promise<any[]> {
   if (content.includes('[[copy]]')) {
     logger.info(`[LegacyPostMigration] post=${post.id} splitting content by [[copy]] markers`);
     const segments = splitLegacyContent(content);
+    logger.debug(`[SplitResult] post=${post.id} split into ${segments.length} segments totalEntities=${entities.length}`);
     return segments.map((seg, i) => {
       const segEntities = extractRelativeEntities(entities, seg.offset, seg.text.length);
       const segCaption = i === 0 ? caption : null;
@@ -522,6 +523,7 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
     if (msg.delayMs > 0) await sleep(msg.delayMs);
     const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
     const { method, ...params } = payload as any;
+    logger.debug(`[PreviewRender] postId=${msg.postId} order=${msg.order} textLength=${telegramLength(msg.text ?? '')} entityCount=${msg.entities.length} captionEntityCount=${msg.captionEntities.length}`);
     logger.info(`[SendSingleMessage] postId=${msg.postId} order=${msg.order} type=${msg.messageType} entities=${msg.entities.length}`);
     if (method === 'sendMessage') {
       await ctx.reply(params.text, params);
@@ -554,9 +556,12 @@ export const postMessageService = {
   },
 };
 
-function normalizeWriteData(postId: number, data: any): Prisma.PostMessageUncheckedCreateInput {
-  const entities = validateEntities(data.text ?? '', arrayJson(data.entities), 'new');
-  const captionEntities = validateEntities(data.caption ?? '', arrayJson(data.captionEntities), 'new:caption');
+export function normalizeWriteData(postId: number, data: any): Prisma.PostMessageUncheckedCreateInput {
+  const rawEntities = arrayJson(data.entities);
+  const rawCaptionEntities = arrayJson(data.captionEntities);
+  const entities = validateEntities(data.text ?? '', rawEntities, 'new');
+  const captionEntities = validateEntities(data.caption ?? '', rawCaptionEntities, 'new:caption');
+  logger.debug(`[EntityRebase] postId=${postId} order=${data.order} textEntities: before=${rawEntities.length} after=${entities.length} captionEntities: before=${rawCaptionEntities.length} after=${captionEntities.length}`);
   return { postId, order: data.order, messageType: data.messageType ?? PostMessageType.text, text: data.text ?? null, entities, parseMode: PostMessageParseMode.None, mediaFileId: data.mediaFileId ?? null, mediaGroupId: data.mediaGroupId ?? null, caption: data.caption ?? null, captionEntities, replyMarkup: data.replyMarkup ?? null, delayMs: data.delayMs ?? 0 } as any;
 }
 

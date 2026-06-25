@@ -79,6 +79,29 @@ export const postService = {
       createdBy: data.createdBy,
     };
     const post = await postRepository.create(sanitized);
+    // Persist post_messages rows
+    if (clonedMessages) {
+      const messageRows = clonedMessages.map((m: any, i: number) => {
+        const entities = Array.isArray(m.entities) ? m.entities : [];
+        const captionEntities = Array.isArray(m.captionEntities) ? m.captionEntities : [];
+        return {
+          postId: post.id,
+          order: m.order ?? i,
+          messageType: m.messageType ?? 'text',
+          text: m.text ?? null,
+          entities,
+          parseMode: 'None',
+          mediaFileId: m.mediaFileId ?? null,
+          mediaGroupId: m.mediaGroupId ?? null,
+          caption: m.caption ?? null,
+          captionEntities,
+          replyMarkup: m.replyMarkup ?? null,
+          delayMs: m.delayMs ?? 0,
+        };
+      });
+      await prisma.postMessage.createMany({ data: messageRows as any });
+      logger.info(`[Post] Created ${messageRows.length} post_messages for post=${post.id}`);
+    }
     this.invalidateCache();
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
@@ -123,12 +146,13 @@ export const postService = {
     if (typeof data.caption === 'string') data.caption = sanitizeTelegramText(data.caption);
     if (data.buttons) data.buttons = sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons)));
     if ((data as any).entities) (data as any).entities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).entities)));
+    let clonedMessages: any[] | undefined;
     if (Array.isArray((data as any).messages)) {
-      const clonedMessages = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).messages)));
+      clonedMessages = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).messages)));
       delete (data as any).messages;
-      (data as any).telegramPayload = (data as any).telegramPayload
-        ? { ...sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload))), messages: clonedMessages }
-        : { messages: clonedMessages };
+      if ((data as any).telegramPayload) {
+        (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
+      }
     } else if ((data as any).telegramPayload) {
       (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
     }
@@ -157,6 +181,28 @@ export const postService = {
       }
     }
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
+    // Persist post_messages rows if messages were provided
+    if (clonedMessages) {
+      const messageRows = clonedMessages.map((m: any, i: number) => ({
+        postId: post.id,
+        order: m.order ?? i,
+        messageType: m.messageType ?? 'text',
+        text: m.text ?? null,
+        entities: Array.isArray(m.entities) ? m.entities : [],
+        parseMode: 'None',
+        mediaFileId: m.mediaFileId ?? null,
+        mediaGroupId: m.mediaGroupId ?? null,
+        caption: m.caption ?? null,
+        captionEntities: Array.isArray(m.captionEntities) ? m.captionEntities : [],
+        replyMarkup: m.replyMarkup ?? null,
+        delayMs: m.delayMs ?? 0,
+      }));
+      await prisma.$transaction([
+        prisma.postMessage.deleteMany({ where: { postId: post.id } }),
+        ...messageRows.map((row: any) => prisma.postMessage.create({ data: row })),
+      ]);
+      logger.info(`[Post] Replaced ${messageRows.length} post_messages for post=${post.id}`);
+    }
     this.invalidateCache();
 
     // Auto-sync published posts to menu (single source of truth = post database — title resolved at render time)
