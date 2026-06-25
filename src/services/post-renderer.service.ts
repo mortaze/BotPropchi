@@ -226,16 +226,16 @@ function resolveEntitiesForMessage(
     }
   }
 
-  // Multi-message with entities: try split by message count first
-  // (handles per-message-relative offsets from post_entities table)
+  // Multi-message with entities: filter by absolute offset range and adjust
   if (totalMessages > 1 && Array.isArray(post.entities) && post.entities.length > 0) {
     const idx = segmentIndex ?? 0;
-    const perMessageCount = Math.ceil(post.entities.length / totalMessages);
-    const start = idx * perMessageCount;
-    const end = Math.min(start + perMessageCount, post.entities.length);
-    const chunkEntities = post.entities.slice(start, end);
+    const segStart = segment.offset;
+    const segEnd = segment.offset + segment.text.length;
+    const chunkEntities = post.entities.filter(e =>
+      e.offset >= segStart && e.offset + e.length <= segEnd,
+    );
     if (chunkEntities.length > 0) {
-      const cloned = chunkEntities.map(e => ({ ...e }));
+      const cloned = chunkEntities.map(e => ({ ...e, offset: e.offset - segStart }));
       logger.debug(`[EntityResolve] post=${post.id} multiMessage idx=${idx} entities=${cloned.length} types=${cloned.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
       return cloned;
     }
