@@ -213,16 +213,36 @@ function resolveEntitiesForMessage(
   post: any,
   segment: ContentSegment,
   allSegments?: ContentSegment[],
+  segmentIndex?: number,
 ): any[] {
-  // Priority 1: post_entities (richEntities) with absolute offset extraction
-  // These are per-message entities stored in post_entities table
-  const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
-  if (fromContent.length > 0) {
-    logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) content entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
-    return fromContent;
+  const totalMessages = allSegments?.length || 1;
+
+  // Single message: use absolute offset extraction
+  if (totalMessages === 1) {
+    const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
+    if (fromContent.length > 0) {
+      logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) content entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+      return fromContent;
+    }
   }
 
-  // Priority 2: telegramMessageSnapshot entities (fallback)
+  // Multi-message with entities: try split by message count first
+  // (handles per-message-relative offsets from post_entities table)
+  if (totalMessages > 1 && Array.isArray(post.entities) && post.entities.length > 0) {
+    const idx = segmentIndex ?? 0;
+    const perMessageCount = Math.ceil(post.entities.length / totalMessages);
+    const start = idx * perMessageCount;
+    const end = Math.min(start + perMessageCount, post.entities.length);
+    const chunkEntities = post.entities.slice(start, end);
+    if (chunkEntities.length > 0) {
+      const cloned = chunkEntities.map(e => ({ ...e }));
+      logger.debug(`[EntityResolve] post=${post.id} multiMessage idx=${idx} entities=${cloned.length} types=${cloned.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+      return cloned;
+    }
+  }
+
+  // Fallback: snapshot entities with occurrence-based extraction
+  // (handles absolute offsets from telegramMessageSnapshot)
   if (post.telegramMessageSnapshot) {
     let occurrenceIndex = 0;
     if (allSegments) {
@@ -243,6 +263,13 @@ function resolveEntitiesForMessage(
     }
   }
 
+  // Final fallback: absolute offset extraction
+  const fromContent = extractContentEntitiesForSegment(post.entities, segment.offset, segment.text.length);
+  if (fromContent.length > 0) {
+    logger.debug(`[EntityResolve] post=${post.id} segment=[${segment.offset},${segment.offset + segment.text.length}) content entities=${fromContent.length} types=${fromContent.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+    return fromContent;
+  }
+
   return [];
 }
 
@@ -254,7 +281,7 @@ export function splitPostToMessages(post: any): PostMessage[] {
   if (segments.length === 0) return [];
 
   return segments.map((seg, i) => {
-    const entities = resolveEntitiesForMessage(post, seg, segments);
+    const entities = resolveEntitiesForMessage(post, seg, segments, i);
     const rawButtons = extractButtonsForMessage(post.buttons, i);
     const buttons = rawButtons.length > 0 ? cloneJson(rawButtons) : [];
 
