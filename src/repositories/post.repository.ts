@@ -14,6 +14,13 @@ export const postRepository = {
     return prisma.post.delete({ where: { id } });
   },
 
+  async getPostMeta(id: number) {
+    return prisma.post.findUnique({
+      where: { id },
+      select: { id: true, title: true, slug: true, command: true, status: true, isPublished: true },
+    });
+  },
+
   async findById(id: number) {
     return prisma.post.findUnique({
       where: { id },

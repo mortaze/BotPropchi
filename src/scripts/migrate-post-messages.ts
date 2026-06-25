@@ -178,28 +178,33 @@ async function migratePostMessages() {
       continue;
     }
 
+    const messageRows: any[] = [];
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const segEntities = extractEntitiesForSegment(entities, seg.offset, seg.text.length, seg.text, post.id, i);
       const msgButtons = extractButtonsForMessage(buttons, i);
       const isFirst = i === 0;
 
-      await prisma.postMessage.create({
-        data: {
-          postId: post.id,
-          order: i,
-          messageType: isFirst && mediaFileId ? messageType : PostMessageType.text,
-          text: seg.text,
-          entities: segEntities,
-          parseMode: PostMessageParseMode.None,
-          mediaFileId: isFirst ? mediaFileId : null,
-          mediaGroupId: isFirst && albumMediaIds && albumMediaIds.length > 1 ? `migrate-${post.id}` : null,
-          caption: isFirst ? (post.caption || null) : null,
-          captionEntities: [],
-          replyMarkup: msgButtons.length > 0 ? { inline_keyboard: msgButtons } : null,
-          delayMs: 0,
-        },
+      messageRows.push({
+        postId: post.id,
+        order: i,
+        messageType: isFirst && mediaFileId ? messageType : PostMessageType.text,
+        text: seg.text,
+        entities: segEntities,
+        parseMode: PostMessageParseMode.None,
+        mediaFileId: isFirst ? mediaFileId : null,
+        mediaGroupId: isFirst && albumMediaIds && albumMediaIds.length > 1 ? `migrate-${post.id}` : null,
+        caption: isFirst ? (post.caption || null) : null,
+        captionEntities: [],
+        replyMarkup: msgButtons.length > 0 ? { inline_keyboard: msgButtons } : null,
+        delayMs: 0,
       });
+    }
+
+    if (!isDryRun) {
+      for (const row of messageRows) {
+        await prisma.postMessage.create({ data: row });
+      }
     }
 
     const detail = segments.map(s => `${s.text.length}ch e=${(entities as any[]).length > 0 ? 'ent' : '0'}`).join(', ');
@@ -228,7 +233,31 @@ async function migratePostMessages() {
   await prisma.$disconnect();
 }
 
-migratePostMessages().catch((e) => {
+const isDryRun = process.argv.includes('--dry-run');
+const isRollback = process.argv.includes('--rollback');
+
+async function rollbackMigration() {
+  console.log('='.repeat(70));
+  console.log('ROLLBACK: Deleting all post_messages created by migration');
+  console.log('='.repeat(70));
+  const deleted = await prisma.postMessage.deleteMany({});
+  console.log(`Deleted ${deleted.count} post_messages rows.`);
+  console.log('Rollback complete.');
+  await prisma.$disconnect();
+}
+
+async function main() {
+  if (isRollback) {
+    await rollbackMigration();
+    return;
+  }
+  if (isDryRun) {
+    console.log('=== DRY RUN MODE — no data will be written ===');
+  }
+  await migratePostMessages();
+}
+
+main().catch((e) => {
   console.error('Migration failed:', e);
   process.exit(1);
 });

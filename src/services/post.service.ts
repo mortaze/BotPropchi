@@ -453,6 +453,10 @@ export const postService = {
     return post ? normalizePost(sanitizePost(post)) : null;
   },
 
+  async getPostMeta(id: number) {
+    return postRepository.getPostMeta(id);
+  },
+
   async findByTitle(title: string) {
     const ck = `${CACHE_KEY_TITLE}:${title.toLowerCase()}`;
     const cached = cache.get<any>(ck);

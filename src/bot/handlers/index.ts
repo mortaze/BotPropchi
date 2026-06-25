@@ -316,19 +316,16 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     // ─── Send Start message ─────────────────────────────
     const startPost = await postService.getOrCreateStartPost();
-    const hasCustomContent = startPost?.content || startPost?.media?.length;
-    if (hasCustomContent) {
-      const joinDate = profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('fa-IR') : '';
-      const startContent = applyStartVariables(startPost, {
+    if (startPost) {
+      const vars = {
         first_name: ctx.from?.first_name || '',
         last_name: ctx.from?.last_name || '',
         username: ctx.from?.username || '',
         user_id: String(ctx.from?.id || ''),
-        join_date: joinDate,
+        join_date: profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('fa-IR') : '',
         bot_name: DEFAULT_BOT_USERNAME || 'ربات',
-      });
-      await sendPostToUser(ctx, startContent);
-      // Restore main menu keyboard (even when startOnlyMode is active)
+      };
+      await sendPostToUser(ctx, { id: startPost.id }, vars);
       const adminOpts = await adminReplyOptions(ctx.from?.id);
       await ctx.reply('🏠 منوی اصلی', adminOpts);
       return;
@@ -686,7 +683,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       const match = textMap.get(text);
       if (match && match.ref.startsWith('post:')) {
         const postId = parseInt(match.ref.replace('post:', ''));
-        const post = await postService.findById(postId);
+        const post = await postService.getPostMeta(postId);
         if (post && post.status === 'PUBLISHED' && post.isPublished) {
           await sendPostToUser(ctx, post);
           return;
@@ -976,7 +973,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     if (!(await settingsService.isFeatureEnabled('posts'))) return;
     const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
+    const post = await postService.getPostMeta(postId);
     if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
       return ctx.reply('❌ پست یافت نشد.');
     }
@@ -1043,7 +1040,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     if (!(await settingsService.isFeatureEnabled('posts'))) return;
     const postId = parseInt(ctx.match[1]);
-    const post = await postService.findById(postId);
+    const post = await postService.getPostMeta(postId);
     if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
       return ctx.reply('❌ Post not found.');
     }

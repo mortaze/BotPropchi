@@ -1,5 +1,26 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+
+// ─── Mocks ──────────────────────────────────────────────────────────
+
+vi.mock('../prisma/client', () => ({
+  prisma: {
+    postMessage: {
+      findMany: vi.fn(),
+    },
+  },
+}));
+
+vi.mock('../services/post.service', () => ({
+  postService: {
+    incrementViews: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+import { prisma } from '../prisma/client';
 import { sendPostToUser } from '../bot/shared';
+import { validateMessages, loadPostMessages } from '../services/post-message.service';
+
+// ─── Helpers ────────────────────────────────────────────────────────
 
 function makeMockCtx() {
   const calls: { method: string; args: any[] }[] = [];
@@ -26,110 +47,163 @@ function makeMockCtx() {
   return { ctx, calls };
 }
 
-// Mock the post service incrementViews to no-op
-vi.mock('../services/post.service', () => ({
-  postService: {
-    incrementViews: vi.fn().mockResolvedValue(undefined),
-  },
-}));
+const mockFindMany = prisma.postMessage.findMany as ReturnType<typeof vi.fn>;
 
-describe('sendPostToUser e2e — multi-message pipeline', () => {
+// ─── Tests ──────────────────────────────────────────────────────────
+
+describe('sendPostToUser — message-first architecture', () => {
+  beforeEach(() => {
+    mockFindMany.mockReset();
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('sends 2 separate messages via post_messages pipeline with correct entity isolation', async () => {
+  it('sends a single plain message', async () => {
+    mockFindMany.mockResolvedValue([
+      { id: 1, postId: 10, order: 0, messageType: 'text', text: 'Hello', entities: [], parseMode: 'None', captionEntities: [], mediaFileId: null, mediaGroupId: null, caption: null, replyMarkup: [], delayMs: 0 },
+    ]);
+
     const { ctx, calls } = makeMockCtx();
+    await sendPostToUser(ctx, { id: 10 });
 
-    const postWithMessages = {
-      id: 4,
-      title: 'Test Post',
-      status: 'PUBLISHED',
-      isPublished: true,
-      messages: [
-        {
-          id: 10,
-          postId: 4,
-          order: 0,
-          messageType: 'text',
-          text: 'این یک متن با بولد و بلاک‌کوت است',
-          entities: [
-            { type: 'blockquote', offset: 0, length: 4 },
-            { type: 'bold', offset: 5, length: 4 },
-          ],
-          parseMode: 'None',
-          mediaFileId: null,
-          mediaGroupId: null,
-          caption: null,
-          captionEntities: [],
-          replyMarkup: [],
-          delayMs: 0,
-        },
-        {
-          id: 11,
-          postId: 4,
-          order: 1,
-          messageType: 'text',
-          text: 'این یک متن ساده و بدون هیچ فرمت خاصی است',
-          entities: [],
-          parseMode: 'None',
-          mediaFileId: null,
-          mediaGroupId: null,
-          caption: null,
-          captionEntities: [],
-          replyMarkup: [],
-          delayMs: 0,
-        },
-      ],
-    };
+    expect(calls.length).toBe(1);
+    expect(calls[0].method).toBe('sendMessage');
+    expect(calls[0].args[0]).toBe('Hello');
+  });
 
-    await sendPostToUser(ctx, postWithMessages);
+  it('sends 2 separate messages with entity isolation', async () => {
+    mockFindMany.mockResolvedValue([
+      { id: 1, postId: 4, order: 0, messageType: 'text', text: 'bold one', entities: [{ type: 'bold', offset: 0, length: 4 }], parseMode: 'None', captionEntities: [], mediaFileId: null, mediaGroupId: null, caption: null, replyMarkup: [], delayMs: 0 },
+      { id: 2, postId: 4, order: 1, messageType: 'text', text: 'plain two', entities: [], parseMode: 'None', captionEntities: [], mediaFileId: null, mediaGroupId: null, caption: null, replyMarkup: [], delayMs: 0 },
+    ]);
 
-    // Exactly 2 calls
+    const { ctx, calls } = makeMockCtx();
+    await sendPostToUser(ctx, { id: 4 });
+
     expect(calls.length).toBe(2);
     expect(calls[0].method).toBe('sendMessage');
     expect(calls[1].method).toBe('sendMessage');
 
-    // First message: has entities
     const firstExtra = calls[0].args[1];
-    expect(firstExtra.entities).toEqual([
-      { type: 'blockquote', offset: 0, length: 4 },
-      { type: 'bold', offset: 5, length: 4 },
-    ]);
+    expect(firstExtra.entities).toEqual([{ type: 'bold', offset: 0, length: 4 }]);
 
-    // Second message: no entities, plain text
     const secondExtra = calls[1].args[1];
     expect(secondExtra.entities).toBeUndefined();
-
-    // Second message text is untouched
-    expect(calls[1].args[0]).toBe('این یک متن ساده و بدون هیچ فرمت خاصی است');
-
-    // First message text is untouched
-    expect(calls[0].args[0]).toBe('این یک متن با بولد و بلاک‌کوت است');
+    expect(calls[1].args[0]).toBe('plain two');
   });
 
-  it('falls back to renderPostToTelegram when post has no messages (empty array)', async () => {
+  it('handles media message type', async () => {
+    mockFindMany.mockResolvedValue([
+      { id: 1, postId: 5, order: 0, messageType: 'photo', text: 'photo caption', entities: [], parseMode: 'None', captionEntities: [], mediaFileId: 'AgAAAfake', mediaGroupId: null, caption: 'photo caption', replyMarkup: [], delayMs: 0 },
+    ]);
+
     const { ctx, calls } = makeMockCtx();
+    await sendPostToUser(ctx, { id: 5 });
 
-    // Mock renderPostToTelegram dependency
-    const renderer = await import('../services/post-renderer.service');
-    const renderSpy = vi.spyOn(renderer, 'renderPostToTelegram').mockResolvedValue(true as never);
+    expect(calls.length).toBe(1);
+    expect(calls[0].method).toBe('sendPhoto');
+  });
 
-    const postWithoutMessages = {
-      id: 5,
-      title: 'Legacy Post',
-      status: 'PUBLISHED',
-      isPublished: true,
-      content: 'Old content without messages',
-      entities: [{ type: 'bold', offset: 0, length: 3 }],
-      messages: [],
+  it('handles buttons in reply_markup', async () => {
+    const buttons = [{ text: 'Click', url: 'https://example.com' }];
+    mockFindMany.mockResolvedValue([
+      { id: 1, postId: 6, order: 0, messageType: 'text', text: 'with button', entities: [], parseMode: 'None', captionEntities: [], mediaFileId: null, mediaGroupId: null, caption: null, replyMarkup: buttons, delayMs: 0 },
+    ]);
+
+    const { ctx, calls } = makeMockCtx();
+    await sendPostToUser(ctx, { id: 6 });
+
+    expect(calls.length).toBe(1);
+    const params = calls[0].args[1];
+    expect(params.reply_markup).toBeDefined();
+  });
+
+  it('drops invalid entities via validateMessages', async () => {
+    const messages = [
+      { id: 1, postId: 7, order: 0, messageType: 'text', text: 'hi', entities: [{ type: 'bold', offset: 0, length: 2 }, { type: 'italic', offset: 5, length: 3 }], parseMode: 'None', captionEntities: [], mediaFileId: null, mediaGroupId: null, caption: null, replyMarkup: [], delayMs: 0 },
+    ];
+    const validated = validateMessages(messages, 7);
+    expect(validated[0].entities.length).toBe(1);
+    expect(validated[0].entities[0].type).toBe('bold');
+  });
+
+  it('shows error when post has no messages', async () => {
+    mockFindMany.mockResolvedValue([]);
+
+    const { ctx, calls } = makeMockCtx();
+    await sendPostToUser(ctx, { id: 99 });
+
+    expect(calls.length).toBe(1);
+    expect(calls[0].args[0]).toContain('مشکل ساختاری');
+  });
+
+  it('loads messages from DB (not from rawPost)', async () => {
+    const dbMessages = [
+      { id: 1, postId: 10, order: 0, messageType: 'text', text: 'from DB', entities: [], parseMode: 'None', captionEntities: [], mediaFileId: null, mediaGroupId: null, caption: null, replyMarkup: [], delayMs: 0 },
+    ];
+    mockFindMany.mockResolvedValue(dbMessages);
+
+    const rawPostWithMessages = {
+      id: 10,
+      messages: [
+        { id: 999, postId: 10, order: 0, messageType: 'text', text: 'from rawPost (should be ignored)', entities: [], parseMode: 'None', captionEntities: [], mediaFileId: null, mediaGroupId: null, caption: null, replyMarkup: [], delayMs: 0 },
+      ],
     };
 
-    await sendPostToUser(ctx, postWithoutMessages);
+    const { ctx, calls } = makeMockCtx();
+    await sendPostToUser(ctx, rawPostWithMessages);
 
-    expect(renderSpy).toHaveBeenCalledTimes(1);
-    expect(renderSpy).toHaveBeenCalledWith(ctx, postWithoutMessages);
+    expect(calls[0].args[0]).toBe('from DB');
+    expect(calls[0].args[0]).not.toBe('from rawPost (should be ignored)');
+  });
 
-    renderSpy.mockRestore();
+  it('handles template variable substitution with offset adjustment', async () => {
+    mockFindMany.mockResolvedValue([
+      { id: 1, postId: 10, order: 0, messageType: 'text', text: 'Hello {first_name}', entities: [{ type: 'bold', offset: 0, length: 5 }], parseMode: 'None', captionEntities: [], mediaFileId: null, mediaGroupId: null, caption: null, replyMarkup: [], delayMs: 0 },
+    ]);
+
+    const { ctx, calls } = makeMockCtx();
+    await sendPostToUser(ctx, { id: 10 }, { first_name: 'Ali' });
+
+    expect(calls[0].args[0]).toBe('Hello Ali');
+    const params = calls[0].args[1];
+    expect(params.entities).toBeDefined();
+    expect(params.entities[0].type).toBe('bold');
+    expect(params.entities[0].offset).toBe(0);
+    expect(params.entities[0].length).toBe(5);
+  });
+});
+
+describe('validateMessages — isolated', () => {
+  it('filters out-of-range entities', () => {
+    const messages = [
+      { order: 0, text: 'abc', entities: [{ type: 'bold', offset: 0, length: 3 }, { type: 'italic', offset: 10, length: 2 }] },
+    ];
+    const result = validateMessages(messages, 1);
+    expect(result[0].entities).toEqual([{ type: 'bold', offset: 0, length: 3 }]);
+  });
+
+  it('filters negative offset entities', () => {
+    const messages = [
+      { order: 0, text: 'abc', entities: [{ type: 'bold', offset: -1, length: 2 }] },
+    ];
+    const result = validateMessages(messages, 1);
+    expect(result[0].entities).toEqual([]);
+  });
+
+  it('keeps valid entities unchanged', () => {
+    const messages = [
+      { order: 0, text: 'hello world', entities: [{ type: 'bold', offset: 0, length: 5 }, { type: 'italic', offset: 6, length: 5 }] },
+    ];
+    const result = validateMessages(messages, 1);
+    expect(result[0].entities.length).toBe(2);
+  });
+
+  it('handles empty text with no entities', () => {
+    const messages = [{ order: 0, text: '', entities: [] }];
+    const result = validateMessages(messages, 1);
+    expect(result[0].entities).toEqual([]);
   });
 });
