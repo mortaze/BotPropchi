@@ -91,13 +91,30 @@ function tagEntitiesWithMessageIndex(content: string | undefined | null, entitie
     // (entity offset is position in full content with markers)
     for (const seg of segments) {
       if (e.offset >= seg.offset && e.offset + e.length <= seg.offset + seg.text.length) {
-        return { ...e, messageIndex: seg === segments[0] ? 0 : 1 }; // approximate
+        return { ...e, messageIndex: segments.indexOf(seg) };
       }
     }
     return e; // untagged — fallback to offset-based resolution at render time
   });
 
   return tagged;
+}
+
+
+function postEntityCreateInput(postId: number, e: any, source: 'text' | 'caption' = 'text') {
+  return {
+    postId,
+    source,
+    messageIndex: Number.isInteger(Number(e.messageIndex)) ? Number(e.messageIndex) : 0,
+    type: e.type,
+    offset: e.offset,
+    length: e.length,
+    url: e.url,
+    user: e.user,
+    language: e.language,
+    customEmojiId: e.custom_emoji_id ?? e.customEmojiId,
+    payload: e,
+  };
 }
 
 export const postService = {
@@ -153,6 +170,11 @@ export const postService = {
       createdBy: data.createdBy,
     };
     const post = await postRepository.create(sanitized);
+    if (Array.isArray(sanitized.entities) && sanitized.entities.length > 0) {
+      await prisma.postEntity.createMany({
+        data: sanitized.entities.map((e: any) => postEntityCreateInput(post.id, e, 'text')),
+      });
+    }
     this.invalidateCache();
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
@@ -227,6 +249,14 @@ export const postService = {
       }
     }
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
+    if (Array.isArray((data as any).entities)) {
+      await prisma.$transaction([
+        prisma.postEntity.deleteMany({ where: { postId: id, source: 'text' } }),
+        ...(((data as any).entities as any[]).length > 0
+          ? [prisma.postEntity.createMany({ data: ((data as any).entities as any[]).map((e: any) => postEntityCreateInput(id, e, 'text')) })]
+          : []),
+      ]);
+    }
     this.invalidateCache();
 
     // Auto-sync published posts to menu (single source of truth = post database — title resolved at render time)
@@ -506,8 +536,8 @@ export const postService = {
       prisma.postEntity.deleteMany({ where: { postId } }),
       prisma.postKeyboard.deleteMany({ where: { postId } }),
       ...(media.length ? [prisma.postMedia.createMany({ data: media.map((m: any, i: number) => ({ postId, ...m, order: i })) })] : []),
-      ...(entities.length ? [prisma.postEntity.createMany({ data: entities.map((e: any) => ({ postId, source: 'text' as const, type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, customEmojiId: e.custom_emoji_id, payload: e })) })] : []),
-      ...(captionEntities.length ? [prisma.postEntity.createMany({ data: captionEntities.map((e: any) => ({ postId, source: 'caption' as const, type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, customEmojiId: e.custom_emoji_id, payload: e })) })] : []),
+      ...(entities.length ? [prisma.postEntity.createMany({ data: entities.map((e: any) => postEntityCreateInput(postId, e, 'text')) })] : []),
+      ...(captionEntities.length ? [prisma.postEntity.createMany({ data: captionEntities.map((e: any) => postEntityCreateInput(postId, e, 'caption')) })] : []),
       ...(keyboard.length ? [prisma.postKeyboard.createMany({ data: keyboard.flatMap((row: any[], r: number) => row.map((btn: any, c: number) => ({ postId, row: r, col: c, text: btn.text, type: btn.url ? 'URL' : btn.callback_data ? 'CALLBACK' : 'NATIVE', value: btn.url || btn.callback_data, payload: btn }))) })] : []),
     ]);
     this.invalidateCache();

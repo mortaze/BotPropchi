@@ -820,6 +820,7 @@ model PostEntity {
   id            Int      @id @default(autoincrement())
   postId        Int
   source        String   @default("text")
+  messageIndex  Int      @default(0)
   type          String
   offset        Int
   length        Int

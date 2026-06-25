@@ -271,17 +271,19 @@ function resolveEntitiesForMessage(
     return [];
   }
 
-  // ── Mode 2: Multi-message — filter by source / messageIndex ──────
-  // When entities are tagged with source (PostEntity) or messageIndex (JSON blob)
-  // matching the current segment index, use them with their LOCAL offsets as-is.
+  // ── Mode 2: Multi-message — filter by messageIndex/source ───────
+  // When any entity has message affinity, treat offsets as LOCAL to each
+  // message and return only entities tagged for the current message. This is
+  // the canonical post_entities flow; do not subtract segment offsets here.
   if (totalMessages > 1 && Array.isArray(post.entities) && post.entities.length > 0) {
-    const bySourceMsg = post.entities.filter((e: any) => {
-      const msgIdx = getEntityMsgIdx(e);
-      return msgIdx != null && String(msgIdx) === String(idx);
-    });
-    if (bySourceMsg.length > 0) {
-      const cloned = bySourceMsg.map((e: any) => ({ ...e, source: undefined, messageIndex: undefined }));
-      logger.debug(`[EntityResolve] post=${post.id} sourceMatch idx=${idx} entities=${cloned.length} types=${cloned.map(e => `${e.type}@${e.offset}:${e.length}`).join(',')}`);
+    const hasMessageAffinity = post.entities.some((e: any) => getEntityMsgIdx(e) != null);
+    if (hasMessageAffinity) {
+      const byMessageIndex = post.entities.filter((e: any) => {
+        const msgIdx = getEntityMsgIdx(e);
+        return msgIdx != null && Number(msgIdx) === idx;
+      });
+      const cloned = byMessageIndex.map((e: any) => ({ ...e, source: undefined, messageIndex: undefined }));
+      logger.debug(`[EntityResolve] post=${post.id} messageIndexMatch idx=${idx} entities=${cloned.length} types=${cloned.map(e => `${e.type}@${e.offset}:${e.length}`).join(',') || '(none)'}`);
       return cloned;
     }
   }
