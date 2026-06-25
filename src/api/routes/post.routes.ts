@@ -7,35 +7,42 @@ import { settingsService } from '../../services/settings.service';
 export const postRouter = Router();
 
 function serializeBigInts(value: any): any {
+  if (value === null || value === undefined) return value;
   if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(serializeBigInts);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serializeBigInts(item)]));
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, serializeBigInts(item)])
+    );
   }
   return value;
 }
 
-const createSchema = z.object({
-  title: z.string().min(1),
-  slug: z.string().min(1),
-  content: z.string().optional(),
-  caption: z.string().optional(),
-  mediaFileId: z.string().optional(),
-  mediaType: z.string().optional(),
-  albumMediaIds: z.array(z.string()).optional(),
-  parseMode: z.enum(['Markdown', 'HTML']).default('Markdown'),
-  buttons: z.any().optional(),
-  entities: z.any().optional(),
-  telegramPayload: z.any().optional(),
-  telegramMessageSnapshot: z.any().optional(),
-  contentFormat: z.string().optional(),
+// Title and slug are optional for drafts but required for published posts.
+// The service layer enforces strict validation on publish.
+const basePostSchema = z.object({
+  title: z.string().optional(),
+  slug: z.string().optional(),
+  content: z.string().optional().default(''),
+  caption: z.string().optional().default(''),
+  mediaFileId: z.string().optional().nullable(),
+  mediaType: z.string().optional().nullable(),
+  albumMediaIds: z.array(z.string()).optional().default([]),
+  parseMode: z.enum(['Markdown', 'HTML']).default('HTML'),
+  buttons: z.any().optional().default([]),
+  entities: z.any().optional().default([]),
+  telegramPayload: z.any().optional().nullable(),
+  telegramMessageSnapshot: z.any().optional().nullable(),
+  contentFormat: z.string().optional().nullable(),
   contentVersion: z.number().int().default(1),
-  command: z.string().optional(),
+  command: z.string().optional().nullable(),
   status: z.nativeEnum(PostStatus).default(PostStatus.DRAFT),
   sortOrder: z.number().default(0),
 });
 
-const updateSchema = createSchema.partial();
+const createSchema = basePostSchema;
+const updateSchema = basePostSchema.partial();
 
 postRouter.get('/', async (req, res) => {
   const page = Number(req.query.page || 1);
@@ -99,40 +106,73 @@ postRouter.post('/', async (req, res) => {
 postRouter.put('/:id', async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
-  const post = await postService.update(Number(req.params.id), parsed.data as any);
-  if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
-  res.json(serializeBigInts(post));
+  try {
+    const post = await postService.update(Number(req.params.id), parsed.data as any);
+    if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
+    res.json(serializeBigInts(post));
+  } catch (err: any) {
+    if (err.code === 'P2002') return res.status(409).json({ success: false, error: 'این slug قبلاً استفاده شده' });
+    res.status(500).json({ success: false, error: err.message || 'خطا در بروزرسانی پست' });
+  }
 });
 
 postRouter.delete('/:id', async (req, res) => {
-  const post = await postService.delete(Number(req.params.id));
-  if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
-  res.json({ success: true, message: 'پست حذف شد' });
+  try {
+    const post = await postService.delete(Number(req.params.id));
+    if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
+    res.json({ success: true, message: 'پست حذف شد' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'خطا در حذف پست' });
+  }
 });
 
 postRouter.post('/:id/publish', async (req, res) => {
-  const post = await postService.publish(Number(req.params.id));
-  res.json(serializeBigInts(post));
+  try {
+    const post = await postService.publish(Number(req.params.id));
+    if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
+    res.json(serializeBigInts(post));
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'خطا در انتشار پست' });
+  }
 });
 
 postRouter.post('/:id/unpublish', async (req, res) => {
-  const post = await postService.unpublish(Number(req.params.id));
-  res.json(serializeBigInts(post));
+  try {
+    const post = await postService.unpublish(Number(req.params.id));
+    if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
+    res.json(serializeBigInts(post));
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'خطا در لغو انتشار پست' });
+  }
 });
 
 postRouter.post('/:id/hide', async (req, res) => {
-  const post = await postService.hide(Number(req.params.id));
-  res.json(serializeBigInts(post));
+  try {
+    const post = await postService.hide(Number(req.params.id));
+    if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
+    res.json(serializeBigInts(post));
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'خطا در مخفی‌سازی پست' });
+  }
 });
 
 postRouter.post('/:id/duplicate', async (req, res) => {
-  const post = await postService.duplicate(Number(req.params.id));
-  res.json(serializeBigInts(post));
+  try {
+    const post = await postService.duplicate(Number(req.params.id));
+    if (!post) return res.status(404).json({ success: false, error: 'پست یافت نشد' });
+    res.json(serializeBigInts(post));
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'خطا در کپی پست' });
+  }
 });
 
 postRouter.get('/:id/versions', async (req, res) => {
-  const versions = await postService.getVersions(Number(req.params.id));
-  res.json(serializeBigInts(versions));
+  try {
+    const versions = await postService.getVersions(Number(req.params.id));
+    res.json(serializeBigInts(versions));
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'خطا در دریافت نسخه‌ها' });
+  }
 });
 
 postRouter.post('/:id/commands', async (req, res) => {
@@ -160,8 +200,12 @@ postRouter.put('/:id/commands/:commandId', async (req, res) => {
 });
 
 postRouter.delete('/:id/commands/:commandId', async (req, res) => {
-  await postService.removeCommand(Number(req.params.commandId));
-  res.json({ success: true });
+  try {
+    await postService.removeCommand(Number(req.params.commandId));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'خطا در حذف دستور' });
+  }
 });
 
 postRouter.post('/:id/sync-menu', async (req, res) => {

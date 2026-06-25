@@ -139,7 +139,7 @@ export default function PostsPage() {
               ))}
             </tbody>
           </table>
-          {!query.isLoading && !query.data?.items.length && <EmptyState title="پستی یافت نشد" />}
+          {!query.isLoading && !(query.data?.items?.length ?? 0) && <EmptyState title="پستی یافت نشد" />}
         </CardContent>
         <Pagination page={page} pages={query.data?.pages ?? 1} onChange={setPage} />
       </Card>

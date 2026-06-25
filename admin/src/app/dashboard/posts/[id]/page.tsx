@@ -117,8 +117,8 @@ export default function PostDetailPage() {
     <div className="max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{post.title}</h1>
-          <p className="text-sm text-muted-foreground" dir="ltr">{post.slug}</p>
+          <h1 className="text-2xl font-bold">{post.title ?? 'بدون عنوان'}</h1>
+          <p className="text-sm text-muted-foreground" dir="ltr">{post.slug ?? '-'}</p>
         </div>
         <Badge variant={statusConfig[post.status].variant}>
           {statusConfig[post.status].icon} {statusConfig[post.status].label}

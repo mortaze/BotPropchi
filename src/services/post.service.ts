@@ -9,7 +9,7 @@ import { eventBus, Events } from '../utils/events';
 import { logger } from '../utils/logger';
 import { sanitizeTelegramText, sanitizeJsonStrings, validateDbInput } from '../utils/unicode';
 import { extractTelegramSnapshot, validateTelegramEntities, validateTelegramHtml } from './post-renderer.service';
-import { normalizePost } from './post-normalizer.service';
+import { normalizePost, sanitizePost } from './post-normalizer.service';
 
 const CACHE_KEY_PUBLISHED = cacheKey('posts:published');
 const CACHE_KEY_COMMANDS = cacheKey('posts:commands');
@@ -19,8 +19,8 @@ let _cacheListenersRegistered = false;
 
 export const postService = {
   async create(data: {
-    title: string;
-    slug: string;
+    title?: string;
+    slug?: string;
     content?: string;
     caption?: string;
     mediaFileId?: string;
@@ -42,26 +42,27 @@ export const postService = {
     sortOrder?: number;
     createdBy?: bigint;
   }) {
+    const isDraft = (data.status ?? PostStatus.DRAFT) === PostStatus.DRAFT;
     const sanitized: any = {
-      title: validateDbInput(data.title, 'post.title'),
-      slug: data.slug,
+      title: data.title ? validateDbInput(data.title, 'post.title') : (isDraft ? 'بدون عنوان' : validateDbInput(data.title ?? '', 'post.title')),
+      slug: data.slug ?? (isDraft ? `draft-${Date.now()}` : ''),
       content: data.content ? sanitizeTelegramText(data.content) : undefined,
       caption: data.caption ? sanitizeTelegramText(data.caption) : undefined,
-      mediaFileId: data.mediaFileId,
-      mediaType: data.mediaType,
-      albumMediaIds: data.albumMediaIds ? JSON.parse(JSON.stringify(data.albumMediaIds)) : undefined,
-      parseMode: data.parseMode ?? 'Markdown',
-      buttons: data.buttons ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
-      entities: data.entities ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.entities))) : undefined,
+      mediaFileId: data.mediaFileId ?? null,
+      mediaType: data.mediaType ?? null,
+      albumMediaIds: Array.isArray(data.albumMediaIds) && (data.albumMediaIds?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.albumMediaIds))) : undefined,
+      parseMode: data.parseMode ?? 'HTML',
+      buttons: Array.isArray(data.buttons) && (data.buttons?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
+      entities: Array.isArray(data.entities) && (data.entities?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.entities))) : undefined,
       telegramPayload: data.telegramPayload ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramPayload))) : undefined,
       telegramMessageSnapshot: data.telegramMessageSnapshot ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramMessageSnapshot))) : undefined,
-      contentFormat: data.contentFormat,
+      contentFormat: data.contentFormat ?? null,
       contentVersion: data.contentVersion ?? 1,
       contentText: data.contentText ?? (data.content || undefined),
-      contentEntities: data.contentEntities ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.contentEntities))) : undefined,
+      contentEntities: Array.isArray(data.contentEntities) && (data.contentEntities?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.contentEntities))) : undefined,
       renderMode: data.renderMode ?? 'telegram_entities',
       previewText: data.previewText ?? (data.content ? data.content.slice(0, 200) : undefined),
-      command: data.command,
+      command: data.command ?? null,
       status: data.status ?? PostStatus.DRAFT,
       sortOrder: data.sortOrder ?? 0,
       createdBy: data.createdBy,
@@ -294,7 +295,7 @@ export const postService = {
   },
 
   async getHidden() {
-    return (await postRepository.getHidden()).map(normalizePost);
+    return (await postRepository.getHidden()).map((p: any) => normalizePost(sanitizePost(p)));
   },
 
   async processScheduled(): Promise<number> {
@@ -430,7 +431,7 @@ export const postService = {
 
   async findById(id: number) {
     const post = await postRepository.findById(id);
-    return post ? normalizePost(post) : null;
+    return post ? normalizePost(sanitizePost(post)) : null;
   },
 
   async findByTitle(title: string) {
@@ -438,19 +439,19 @@ export const postService = {
     const cached = cache.get<any>(ck);
     if (cached !== undefined) return cached === null ? null : cached;
     const post = await postRepository.findByTitle(title);
-    const result = post ? normalizePost(post) : null;
+    const result = post ? normalizePost(sanitizePost(post)) : null;
     cache.set(ck, result, 60);
     return result;
   },
 
   async findBySlug(slug: string) {
     const post = await postRepository.findBySlug(slug);
-    return post ? normalizePost(post) : null;
+    return post ? normalizePost(sanitizePost(post)) : null;
   },
 
   async findByCommand(command: string) {
     const post = await postRepository.findByCommand(command);
-    return post ? normalizePost(post) : null;
+    return post ? normalizePost(sanitizePost(post)) : null;
   },
 
   async findAll(params: {
@@ -464,7 +465,7 @@ export const postService = {
     const result = await postRepository.findAll(params);
     return {
       ...result,
-      items: result.items.map(normalizePost),
+      items: (result.items ?? []).map((p: any) => normalizePost(sanitizePost(p))),
     };
   },
 
@@ -476,7 +477,7 @@ export const postService = {
       cache.set(CACHE_KEY_PUBLISHED, redisCached, 10);
       return redisCached;
     }
-    const posts = (await postRepository.getPublished()).map(normalizePost);
+    const posts = (await postRepository.getPublished()).map((p: any) => normalizePost(sanitizePost(p)));
     await redisClient.set(CACHE_KEY_PUBLISHED, posts, 10);
     cache.set(CACHE_KEY_PUBLISHED, posts, 10);
     return posts;
@@ -484,11 +485,11 @@ export const postService = {
 
   async getPublishedByPage(page: number, limit: number = 5) {
     const result = await postRepository.getPublishedByPage(page, limit);
-    return { ...result, items: result.items.map(normalizePost) };
+    return { ...result, items: (result.items ?? []).map((p: any) => normalizePost(sanitizePost(p))) };
   },
 
   async getDrafts() {
-    return (await postRepository.getDrafts()).map(normalizePost);
+    return (await postRepository.getDrafts()).map((p: any) => normalizePost(sanitizePost(p)));
   },
 
   async getCommandMap(): Promise<Map<string, any>> {
@@ -552,7 +553,7 @@ export const postService = {
   },
 
   async getTopPosts(limit?: number) {
-    return (await postRepository.getTopPosts(limit)).map(normalizePost);
+    return (await postRepository.getTopPosts(limit)).map((p: any) => normalizePost(sanitizePost(p)));
   },
 
   async addCommand(postId: number, command: string, aliases?: string[]) {
