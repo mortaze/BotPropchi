@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button, Input, Textarea, Select } from "@/components/ui";
 import { type PostPayload } from "@/services/api";
 import type { PostItem } from "@/types";
+import MessageEditor, { parseMessagesJson, type EditorMessage } from "@/components/editor/MessageEditor";
 
 const schema = z.object({
   title: z.string().min(1, "عنوان الزامی است"),
@@ -17,7 +18,6 @@ const schema = z.object({
   contentFormat: z.string().optional(),
   entitiesJson: z.string().optional(),
   telegramPayloadJson: z.string().optional(),
-  messagesJson: z.string().optional(),
   buttonsJson: z.string().optional(),
   command: z.string().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "SCHEDULED", "ARCHIVED", "HIDDEN"]),
@@ -41,7 +41,18 @@ function slugify(text: string): string {
     .replace(/-+/g, "-");
 }
 
+function extractMessages(initial?: PostItem): EditorMessage[] {
+  if (!initial) return [];
+  const fromMessages = (initial as any)?.messages;
+  if (Array.isArray(fromMessages) && fromMessages.length > 0) return parseMessagesJson(JSON.stringify(fromMessages));
+  const fromTelegramPayload = (initial as any)?.telegramPayload?.messages;
+  if (Array.isArray(fromTelegramPayload) && fromTelegramPayload.length > 0) return parseMessagesJson(JSON.stringify(fromTelegramPayload));
+  return [];
+}
+
 export default function PostForm({ initial, loading, submitLabel = "ذخیره", onSubmit }: Props) {
+  const [messages, setMessages] = useState<EditorMessage[]>(() => extractMessages(initial));
+
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -53,7 +64,6 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
       contentFormat: initial?.contentFormat ?? "HTML",
       entitiesJson: Array.isArray(initial?.entities) ? JSON.stringify(initial.entities, null, 2) : "",
       telegramPayloadJson: initial?.telegramPayload ? JSON.stringify(initial.telegramPayload, null, 2) : "",
-      messagesJson: Array.isArray((initial as any)?.messages) ? JSON.stringify((initial as any).messages, null, 2) : (Array.isArray((initial as any)?.telegramPayload?.messages) ? JSON.stringify((initial as any).telegramPayload.messages, null, 2) : ""),
       buttonsJson: Array.isArray(initial?.buttons) ? JSON.stringify(initial.buttons, null, 2) : "",
       command: initial?.command ?? "",
       status: initial?.status ?? "DRAFT",
@@ -68,6 +78,10 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
     }
   }, [title, initial, setValue]);
 
+  const handleMessagesChange = useCallback((msgs: EditorMessage[]) => {
+    setMessages(msgs);
+  }, []);
+
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit((values) => {
       const parseJson = (value?: string) => value?.trim() ? JSON.parse(value) : undefined;
@@ -80,7 +94,19 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
         contentFormat: values.contentFormat || undefined,
         entities: parseJson(values.entitiesJson),
         telegramPayload: parseJson(values.telegramPayloadJson),
-        messages: parseJson(values.messagesJson),
+        messages: messages.map(m => ({
+          order: m.order,
+          messageType: m.messageType,
+          text: m.text ?? "",
+          entities: m.entities,
+          parseMode: "None",
+          captionEntities: m.captionEntities,
+          mediaFileId: m.mediaFileId ?? null,
+          mediaGroupId: m.mediaGroupId ?? null,
+          caption: m.caption ?? null,
+          replyMarkup: m.replyMarkup ?? null,
+          delayMs: m.delayMs ?? 0,
+        })),
         buttons: parseJson(values.buttonsJson),
         command: values.command || undefined,
         status: values.status,
@@ -89,32 +115,25 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
       <Input label="عنوان" error={errors.title?.message} {...register("title")} />
       <Input label="اسلاگ" error={errors.slug?.message} {...register("slug")} />
       <div className="md:col-span-2">
-        <Textarea label="ویرایشگر HTML تلگرام" className="min-h-32 font-mono" placeholder="از تگ‌های HTML تلگرام مثل <b>، <i>، <u>، <tg-spoiler>، <blockquote>، <tg-emoji emoji-id=...> استفاده کنید" error={errors.content?.message} {...register("content")} />
+        <Textarea label="ویرایشگر HTML تلگرام (legacy)" className="min-h-32 font-mono" placeholder="از تگ‌های HTML تلگرام مثل <b>، <i>، <u>، <tg-spoiler>، <blockquote> استفاده کنید" error={errors.content?.message} {...register("content")} />
       </div>
       <div className="md:col-span-2">
-        <Textarea label="کپشن" className="min-h-24" error={errors.caption?.message} {...register("caption")} />
+        <Textarea label="کپشن (legacy)" className="min-h-24" error={errors.caption?.message} {...register("caption")} />
       </div>
       <Input label="فرمت محتوا" placeholder="HTML یا telegram_entities" {...register("contentFormat")} />
       <Select label="نحوه نمایش legacy" error={errors.parseMode?.message} {...register("parseMode")}>
         <option value="Markdown">Markdown</option>
         <option value="HTML">HTML</option>
       </Select>
+      <div className="md:col-span-2 space-y-4">
+        <h3 className="font-semibold text-sm">ویرایشگر پیام‌ها</h3>
+        <MessageEditor messages={messages} onChange={handleMessagesChange} disabled={loading} />
+      </div>
       <div className="md:col-span-2 grid gap-4 md:grid-cols-2">
-        <div>
-          <Textarea label="پیام‌های مستقل ایزوله (JSON)" className="min-h-48 font-mono" placeholder={'[{"order":0,"messageType":"text","text":"...","entities":[],"parseMode":"None","delayMs":700}]'} {...register("messagesJson")} />
-          <Button type="button" className="mt-2" onClick={() => {
-            const current = watch("messagesJson");
-            const messages = current?.trim() ? JSON.parse(current) : [];
-            messages.push({ order: messages.length, messageType: "text", text: "", entities: [], parseMode: "None", captionEntities: [], delayMs: 700 });
-            setValue("messagesJson", JSON.stringify(messages, null, 2));
-          }}>+ افزودن پیام جدید</Button>
-          <p className="mt-2 text-xs text-slate-500">هر آیتم این آرایه یک ادیتور/پیام مستقل است؛ reorder با تغییر فیلد order و حذف با حذف همان آیتم انجام می‌شود.</p>
-        </div>
-        <Textarea label="Entity editor legacy (JSON)" className="min-h-48 font-mono" {...register("entitiesJson")} />
+        <Textarea label="Entity editor legacy (JSON)" className="min-h-32 font-mono" {...register("entitiesJson")} />
         <Textarea label="Media/Payload snapshot (JSON)" className="min-h-32 font-mono" {...register("telegramPayloadJson")} />
         <Textarea label="Button manager (JSON)" className="min-h-32 font-mono" {...register("buttonsJson")} />
       </div>
-      <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">Preview mode: هر ردیف messages به‌صورت پیام جدا با text/entities/replyMarkup مستقل رندر می‌شود؛ متن‌ها قبل از ذخیره به هم چسبانده نمی‌شوند.</div>
       <Input label="دستور (اختیاری)" placeholder="/mycommand" error={errors.command?.message} {...register("command")} />
       <Select label="وضعیت" error={errors.status?.message} {...register("status")}>
         <option value="DRAFT">پیش‌نویس</option>

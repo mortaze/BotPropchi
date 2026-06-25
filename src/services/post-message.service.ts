@@ -6,6 +6,14 @@ import { buildTelegramKeyboard, MEDIA_SENDERS, TelegramPayload } from './rendere
 
 export type TelegramEntity = { type: string; offset: number; length: number; [key: string]: any };
 
+function cloneJson<T>(value: T): T {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function arrayJson(value: unknown): TelegramEntity[] {
+  return Array.isArray(value) ? cloneJson(value) : [];
+}
+
 export interface NormalizedMessage {
   id: number | string;
   postId: number;
@@ -22,12 +30,64 @@ export interface NormalizedMessage {
   delayMs: number;
 }
 
-function cloneJson<T>(value: T): T {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
+const STYLE_ENTITY_TYPES = new Set(['bold', 'italic', 'underline', 'strikethrough', 'spoiler', 'blockquote', 'expandable_blockquote']);
+const ATOMIC_ENTITY_TYPES = new Set(['code', 'pre', 'text_link', 'text_mention', 'url', 'email', 'phone_number', 'mention', 'hashtag', 'cashtag', 'bot_command', 'custom_emoji']);
+
+function entityEnd(e: TelegramEntity): number { return e.offset + e.length; }
+
+function isFullyContained(inner: TelegramEntity, outer: TelegramEntity): boolean {
+  return outer.offset <= inner.offset && entityEnd(inner) <= entityEnd(outer);
 }
 
-function arrayJson(value: unknown): TelegramEntity[] {
-  return Array.isArray(value) ? cloneJson(value) : [];
+function doPartiallyOverlap(a: TelegramEntity, b: TelegramEntity): boolean {
+  const aStart = a.offset, aEnd = entityEnd(a);
+  const bStart = b.offset, bEnd = entityEnd(b);
+  return aStart < bEnd && bStart < aEnd && !(isFullyContained(a, b) || isFullyContained(b, a));
+}
+
+export function validateEntityOverlap(entities: TelegramEntity[]): TelegramEntity[] {
+  const valid: TelegramEntity[] = [];
+  for (const e of entities) {
+    const hasOverlap = valid.some(v => doPartiallyOverlap(e, v));
+    if (hasOverlap) {
+      logger.warn(`[EntityOverlap] dropping entity type=${e.type} offset=${e.offset} length=${e.length} due to partial overlap`);
+      continue;
+    }
+    valid.push(e);
+  }
+  return valid;
+}
+
+function doEntitiesOverlap(a: TelegramEntity, b: TelegramEntity): boolean {
+  return a.offset < entityEnd(b) && b.offset < entityEnd(a);
+}
+
+export function validateEntityNesting(entities: TelegramEntity[]): TelegramEntity[] {
+  const valid: TelegramEntity[] = [];
+  for (const e of entities) {
+    const sameTypeOverlap = valid.some(v =>
+      v.type === e.type && doEntitiesOverlap(e, v)
+    );
+    if (sameTypeOverlap) {
+      logger.warn(`[EntityNesting] dropping entity type=${e.type} offset=${e.offset} length=${e.length} due to same-type overlap`);
+      continue;
+    }
+    valid.push(e);
+  }
+  return valid;
+}
+
+export function validateStyleEntities(entities: TelegramEntity[]): TelegramEntity[] {
+  if (entities.length <= 1) return entities;
+  const afterOverlap = validateEntityOverlap(entities);
+  const afterNesting = validateEntityNesting(afterOverlap);
+  return afterNesting;
+}
+
+export function createEntity(type: string, offset: number, length: number, extra?: Record<string, any>): TelegramEntity {
+  if (!Number.isInteger(offset) || offset < 0) throw new Error(`createEntity: invalid offset ${offset}`);
+  if (!Number.isInteger(length) || length <= 0) throw new Error(`createEntity: invalid length ${length}`);
+  return { type, offset, length, ...extra };
 }
 
 export function validateEntities(text: string | null | undefined, entities: TelegramEntity[], messageId?: number | string): TelegramEntity[] {
@@ -38,7 +98,8 @@ export function validateEntities(text: string | null | undefined, entities: Tele
       throw new Error(`[PostMessage] invalid entity messageId=${messageId ?? 'unknown'} offset=${entity.offset} length=${entity.length} textLength=${len}`);
     }
   }
-  return normalizeEntities(source, entities as any) as TelegramEntity[];
+  const normalized = normalizeEntities(source, entities as any) as TelegramEntity[];
+  return validateStyleEntities(normalized);
 }
 
 export function validateMessages(messages: any[], postId: number): any[] {
@@ -62,7 +123,11 @@ export function validateMessages(messages: any[], postId: number): any[] {
     if (validEntities.length !== rawEntities.length) {
       logger.warn(`[ValidateMessages] postId=${postId} order=${msg.order} dropped ${rawEntities.length - validEntities.length}/${rawEntities.length} invalid entities`);
     }
-    valid.push({ ...msg, entities: validEntities });
+    const styleValidated = validateStyleEntities(validEntities);
+    if (styleValidated.length !== validEntities.length) {
+      logger.warn(`[ValidateMessages] postId=${postId} order=${msg.order} removed ${validEntities.length - styleValidated.length} entities via style validation`);
+    }
+    valid.push({ ...msg, entities: styleValidated });
   }
   return valid;
 }
@@ -91,9 +156,8 @@ export function sanitizeEntities(payload: TelegramPayload, messageId?: number | 
 }
 
 export function normalizeSingleMessage(row: any): NormalizedMessage {
-  const parseMode = row.parseMode ?? row.parse_mode ?? PostMessageParseMode.None;
-  const entities = parseMode === PostMessageParseMode.None ? validateEntities(row.text ?? '', arrayJson(row.entities), row.id) : [];
-  const captionEntities = parseMode === PostMessageParseMode.None ? validateEntities(row.caption ?? '', arrayJson(row.captionEntities ?? row.caption_entities), `${row.id}:caption`) : [];
+  const entities = validateEntities(row.text ?? '', arrayJson(row.entities), row.id);
+  const captionEntities = validateEntities(row.caption ?? '', arrayJson(row.captionEntities ?? row.caption_entities), `${row.id}:caption`);
   const normalized: NormalizedMessage = {
     id: row.id,
     postId: row.postId ?? row.post_id,
@@ -101,7 +165,7 @@ export function normalizeSingleMessage(row: any): NormalizedMessage {
     messageType: row.messageType ?? row.message_type ?? PostMessageType.text,
     text: row.text ?? undefined,
     entities,
-    parseMode,
+    parseMode: PostMessageParseMode.None,
     mediaFileId: row.mediaFileId ?? row.media_file_id ?? null,
     mediaGroupId: row.mediaGroupId ?? row.media_group_id ?? null,
     caption: row.caption ?? null,
@@ -130,10 +194,6 @@ async function getPostMessageRows(postId: number): Promise<any[]> {
 export function buildTelegramPayload(msg: NormalizedMessage): TelegramPayload {
   const buttons = Array.isArray(msg.replyMarkup) ? msg.replyMarkup : msg.replyMarkup?.inline_keyboard;
   const reply_markup = buttons?.length ? { inline_keyboard: buildTelegramKeyboard(cloneJson(buttons), msg.postId) } : undefined;
-  const parse_mode = msg.parseMode !== PostMessageParseMode.None ? msg.parseMode : undefined;
-  if (parse_mode && (msg.entities.length || msg.captionEntities.length)) {
-    throw new Error(`[PostMessage] parseMode cannot be mixed with entities messageId=${msg.id}`);
-  }
 
   if (msg.messageType === PostMessageType.album) {
     const media = Array.isArray((msg as any).media) ? (msg as any).media : [];
@@ -146,7 +206,6 @@ export function buildTelegramPayload(msg: NormalizedMessage): TelegramPayload {
       media: msg.mediaFileId,
       caption: msg.caption ?? msg.text,
       caption_entities: msg.captionEntities.length ? cloneJson(msg.captionEntities) : undefined,
-      parse_mode,
       reply_markup,
       link_preview_options: { is_disabled: true },
     };
@@ -155,7 +214,6 @@ export function buildTelegramPayload(msg: NormalizedMessage): TelegramPayload {
     method: 'sendMessage',
     text: msg.text || '(پست خالی)',
     entities: msg.entities.length ? cloneJson(msg.entities) : undefined,
-    parse_mode,
     reply_markup,
     link_preview_options: { is_disabled: true },
   };
@@ -298,10 +356,9 @@ export const postMessageService = {
 };
 
 function normalizeWriteData(postId: number, data: any): Prisma.PostMessageUncheckedCreateInput {
-  const parseMode = data.parseMode ?? PostMessageParseMode.None;
-  const entities = parseMode === PostMessageParseMode.None ? validateEntities(data.text ?? '', arrayJson(data.entities), 'new') : [];
-  const captionEntities = parseMode === PostMessageParseMode.None ? validateEntities(data.caption ?? '', arrayJson(data.captionEntities), 'new:caption') : [];
-  return { postId, order: data.order, messageType: data.messageType ?? PostMessageType.text, text: data.text ?? null, entities, parseMode, mediaFileId: data.mediaFileId ?? null, mediaGroupId: data.mediaGroupId ?? null, caption: data.caption ?? null, captionEntities, replyMarkup: data.replyMarkup ?? null, delayMs: data.delayMs ?? 0 } as any;
+  const entities = validateEntities(data.text ?? '', arrayJson(data.entities), 'new');
+  const captionEntities = validateEntities(data.caption ?? '', arrayJson(data.captionEntities), 'new:caption');
+  return { postId, order: data.order, messageType: data.messageType ?? PostMessageType.text, text: data.text ?? null, entities, parseMode: PostMessageParseMode.None, mediaFileId: data.mediaFileId ?? null, mediaGroupId: data.mediaGroupId ?? null, caption: data.caption ?? null, captionEntities, replyMarkup: data.replyMarkup ?? null, delayMs: data.delayMs ?? 0 } as any;
 }
 
 function normalizeUpdateData(data: any): Prisma.PostMessageUncheckedUpdateInput {
