@@ -33,6 +33,7 @@ import {
   postSingleMessageInlineKeyboard,
   buildNoButtonsReplyKeyboard,
   buildNoButtonsEditorKeyboard,
+  buildButtonEditorPersistentKeyboard,
   buildButtonTypeSelectionKeyboard,
   buildCancelOnlyReplyKeyboard,
   buildButtonEditorExitKeyboard,
@@ -149,6 +150,36 @@ function getMessageButtons(raw: any, messageIdx: number): any[][] {
   }
   if (Array.isArray(raw)) return messageIdx === 0 ? raw : [];
   return [];
+}
+
+// ─── Extract buttons for a given message from post with priority ──
+// Priority: post.keyboards (normalized) → post_messages.replyMarkup → post.buttons
+function extractButtonsForMessage(post: any, messageIdx: number): any[][] {
+  // 1) Try post.keyboards — a flat [{row, col, text, type, value, payload}] array
+  if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
+    const grouped: { [row: number]: any[] } = {};
+    for (const kb of post.keyboards) {
+      if (kb.row === undefined) continue;
+      if (!grouped[kb.row]) grouped[kb.row] = [];
+      const baseStyle = kb.payload?.style;
+      grouped[kb.row][kb.col || 0] = kb.payload
+        ? { ...kb.payload, text: kb.text, type: kb.type === 'URL' ? 'URL' : kb.type === 'CALLBACK' ? 'CALLBACK' : 'NATIVE', value: kb.value }
+        : { text: kb.text, type: kb.type === 'URL' ? 'URL' : kb.type === 'CALLBACK' ? 'CALLBACK' : 'NATIVE', value: kb.value, style: baseStyle || undefined };
+    }
+    const rows = Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(k => grouped[Number(k)].filter(Boolean));
+    if (rows.some(r => r.length > 0)) return rows;
+  }
+
+  // 2) Try post_messages[messageIdx].replyMarkup
+  if (post.messages && Array.isArray(post.messages)) {
+    const msg = post.messages.find((m: any) => (m.order ?? m.messageIdx) === messageIdx) || post.messages[messageIdx];
+    if (msg && msg.replyMarkup && Array.isArray(msg.replyMarkup)) {
+      return msg.replyMarkup;
+    }
+  }
+
+  // 3) Fallback to post.buttons (JSON field)
+  return getMessageButtons((post as any).buttons, messageIdx);
 }
 
 function setMessageButtons(raw: any, messageIdx: number, buttons: any[][]): any {
@@ -856,15 +887,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(pendingKey(ctx.from.id, 'editor_row'));
       cache.del(pendingKey(ctx.from.id, 'editor_col'));
       if (!buttons || buttons.length === 0 || buttons.every((r: any[]) => !r || r.length === 0)) {
-        const sent = await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
+        const sent = await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildButtonEditorPersistentKeyboard());
         if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
       } else {
-        const exitKB = buildButtonEditorExitKeyboard();
         const listKB = buildButtonListInlineKeyboard(postId, buttons, 'create');
         const sent = await ctx.reply('⌨ ویرایشگر دکمه:', {
           reply_markup: {
             ...(listKB.reply_markup || {}),
-            ...(exitKB.reply_markup || {}),
+            keyboard: [['➕ اضافه کردن دکمه جدید'], ['🚪 خروج از تنظیمات پیام']],
+            resize_keyboard: true,
+            persistent: true,
           },
         });
         if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
@@ -1239,6 +1271,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
   });
 
+  // ─── Route guard: pbedit callbacks only work with active edit session ──
+  function requireButtonEditSession(ctx: any): number | null {
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) {
+      ctx.answerCbQuery('❌ دسترسی مستقیم مجاز نیست.\n⬅️ ابتدا وارد بخش پست‌ها شوید.', { show_alert: true }).catch(() => {});
+    }
+    return postId;
+  }
+
   // ─── NEW BUTTON EDITOR (pbedit) ─────────────────────────
   // State machine: button_idle → select_type → wait_popup/wait_url/wait_command
   // Also handles swap, delete, edit modes on existing buttons.
@@ -1249,7 +1290,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-    const buttons = getMessageButtons((post as any).buttons, messageIdx);
+    const buttons = extractButtonsForMessage(post, messageIdx);
     const editorMode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode'));
     const listMode: 'create' | 'edit' | 'delete' | 'move' = editorMode === 'edit' ? 'edit' : editorMode === 'delete' ? 'delete' : editorMode === 'move' ? 'move' : 'create';
     const hasButtons = buttons.length && buttons.some(r => Array.isArray(r) && r.length);
@@ -1262,27 +1303,54 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }
     }
 
-    // Delete stale editor message before sending new one (ensures clean reply keyboard state)
-    if (msgId) {
-      try { await ctx.telegram.deleteMessage(ctx.chat.id, msgId).catch(() => {}); } catch (_) {}
-      cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
-    }
+    const finalMsgId = msgId || cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
 
-    if (hasButtons) {
-      const inlineKeyboardMarkup = buildButtonListInlineKeyboard(postId, buttons, listMode).reply_markup;
-      const sent = await ctx.reply(displayText, {
-        reply_markup: {
-          ...inlineKeyboardMarkup,
-          keyboard: [['🚪 خروج از تنظیمات پیام']],
-          resize_keyboard: true,
-          persistent: true,
-        },
-      });
-      if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+    // Edit existing message in-place (no delete, no send new)
+    if (finalMsgId) {
+      try {
+        if (hasButtons) {
+          const inlineKeyboardMarkup = buildButtonListInlineKeyboard(postId, buttons, listMode).reply_markup;
+          await ctx.telegram.editMessageText(ctx.chat.id, finalMsgId, null, displayText, {
+            reply_markup: inlineKeyboardMarkup,
+          });
+        } else {
+          await ctx.telegram.editMessageText(ctx.chat.id, finalMsgId, null, displayText);
+        }
+      } catch (_) {
+        // Fallback: send new if edit fails
+        if (hasButtons) {
+          const inlineKeyboardMarkup = buildButtonListInlineKeyboard(postId, buttons, listMode).reply_markup;
+          const sent = await ctx.reply(displayText, {
+            reply_markup: {
+              ...inlineKeyboardMarkup,
+              keyboard: [['🚪 خروج از تنظیمات پیام']],
+              resize_keyboard: true,
+              persistent: true,
+            },
+          });
+          if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+        } else {
+          const sent = await ctx.reply(displayText, buildNoButtonsEditorKeyboard());
+          if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+        }
+      }
     } else {
-      await ctx.reply(displayText, buildNoButtonsEditorKeyboard()).then(sent => {
+      // No stored message ID — send new (initial entry)
+      if (hasButtons) {
+        const inlineKeyboardMarkup = buildButtonListInlineKeyboard(postId, buttons, listMode).reply_markup;
+        const sent = await ctx.reply(displayText, {
+          reply_markup: {
+            ...inlineKeyboardMarkup,
+            keyboard: [['🚪 خروج از تنظیمات پیام']],
+            resize_keyboard: true,
+            persistent: true,
+          },
+        });
         if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
-      });
+      } else {
+        const sent = await ctx.reply(displayText, buildNoButtonsEditorKeyboard());
+        if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+      }
     }
   }
 
@@ -1376,7 +1444,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const post = await postService.findById(postId);
         if (!post) return ctx.reply('❌ پست یافت نشد.');
         const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-        const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+        const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
         if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
 
         const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
@@ -1487,7 +1555,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
       const post = await postService.findById(postId);
       if (!post) return await ctx.reply('❌ پست یافت نشد.');
-      const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+      const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
       if (!buttons[row] || !buttons[row][col]) {
         return await ctx.reply('❌ دکمه یافت نشد.');
       }
@@ -1548,7 +1616,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+    const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
 
     const buttonColor = cache.get<string>(pendingKey(ctx.from.id, 'button_color'));
     if (mode === 'create') {
@@ -1583,12 +1651,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
+    if (!requireButtonEditSession(ctx)) return;
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
     const post = await postService.findById(postId);
     if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+    const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
     const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode')) || 'create';
 
     if (mode === 'move') {
@@ -1657,12 +1726,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    const mode = ctx.match[1];
     const postId = parseInt(ctx.match[2]);
+    if (!requireButtonEditSession(ctx)) return;
+    const mode = ctx.match[1];
     const post = await postService.findById(postId);
     if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+    const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
 
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), mode, 600);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
@@ -1683,8 +1753,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    const btnType = ctx.match[1];
     const postId = parseInt(ctx.match[2]);
+    if (!requireButtonEditSession(ctx)) return;
+    const btnType = ctx.match[1];
     const row = parseInt(ctx.match[3]);
     const col = parseInt(ctx.match[4]);
     const currentMode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode')) || 'edit';
@@ -1707,6 +1778,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
+    if (!requireButtonEditSession(ctx)) return;
     const prevMode = cache.get<string>(pendingKey(ctx.from.id, 'previous_view')) || 'create';
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), prevMode, 600);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
@@ -1722,6 +1794,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
+    if (!requireButtonEditSession(ctx)) return;
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
     cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
@@ -1736,11 +1809,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
+    if (!requireButtonEditSession(ctx)) return;
     const realPostId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post')) || postId;
     const post = await postService.findById(realPostId);
     if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-    const buttons: any[][] = JSON.parse(JSON.stringify(getMessageButtons((post as any).buttons, messageIdx)));
+    const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
     buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
     await postService.update(realPostId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
@@ -1872,17 +1946,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.set(pendingKey(ctx.from.id, 'edit_mode'), postId, 300);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
-    const buttons = getMessageButtons((post as any).buttons, 0);
+    const buttons = extractButtonsForMessage(post, 0);
     if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
-      const sent = await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
+      const sent = await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildButtonEditorPersistentKeyboard());
       if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
     } else {
-      const exitKB = buildButtonEditorExitKeyboard();
       const listKB = buildButtonListInlineKeyboard(postId, buttons, 'create');
       const sent = await ctx.reply('⌨ ویرایشگر دکمه:', {
         reply_markup: {
           ...(listKB.reply_markup || {}),
-          ...(exitKB.reply_markup || {}),
+          keyboard: [['➕ اضافه کردن دکمه جدید'], ['🚪 خروج از تنظیمات پیام']],
+          resize_keyboard: true,
+          persistent: true,
         },
       });
       if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
@@ -2786,14 +2861,19 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
         const post = await postService.findById(editorPostId);
         if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const buttons = getMessageButtons((post as any).buttons, msgIdx);
+        const buttons = extractButtonsForMessage(post, msgIdx);
         if (!buttons.length || buttons.every((r: any[]) => !r || !r.length)) {
-          const sent = await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
+          const sent = await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildButtonEditorPersistentKeyboard());
           if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
         } else {
+          const listKB = buildButtonListInlineKeyboard(editorPostId, buttons, 'create');
           const sent = await ctx.reply('⌨ ویرایشگر دکمه:', {
-            ...buildButtonEditorExitKeyboard(),
-            ...buildButtonListInlineKeyboard(editorPostId, buttons, 'create'),
+            reply_markup: {
+              ...(listKB.reply_markup || {}),
+              keyboard: [['➕ اضافه کردن دکمه جدید'], ['🚪 خروج از تنظیمات پیام']],
+              resize_keyboard: true,
+              persistent: true,
+            },
           });
           if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
         }

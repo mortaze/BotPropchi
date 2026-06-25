@@ -403,6 +403,12 @@ export const buildNoButtonsReplyKeyboard = () =>
   ]).resize().persistent();
 
 // Reply keyboard when NO buttons exist (after successful operation — no cancel, only exit)
+export const buildButtonEditorPersistentKeyboard = () =>
+  Markup.keyboard([
+    ['➕ اضافه کردن دکمه جدید'],
+    ['🚪 خروج از تنظیمات پیام'],
+  ]).resize().persistent();
+
 export const buildNoButtonsEditorKeyboard = () =>
   Markup.keyboard([
     ['➕ اضافه کردن دکمه جدید'],

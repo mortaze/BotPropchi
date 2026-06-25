@@ -192,20 +192,18 @@ export const postService = {
           where: { postId: post.id },
           orderBy: { order: 'asc' },
         });
-        if (existingMessages.length > 0) {
+          if (existingMessages.length > 0) {
           const messagesFormat = (rawButtons as any)?.messages;
           if (messagesFormat && typeof messagesFormat === 'object') {
             let syncedCount = 0;
             for (const msg of existingMessages) {
               const idx = String(msg.order);
               const perMsgButtons = (messagesFormat as any)[idx];
-              if (perMsgButtons !== undefined && perMsgButtons !== null) {
-                await prisma.postMessage.update({
-                  where: { id: msg.id },
-                  data: { replyMarkup: perMsgButtons } as any,
-                });
-                syncedCount++;
-              }
+              await prisma.postMessage.update({
+                where: { id: msg.id },
+                data: { replyMarkup: perMsgButtons !== undefined && perMsgButtons !== null ? perMsgButtons : null } as any,
+              });
+              syncedCount++;
             }
             logger.info(`[KeyboardSync] post=${post.id} synced ${syncedCount}/${existingMessages.length} messages (messages format)`);
           } else if (Array.isArray(rawButtons)) {
