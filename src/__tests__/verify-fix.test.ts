@@ -42,8 +42,8 @@ describe('FIX VERIFICATION: Entity Inheritance Contamination', () => {
     // NOT bold! This was the contamination: indexOf returned 0 for both.
     expect(messages[1].entities.length).toBeGreaterThan(0);
     expect(messages[1].entities[0].type).toBe('italic');
-    // Offset is absolute within the full snapshot text (not recalculated per-message)
-    expect(messages[1].entities[0].offset).toBe(9);
+    // Offsets are now sandboxed per message for Telegram sends.
+    expect(messages[1].entities[0].offset).toBe(0);
   });
 
   // ─── Test 2: Entity length mismatch (trailing whitespace trimmed) ─
@@ -74,10 +74,10 @@ describe('FIX VERIFICATION: Entity Inheritance Contamination', () => {
     expect(messages[0].entities.length).toBe(1);
     expect(messages[0].entities[0].type).toBe('bold');
 
-    // Message 1 should get italic (length is kept as-is, no clamping applied)
+    // Message 1 should get italic, clamped to the message sandbox.
     expect(messages[1].entities.length).toBe(1);
     expect(messages[1].entities[0].type).toBe('italic');
-    expect(messages[1].entities[0].length).toBe(12);
+    expect(messages[1].entities[0].length).toBe(11);
   });
 
   // ─── Test 3: post.entities takes priority (no snapshot fallback needed) ─

@@ -626,6 +626,7 @@ export interface PostPayload {
   buttons?: any;
   entities?: any;
   telegramPayload?: any;
+  messages?: any;
   telegramMessageSnapshot?: any;
   contentFormat?: string;
   contentVersion?: number;

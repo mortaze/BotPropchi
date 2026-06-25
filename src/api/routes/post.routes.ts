@@ -33,6 +33,7 @@ const basePostSchema = z.object({
   buttons: z.any().optional().default([]),
   entities: z.any().optional().default([]),
   telegramPayload: z.any().optional().nullable(),
+  messages: z.any().optional(),
   telegramMessageSnapshot: z.any().optional().nullable(),
   contentFormat: z.string().optional().nullable(),
   contentVersion: z.number().int().default(1),
