@@ -309,215 +309,69 @@ function applyVarsToRow(row: any, vars: Record<string, string>): any {
   };
 }
 
-export async function legacyBuildVirtualMessages(post: any): Promise<any[]> {
-  logger.info(`[LegacyPostMigration] post=${post.id} "${post.title}" building virtual messages from legacy fields`);
+export async function migrateSinglePost(postId: number): Promise<any[]> {
+  const post = await postService.findById(postId);
+  if (!post) {
+    logger.warn(`[PostEditor][MessageCreate] post=${postId} not found — cannot migrate`);
+    return [];
+  }
 
   const content = post.content || post.contentText || '';
-  const entities = post.entities || post.contentEntities || [];
+  const entities = Array.isArray(post.entities) ? post.entities : Array.isArray(post.contentEntities) ? post.contentEntities : [];
   const caption = post.caption ?? null;
-  const captionEntities = post.captionEntities ?? [];
+  const captionEntities = Array.isArray(post.captionEntities) ? post.captionEntities : [];
   const buttons = post.buttons ?? null;
   const mediaFileId = post.mediaFileId ?? null;
-  const mediaGroupId = post.mediaGroupId ?? null;
   const mediaType = post.mediaType ?? null;
-  const parseMode = post.parseMode ?? 'None';
 
-  // Check for explicit telegramPayload.messages first
-  const explicitMessages = post.telegramPayload?.messages;
-  if (Array.isArray(explicitMessages) && explicitMessages.length > 0) {
-    logger.info(`[LegacyPostMigration] post=${post.id} using telegramPayload.messages (${explicitMessages.length})`);
-    return explicitMessages.map((m: any, i: number) => ({
-      id: `${post.id}:${i}`,
-      postId: post.id,
-      order: i,
-      messageType: m.messageType ?? m.type ?? 'text',
-      text: m.text ?? m.content ?? '',
-      entities: Array.isArray(m.entities) ? m.entities : [],
-      parseMode: m.parseMode ?? 'None',
-      mediaFileId: m.mediaFileId ?? mediaFileId,
-      mediaGroupId: m.mediaGroupId ?? mediaGroupId,
-      caption: m.caption ?? caption,
-      captionEntities: Array.isArray(m.captionEntities) ? m.captionEntities : captionEntities,
-      replyMarkup: m.replyMarkup ?? m.buttons ?? (i === 0 ? buttons : null),
-      delayMs: m.delayMs ?? 0,
-    }));
-  }
-
-  // Check for telegramMessageSnapshot
-  const snapshot = post.telegramMessageSnapshot;
-  if (snapshot && (snapshot.text || snapshot.caption)) {
-    logger.info(`[LegacyPostMigration] post=${post.id} using telegramMessageSnapshot`);
-    const snapshotText = snapshot.text || '';
-    const snapshotEntities = snapshot.entities || [];
-    const snapshotCaption = snapshot.caption || caption;
-    const snapshotCaptionEntities = snapshot.caption_entities || captionEntities;
-    return [{
-      id: `${post.id}:0`,
-      postId: post.id,
-      order: 0,
-      messageType: mediaFileId ? (mediaType || 'text') : 'text',
-      text: snapshotText || content,
-      entities: snapshotEntities,
-      parseMode: 'None',
-      mediaFileId,
-      mediaGroupId,
-      caption: snapshotCaption,
-      captionEntities: snapshotCaptionEntities,
-      replyMarkup: buttons,
-      delayMs: 0,
-    }];
-  }
-
-  // Content splitting for [[copy]] markers (multi-message legacy format)
-  if (content.includes('[[copy]]')) {
-    logger.info(`[LegacyPostMigration] post=${post.id} splitting content by [[copy]] markers`);
-    const segments = splitLegacyContent(content);
-    logger.debug(`[SplitResult] post=${post.id} split into ${segments.length} segments totalEntities=${entities.length}`);
-    return segments.map((seg, i) => {
-      const segEntities = extractRelativeEntities(entities, seg.offset, seg.text.length);
-      const segCaption = i === 0 ? caption : null;
-      const segCaptionEntities = i === 0 ? captionEntities : [];
-      const segButtons = i === 0 ? buttons : null;
-      return {
-        id: `${post.id}:${i}`,
-        postId: post.id,
-        order: i,
-        messageType: 'text',
-        text: seg.text,
-        entities: segEntities,
-        parseMode: 'None',
-        mediaFileId: i === 0 ? mediaFileId : null,
-        mediaGroupId: i === 0 ? mediaGroupId : null,
-        caption: segCaption,
-        captionEntities: segCaptionEntities,
-        replyMarkup: segButtons,
-        delayMs: 0,
-      };
+  if (!content && !caption && !mediaFileId) {
+    logger.warn(`[PostEditor][MessageCreate] post=${postId} has no legacy content — creating empty message`);
+    const empty = await prisma.postMessage.create({
+      data: {
+        postId, order: 0, messageType: 'text', text: '',
+        entities: [], parseMode: PostMessageParseMode.None,
+        caption: null, captionEntities: [],
+        replyMarkup: null, delayMs: 0,
+      },
     });
+    logger.info(`[PostEditor][MessageCreate] post=${postId} messageId=${empty.id} order=0 (empty fallback)`);
+    return [empty];
   }
 
-  // Single plain message
-  if (content || mediaFileId) {
-    logger.info(`[LegacyPostMigration] post=${post.id} single legacy message content=${content.length}ch entities=${entities.length}`);
-    let resolvedMessageType = 'text';
-    if (mediaFileId && mediaType) {
-      resolvedMessageType = mediaType;
-    } else if (mediaFileId) {
-      resolvedMessageType = 'document';
-    }
-    return [{
-      id: `${post.id}:0`,
-      postId: post.id,
-      order: 0,
-      messageType: resolvedMessageType,
-      text: content,
-      entities: Array.isArray(entities) ? entities : [],
-      parseMode: 'None',
-      mediaFileId: mediaFileId,
-      mediaGroupId: mediaGroupId,
-      caption: caption,
-      captionEntities: Array.isArray(captionEntities) ? captionEntities : [],
+  const messageType = mediaFileId && mediaType ? mediaType : mediaFileId ? 'document' : 'text';
+  const msg = await prisma.postMessage.create({
+    data: {
+      postId, order: 0, messageType,
+      text: content || null,
+      entities: entities.length ? entities : [],
+      parseMode: PostMessageParseMode.None,
+      mediaFileId,
+      caption,
+      captionEntities,
       replyMarkup: buttons,
       delayMs: 0,
-    }];
-  }
-
-  logger.warn(`[LegacyPostMigration] post=${post.id} no legacy content found to build virtual messages`);
-  return [];
+    },
+  });
+  logger.info(`[PostEditor][MessageCreate] post=${postId} messageId=${msg.id} order=0 type=${messageType} text=${(content || '').length}ch entities=${entities.length}`);
+  return [msg];
 }
 
-function splitLegacyContent(content: string): { text: string; offset: number }[] {
-  const segments: { text: string; offset: number }[] = [];
-  const regex = /\[\[copy\]\](.*?)\[\[\/copy\]\]/gs;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const raw = content.slice(lastIndex, match.index);
-      const trimmed = raw.trim();
-      if (trimmed) {
-        const leadingWs = raw.length - raw.trimStart().length;
-        segments.push({ text: trimmed, offset: lastIndex + leadingWs });
-      }
-    }
-    const innerRaw = match[1];
-    const trimmed = innerRaw.trim();
-    if (trimmed) {
-      const innerOffset = match.index + match[0].indexOf(match[1]);
-      const leadingWs = innerRaw.length - innerRaw.trimStart().length;
-      segments.push({ text: trimmed, offset: innerOffset + leadingWs });
-    }
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < content.length) {
-    const raw = content.slice(lastIndex);
-    const trimmed = raw.trim();
-    if (trimmed) {
-      const leadingWs = raw.length - raw.trimStart().length;
-      segments.push({ text: trimmed, offset: lastIndex + leadingWs });
-    }
-  }
-
-  if (segments.length === 0 && content.trim()) {
-    const trimmed = content.trim();
-    const leadingWs = content.length - content.trimStart().length;
-    segments.push({ text: trimmed, offset: leadingWs });
-  }
-
-  return segments;
-}
-
-function extractRelativeEntities(entities: any[], segmentOffset: number, segmentLength: number): any[] {
-  if (!Array.isArray(entities) || entities.length === 0) return [];
-  const segEnd = segmentOffset + segmentLength;
-  const adjusted: any[] = [];
-  for (const e of entities) {
-    const entityEnd = e.offset + e.length;
-    if (e.offset < segEnd && entityEnd > segmentOffset) {
-      const clampedStart = Math.max(e.offset, segmentOffset);
-      const clampedEnd = Math.min(entityEnd, segEnd);
-      const newOffset = clampedStart - segmentOffset;
-      const newLength = clampedEnd - clampedStart;
-      if (newLength > 0) {
-        adjusted.push({ ...e, offset: newOffset, length: newLength });
-      }
-    }
-  }
-  return adjusted;
+export async function ensurePostMessages(postId: number): Promise<any[]> {
+  const rows = await loadPostMessages(postId);
+  if (rows.length > 0) return rows;
+  logger.info(`[PostEditor][MessageCreate] post=${postId} has no post_messages — migrating on first access`);
+  return migrateSinglePost(postId);
 }
 
 export async function sendPostToChat(ctx: any, postId: number, templateVars?: Record<string, string>): Promise<void> {
-  const rows = await loadPostMessages(postId);
-  let messagesToSend: any[];
-  let source: string;
-
-  if (rows.length > 0) {
-    messagesToSend = rows;
-    source = 'post_messages';
-  } else {
-    logger.warn(`[SendPostFallback] post=${postId} has no post_messages — attempting legacy fallback`);
-    const post = await postService.findById(postId);
-    if (!post) {
-      logger.error(`[SendPostFallback] post=${postId} not found in DB`);
-      await ctx.reply('❌ پست مورد نظر یافت نشد.');
-      return;
-    }
-    const virtualRows = await legacyBuildVirtualMessages(post);
-    if (virtualRows.length === 0) {
-      logger.error(`[SendPostFallback] post=${postId} cannot build any virtual message from legacy data`);
-      await ctx.reply('❌ این پست مشکل ساختاری دارد. لطفاً به ادمین اطلاع دهید.');
-      return;
-    }
-    messagesToSend = virtualRows;
-    source = 'legacy_fallback';
-    logger.info(`[SendPostFallback] post=${postId} built ${virtualRows.length} virtual messages from legacy fields`);
+  let rows = await loadPostMessages(postId);
+  if (rows.length === 0) {
+    rows = await ensurePostMessages(postId);
   }
 
-  const withVars = templateVars ? messagesToSend.map(r => applyVarsToRow(r, templateVars)) : messagesToSend;
+  const withVars = templateVars ? rows.map(r => applyVarsToRow(r, templateVars)) : rows;
   const validated = validateMessages(withVars, postId);
-  logger.info(`[SendPost] postId=${postId} messageCount=${validated.length} source=${source}`);
+  logger.info(`[SendPost] postId=${postId} messageCount=${validated.length}`);
   for (const row of validated) {
     const msg = normalizeSingleMessage(row);
     if (msg.delayMs > 0) await sleep(msg.delayMs);
@@ -547,27 +401,58 @@ export const postMessageService = {
   get(id: number) { return prisma.postMessage.findUnique({ where: { id } }); },
   async create(postId: number, data: any) {
     const last = await prisma.postMessage.aggregate({ where: { postId }, _max: { order: true } });
-    return prisma.postMessage.create({ data: normalizeWriteData(postId, { order: (last._max.order ?? -1) + 1, ...data }) as any });
+    const order = (last._max.order ?? -1) + 1;
+    const msg = await prisma.postMessage.create({
+      data: {
+        postId, order,
+        messageType: data.messageType ?? PostMessageType.text,
+        text: data.text ?? null,
+        entities: Array.isArray(data.entities) ? arrayJson(data.entities) : [],
+        parseMode: PostMessageParseMode.None,
+        mediaFileId: data.mediaFileId ?? null,
+        mediaGroupId: data.mediaGroupId ?? null,
+        caption: data.caption ?? null,
+        captionEntities: Array.isArray(data.captionEntities) ? arrayJson(data.captionEntities) : [],
+        replyMarkup: data.replyMarkup ?? null,
+        delayMs: data.delayMs ?? 0,
+      } as any,
+    });
+    logger.info(`[PostEditor][MessageCreate] post=${postId} messageId=${msg.id} order=${order}`);
+    return msg;
   },
-  update(id: number, data: any) { return prisma.postMessage.update({ where: { id }, data: normalizeUpdateData(data) as any }); },
-  delete(id: number) { return prisma.postMessage.delete({ where: { id } }); },
+  update(id: number, data: any) {
+    return prisma.postMessage.update({
+      where: { id },
+      data: {
+        ...data,
+        entities: Array.isArray(data.entities) ? arrayJson(data.entities) : undefined,
+        captionEntities: Array.isArray(data.captionEntities) ? arrayJson(data.captionEntities) : undefined,
+      } as any,
+    });
+  },
+  delete(id: number) {
+    logger.info(`[PostEditor][MessageDelete] messageId=${id}`);
+    return prisma.postMessage.delete({ where: { id } });
+  },
   async reorder(postId: number, orderedIds: number[]) {
-    return prisma.$transaction(orderedIds.map((id, order) => prisma.postMessage.update({ where: { id, postId } as any, data: { order } })));
+    const tx = orderedIds.map((id, order) => prisma.postMessage.update({ where: { id, postId } as any, data: { order } }));
+    logger.info(`[PostEditor][MessageMove] post=${postId} reorder ${orderedIds.length} messages`);
+    return prisma.$transaction(tx);
   },
 };
 
 export function normalizeWriteData(postId: number, data: any): Prisma.PostMessageUncheckedCreateInput {
-  const rawEntities = arrayJson(data.entities);
-  const rawCaptionEntities = arrayJson(data.captionEntities);
-  const entities = validateEntities(data.text ?? '', rawEntities, 'new');
-  const captionEntities = validateEntities(data.caption ?? '', rawCaptionEntities, 'new:caption');
-  logger.debug(`[EntityRebase] postId=${postId} order=${data.order} textEntities: before=${rawEntities.length} after=${entities.length} captionEntities: before=${rawCaptionEntities.length} after=${captionEntities.length}`);
-  return { postId, order: data.order, messageType: data.messageType ?? PostMessageType.text, text: data.text ?? null, entities, parseMode: PostMessageParseMode.None, mediaFileId: data.mediaFileId ?? null, mediaGroupId: data.mediaGroupId ?? null, caption: data.caption ?? null, captionEntities, replyMarkup: data.replyMarkup ?? null, delayMs: data.delayMs ?? 0 } as any;
-}
-
-function normalizeUpdateData(data: any): Prisma.PostMessageUncheckedUpdateInput {
-  const out: any = { ...data };
-  if (out.entities) out.entities = arrayJson(out.entities);
-  if (out.captionEntities) out.captionEntities = arrayJson(out.captionEntities);
-  return out;
+  return {
+    postId, order: data.order,
+    messageType: data.messageType ?? PostMessageType.text,
+    text: data.text ?? null,
+    entities: Array.isArray(data.entities) ? arrayJson(data.entities) : [],
+    parseMode: PostMessageParseMode.None,
+    mediaFileId: data.mediaFileId ?? null,
+    mediaGroupId: data.mediaGroupId ?? null,
+    caption: data.caption ?? null,
+    captionEntities: Array.isArray(data.captionEntities) ? arrayJson(data.captionEntities) : [],
+    replyMarkup: data.replyMarkup ?? null,
+    delayMs: data.delayMs ?? 0,
+  } as any;
 }

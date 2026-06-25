@@ -6,6 +6,7 @@ vi.mock('../prisma/client', () => ({
   prisma: {
     postMessage: {
       findMany: vi.fn(),
+      create: vi.fn().mockImplementation((data: any) => Promise.resolve({ id: Date.now(), ...data.data })),
     },
   },
 }));
@@ -133,7 +134,7 @@ describe('sendPostToUser — message-first architecture', () => {
     expect(validated[0].entities[0].type).toBe('bold');
   });
 
-  it('shows error when post has no messages and legacy fallback has no content', async () => {
+  it('creates empty message when post has no post_messages and no legacy content', async () => {
     mockFindMany.mockResolvedValue([]);
     mockFindById.mockResolvedValue({
       id: 99, title: 'Empty', content: '', contentText: '', entities: [],
@@ -145,7 +146,7 @@ describe('sendPostToUser — message-first architecture', () => {
     await sendPostToUser(ctx, { id: 99 });
 
     expect(calls.length).toBe(1);
-    expect(calls[0].args[0]).toContain('مشکل ساختاری');
+    expect(calls[0].args[0]).toContain('پست خالی');
   });
 
   it('loads messages from DB (not from rawPost)', async () => {

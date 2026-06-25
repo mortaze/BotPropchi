@@ -4,7 +4,7 @@ vi.mock('../prisma/client', () => ({
   prisma: {
     postMessage: {
       findMany: vi.fn(),
-      create: vi.fn(),
+      create: vi.fn().mockImplementation((data: any) => Promise.resolve({ id: Date.now(), ...data.data })),
       createMany: vi.fn(),
       deleteMany: vi.fn(),
     },
@@ -146,32 +146,6 @@ describe('ENTITY ISOLATION — Acceptance Case 2: نقل قول + متن بول�
 });
 
 describe('ENTITY ISOLATION — Acceptance Case 3: Roundtrip serialization', () => {
-  it('normalizeWriteData preserves entities with correct offset=0 for each message', () => {
-    const data = {
-      order: 0, messageType: 'text', text: 'hello world',
-      entities: [{ type: 'bold', offset: 0, length: 5 }],
-      captionEntities: [],
-      parseMode: 'None',
-    };
-    const result = normalizeWriteData(1, data);
-    expect(result.entities).toHaveLength(1);
-    expect(result.entities[0].offset).toBe(0);
-    expect(result.entities[0].length).toBe(5);
-  });
-
-  it('normalizeWriteData validates captionEntities independently from text entities', () => {
-    const data = {
-      order: 0, messageType: 'photo', text: 'caption text',
-      entities: [],
-      caption: 'caption text',
-      captionEntities: [{ type: 'bold', offset: 0, length: 7 }],
-    };
-    const result = normalizeWriteData(1, data);
-    expect(result.captionEntities).toHaveLength(1);
-    // text entities remain empty
-    expect(result.entities).toHaveLength(0);
-  });
-
   it('validateMessages processes each message independently', () => {
     const messages = [
       makeRow(0, 'bold only', [{ type: 'bold', offset: 0, length: 4 }]),
@@ -214,50 +188,6 @@ describe('ENTITY ISOLATION — Acceptance Case 3: Roundtrip serialization', () =
   });
 });
 
-describe('ENTITY ISOLATION — [[copy]] split with entities', () => {
-  beforeEach(() => {
-    mockFindMany.mockReset();
-    mockFindById.mockReset();
-  });
-
-  it('splits [[copy]] content and never leaks entities between segments', async () => {
-    mockFindMany.mockResolvedValue([]);
-    mockFindById.mockResolvedValue({
-      id: 1, title: 'Test', slug: 'test',
-      content: 'bold text[[copy]]italic text[[/copy]]plain',
-      contentText: 'bold text[[copy]]italic text[[/copy]]plain',
-      entities: [
-        { type: 'bold', offset: 0, length: 4 },
-        { type: 'italic', offset: 17, length: 6 },
-      ],
-      caption: null, captionEntities: [], mediaFileId: null, mediaType: null,
-      buttons: null, telegramPayload: null, telegramMessageSnapshot: null,
-      parseMode: 'None',
-      command: null, status: 'DRAFT',
-      isPublished: false, sortOrder: 0,
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    });
-
-    const { ctx, calls } = makeMockCtx();
-    await sendPostToUser(ctx, { id: 1 });
-
-    expect(calls).toHaveLength(3);
-    // Segment 0: "bold text" — has bold entity
-    expect(calls[0].args[0]).toBe('bold text');
-    expect(calls[0].args[1].entities).toHaveLength(1);
-    expect(calls[0].args[1].entities[0].type).toBe('bold');
-
-    // Segment 1: "italic text" — has italic entity
-    expect(calls[1].args[0]).toBe('italic text');
-    expect(calls[1].args[1].entities).toHaveLength(1);
-    expect(calls[1].args[1].entities[0].type).toBe('italic');
-
-    // Segment 2: "plain" — no entities
-    expect(calls[2].args[0]).toBe('plain');
-    expect(calls[2].args[1].entities).toBeUndefined();
-  });
-});
-
 describe('ENTITY ISOLATION — Post_messages with mixed entity types', () => {
   beforeEach(() => {
     mockFindMany.mockReset();
@@ -292,14 +222,28 @@ describe('ENTITY ISOLATION — Post_messages with mixed entity types', () => {
   }
 
   it('sends 8 different entity types on a single message', async () => {
-    mockFindMany.mockResolvedValue([]);
-    mockFindById.mockResolvedValue(legacyPost());
+    mockFindMany.mockResolvedValue([{
+      id: 1, postId: 1, order: 0, messageType: 'text',
+      text: 'a b c d e f g h',
+      entities: [
+        { type: 'bold', offset: 0, length: 1 },
+        { type: 'italic', offset: 2, length: 1 },
+        { type: 'underline', offset: 4, length: 1 },
+        { type: 'strikethrough', offset: 6, length: 1 },
+        { type: 'spoiler', offset: 8, length: 1 },
+        { type: 'code', offset: 10, length: 1 },
+        { type: 'blockquote', offset: 12, length: 1 },
+        { type: 'bold', offset: 14, length: 1 },
+      ],
+      parseMode: 'None', captionEntities: [],
+      mediaFileId: null, mediaGroupId: null, caption: null,
+      replyMarkup: null, delayMs: 0,
+    }]);
 
     const { ctx, calls } = makeMockCtx();
     await sendPostToUser(ctx, { id: 1 });
 
     expect(calls[0].args[1].entities).toHaveLength(8);
-    // The [[copy]] split is NOT triggered because content has no [[copy]] markers
     expect(calls[0].args[0]).toBe('a b c d e f g h');
   });
 

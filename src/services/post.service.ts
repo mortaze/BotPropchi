@@ -48,11 +48,8 @@ export const postService = {
       ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.messages)))
       : undefined;
     const telegramPayload = data.telegramPayload
-      ? {
-          ...sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramPayload))),
-          ...(clonedMessages ? { messages: clonedMessages } : {}),
-        }
-      : (clonedMessages ? { messages: clonedMessages } : undefined);
+      ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.telegramPayload)))
+      : undefined;
 
     const sanitized: any = {
       title: data.title ? validateDbInput(data.title, 'post.title') : (isDraft ? 'بدون عنوان' : validateDbInput(data.title ?? '', 'post.title')),
@@ -100,7 +97,7 @@ export const postService = {
         };
       });
       await prisma.postMessage.createMany({ data: messageRows as any });
-      logger.info(`[Post] Created ${messageRows.length} post_messages for post=${post.id}`);
+      logger.info(`[PostEditor][MessageCreate] post=${post.id} created ${messageRows.length} post_messages`);
     }
     this.invalidateCache();
     await systemLogService.log({
@@ -150,36 +147,13 @@ export const postService = {
     if (Array.isArray((data as any).messages)) {
       clonedMessages = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).messages)));
       delete (data as any).messages;
-      if ((data as any).telegramPayload) {
-        (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
-      }
-    } else if ((data as any).telegramPayload) {
+    }
+    if ((data as any).telegramPayload) {
       (data as any).telegramPayload = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramPayload)));
     }
     if ((data as any).telegramMessageSnapshot) (data as any).telegramMessageSnapshot = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).telegramMessageSnapshot)));
     if (typeof (data as any).contentText === 'string') (data as any).contentText = sanitizeTelegramText((data as any).contentText);
     if ((data as any).contentEntities) (data as any).contentEntities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).contentEntities)));
-    // Sync native fields when content is updated without explicit native data
-    if (
-      typeof data.content === 'string'
-      && (data as any).contentText === undefined
-      && (data as any).contentEntities === undefined
-    ) {
-      (data as any).contentText = data.content;
-      if ((data as any).contentEntities === undefined) {
-        (data as any).contentEntities = [];
-      }
-      // If existing post had imported Telegram data and content is being rewritten,
-      // clear the Telegram snapshot/payload since they no longer match.
-      // Also reset contentFormat/renderMode so the resolver can correctly choose
-      // legacy renderer (with parse_mode) instead of native (without entities).
-      if ((existing as any).contentText || (existing as any).telegramPayload || (existing as any).telegramMessageSnapshot) {
-        (data as any).telegramPayload = null;
-        (data as any).telegramMessageSnapshot = null;
-        (data as any).contentFormat = null;
-        (data as any).renderMode = null;
-      }
-    }
     const post = await postRepository.update(id, { ...data, updatedBy: data.updatedBy ?? undefined });
     // Persist post_messages rows if messages were provided
     if (clonedMessages) {
@@ -201,7 +175,7 @@ export const postService = {
         prisma.postMessage.deleteMany({ where: { postId: post.id } }),
         ...messageRows.map((row: any) => prisma.postMessage.create({ data: row })),
       ]);
-      logger.info(`[Post] Replaced ${messageRows.length} post_messages for post=${post.id}`);
+      logger.info(`[PostEditor][MessageUpdate] post=${post.id} replaced ${messageRows.length} post_messages`);
     }
     this.invalidateCache();
 
