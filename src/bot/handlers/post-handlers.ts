@@ -32,6 +32,7 @@ import {
   postNewPostManagerReplyKeyboard,
   postSingleMessageInlineKeyboard,
   buildNoButtonsReplyKeyboard,
+  buildNoButtonsEditorKeyboard,
   buildButtonTypeSelectionKeyboard,
   buildCancelOnlyReplyKeyboard,
   buildButtonEditorExitKeyboard,
@@ -855,12 +856,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(pendingKey(ctx.from.id, 'editor_row'));
       cache.del(pendingKey(ctx.from.id, 'editor_col'));
       if (!buttons || buttons.length === 0 || buttons.every((r: any[]) => !r || r.length === 0)) {
-        await safeEdit(ctx, '⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
+        const sent = await ctx.reply('⌨ ویرایشگر دکمه:\nهنوز دکمه‌ای وجود ندارد. یک دکمه جدید ایجاد کنید.', buildNoButtonsReplyKeyboard());
+        if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
       } else {
-        await safeEdit(ctx, '⌨ ویرایشگر دکمه:', {
-          ...buildButtonEditorExitKeyboard(),
-          ...buildButtonListInlineKeyboard(postId, buttons),
+        const exitKB = buildButtonEditorExitKeyboard();
+        const listKB = buildButtonListInlineKeyboard(postId, buttons, 'create');
+        const sent = await ctx.reply('⌨ ویرایشگر دکمه:', {
+          reply_markup: {
+            ...(listKB.reply_markup || {}),
+            ...(exitKB.reply_markup || {}),
+          },
         });
+        if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
       }
       return;
     }
@@ -1248,26 +1255,21 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const hasButtons = buttons.length && buttons.some(r => Array.isArray(r) && r.length);
     const displayText = msg || '⌨ ویرایشگر دکمه:';
 
-    const editorMsgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
-    if (!editorMsgId) {
+    const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
+    if (!msgId) {
       if (ctx.callbackQuery?.message?.message_id) {
         cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, ctx.callbackQuery.message.message_id, 600);
       }
     }
-    const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
+
+    // Delete stale editor message before sending new one (ensures clean reply keyboard state)
+    if (msgId) {
+      try { await ctx.telegram.deleteMessage(ctx.chat.id, msgId).catch(() => {}); } catch (_) {}
+      cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
+    }
 
     if (hasButtons) {
       const inlineKeyboardMarkup = buildButtonListInlineKeyboard(postId, buttons, listMode).reply_markup;
-      if (msgId) {
-        try {
-          await ctx.telegram.editMessageText(ctx.chat.id, msgId, null, displayText, {
-            reply_markup: inlineKeyboardMarkup,
-          });
-          return;
-        } catch (e) {
-          cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
-        }
-      }
       const sent = await ctx.reply(displayText, {
         reply_markup: {
           ...inlineKeyboardMarkup,
@@ -1278,16 +1280,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       });
       if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
     } else {
-      const extra = buildNoButtonsReplyKeyboard();
-      if (msgId) {
-        try {
-          await ctx.telegram.editMessageText(ctx.chat.id, msgId, null, displayText, extra);
-          return;
-        } catch (e) {
-          cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
-        }
-      }
-      await safeEdit(ctx, displayText, extra);
+      await ctx.reply(displayText, buildNoButtonsEditorKeyboard()).then(sent => {
+        if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+      });
     }
   }
 

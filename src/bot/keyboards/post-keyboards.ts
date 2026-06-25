@@ -395,11 +395,18 @@ export const postSingleMessageInlineKeyboard = (postId: number, msgIdx: number, 
 
 // ─── Button Editor — New Design ──────────────────────────────
 
-// Reply keyboard when NO buttons exist
+// Reply keyboard when NO buttons exist (initial entry — has cancel)
 export const buildNoButtonsReplyKeyboard = () =>
   Markup.keyboard([
     ['➕ اضافه کردن دکمه جدید'],
     ['❌ لغو'],
+  ]).resize().persistent();
+
+// Reply keyboard when NO buttons exist (after successful operation — no cancel, only exit)
+export const buildNoButtonsEditorKeyboard = () =>
+  Markup.keyboard([
+    ['➕ اضافه کردن دکمه جدید'],
+    ['🚪 خروج از تنظیمات پیام'],
   ]).resize().persistent();
 
 // Reply keyboard when waiting for button type selection
