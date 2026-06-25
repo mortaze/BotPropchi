@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { PostStatus } from '@prisma/client';
 import { postService } from '../../services/post.service';
 import { settingsService } from '../../services/settings.service';
+import { postMessageService } from '../../services/post-message.service';
 
 export const postRouter = Router();
 
@@ -45,6 +46,21 @@ const basePostSchema = z.object({
 const createSchema = basePostSchema;
 const updateSchema = basePostSchema.partial();
 
+const postMessageSchema = z.object({
+  order: z.number().int().optional(),
+  messageType: z.enum(['text', 'photo', 'video', 'document', 'audio', 'voice', 'animation', 'sticker', 'album']).default('text'),
+  text: z.string().optional().nullable(),
+  entities: z.any().optional().default([]),
+  parseMode: z.enum(['None', 'MarkdownV2', 'HTML']).default('None'),
+  mediaFileId: z.string().optional().nullable(),
+  mediaGroupId: z.string().optional().nullable(),
+  caption: z.string().optional().nullable(),
+  captionEntities: z.any().optional().default([]),
+  replyMarkup: z.any().optional().nullable(),
+  delayMs: z.number().int().min(0).default(0),
+});
+
+
 postRouter.get('/', async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 20);
@@ -79,6 +95,37 @@ postRouter.get('/top', async (req, res) => {
   const limit = Number(req.query.limit || 5);
   const posts = await postService.getTopPosts(limit);
   res.json(serializeBigInts(posts));
+});
+
+postRouter.get('/:id/messages', async (req, res) => {
+  const messages = await postMessageService.list(Number(req.params.id));
+  res.json(serializeBigInts(messages));
+});
+
+postRouter.post('/:id/messages', async (req, res) => {
+  const parsed = postMessageSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+  const message = await postMessageService.create(Number(req.params.id), parsed.data);
+  res.status(201).json(serializeBigInts(message));
+});
+
+postRouter.put('/:id/messages/:messageId', async (req, res) => {
+  const parsed = postMessageSchema.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+  const message = await postMessageService.update(Number(req.params.messageId), parsed.data);
+  res.json(serializeBigInts(message));
+});
+
+postRouter.delete('/:id/messages/:messageId', async (req, res) => {
+  await postMessageService.delete(Number(req.params.messageId));
+  res.json({ success: true });
+});
+
+postRouter.post('/:id/messages/reorder', async (req, res) => {
+  const parsed = z.object({ orderedIds: z.array(z.number().int()) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
+  const messages = await postMessageService.reorder(Number(req.params.id), parsed.data.orderedIds);
+  res.json(serializeBigInts(messages));
 });
 
 postRouter.get('/:id', async (req, res) => {

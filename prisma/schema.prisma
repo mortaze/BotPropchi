@@ -781,12 +781,36 @@ model Post {
   richEntities    PostEntity[]
   attachments     PostAttachment[]
   keyboards       PostKeyboard[]
+  messages        PostMessage[]
 
   @@index([status])
   @@index([isPublished])
   @@index([slug])
   @@index([sortOrder])
   @@map("posts")
+}
+
+model PostMessage {
+  id              Int                  @id @default(autoincrement())
+  postId          Int                  @map("post_id")
+  order           Int
+  messageType     PostMessageType      @default(text) @map("message_type")
+  text            String?
+  entities        Json                 @default("[]")
+  parseMode       PostMessageParseMode @default(None) @map("parse_mode")
+  mediaFileId     String?              @map("media_file_id")
+  mediaGroupId    String?              @map("media_group_id")
+  caption         String?
+  captionEntities Json                 @default("[]") @map("caption_entities")
+  replyMarkup     Json?                @map("reply_markup")
+  delayMs         Int                  @default(0) @map("delay_ms")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  post            Post                 @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, order])
+  @@index([postId])
+  @@map("post_messages")
 }
 
 model PostMedia {
@@ -1066,6 +1090,24 @@ enum AiChatStatus {
   BLOCKED_INJECTION
   RATE_LIMITED
   ERROR
+}
+
+enum PostMessageType {
+  text
+  photo
+  video
+  document
+  audio
+  voice
+  animation
+  sticker
+  album
+}
+
+enum PostMessageParseMode {
+  None
+  MarkdownV2
+  HTML
 }
 
 enum PostStatus {

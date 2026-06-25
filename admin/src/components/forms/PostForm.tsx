@@ -53,7 +53,7 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
       contentFormat: initial?.contentFormat ?? "HTML",
       entitiesJson: Array.isArray(initial?.entities) ? JSON.stringify(initial.entities, null, 2) : "",
       telegramPayloadJson: initial?.telegramPayload ? JSON.stringify(initial.telegramPayload, null, 2) : "",
-      messagesJson: Array.isArray((initial as any)?.telegramPayload?.messages) ? JSON.stringify((initial as any).telegramPayload.messages, null, 2) : "",
+      messagesJson: Array.isArray((initial as any)?.messages) ? JSON.stringify((initial as any).messages, null, 2) : (Array.isArray((initial as any)?.telegramPayload?.messages) ? JSON.stringify((initial as any).telegramPayload.messages, null, 2) : ""),
       buttonsJson: Array.isArray(initial?.buttons) ? JSON.stringify(initial.buttons, null, 2) : "",
       command: initial?.command ?? "",
       status: initial?.status ?? "DRAFT",
@@ -100,12 +100,21 @@ export default function PostForm({ initial, loading, submitLabel = "ذخیره",
         <option value="HTML">HTML</option>
       </Select>
       <div className="md:col-span-2 grid gap-4 md:grid-cols-2">
-        <Textarea label="پیام‌های مستقل (JSON)" className="min-h-48 font-mono" placeholder={'[{"id":"1","text":"...","entities":[],"style":{"bold":false,"italic":false,"code":false,"blockquote":false}}]'} {...register("messagesJson")} />
+        <div>
+          <Textarea label="پیام‌های مستقل ایزوله (JSON)" className="min-h-48 font-mono" placeholder={'[{"order":0,"messageType":"text","text":"...","entities":[],"parseMode":"None","delayMs":700}]'} {...register("messagesJson")} />
+          <Button type="button" className="mt-2" onClick={() => {
+            const current = watch("messagesJson");
+            const messages = current?.trim() ? JSON.parse(current) : [];
+            messages.push({ order: messages.length, messageType: "text", text: "", entities: [], parseMode: "None", captionEntities: [], delayMs: 700 });
+            setValue("messagesJson", JSON.stringify(messages, null, 2));
+          }}>+ افزودن پیام جدید</Button>
+          <p className="mt-2 text-xs text-slate-500">هر آیتم این آرایه یک ادیتور/پیام مستقل است؛ reorder با تغییر فیلد order و حذف با حذف همان آیتم انجام می‌شود.</p>
+        </div>
         <Textarea label="Entity editor legacy (JSON)" className="min-h-48 font-mono" {...register("entitiesJson")} />
         <Textarea label="Media/Payload snapshot (JSON)" className="min-h-32 font-mono" {...register("telegramPayloadJson")} />
         <Textarea label="Button manager (JSON)" className="min-h-32 font-mono" {...register("buttonsJson")} />
       </div>
-      <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">Preview mode: برای پست چندپیامی، هر آیتم messages به‌صورت sandbox مستقل با text/entities/style جداگانه رندر می‌شود؛ ذخیره کنید و از دکمه پیش‌نمایش داخل ربات استفاده کنید.</div>
+      <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">Preview mode: هر ردیف messages به‌صورت پیام جدا با text/entities/replyMarkup مستقل رندر می‌شود؛ متن‌ها قبل از ذخیره به هم چسبانده نمی‌شوند.</div>
       <Input label="دستور (اختیاری)" placeholder="/mycommand" error={errors.command?.message} {...register("command")} />
       <Select label="وضعیت" error={errors.status?.message} {...register("status")}>
         <option value="DRAFT">پیش‌نویس</option>
