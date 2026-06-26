@@ -446,8 +446,11 @@ export const buildButtonEditorExitKeyboard = () =>
     ['🚪 خروج از تنظیمات پیام'],
   ]).resize().persistent();
 
-// ─── Inline keyboard: button list ONLY (no management tools) ──
-// Management tools live in Reply Keyboard exclusively.
+// ─── Button Editor: Single Centralized Renderer ─────────────
+// This is the ONLY entry point for building the Button Editor UI.
+// All CRUD handlers call renderButtonEditor() after updating state+DB.
+// NO handler sends messages or builds keyboards independently.
+
 const colorIndicator = (style?: string) => {
   if (style === 'primary') return '🔵';
   if (style === 'success') return '🟢';
@@ -455,11 +458,14 @@ const colorIndicator = (style?: string) => {
   return '';
 };
 
-export const buildButtonListInlineKeyboard = (
+// ─── Build the full Inline Keyboard for the Button Editor ──
+// Row 0..N-1: button list (icons depend on mode)
+// Row N:     management toolbar [➕ ایجاد] [✏️ ویرایش] [🗑 حذف] [🔀 جابجایی]
+function buildButtonEditorInlineKeyboard(
   postId: number,
   buttons: any[][],
-  mode?: 'create' | 'edit' | 'delete' | 'move',
-) => {
+  mode: 'create' | 'edit' | 'delete' | 'move',
+): any[][] {
   const rows: any[][] = [];
   const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
 
@@ -467,8 +473,9 @@ export const buildButtonListInlineKeyboard = (
     for (let r = 0; r < buttons.length; r++) {
       const row = buttons[r];
       if (!Array.isArray(row)) continue;
+
       if (mode === 'move') {
-        // Move mode: directional arrows per button
+        // Move: show only valid directional arrows per row
         const canUp = r > 0;
         const canDown = r < buttons.length - 1;
         const arrows: any[] = [];
@@ -480,26 +487,31 @@ export const buildButtonListInlineKeyboard = (
         for (let c = 0; c < row.length; c++) {
           const btn = row[c];
           if (!btn) continue;
-          const text = btn.text || 'بدون عنوان';
-          const safe = graphemeTruncate(sanitizeTelegramText(text), 13);
+          const label = btn.text || 'بدون عنوان';
+          const safe = graphemeTruncate(sanitizeTelegramText(label), 13);
           const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : '{＋}';
           rowButtons.push(
-            Markup.button.callback(
-              `${colorIndicator(btn.style)}${icon} ${safe}`,
-              `pbedit:click:${postId}:${r}:${c}`,
-            ),
+            Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
           );
         }
         if (rowButtons.length > 0) rows.push(rowButtons);
       }
     }
-  } else if (mode === 'create' || !mode) {
-    // No buttons — show a single {＋} placeholder so user can create the first one
+  } else if (mode === 'create') {
+    // Empty state: single {＋} placeholder
     rows.push([Markup.button.callback('{＋}', `pbedit:click:${postId}:0:0`)]);
   }
 
-  return Markup.inlineKeyboard(rows);
-};
+  // ─── Management toolbar — ALWAYS the last row ────────────
+  rows.push([
+    Markup.button.callback('➕ ایجاد', `pbedit:mode:create:${postId}`),
+    Markup.button.callback('✏️ ویرایش', `pbedit:mode:edit:${postId}`),
+    Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`),
+    Markup.button.callback('🔀 جابجایی', `pbedit:mode:move:${postId}`),
+  ]);
+
+  return rows;
+}
 
 // ─── Edit button type selection inline keyboard ────────────
 export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: number, currentColor?: string) => {
@@ -515,33 +527,21 @@ export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: nu
   ]);
 };
 
-// ─── Reply Keyboard for Button Editor (tools only) ─────────
-export const buildButtonEditorReplyKeyboard = () =>
-  Markup.keyboard([
-    ['➕ ایجاد', '✏️ ویرایش'],
-    ['🗑 حذف', '🔀 جابجایی'],
-    ['↩️ بازگشت', '❌ خروج'],
-  ]).resize().persistent();
-
-// ─── Centralized Button Editor Renderer ────────────────────
-// Single entry point for ALL button editor rendering.
-// Inline Keyboard = button list only.
-// Reply Keyboard = editor tools only.
+// ─── Centralized Renderer ──────────────────────────────────
+// THE single entry point. Returns { text, reply_markup }.
+// Text: always "⌨️ ویرایشگر دکمه‌ها"
+// Inline Keyboard: button list + management toolbar
+// NO Reply Keyboard — entire editor is Inline-only.
 export function renderButtonEditor(
   postId: number,
   buttons: any[][],
   mode?: 'create' | 'edit' | 'delete' | 'move',
 ): { text: string; reply_markup: any } {
-  const inlineKb = buildButtonListInlineKeyboard(postId, buttons, mode).reply_markup;
-  const replyKb = buildButtonEditorReplyKeyboard().reply_markup;
+  const effectiveMode = mode || 'create';
+  const rows = buildButtonEditorInlineKeyboard(postId, buttons, effectiveMode);
   return {
     text: '⌨️ ویرایشگر دکمه‌ها',
-    reply_markup: {
-      ...inlineKb,
-      keyboard: replyKb.keyboard,
-      resize_keyboard: true,
-      persistent: true,
-    },
+    reply_markup: { inline_keyboard: rows },
   };
 }
 
