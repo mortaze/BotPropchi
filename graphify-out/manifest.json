@@ -1,0 +1,1322 @@
+{
+  "C:\\Users\\mohse\\BotPropchi\\admin\\.eslintrc.json": {
+    "mtime": 1780333139.6999807,
+    "ast_hash": "37ec0877f887e5d24b45db6049c1159e",
+    "semantic_hash": "37ec0877f887e5d24b45db6049c1159e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\next-env.d.ts": {
+    "mtime": 1780043455.9473574,
+    "ast_hash": "187b4b5b507c358a018aeeadd81abe57",
+    "semantic_hash": "187b4b5b507c358a018aeeadd81abe57"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\next.config.js": {
+    "mtime": 1781116739.9576626,
+    "ast_hash": "386b3cc54fca7df396cfc83753763d8f",
+    "semantic_hash": "386b3cc54fca7df396cfc83753763d8f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\package.json": {
+    "mtime": 1782212467.375239,
+    "ast_hash": "f40b7a976178d772b7c620c13b8335e5",
+    "semantic_hash": "f40b7a976178d772b7c620c13b8335e5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\postcss.config.js": {
+    "mtime": 1780039941.3544002,
+    "ast_hash": "835cfcbb2d123f0abba7aabcff7176bd",
+    "semantic_hash": "835cfcbb2d123f0abba7aabcff7176bd"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\api\\routes\\auth.routes.ts": {
+    "mtime": 1779958084.0,
+    "ast_hash": "783d8dff496b7471b968378e38a7c14a",
+    "semantic_hash": "783d8dff496b7471b968378e38a7c14a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\api\\routes\\discount.routes.ts": {
+    "mtime": 1781116739.9956644,
+    "ast_hash": "a0f680cc63b8e662aa8f22a341edb8fb",
+    "semantic_hash": "a0f680cc63b8e662aa8f22a341edb8fb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\api\\routes\\lottery.routes.ts": {
+    "mtime": 1779990250.0422647,
+    "ast_hash": "120245686f153d2f5ebaac18f2b53b75",
+    "semantic_hash": "120245686f153d2f5ebaac18f2b53b75"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\api\\routes\\user.routes.ts": {
+    "mtime": 1779958121.0,
+    "ast_hash": "5ee42f1206c3f46090162fe0a982a4a4",
+    "semantic_hash": "5ee42f1206c3f46090162fe0a982a4a4"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\api\\server.ts": {
+    "mtime": 1781116739.9986684,
+    "ast_hash": "57283feaca491cad587d4235dd6950ee",
+    "semantic_hash": "57283feaca491cad587d4235dd6950ee"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\admin-users\\page.tsx": {
+    "mtime": 1780333139.7179465,
+    "ast_hash": "80a1f519be492e180c93fb6aa819a47d",
+    "semantic_hash": "80a1f519be492e180c93fb6aa819a47d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\ai-assistant\\page.tsx": {
+    "mtime": 1781116740.0176682,
+    "ast_hash": "975caa312da6b554b81e82b50e489546",
+    "semantic_hash": "975caa312da6b554b81e82b50e489546"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\analytics\\acquisition\\page.tsx": {
+    "mtime": 1782215725.5768821,
+    "ast_hash": "acb4b6d25ef27181f69dc3efc2cc1b4f",
+    "semantic_hash": "acb4b6d25ef27181f69dc3efc2cc1b4f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\analytics\\attribution\\page.tsx": {
+    "mtime": 1782229651.1924946,
+    "ast_hash": "53ca7925cec3fa0c07aacf052c589a88",
+    "semantic_hash": "53ca7925cec3fa0c07aacf052c589a88"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\analytics\\heatmap\\page.tsx": {
+    "mtime": 1782215361.0276375,
+    "ast_hash": "1fd7c4f03b8e180129da81e741a84fe8",
+    "semantic_hash": "1fd7c4f03b8e180129da81e741a84fe8"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\analytics\\page.tsx": {
+    "mtime": 1782213817.134257,
+    "ast_hash": "09dd2de53ed64503833f0ee37f1ab938",
+    "semantic_hash": "09dd2de53ed64503833f0ee37f1ab938"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\bot-admins\\page.tsx": {
+    "mtime": 1780333139.721948,
+    "ast_hash": "0d8342fafca15e64401d4673e2193eb1",
+    "semantic_hash": "0d8342fafca15e64401d4673e2193eb1"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\broadcast-diagnostics\\[id]\\page.tsx": {
+    "mtime": 1782220964.7715855,
+    "ast_hash": "9f15f61652b603b7c5974409ab514124",
+    "semantic_hash": "9f15f61652b603b7c5974409ab514124"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\broadcast-diagnostics\\page.tsx": {
+    "mtime": 1782220779.9573112,
+    "ast_hash": "a0d3dbf29832f2fe167262c2d3a448d7",
+    "semantic_hash": "a0d3dbf29832f2fe167262c2d3a448d7"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\broadcast-diagnostics\\rca\\page.tsx": {
+    "mtime": 1782222790.5206513,
+    "ast_hash": "b5ee196afff413094f241227932e5bdd",
+    "semantic_hash": "b5ee196afff413094f241227932e5bdd"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\broadcast-diagnostics\\trace\\page.tsx": {
+    "mtime": 1782226619.7084084,
+    "ast_hash": "e1db2a93816b114e6df09894c6271126",
+    "semantic_hash": "e1db2a93816b114e6df09894c6271126"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\deleted-users\\page.tsx": {
+    "mtime": 1782239275.3065386,
+    "ast_hash": "475c6b157862715e0d7ffba5b9a7bdb2",
+    "semantic_hash": "475c6b157862715e0d7ffba5b9a7bdb2"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\discounts\\create\\page.tsx": {
+    "mtime": 1780163569.8315551,
+    "ast_hash": "2ec94884501663cf42c815de03047cdb",
+    "semantic_hash": "2ec94884501663cf42c815de03047cdb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\discounts\\edit\\[id]\\page.tsx": {
+    "mtime": 1780163570.285986,
+    "ast_hash": "15c5438605f6dcb901d22bc6e34df58b",
+    "semantic_hash": "15c5438605f6dcb901d22bc6e34df58b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\discounts\\page.tsx": {
+    "mtime": 1780333139.7249696,
+    "ast_hash": "147edc9c947ee7b24898b10f32827f39",
+    "semantic_hash": "147edc9c947ee7b24898b10f32827f39"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\force-join\\page.tsx": {
+    "mtime": 1781629148.966746,
+    "ast_hash": "5fda6923cd9670dfedd47d36712427eb",
+    "semantic_hash": "5fda6923cd9670dfedd47d36712427eb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\groups\\page.tsx": {
+    "mtime": 1780333139.7285795,
+    "ast_hash": "d6dbc36d3bf6318f85d87fc0f715240d",
+    "semantic_hash": "d6dbc36d3bf6318f85d87fc0f715240d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\keyword-replies\\page.tsx": {
+    "mtime": 1780333139.730345,
+    "ast_hash": "26ede86ffee7953ecef7510d78cdcf8a",
+    "semantic_hash": "26ede86ffee7953ecef7510d78cdcf8a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\layout.tsx": {
+    "mtime": 1780163570.9233246,
+    "ast_hash": "25bca75c1039bfdef9e74198499562c2",
+    "semantic_hash": "25bca75c1039bfdef9e74198499562c2"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\leaderboard\\page.tsx": {
+    "mtime": 1782121940.2081137,
+    "ast_hash": "fb441172c688a861d6b78f6dabdb7fa6",
+    "semantic_hash": "fb441172c688a861d6b78f6dabdb7fa6"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\lotteries\\[id]\\execute\\page.tsx": {
+    "mtime": 1782307425.5616963,
+    "ast_hash": "1b2c93dc761fa3708a4f3f1f6b7a8ef9",
+    "semantic_hash": "1b2c93dc761fa3708a4f3f1f6b7a8ef9"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\lotteries\\[id]\\page.tsx": {
+    "mtime": 1782302733.522894,
+    "ast_hash": "b755f515b1b1b013b1bf8542d34180ee",
+    "semantic_hash": "b755f515b1b1b013b1bf8542d34180ee"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\lotteries\\create\\page.tsx": {
+    "mtime": 1780163571.0992782,
+    "ast_hash": "f0c463de36d2c8d69318d7ed1ca80b1d",
+    "semantic_hash": "f0c463de36d2c8d69318d7ed1ca80b1d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\lotteries\\edit\\[id]\\page.tsx": {
+    "mtime": 1780163571.1027188,
+    "ast_hash": "346ec82b2edb7ec22d6a1159a4c2d5f2",
+    "semantic_hash": "346ec82b2edb7ec22d6a1159a4c2d5f2"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\lotteries\\page.tsx": {
+    "mtime": 1782307425.5616963,
+    "ast_hash": "113f1139d6da49cbc2b189d3bac75dfe",
+    "semantic_hash": "113f1139d6da49cbc2b189d3bac75dfe"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\menu\\page.tsx": {
+    "mtime": 1781770149.7822642,
+    "ast_hash": "e55f72effe11826d53b77d4d2d999220",
+    "semantic_hash": "e55f72effe11826d53b77d4d2d999220"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\mini-app-logs\\page.tsx": {
+    "mtime": 1781116740.085663,
+    "ast_hash": "4585c092ed0586a945ef045ee475b6ce",
+    "semantic_hash": "4585c092ed0586a945ef045ee475b6ce"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\page.tsx": {
+    "mtime": 1782050225.3785436,
+    "ast_hash": "fd00c1e5bad7b0f5b8c3125fa0bed10f",
+    "semantic_hash": "fd00c1e5bad7b0f5b8c3125fa0bed10f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\posts\\[id]\\page.tsx": {
+    "mtime": 1782385616.7817569,
+    "ast_hash": "708b7a826f42e6630e5e5908cc4c8dbf",
+    "semantic_hash": "708b7a826f42e6630e5e5908cc4c8dbf"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\posts\\create\\page.tsx": {
+    "mtime": 1781178066.1903222,
+    "ast_hash": "23931311ae6bc7a810dfa028b5e62259",
+    "semantic_hash": "23931311ae6bc7a810dfa028b5e62259"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\posts\\page.tsx": {
+    "mtime": 1782385616.7817569,
+    "ast_hash": "65d7652f9ab13938f7144a24aaad3165",
+    "semantic_hash": "65d7652f9ab13938f7144a24aaad3165"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\prop-firms\\page.tsx": {
+    "mtime": 1780333139.730345,
+    "ast_hash": "581a3249f9c80c9551647e513e26e466",
+    "semantic_hash": "581a3249f9c80c9551647e513e26e466"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\referrals\\page.tsx": {
+    "mtime": 1782121963.9300692,
+    "ast_hash": "47856d602c9507dfb4153b19cadc6719",
+    "semantic_hash": "47856d602c9507dfb4153b19cadc6719"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\required-channels\\page.tsx": {
+    "mtime": 1781631575.71709,
+    "ast_hash": "d4c3725005bd6b86e232a568e52e2a8e",
+    "semantic_hash": "d4c3725005bd6b86e232a568e52e2a8e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\scoring\\page.tsx": {
+    "mtime": 1781116740.1326675,
+    "ast_hash": "d7cfb9b65e9bb6cbc9435711999edba0",
+    "semantic_hash": "d7cfb9b65e9bb6cbc9435711999edba0"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\seasons\\page.tsx": {
+    "mtime": 1782121836.6917486,
+    "ast_hash": "e3fdd123dccdf85d23bacb755abd9ac3",
+    "semantic_hash": "e3fdd123dccdf85d23bacb755abd9ac3"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\settings\\page.tsx": {
+    "mtime": 1782129003.206658,
+    "ast_hash": "92cf63ff9f2fdd3c413cff74a41afab6",
+    "semantic_hash": "92cf63ff9f2fdd3c413cff74a41afab6"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\system-integrity\\page.tsx": {
+    "mtime": 1782230289.2915628,
+    "ast_hash": "299118a57e212f135d40ffe885b1eb09",
+    "semantic_hash": "299118a57e212f135d40ffe885b1eb09"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\system-logs\\page.tsx": {
+    "mtime": 1781116740.1696644,
+    "ast_hash": "6409f0aa5f274ebfb3b67353e219ab7d",
+    "semantic_hash": "6409f0aa5f274ebfb3b67353e219ab7d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\user-journey\\[telegramId]\\page.tsx": {
+    "mtime": 1782244061.9391508,
+    "ast_hash": "dd6ea71437794b9b97228a6a762763fe",
+    "semantic_hash": "dd6ea71437794b9b97228a6a762763fe"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\users\\[id]\\page.tsx": {
+    "mtime": 1781116740.1776636,
+    "ast_hash": "8999161c0ca95a70c2b1e686b90b511c",
+    "semantic_hash": "8999161c0ca95a70c2b1e686b90b511c"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\dashboard\\users\\page.tsx": {
+    "mtime": 1782244165.025597,
+    "ast_hash": "4517cea11fe8f69a793fe261e2552419",
+    "semantic_hash": "4517cea11fe8f69a793fe261e2552419"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\layout.tsx": {
+    "mtime": 1781116740.194663,
+    "ast_hash": "b3129f9878b5d5c01b2added93a91ebc",
+    "semantic_hash": "b3129f9878b5d5c01b2added93a91ebc"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\login\\page.tsx": {
+    "mtime": 1781116740.2456644,
+    "ast_hash": "52e23179c75ee73b487659833de233ef",
+    "semantic_hash": "52e23179c75ee73b487659833de233ef"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\mini-app\\page.tsx": {
+    "mtime": 1781116740.2636733,
+    "ast_hash": "388cd626fe80aa26502516762f19eaf8",
+    "semantic_hash": "388cd626fe80aa26502516762f19eaf8"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\app\\page.tsx": {
+    "mtime": 1781116740.2706616,
+    "ast_hash": "9244f3a1ca4210b6322707e1dc3d3f38",
+    "semantic_hash": "9244f3a1ca4210b6322707e1dc3d3f38"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\charts\\DashboardCharts.tsx": {
+    "mtime": 1782050901.983356,
+    "ast_hash": "02342e67ba71175169a04157751e995a",
+    "semantic_hash": "02342e67ba71175169a04157751e995a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\editor\\MessageEditor.tsx": {
+    "mtime": 1782395878.2188747,
+    "ast_hash": "058772e9a0c79d91d68b8d3b0ebe27f5",
+    "semantic_hash": "058772e9a0c79d91d68b8d3b0ebe27f5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\forms\\DiscountForm.tsx": {
+    "mtime": 1780333139.7619936,
+    "ast_hash": "1d76f0d20318b6a24919e3ea143f464f",
+    "semantic_hash": "1d76f0d20318b6a24919e3ea143f464f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\forms\\LotteryForm.tsx": {
+    "mtime": 1782302537.1729312,
+    "ast_hash": "7faef6c9c815fa951076d5995ff07e6c",
+    "semantic_hash": "7faef6c9c815fa951076d5995ff07e6c"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\forms\\PostForm.tsx": {
+    "mtime": 1782404241.2340057,
+    "ast_hash": "68e74cd5ac96ddb5d8d95c9da000161b",
+    "semantic_hash": "68e74cd5ac96ddb5d8d95c9da000161b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\landing\\HomeLandingPage.tsx": {
+    "mtime": 1781116740.286662,
+    "ast_hash": "21d55767c71cb1fab45862db2cf55faf",
+    "semantic_hash": "21d55767c71cb1fab45862db2cf55faf"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\layout\\Header.tsx": {
+    "mtime": 1780333139.7775958,
+    "ast_hash": "d6335d86243cf92dfab3b1b8d2411363",
+    "semantic_hash": "d6335d86243cf92dfab3b1b8d2411363"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\layout\\Sidebar.tsx": {
+    "mtime": 1782247095.927057,
+    "ast_hash": "7c6d8fa129703cb9c4c6dc8ddc2b0e55",
+    "semantic_hash": "7c6d8fa129703cb9c4c6dc8ddc2b0e55"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\lottery\\WheelSpinner.tsx": {
+    "mtime": 1782302582.1948252,
+    "ast_hash": "afc5932b51c9f99efbbb8bf84fed5f7b",
+    "semantic_hash": "afc5932b51c9f99efbbb8bf84fed5f7b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\lottery\\WinnerModal.tsx": {
+    "mtime": 1782302619.25518,
+    "ast_hash": "0d835c8398d4b6505e16820eec8583b0",
+    "semantic_hash": "0d835c8398d4b6505e16820eec8583b0"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\lottery\\WinnerPanel.tsx": {
+    "mtime": 1782302601.928543,
+    "ast_hash": "3173b70411dbd064540913ea31cada38",
+    "semantic_hash": "3173b70411dbd064540913ea31cada38"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\shared\\Providers.tsx": {
+    "mtime": 1780163572.3023345,
+    "ast_hash": "26cb1fde9a9d437462fdb38cf0806d06",
+    "semantic_hash": "26cb1fde9a9d437462fdb38cf0806d06"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\shared\\SearchConsole.tsx": {
+    "mtime": 1782050260.4185915,
+    "ast_hash": "8357501a5e338f8eb1c05d04cce9dd1e",
+    "semantic_hash": "8357501a5e338f8eb1c05d04cce9dd1e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\shared\\StatCard.tsx": {
+    "mtime": 1780040808.5195034,
+    "ast_hash": "f73f213d789468c9c5865a2b3798d2da",
+    "semantic_hash": "f73f213d789468c9c5865a2b3798d2da"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\tables\\RecentUsersTable.tsx": {
+    "mtime": 1780163573.0812469,
+    "ast_hash": "5fa1effd0aa1aba12511a53e1666a9a1",
+    "semantic_hash": "5fa1effd0aa1aba12511a53e1666a9a1"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\components\\ui\\index.tsx": {
+    "mtime": 1781617428.1382866,
+    "ast_hash": "dee8a75694a90f8dc89dc83e8aa8a6ec",
+    "semantic_hash": "dee8a75694a90f8dc89dc83e8aa8a6ec"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\config\\brand.ts": {
+    "mtime": 1781116740.298667,
+    "ast_hash": "bb9d089c144c52f8fee0ffee864ed418",
+    "semantic_hash": "bb9d089c144c52f8fee0ffee864ed418"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\index.ts": {
+    "mtime": 1779993915.714412,
+    "ast_hash": "1c89c9ffba9152e84c48517c751dbd9a",
+    "semantic_hash": "1c89c9ffba9152e84c48517c751dbd9a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\lib\\utils.ts": {
+    "mtime": 1780333139.7775958,
+    "ast_hash": "d1e4c5706af28aa9a0607cb4590434e1",
+    "semantic_hash": "d1e4c5706af28aa9a0607cb4590434e1"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\middleware.ts": {
+    "mtime": 1780333139.7775958,
+    "ast_hash": "eb4eab9c6e78f457e9bacbc961f34688",
+    "semantic_hash": "eb4eab9c6e78f457e9bacbc961f34688"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\scheduler.ts": {
+    "mtime": 1779958132.0,
+    "ast_hash": "54279083c9705160c1a59e16257b258d",
+    "semantic_hash": "54279083c9705160c1a59e16257b258d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\services\\api.ts": {
+    "mtime": 1782387752.9771478,
+    "ast_hash": "f0e3c85ed79da22c6492e35f67d586ac",
+    "semantic_hash": "f0e3c85ed79da22c6492e35f67d586ac"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\store\\auth.store.ts": {
+    "mtime": 1780163573.300023,
+    "ast_hash": "7547e2c940ee7f4a631372fcf5b2ddb2",
+    "semantic_hash": "7547e2c940ee7f4a631372fcf5b2ddb2"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\store\\ui.store.ts": {
+    "mtime": 1780333139.7775958,
+    "ast_hash": "bb8cca930c89160a33077635be4bdf4b",
+    "semantic_hash": "bb8cca930c89160a33077635be4bdf4b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\src\\types\\index.ts": {
+    "mtime": 1782307425.5772963,
+    "ast_hash": "b8b7ec8d16339352ceed833e5d6186af",
+    "semantic_hash": "b8b7ec8d16339352ceed833e5d6186af"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\tailwind.config.ts": {
+    "mtime": 1781172636.7115905,
+    "ast_hash": "6abe0f93acec60fedd899b0e1d5ff5ba",
+    "semantic_hash": "6abe0f93acec60fedd899b0e1d5ff5ba"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\admin\\tsconfig.json": {
+    "mtime": 1780163574.541202,
+    "ast_hash": "e48c813b30e2beed2149c1d2e6e469d5",
+    "semantic_hash": "e48c813b30e2beed2149c1d2e6e469d5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\package.json": {
+    "mtime": 1781709788.5872197,
+    "ast_hash": "0e69ccbd2883e6097e14d430060fc952",
+    "semantic_hash": "0e69ccbd2883e6097e14d430060fc952"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260531000000_referral_points_indexes\\migration.sql": {
+    "mtime": 1780333139.849053,
+    "ast_hash": "a4421abba05be3bf818f51cbaec790d3",
+    "semantic_hash": "a4421abba05be3bf818f51cbaec790d3"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260531010000_broadcast_force_join\\migration.sql": {
+    "mtime": 1780333139.849053,
+    "ast_hash": "e6ac4a3cc565132e24e334a971136bf9",
+    "semantic_hash": "e6ac4a3cc565132e24e334a971136bf9"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260531020000_group_keyword_management\\migration.sql": {
+    "mtime": 1780333139.849053,
+    "ast_hash": "129665bb75dc7dfcb3e9832b56ae5f52",
+    "semantic_hash": "129665bb75dc7dfcb3e9832b56ae5f52"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260531021000_user_membership_verified_at\\migration.sql": {
+    "mtime": 1780333139.8646772,
+    "ast_hash": "6e85da348fdc14bbe982a4e33d7f898a",
+    "semantic_hash": "6e85da348fdc14bbe982a4e33d7f898a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260531030000_bot_admin_analytics_logging\\migration.sql": {
+    "mtime": 1780333139.8646772,
+    "ast_hash": "a46110af47ba0d6f7e21620431f9521a",
+    "semantic_hash": "a46110af47ba0d6f7e21620431f9521a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260531040000_force_join_root_fix\\migration.sql": {
+    "mtime": 1780333139.895952,
+    "ast_hash": "bf3fc198c8a2ce9079937957c9e540d0",
+    "semantic_hash": "bf3fc198c8a2ce9079937957c9e540d0"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260601000100_prop_firm_discounts_lottery_tickets\\migration.sql": {
+    "mtime": 1780333139.895952,
+    "ast_hash": "85056bf3233345d47ad3e4e4fc206af0",
+    "semantic_hash": "85056bf3233345d47ad3e4e4fc206af0"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260601050000_owner_settings_rbac\\migration.sql": {
+    "mtime": 1780333139.895952,
+    "ast_hash": "1ef35dcf39a6624196207d7321f0c56c",
+    "semantic_hash": "1ef35dcf39a6624196207d7321f0c56c"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260601090000_scoring_and_prop_review\\migration.sql": {
+    "mtime": 1780333139.895952,
+    "ast_hash": "051a6e588716149635aa308ae87b5ab0",
+    "semantic_hash": "051a6e588716149635aa308ae87b5ab0"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260602000000_bot_broadcast_message_types\\migration.sql": {
+    "mtime": 1781116740.3306644,
+    "ast_hash": "20ea36c22d87c84a48423135f7b5cd89",
+    "semantic_hash": "20ea36c22d87c84a48423135f7b5cd89"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260602010000_mini_app_profile_completion\\migration.sql": {
+    "mtime": 1781116740.352669,
+    "ast_hash": "b73a2feb253d4a3f9432d1f16c3f0448",
+    "semantic_hash": "b73a2feb253d4a3f9432d1f16c3f0448"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260602020000_mini_app_debug_logs\\migration.sql": {
+    "mtime": 1781116740.354666,
+    "ast_hash": "f04aaf56ecebc4715791ddf5ac2e6a18",
+    "semantic_hash": "f04aaf56ecebc4715791ddf5ac2e6a18"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260602030000_liquid_glass_mini_app\\migration.sql": {
+    "mtime": 1781116740.366665,
+    "ast_hash": "779d106e24b5df1949dbb59b859e6eb9",
+    "semantic_hash": "779d106e24b5df1949dbb59b859e6eb9"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260602040000_remove_unused_user_activity_fields\\migration.sql": {
+    "mtime": 1781116740.377664,
+    "ast_hash": "6591dcd9a50722d6ce7df5c02e2fb601",
+    "semantic_hash": "6591dcd9a50722d6ce7df5c02e2fb601"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260604000000_ai_assistant\\migration.sql": {
+    "mtime": 1781116740.379666,
+    "ast_hash": "fe7c74ef02570b8563ce9c7a150f2cdb",
+    "semantic_hash": "fe7c74ef02570b8563ce9c7a150f2cdb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260610000000_posts_cms\\migration.sql": {
+    "mtime": 1781118228.9521353,
+    "ast_hash": "e2afed83c21ab6e5b88a433ea47d5819",
+    "semantic_hash": "e2afed83c21ab6e5b88a433ea47d5819"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260616000000_add_force_join_settings\\migration.sql": {
+    "mtime": 1781622078.716328,
+    "ast_hash": "b4b2b97379d1be65f3f39832ec234316",
+    "semantic_hash": "b4b2b97379d1be65f3f39832ec234316"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260617000000_menu_posts_sync_stability\\migration.sql": {
+    "mtime": 1781770149.797885,
+    "ast_hash": "78ca687d2f33fce857ebd11d17139204",
+    "semantic_hash": "78ca687d2f33fce857ebd11d17139204"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260617010000_repair_force_join_unicode_defaults\\migration.sql": {
+    "mtime": 1781770149.8135192,
+    "ast_hash": "87bd295bd4944bdd8c054edcb14a8f76",
+    "semantic_hash": "87bd295bd4944bdd8c054edcb14a8f76"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260617020000_telegram_native_posts\\migration.sql": {
+    "mtime": 1781770149.8135192,
+    "ast_hash": "d9b5aeadbf36c908f406e10f8f918a90",
+    "semantic_hash": "d9b5aeadbf36c908f406e10f8f918a90"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260622000000_add_referral_share_text\\migration.sql": {
+    "mtime": 1782119990.7696857,
+    "ast_hash": "5303042980451bddba9d465837baa741",
+    "semantic_hash": "5303042980451bddba9d465837baa741"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\20260625000000_post_messages\\migration.sql": {
+    "mtime": 1782391457.643056,
+    "ast_hash": "89b0c44f7c5b0bf3e2111244ada685f0",
+    "semantic_hash": "89b0c44f7c5b0bf3e2111244ada685f0"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\migrations\\fix_null_json_fields.sql": {
+    "mtime": 1782385569.8292592,
+    "ast_hash": "458c90e9def52fe80b1e65a971314b9b",
+    "semantic_hash": "458c90e9def52fe80b1e65a971314b9b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\prisma\\seed.ts": {
+    "mtime": 1781116740.3916614,
+    "ast_hash": "45c184e56244239d4f2cdacc1a08850b",
+    "semantic_hash": "45c184e56244239d4f2cdacc1a08850b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\scripts\\migrate-post-messages.ts": {
+    "mtime": 1782391457.650056,
+    "ast_hash": "fb84b59571e7d6a9619900869e8373d5",
+    "semantic_hash": "fb84b59571e7d6a9619900869e8373d5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\command-resolution.test.ts": {
+    "mtime": 1781183915.0666027,
+    "ast_hash": "8c4e85d439db33b2fa5a3b00d1f01cef",
+    "semantic_hash": "8c4e85d439db33b2fa5a3b00d1f01cef"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\entity-isolation-acceptance.test.ts": {
+    "mtime": 1782404452.8746798,
+    "ast_hash": "fb60016b2a7851711e80cb751809b778",
+    "semantic_hash": "fb60016b2a7851711e80cb751809b778"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\grapheme.test.ts": {
+    "mtime": 1781697002.3046932,
+    "ast_hash": "7ed7ddc0c934b1b6f133c493018bd265",
+    "semantic_hash": "7ed7ddc0c934b1b6f133c493018bd265"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\menu-move.test.ts": {
+    "mtime": 1781852594.8883557,
+    "ast_hash": "f9fd4767666d85072cbe10892ed3f72d",
+    "semantic_hash": "f9fd4767666d85072cbe10892ed3f72d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\menu-unicode-stability.test.ts": {
+    "mtime": 1781770149.8135192,
+    "ast_hash": "654da3f798f4593f1b25e7129c57a44f",
+    "semantic_hash": "654da3f798f4593f1b25e7129c57a44f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\message-format.test.ts": {
+    "mtime": 1781775328.08456,
+    "ast_hash": "83c6906a2454b1c5b860fe38d56ed31a",
+    "semantic_hash": "83c6906a2454b1c5b860fe38d56ed31a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\multi-message-e2e-full.test.ts": {
+    "mtime": 1782406448.7973454,
+    "ast_hash": "c093f8ef7cff3fe7263b7e7b2e261688",
+    "semantic_hash": "c093f8ef7cff3fe7263b7e7b2e261688"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\multi-message-e2e.test.ts": {
+    "mtime": 1782404439.347029,
+    "ast_hash": "b53ce352f3a5f4d112ecf8a404a7e76c",
+    "semantic_hash": "b53ce352f3a5f4d112ecf8a404a7e76c"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\multi-message-posts.test.ts": {
+    "mtime": 1782410146.2476115,
+    "ast_hash": "75cdfc63a412526b588bc23555945322",
+    "semantic_hash": "75cdfc63a412526b588bc23555945322"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\normalize-post.test.ts": {
+    "mtime": 1782408204.1192105,
+    "ast_hash": "2697d897a1d4507811c32d5e7535c050",
+    "semantic_hash": "2697d897a1d4507811c32d5e7535c050"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\post-message-buttons.test.ts": {
+    "mtime": 1782317312.0696774,
+    "ast_hash": "6292efd05e1bf4bf51495a732e666a30",
+    "semantic_hash": "6292efd05e1bf4bf51495a732e666a30"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\post-messages-normalizer.test.ts": {
+    "mtime": 1782391457.6520543,
+    "ast_hash": "e816348ad36b7bf77b95d230d620f60a",
+    "semantic_hash": "e816348ad36b7bf77b95d230d620f60a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\styles.test.ts": {
+    "mtime": 1782396241.4174466,
+    "ast_hash": "be62e9ea4bab1a7303456fe49c8d5d81",
+    "semantic_hash": "be62e9ea4bab1a7303456fe49c8d5d81"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\telegram-native-renderer.test.ts": {
+    "mtime": 1781770149.8135192,
+    "ast_hash": "f4688604122b3b7c1c01144707016f2b",
+    "semantic_hash": "f4688604122b3b7c1c01144707016f2b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\unicode.test.ts": {
+    "mtime": 1781697021.244697,
+    "ast_hash": "0316b089c483651f95c3026f4183b6eb",
+    "semantic_hash": "0316b089c483651f95c3026f4183b6eb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\__tests__\\verify-fix.test.ts": {
+    "mtime": 1782410141.590103,
+    "ast_hash": "e800c7320ac750b9f83f4a934e15b54f",
+    "semantic_hash": "e800c7320ac750b9f83f4a934e15b54f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\middlewares\\auth.middleware.ts": {
+    "mtime": 1780333139.895952,
+    "ast_hash": "01e7b437cd38a9832f853f2422a1dbaf",
+    "semantic_hash": "01e7b437cd38a9832f853f2422a1dbaf"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\admin-user.routes.ts": {
+    "mtime": 1781694268.9119265,
+    "ast_hash": "756f48a11facf3f503992dd1df8e7ddf",
+    "semantic_hash": "756f48a11facf3f503992dd1df8e7ddf"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\ai.routes.ts": {
+    "mtime": 1781625294.77903,
+    "ast_hash": "2bb0f9bc0bb9fb4faf27792d268e4e43",
+    "semantic_hash": "2bb0f9bc0bb9fb4faf27792d268e4e43"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\analytics.routes.ts": {
+    "mtime": 1782215038.0689135,
+    "ast_hash": "0fe7e64558626d69d3e423c4c677ff64",
+    "semantic_hash": "0fe7e64558626d69d3e423c4c677ff64"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\attribution.routes.ts": {
+    "mtime": 1782217059.282786,
+    "ast_hash": "826c40707a41bcfb7a5d959010f6e8dd",
+    "semantic_hash": "826c40707a41bcfb7a5d959010f6e8dd"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\auth.routes.ts": {
+    "mtime": 1780333139.9115431,
+    "ast_hash": "091887df84de6c6caab987378a3d9f06",
+    "semantic_hash": "091887df84de6c6caab987378a3d9f06"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\bot-admin.routes.ts": {
+    "mtime": 1780333139.9115431,
+    "ast_hash": "3509dbf58a98f04324adf4f0ee96bf65",
+    "semantic_hash": "3509dbf58a98f04324adf4f0ee96bf65"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\broadcast-diagnostics.routes.ts": {
+    "mtime": 1782224312.4905844,
+    "ast_hash": "ca77006c5387ea3abf726c30b484fb96",
+    "semantic_hash": "ca77006c5387ea3abf726c30b484fb96"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\broadcast-rca.routes.ts": {
+    "mtime": 1782222333.3028185,
+    "ast_hash": "714457f66e07b350317683af0f34ee4d",
+    "semantic_hash": "714457f66e07b350317683af0f34ee4d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\broadcast-trace.routes.ts": {
+    "mtime": 1782226111.1930003,
+    "ast_hash": "9ea7b855449b16772ddb488f86e4e827",
+    "semantic_hash": "9ea7b855449b16772ddb488f86e4e827"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\channel.routes.ts": {
+    "mtime": 1781627899.7117486,
+    "ast_hash": "b2b69bc770866322c9cce92379edb7e4",
+    "semantic_hash": "b2b69bc770866322c9cce92379edb7e4"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\discount.routes.ts": {
+    "mtime": 1781694310.2082946,
+    "ast_hash": "bdd83d301d87e1ae73cbed1ddb4e52c5",
+    "semantic_hash": "bdd83d301d87e1ae73cbed1ddb4e52c5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\force-join.routes.ts": {
+    "mtime": 1781621392.5318656,
+    "ast_hash": "d1b4f4ad3872d7cfafe5aac86c14cacf",
+    "semantic_hash": "d1b4f4ad3872d7cfafe5aac86c14cacf"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\forced-membership.routes.ts": {
+    "mtime": 1781627795.669497,
+    "ast_hash": "959c0c3a0ee43c55de2bd3e2c47136e3",
+    "semantic_hash": "959c0c3a0ee43c55de2bd3e2c47136e3"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\group.routes.ts": {
+    "mtime": 1780333139.9115431,
+    "ast_hash": "94180c34508fe64258eb656ca92c3a2e",
+    "semantic_hash": "94180c34508fe64258eb656ca92c3a2e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\keyword-reply.routes.ts": {
+    "mtime": 1780333139.9115431,
+    "ast_hash": "2e379a0a075b6fb8a56f198b204113ba",
+    "semantic_hash": "2e379a0a075b6fb8a56f198b204113ba"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\leaderboard.routes.ts": {
+    "mtime": 1781700426.7964518,
+    "ast_hash": "6b5f0e0dc0969b3c74786f2c1f224f5e",
+    "semantic_hash": "6b5f0e0dc0969b3c74786f2c1f224f5e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\lottery.routes.ts": {
+    "mtime": 1782302370.7564993,
+    "ast_hash": "043ca31c098c543fd8a127cd434ee400",
+    "semantic_hash": "043ca31c098c543fd8a127cd434ee400"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\menu.routes.ts": {
+    "mtime": 1781770149.8135192,
+    "ast_hash": "b75d649ea55b433ccfd54731df25c333",
+    "semantic_hash": "b75d649ea55b433ccfd54731df25c333"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\mini-app-log.routes.ts": {
+    "mtime": 1781116740.4006627,
+    "ast_hash": "a3c07bee1adc7adaa3902557c4e584b3",
+    "semantic_hash": "a3c07bee1adc7adaa3902557c4e584b3"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\mini-app.routes.ts": {
+    "mtime": 1781620176.094833,
+    "ast_hash": "29bfd45bd82ab59dc31136c3c3fb37ff",
+    "semantic_hash": "29bfd45bd82ab59dc31136c3c3fb37ff"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\post.routes.ts": {
+    "mtime": 1782406228.0702744,
+    "ast_hash": "4c529e1b3fb19d592c56a9410b07fbce",
+    "semantic_hash": "4c529e1b3fb19d592c56a9410b07fbce"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\referral.routes.ts": {
+    "mtime": 1782248656.9302957,
+    "ast_hash": "55f1b68eeb82dd5e28cf44e3cff3d770",
+    "semantic_hash": "55f1b68eeb82dd5e28cf44e3cff3d770"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\scoring.routes.ts": {
+    "mtime": 1781116740.4146626,
+    "ast_hash": "07a7b237eace449c7991cf99082ddab0",
+    "semantic_hash": "07a7b237eace449c7991cf99082ddab0"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\search.routes.ts": {
+    "mtime": 1782050433.6333454,
+    "ast_hash": "174bb5132adc3cd15640c2ba4f9428c2",
+    "semantic_hash": "174bb5132adc3cd15640c2ba4f9428c2"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\settings.routes.ts": {
+    "mtime": 1782129094.0630407,
+    "ast_hash": "6a52e49fd720a24adb060255e9b512d9",
+    "semantic_hash": "6a52e49fd720a24adb060255e9b512d9"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\system-integrity.routes.ts": {
+    "mtime": 1782233843.6172502,
+    "ast_hash": "b20663fede6857b86a6bb74a3d89cf6a",
+    "semantic_hash": "b20663fede6857b86a6bb74a3d89cf6a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\system-log.routes.ts": {
+    "mtime": 1780333139.9115431,
+    "ast_hash": "ec9f8e76411add6351ca5a35ef95e7fc",
+    "semantic_hash": "ec9f8e76411add6351ca5a35ef95e7fc"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\user-delete.routes.ts": {
+    "mtime": 1782238783.5565753,
+    "ast_hash": "0773d82b723f0158afa08a7fac25bb02",
+    "semantic_hash": "0773d82b723f0158afa08a7fac25bb02"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\user-event.routes.ts": {
+    "mtime": 1782242234.4473412,
+    "ast_hash": "5b7976b3bcd7e382955f2d244c8653db",
+    "semantic_hash": "5b7976b3bcd7e382955f2d244c8653db"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\routes\\user.routes.ts": {
+    "mtime": 1782243964.863555,
+    "ast_hash": "76611cf93acbd2000352a9fff6f98c79",
+    "semantic_hash": "76611cf93acbd2000352a9fff6f98c79"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\api\\server.ts": {
+    "mtime": 1782242299.257912,
+    "ast_hash": "721be22dc770384a2e870395a17cff04",
+    "semantic_hash": "721be22dc770384a2e870395a17cff04"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\handlers\\index.ts": {
+    "mtime": 1782409954.633703,
+    "ast_hash": "d13f6a5a6f0786d38f2e26f2cba80181",
+    "semantic_hash": "d13f6a5a6f0786d38f2e26f2cba80181"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\handlers\\post-handlers.ts": {
+    "mtime": 1782422961.8278022,
+    "ast_hash": "31a8cd9aba47f0e55ed42e8b254083ee",
+    "semantic_hash": "31a8cd9aba47f0e55ed42e8b254083ee"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\keyboards\\index.ts": {
+    "mtime": 1782121987.7250597,
+    "ast_hash": "b913c3241cf5baa93ecfedd0320425ff",
+    "semantic_hash": "b913c3241cf5baa93ecfedd0320425ff"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\keyboards\\post-keyboards.ts": {
+    "mtime": 1782422422.9352956,
+    "ast_hash": "72c94f1098a0a5666df1124f65e7c76e",
+    "semantic_hash": "72c94f1098a0a5666df1124f65e7c76e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\middlewares\\index.ts": {
+    "mtime": 1782242195.5420973,
+    "ast_hash": "fe9e89fe9ebe9433ddb0b589891858d0",
+    "semantic_hash": "fe9e89fe9ebe9433ddb0b589891858d0"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\notifications.ts": {
+    "mtime": 1782045227.8707192,
+    "ast_hash": "4104c00bac38079888a7711a3d6a7f1f",
+    "semantic_hash": "4104c00bac38079888a7711a3d6a7f1f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\service-toggle.ts": {
+    "mtime": 1781117828.9478242,
+    "ast_hash": "b5d516fd81e9001561356b22a2b6a39d",
+    "semantic_hash": "b5d516fd81e9001561356b22a2b6a39d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\services\\inline-keyboard-session.service.ts": {
+    "mtime": 1781957131.9676917,
+    "ast_hash": "c5ada92bf3301d1adc21dc2ce977db00",
+    "semantic_hash": "c5ada92bf3301d1adc21dc2ce977db00"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\shared.ts": {
+    "mtime": 1782394309.9594455,
+    "ast_hash": "4cfdec5bf8d9cae97c398ed780808d91",
+    "semantic_hash": "4cfdec5bf8d9cae97c398ed780808d91"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\bot\\webhooks\\chatMember.handler.ts": {
+    "mtime": 1781631370.7034416,
+    "ast_hash": "553e8550091d76e6910ec8da80d225b7",
+    "semantic_hash": "553e8550091d76e6910ec8da80d225b7"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\config\\index.ts": {
+    "mtime": 1781949732.2357316,
+    "ast_hash": "7d2cf9c49921ad1dd063f816b30c869f",
+    "semantic_hash": "7d2cf9c49921ad1dd063f816b30c869f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\constants.ts": {
+    "mtime": 1781116740.4566634,
+    "ast_hash": "13b19fc731144886ee63328a39567806",
+    "semantic_hash": "13b19fc731144886ee63328a39567806"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\index.ts": {
+    "mtime": 1781950042.0007186,
+    "ast_hash": "35cd2322bbc67bfe61b3eeb4814d7be7",
+    "semantic_hash": "35cd2322bbc67bfe61b3eeb4814d7be7"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\middleware\\membership.guard.ts": {
+    "mtime": 1781629036.2184422,
+    "ast_hash": "df669933cd98659d8a3e6f937406ad48",
+    "semantic_hash": "df669933cd98659d8a3e6f937406ad48"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\prisma\\client.ts": {
+    "mtime": 1779957864.0,
+    "ast_hash": "7f57aecaff344ede409d390f5dfd736f",
+    "semantic_hash": "7f57aecaff344ede409d390f5dfd736f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\queue\\leaderboard.queue.ts": {
+    "mtime": 1781697917.604693,
+    "ast_hash": "003e7e226931cbef7e398af5df887cf8",
+    "semantic_hash": "003e7e226931cbef7e398af5df887cf8"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\queue\\membership.queue.ts": {
+    "mtime": 1781613996.5662687,
+    "ast_hash": "848eb8d8bd5996c4b4b7741d86aac8af",
+    "semantic_hash": "848eb8d8bd5996c4b4b7741d86aac8af"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\repositories\\broadcast.repository.ts": {
+    "mtime": 1782236033.7551253,
+    "ast_hash": "74e29a0185191d3cd0423642c29823de",
+    "semantic_hash": "74e29a0185191d3cd0423642c29823de"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\repositories\\channel.repository.ts": {
+    "mtime": 1781631452.5757632,
+    "ast_hash": "78e0348f397c98289a7cbaa762d218bd",
+    "semantic_hash": "78e0348f397c98289a7cbaa762d218bd"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\repositories\\discount.repository.ts": {
+    "mtime": 1780333139.9305296,
+    "ast_hash": "1863276c2fd1d42acd8cf0ce5fe435cb",
+    "semantic_hash": "1863276c2fd1d42acd8cf0ce5fe435cb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\repositories\\lottery.repository.ts": {
+    "mtime": 1782302286.079219,
+    "ast_hash": "cbde9a5b838921656fdca37e155cc0e2",
+    "semantic_hash": "cbde9a5b838921656fdca37e155cc0e2"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\repositories\\post.repository.ts": {
+    "mtime": 1782408126.734537,
+    "ast_hash": "f6c9e51b0dcb7b7f605d322a517508f4",
+    "semantic_hash": "f6c9e51b0dcb7b7f605d322a517508f4"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\repositories\\user.repository.ts": {
+    "mtime": 1782296358.0636022,
+    "ast_hash": "ff16130e15682f9b767be03c94a07383",
+    "semantic_hash": "ff16130e15682f9b767be03c94a07383"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\scheduler.ts": {
+    "mtime": 1782302803.5198104,
+    "ast_hash": "cdea96b3557dee9c5444104c18addf64",
+    "semantic_hash": "cdea96b3557dee9c5444104c18addf64"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\scripts\\check-post-messages.ts": {
+    "mtime": 1782392041.488371,
+    "ast_hash": "32a75e74257a3581ad80e9d2a469c653",
+    "semantic_hash": "32a75e74257a3581ad80e9d2a469c653"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\scripts\\migrate-post-messages.ts": {
+    "mtime": 1782394376.53164,
+    "ast_hash": "0747b4ece7dbfdeecf64bc0fda5aa7a3",
+    "semantic_hash": "0747b4ece7dbfdeecf64bc0fda5aa7a3"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\scripts\\repair-broadcast-data.ts": {
+    "mtime": 1782224223.8954234,
+    "ast_hash": "532382eccca49c2e6f344ded3a32ab5c",
+    "semantic_hash": "532382eccca49c2e6f344ded3a32ab5c"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\scripts\\repair-unicode.ts": {
+    "mtime": 1781696952.354345,
+    "ast_hash": "2dc8306f5c0aa152cd2494e432085e75",
+    "semantic_hash": "2dc8306f5c0aa152cd2494e432085e75"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\ai.service.ts": {
+    "mtime": 1781116740.4696634,
+    "ast_hash": "6c69102c0757cd76b19cf090df7b34d5",
+    "semantic_hash": "6c69102c0757cd76b19cf090df7b34d5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\analytics.service.ts": {
+    "mtime": 1782215100.6465843,
+    "ast_hash": "988f0ffbb9880e15a56f7b1693084c3b",
+    "semantic_hash": "988f0ffbb9880e15a56f7b1693084c3b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\attribution.service.ts": {
+    "mtime": 1782229841.7232184,
+    "ast_hash": "f9a434ea7bb442c68b92d9e414d4b061",
+    "semantic_hash": "f9a434ea7bb442c68b92d9e414d4b061"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\bot-admin.service.ts": {
+    "mtime": 1780333139.9461575,
+    "ast_hash": "86519703b8f739493223a3841fa73ffe",
+    "semantic_hash": "86519703b8f739493223a3841fa73ffe"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\broadcast-diagnostics.service.ts": {
+    "mtime": 1782220321.4416554,
+    "ast_hash": "921d17c9c66e75ab92da06a6abeefd81",
+    "semantic_hash": "921d17c9c66e75ab92da06a6abeefd81"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\broadcast-rca.service.ts": {
+    "mtime": 1782222244.9438791,
+    "ast_hash": "f3255a8d34fad3002d20da9809dffe30",
+    "semantic_hash": "f3255a8d34fad3002d20da9809dffe30"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\broadcast-trace.service.ts": {
+    "mtime": 1782226071.9424758,
+    "ast_hash": "4a558880b0d2f09069ea1785acd79776",
+    "semantic_hash": "4a558880b0d2f09069ea1785acd79776"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\broadcast.service.ts": {
+    "mtime": 1782224592.3176422,
+    "ast_hash": "5b1f4838b4d7e82d2a40962b9649a2a4",
+    "semantic_hash": "5b1f4838b4d7e82d2a40962b9649a2a4"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\channel.service.ts": {
+    "mtime": 1781949559.7651913,
+    "ast_hash": "7386a48780b4f6debea78ada235304b3",
+    "semantic_hash": "7386a48780b4f6debea78ada235304b3"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\discount.service.ts": {
+    "mtime": 1780333139.9461575,
+    "ast_hash": "10d0898774dd09fda721b911d10c7547",
+    "semantic_hash": "10d0898774dd09fda721b911d10c7547"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\forceJoin.service.ts": {
+    "mtime": 1781621378.1380694,
+    "ast_hash": "82351e98207e46262cda41d66d8d404c",
+    "semantic_hash": "82351e98207e46262cda41d66d8d404c"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\group.service.ts": {
+    "mtime": 1780333139.9461575,
+    "ast_hash": "eb9af9b7a300782e2f04b3835a8b7926",
+    "semantic_hash": "eb9af9b7a300782e2f04b3835a8b7926"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\keyword-reply.service.ts": {
+    "mtime": 1780333139.9461575,
+    "ast_hash": "66799c5edc6008f7b73b5670a28fb13b",
+    "semantic_hash": "66799c5edc6008f7b73b5670a28fb13b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\leaderboard.service.ts": {
+    "mtime": 1782121920.169662,
+    "ast_hash": "37e38a5b13b0900d46d63d271674562d",
+    "semantic_hash": "37e38a5b13b0900d46d63d271674562d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\lottery.service.ts": {
+    "mtime": 1782302882.459792,
+    "ast_hash": "08b3d310cb87931ed98fa62d2026b2eb",
+    "semantic_hash": "08b3d310cb87931ed98fa62d2026b2eb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\membership\\forcedMembership.service.ts": {
+    "mtime": 1781629316.8877587,
+    "ast_hash": "6c64ce364273c992e8c166ffd0806483",
+    "semantic_hash": "6c64ce364273c992e8c166ffd0806483"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\membership\\membership.service.ts": {
+    "mtime": 1781629185.425918,
+    "ast_hash": "63b3900f1a70e40029d68e469e4cd6bf",
+    "semantic_hash": "63b3900f1a70e40029d68e469e4cd6bf"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\mini-app-log.service.ts": {
+    "mtime": 1781116740.4756682,
+    "ast_hash": "f053a77de39159244c387fd9e370d52f",
+    "semantic_hash": "f053a77de39159244c387fd9e370d52f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\mini-app.service.ts": {
+    "mtime": 1782235817.0202641,
+    "ast_hash": "df56574d7c416ff5870d4fd20b5b25eb",
+    "semantic_hash": "df56574d7c416ff5870d4fd20b5b25eb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\notification.service.ts": {
+    "mtime": 1781686455.3541675,
+    "ast_hash": "70b3f681c37b1906d0c78e2b6a2cb8e7",
+    "semantic_hash": "70b3f681c37b1906d0c78e2b6a2cb8e7"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\point.service.ts": {
+    "mtime": 1780333139.9461575,
+    "ast_hash": "0f16ff37841a72aa38c86d078d0c9cec",
+    "semantic_hash": "0f16ff37841a72aa38c86d078d0c9cec"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\post-message.service.ts": {
+    "mtime": 1782414718.3785748,
+    "ast_hash": "991a00131d66b51db4b80f4bbaae22f1",
+    "semantic_hash": "991a00131d66b51db4b80f4bbaae22f1"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\post-normalizer.service.ts": {
+    "mtime": 1782407859.3449254,
+    "ast_hash": "380988ebf55d763a34a8ee3ec0b22882",
+    "semantic_hash": "380988ebf55d763a34a8ee3ec0b22882"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\post-renderer.service.ts": {
+    "mtime": 1782409896.3607068,
+    "ast_hash": "ee8ed87fe9f4ebe3c4a2d2e8fb077e01",
+    "semantic_hash": "ee8ed87fe9f4ebe3c4a2d2e8fb077e01"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\post.service.ts": {
+    "mtime": 1782422735.2460155,
+    "ast_hash": "e5d271e36251a69d5a75f4aaf46e5639",
+    "semantic_hash": "e5d271e36251a69d5a75f4aaf46e5639"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\referral.service.ts": {
+    "mtime": 1782248724.1721013,
+    "ast_hash": "c8df810e4918ac89d8b2ad01f73c3754",
+    "semantic_hash": "c8df810e4918ac89d8b2ad01f73c3754"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\renderer\\delivery-debug.service.ts": {
+    "mtime": 1782410076.5782607,
+    "ast_hash": "c9c8787cd5a26566599233fbc0ebb8e5",
+    "semantic_hash": "c9c8787cd5a26566599233fbc0ebb8e5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\renderer\\index.ts": {
+    "mtime": 1782318908.2891703,
+    "ast_hash": "3d5e66571b2f8f652a0586b00e3c0cdf",
+    "semantic_hash": "3d5e66571b2f8f652a0586b00e3c0cdf"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\renderer\\renderer-resolver.service.ts": {
+    "mtime": 1781948768.743923,
+    "ast_hash": "d316048cc34c67cec34c961264ecd94b",
+    "semantic_hash": "d316048cc34c67cec34c961264ecd94b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\renderer\\telegram-native-renderer.service.ts": {
+    "mtime": 1782409935.6239522,
+    "ast_hash": "0bfce699d62a02bbe7eff74f13f98290",
+    "semantic_hash": "0bfce699d62a02bbe7eff74f13f98290"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\renderer\\telegram-request-validator.service.ts": {
+    "mtime": 1781771411.7514775,
+    "ast_hash": "5e57b1acdd9c7610d208293212e0aac7",
+    "semantic_hash": "5e57b1acdd9c7610d208293212e0aac7"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\renderer\\telegram-snapshot-comparator.service.ts": {
+    "mtime": 1781771416.2425077,
+    "ast_hash": "f38ca3ebc6e380a074cd8cc3ab2c4ea9",
+    "semantic_hash": "f38ca3ebc6e380a074cd8cc3ab2c4ea9"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\requiredChannels.service.ts": {
+    "mtime": 1781629221.1232252,
+    "ast_hash": "2ae48d16951c647306a684ed4c2f263d",
+    "semantic_hash": "2ae48d16951c647306a684ed4c2f263d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\scoring.service.ts": {
+    "mtime": 1782035490.6595778,
+    "ast_hash": "e6a71453668673dac77d3203db50f00d",
+    "semantic_hash": "e6a71453668673dac77d3203db50f00d"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\settings.service.ts": {
+    "mtime": 1782129077.61439,
+    "ast_hash": "483d964f253afcd1de55080f60bdd2c5",
+    "semantic_hash": "483d964f253afcd1de55080f60bdd2c5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\system-integrity.service.ts": {
+    "mtime": 1782233771.7679088,
+    "ast_hash": "6ea08bc5046687e1643aba1d8dea63ca",
+    "semantic_hash": "6ea08bc5046687e1643aba1d8dea63ca"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\system-log.service.ts": {
+    "mtime": 1780333139.9633138,
+    "ast_hash": "0be7d7467a50ef245c5cb660b7dbd9ce",
+    "semantic_hash": "0be7d7467a50ef245c5cb660b7dbd9ce"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\user-delete.service.ts": {
+    "mtime": 1782238735.2571301,
+    "ast_hash": "4f52a58f7f973f0df3972f0d776b6541",
+    "semantic_hash": "4f52a58f7f973f0df3972f0d776b6541"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\user-event.service.ts": {
+    "mtime": 1782242146.090659,
+    "ast_hash": "108442753823dcea5ae08134208329c5",
+    "semantic_hash": "108442753823dcea5ae08134208329c5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\user.service.ts": {
+    "mtime": 1782296198.0784776,
+    "ast_hash": "0f0930e82a3b3dffa351a21a4b6bb3a4",
+    "semantic_hash": "0f0930e82a3b3dffa351a21a4b6bb3a4"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\services\\wordpress-api.client.ts": {
+    "mtime": 1781116740.4986649,
+    "ast_hash": "7151cbc8100cc744608e8939a8910273",
+    "semantic_hash": "7151cbc8100cc744608e8939a8910273"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\shared\\message-format\\index.ts": {
+    "mtime": 1781774983.8812618,
+    "ast_hash": "1757c0063096724a2ac0ad86c23cf81e",
+    "semantic_hash": "1757c0063096724a2ac0ad86c23cf81e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\shared\\message-format\\normalizer.ts": {
+    "mtime": 1781774958.6249144,
+    "ast_hash": "18878b5779174ba736aa69f6f7ece33e",
+    "semantic_hash": "18878b5779174ba736aa69f6f7ece33e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\shared\\message-format\\parser.ts": {
+    "mtime": 1781774981.2042096,
+    "ast_hash": "1d7dfe7b4bba7256b55da16dfca546d4",
+    "semantic_hash": "1d7dfe7b4bba7256b55da16dfca546d4"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\shared\\message-format\\renderer.ts": {
+    "mtime": 1781774983.265276,
+    "ast_hash": "aa1f0f5a3c4c809db41318f0a31a11af",
+    "semantic_hash": "aa1f0f5a3c4c809db41318f0a31a11af"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\shared\\message-format\\serializer.ts": {
+    "mtime": 1781774965.4501395,
+    "ast_hash": "f8a058a367fa289d2a4ae629a3104cf5",
+    "semantic_hash": "f8a058a367fa289d2a4ae629a3104cf5"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\shared\\message-format\\telegram.ts": {
+    "mtime": 1782056942.518927,
+    "ast_hash": "d7bc922cb8905b72e8d6915a58fb93b2",
+    "semantic_hash": "d7bc922cb8905b72e8d6915a58fb93b2"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\shared\\message-format\\types.ts": {
+    "mtime": 1781774953.8939307,
+    "ast_hash": "8f598c0e66c47ff6dbd22e0c9024466a",
+    "semantic_hash": "8f598c0e66c47ff6dbd22e0c9024466a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\shared\\message-format\\validator.ts": {
+    "mtime": 1781774963.279252,
+    "ast_hash": "858ee676b33cd66f1485d876b2e42025",
+    "semantic_hash": "858ee676b33cd66f1485d876b2e42025"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\tests\\post-content-preservation.test.ts": {
+    "mtime": 1781162674.482403,
+    "ast_hash": "0d968cda0c066726f9dc79ee38bc37aa",
+    "semantic_hash": "0d968cda0c066726f9dc79ee38bc37aa"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\utils\\cache.ts": {
+    "mtime": 1781949746.7667668,
+    "ast_hash": "68dce93bc4606bc41fbec354589c7471",
+    "semantic_hash": "68dce93bc4606bc41fbec354589c7471"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\utils\\events.ts": {
+    "mtime": 1782061092.576324,
+    "ast_hash": "b490445669cad11162ff583cfde8b5eb",
+    "semantic_hash": "b490445669cad11162ff583cfde8b5eb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\utils\\grapheme.ts": {
+    "mtime": 1781696709.7765028,
+    "ast_hash": "03575aad532921751b70335b3664fec9",
+    "semantic_hash": "03575aad532921751b70335b3664fec9"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\utils\\logger.ts": {
+    "mtime": 1781950619.2794013,
+    "ast_hash": "7db0c2ae29b8406bafdae10ceda04273",
+    "semantic_hash": "7db0c2ae29b8406bafdae10ceda04273"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\utils\\prisma-error.ts": {
+    "mtime": 1782050014.844182,
+    "ast_hash": "454e54eac6d34e51809c184def4e2f75",
+    "semantic_hash": "454e54eac6d34e51809c184def4e2f75"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\utils\\redis.ts": {
+    "mtime": 1782050032.3797715,
+    "ast_hash": "572b6f34a70ee17a4d9e3ea0cf063899",
+    "semantic_hash": "572b6f34a70ee17a4d9e3ea0cf063899"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\utils\\serialize.ts": {
+    "mtime": 1782246967.0052853,
+    "ast_hash": "65c617589ac2982f842553f909c436db",
+    "semantic_hash": "65c617589ac2982f842553f909c436db"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\utils\\unicode.ts": {
+    "mtime": 1781696768.4788697,
+    "ast_hash": "16e9df244643e65a177589646c9a48e8",
+    "semantic_hash": "16e9df244643e65a177589646c9a48e8"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\workers\\leaderboard.worker.ts": {
+    "mtime": 1781697921.4343815,
+    "ast_hash": "24ad06bc15763616fdb686876035b75b",
+    "semantic_hash": "24ad06bc15763616fdb686876035b75b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\src\\workers\\membership.worker.ts": {
+    "mtime": 1781629209.8380544,
+    "ast_hash": "de114707676b1c14b527f45f1ebfdb50",
+    "semantic_hash": "de114707676b1c14b527f45f1ebfdb50"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\test.js": {
+    "mtime": 1781710246.135007,
+    "ast_hash": "1e418341d771b0283486477aed1e9118",
+    "semantic_hash": "1e418341d771b0283486477aed1e9118"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\tsconfig.json": {
+    "mtime": 1781697097.6131675,
+    "ast_hash": "d4111a99cc461bf9f0f18cfd2263fa59",
+    "semantic_hash": "d4111a99cc461bf9f0f18cfd2263fa59"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\vitest.config.ts": {
+    "mtime": 1781182126.2372973,
+    "ast_hash": "c1349024fab1fbd7dfc5c2686e8bb127",
+    "semantic_hash": "c1349024fab1fbd7dfc5c2686e8bb127"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\admin\\class-propchi-admin.php": {
+    "mtime": 1781116740.5166614,
+    "ast_hash": "18b77894dda0281e04f0225ba7be669e",
+    "semantic_hash": "18b77894dda0281e04f0225ba7be669e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\includes\\class-propchi-activator.php": {
+    "mtime": 1781116740.5286648,
+    "ast_hash": "699fc4e945c05ad294fa19591ca54ec6",
+    "semantic_hash": "699fc4e945c05ad294fa19591ca54ec6"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\includes\\class-propchi-db.php": {
+    "mtime": 1781116740.5306652,
+    "ast_hash": "68baa9719c684ec5532ec446b2f0bd59",
+    "semantic_hash": "68baa9719c684ec5532ec446b2f0bd59"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\includes\\class-propchi-engine.php": {
+    "mtime": 1781116740.5336637,
+    "ast_hash": "96f3721a7c106d45c3d7f45d19b4958b",
+    "semantic_hash": "96f3721a7c106d45c3d7f45d19b4958b"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\includes\\class-propchi-gemini.php": {
+    "mtime": 1781116740.5436623,
+    "ast_hash": "5c85e64b1384f11fe7b6d6fcdacd5e10",
+    "semantic_hash": "5c85e64b1384f11fe7b6d6fcdacd5e10"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\includes\\class-propchi-rest.php": {
+    "mtime": 1781116740.545669,
+    "ast_hash": "48ebb3a202e34bb6cf332dcaf439867e",
+    "semantic_hash": "48ebb3a202e34bb6cf332dcaf439867e"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\includes\\class-propchi-security.php": {
+    "mtime": 1781116740.555662,
+    "ast_hash": "a9a1e3136565ed05d56c2448f65e57f4",
+    "semantic_hash": "a9a1e3136565ed05d56c2448f65e57f4"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\includes\\class-propchi-settings.php": {
+    "mtime": 1781116740.5566654,
+    "ast_hash": "333713146bc2c1a156f8023a3c93c9fb",
+    "semantic_hash": "333713146bc2c1a156f8023a3c93c9fb"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\includes\\class-propchi-utils.php": {
+    "mtime": 1781116740.5576615,
+    "ast_hash": "4d0eaefc8c7afac89aa64fa2289cd1e3",
+    "semantic_hash": "4d0eaefc8c7afac89aa64fa2289cd1e3"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\propchi-ai-backend.php": {
+    "mtime": 1781116740.5696652,
+    "ast_hash": "0d6eafe3650ecd295ed25dd10ac8e2d4",
+    "semantic_hash": "0d6eafe3650ecd295ed25dd10ac8e2d4"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\AGENTS.md": {
+    "mtime": 1782475550.9927464,
+    "ast_hash": "13285742ccf07c9abeafebf9f4e0e29a",
+    "semantic_hash": "13285742ccf07c9abeafebf9f4e0e29a"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\README.md": {
+    "mtime": 1781116739.9396646,
+    "ast_hash": "e5d13a83c910c4c763019356d201c7f6",
+    "semantic_hash": "e5d13a83c910c4c763019356d201c7f6"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\docker-compose.yml": {
+    "mtime": 1781613925.062444,
+    "ast_hash": "b8e197982c4fdd3a9049bd942ef73e9f",
+    "semantic_hash": "b8e197982c4fdd3a9049bd942ef73e9f"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\schema_diff.txt": {
+    "mtime": 1781704907.9318871,
+    "ast_hash": "8c04e17fd851a6a25749d80aa3ca30a9",
+    "semantic_hash": "8c04e17fd851a6a25749d80aa3ca30a9"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\structure.txt": {
+    "mtime": 1780324160.6170268,
+    "ast_hash": "3b99d40e23ee4e825aadf95d4d78c4fd",
+    "semantic_hash": "3b99d40e23ee4e825aadf95d4d78c4fd"
+  },
+  "C:\\Users\\mohse\\BotPropchi\\wordpress-plugin\\README.md": {
+    "mtime": 1781116740.5076644,
+    "ast_hash": "dd4ed14af50cbf6e0c9c41f0c619855e",
+    "semantic_hash": "dd4ed14af50cbf6e0c9c41f0c619855e"
+  }
+}

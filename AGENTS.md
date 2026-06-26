@@ -89,3 +89,8 @@ Test files: `src/__tests__/*.test.ts`
 - No CI/CD workflows in repo
 - Prisma client is generated at `src/prisma/client.ts`
 - All user-facing strings are in Persian (Farsi)
+- Admin panel `src/index.ts` and `src/api/server.ts` are legacy/dead code — the real app is the Next.js frontend that calls the root API via `NEXT_PUBLIC_API_URL`
+- Admin panel uses cookie-based auth (`admin_token` cookie), root API uses JWT Bearer tokens
+- Admin panel middleware blocks non-OWNER/SUPER_ADMIN from `/dashboard/settings` and `/dashboard/admin-users`
+- Redis is optional — falls back to in-memory cache (`node-cache`) if `REDIS_URL` not set
+- `admin/tsconfig.json` excludes `src/api`, `src/index.ts`, `src/scheduler.ts` from Next.js build (those are legacy files)

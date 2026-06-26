@@ -619,8 +619,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
     ];
     if (knownTexts.includes(text)) return next();
 
-    // Skip if admin is in Post Management or Menu Editor mode
-    if (cache.get(`post_mgmt_mode:${ctx.from.id}`) || cache.get(`menu:edit_mode:${ctx.from.id}`)) {
+    // Skip if admin is in Post Management, Menu Editor, or Multi-Message Editor mode
+    if (cache.get(`post_mgmt_mode:${ctx.from.id}`) || cache.get(`menu:edit_mode:${ctx.from.id}`) || cache.get(`post:editor:${ctx.from.id}:active`)) {
       return next();
     }
 

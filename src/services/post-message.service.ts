@@ -405,8 +405,13 @@ export const postMessageService = {
   list(postId: number) { return prisma.postMessage.findMany({ where: { postId }, orderBy: { order: 'asc' } }); },
   get(id: number) { return prisma.postMessage.findUnique({ where: { id } }); },
   async create(postId: number, data: any) {
-    const last = await prisma.postMessage.aggregate({ where: { postId }, _max: { order: true } });
-    const order = (last._max.order ?? -1) + 1;
+    let order: number;
+    if (data.order != null) {
+      order = data.order;
+    } else {
+      const last = await prisma.postMessage.aggregate({ where: { postId }, _max: { order: true } });
+      order = (last._max.order ?? -1) + 1;
+    }
     const msg = await prisma.postMessage.create({
       data: {
         postId, order,

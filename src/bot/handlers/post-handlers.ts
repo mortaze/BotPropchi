@@ -2792,6 +2792,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       });
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      await ctx.reply('✅ پیام اضافه شد');
       const updated = await postService.findById(editorPostId);
       if (updated) await refreshEditorMessages(ctx, updated);
       return;
@@ -2970,6 +2971,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     });
     cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
+    await ctx.reply('✅ پیام اضافه شد');
     const updated = await postService.findById(editorPostId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
