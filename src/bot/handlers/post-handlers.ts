@@ -2425,10 +2425,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const prevMsgId = messages[msgIdx - 1].id;
     const currentOrder = messages[msgIdx].order;
     const prevOrder = messages[msgIdx - 1].order;
-    await Promise.all([
-      postMessageService.update(msgId, { order: prevOrder }),
-      postMessageService.update(prevMsgId, { order: currentOrder }),
-    ]);
+    await postMessageService.swapOrder(msgId, currentOrder, prevMsgId, prevOrder, postId);
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
@@ -2447,10 +2444,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const nextMsgId = messages[msgIdx + 1].id;
     const currentOrder = messages[msgIdx].order;
     const nextOrder = messages[msgIdx + 1].order;
-    await Promise.all([
-      postMessageService.update(msgId, { order: nextOrder }),
-      postMessageService.update(nextMsgId, { order: currentOrder }),
-    ]);
+    await postMessageService.swapOrder(msgId, currentOrder, nextMsgId, nextOrder, postId);
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });

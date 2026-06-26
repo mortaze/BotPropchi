@@ -449,6 +449,20 @@ export const postMessageService = {
     logger.info(`[PostEditor][MessageMove] post=${postId} reorder ${orderedIds.length} messages`);
     return prisma.$transaction(tx);
   },
+  async swapOrder(idA: number, orderA: number, idB: number, orderB: number, postId: number) {
+    const SENTINEL = -999999;
+    logger.debug({ action: 'POST_MESSAGE_REORDER', postId, sourceOrder: orderA, targetOrder: orderB, messageId: idA });
+    try {
+      await prisma.$transaction([
+        prisma.postMessage.update({ where: { id: idA }, data: { order: SENTINEL } }),
+        prisma.postMessage.update({ where: { id: idB }, data: { order: orderA } }),
+        prisma.postMessage.update({ where: { id: idA }, data: { order: orderB } }),
+      ]);
+    } catch (error: any) {
+      logger.error({ action: 'POST_MESSAGE_REORDER_FAILED', error, stack: error?.stack });
+      throw error;
+    }
+  },
 };
 
 export function normalizeWriteData(postId: number, data: any): Prisma.PostMessageUncheckedCreateInput {
