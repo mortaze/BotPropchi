@@ -474,28 +474,18 @@ function buildButtonEditorInlineKeyboard(
       const row = buttons[r];
       if (!Array.isArray(row)) continue;
 
-      if (mode === 'move') {
-        // Move: show only valid directional arrows per row
-        const canUp = r > 0;
-        const canDown = r < buttons.length - 1;
-        const arrows: any[] = [];
-        if (canUp) arrows.push(Markup.button.callback('⬆️', `pbedit:move:${postId}:up:${r}:0`));
-        if (canDown) arrows.push(Markup.button.callback('⬇️', `pbedit:move:${postId}:down:${r}:0`));
-        if (arrows.length > 0) rows.push(arrows);
-      } else {
-        const rowButtons: any[] = [];
-        for (let c = 0; c < row.length; c++) {
-          const btn = row[c];
-          if (!btn) continue;
-          const label = btn.text || 'بدون عنوان';
-          const safe = graphemeTruncate(sanitizeTelegramText(label), 13);
-          const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : '{＋}';
-          rowButtons.push(
-            Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
-          );
-        }
-        if (rowButtons.length > 0) rows.push(rowButtons);
+      const rowButtons: any[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const btn = row[c];
+        if (!btn) continue;
+        const label = btn.text || 'بدون عنوان';
+        const safe = graphemeTruncate(sanitizeTelegramText(label), 13);
+        const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : mode === 'move' ? '{🔀}' : '{＋}';
+        rowButtons.push(
+          Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
+        );
       }
+      if (rowButtons.length > 0) rows.push(rowButtons);
     }
   } else if (mode === 'create') {
     // Empty state: single {＋} placeholder
@@ -526,6 +516,21 @@ export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: nu
     [Markup.button.callback('❌ لغو', `pbedit:type:cancel:${postId}`)],
   ]);
 };
+
+// ─── Reply Keyboard for Move Mode (directional arrows) ─────
+export function buildMoveReplyKeyboard(canUp: boolean, canDown: boolean, canLeft: boolean, canRight: boolean) {
+  const row1: string[] = [];
+  if (canUp) row1.push('⬆️ بالا');
+  if (canDown) row1.push('⬇️ پایین');
+  const row2: string[] = [];
+  if (canLeft) row2.push('⬅️ چپ');
+  if (canRight) row2.push('➡️ راست');
+  const rows: string[][] = [];
+  if (row1.length) rows.push(row1);
+  if (row2.length) rows.push(row2);
+  rows.push(['✅ پایان جابجایی', '❌ لغو']);
+  return Markup.keyboard(rows).resize().persistent();
+}
 
 // ─── Centralized Renderer ──────────────────────────────────
 // THE single entry point. Returns { text, reply_markup }.

@@ -40,6 +40,7 @@ import {
   buildEditButtonTypeKeyboard,
   buildButtonColorSelectionKeyboard,
   renderButtonEditor,
+  buildMoveReplyKeyboard,
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
@@ -1300,31 +1301,104 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
   }
 
-  // ─── Callback: Directional move arrows ────────────────────
-  bot.action(/^pbedit:move:(\d+):(up|down):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
+  // ─── Reply Keyboard: Move Mode Directional Arrows ─────────
+  // ⬆️ ⬇️ ⬅️ ➡️ ✅ پایان ❌ لغو
+  bot.hears('⬆️ بالا', async (ctx: any) => { await handleMoveDirection(ctx, 'up'); });
+  bot.hears('⬇️ پایین', async (ctx: any) => { await handleMoveDirection(ctx, 'down'); });
+  bot.hears('⬅️ چپ', async (ctx: any) => { await handleMoveDirection(ctx, 'left'); });
+  bot.hears('➡️ راست', async (ctx: any) => { await handleMoveDirection(ctx, 'right'); });
+  bot.hears('✅ پایان جابجایی', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    const postId = parseInt(ctx.match[1]);
-    const direction = ctx.match[2];
-    const row = parseInt(ctx.match[3]);
-    if (!requireButtonEditSession(ctx)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    clearMoveState(ctx.from.id);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await refreshButtonListView(ctx, postId);
+  });
+  bot.hears('❌ لغو', async (ctx: any, next: any) => {
+    const moveActive = cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'));
+    if (!moveActive) return next();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    clearMoveState(ctx.from.id);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await refreshButtonListView(ctx, postId);
+  });
+
+  function clearMoveState(userId: number) {
+    cache.del(pendingKey(userId, 'move_selected_row'));
+    cache.del(pendingKey(userId, 'move_selected_col'));
+    cache.del(pendingKey(userId, 'move_active'));
+  }
+
+  async function handleMoveDirection(ctx: any, direction: string) {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    const moveActive = cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'));
+    if (!moveActive) return;
+    const selRow = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row'));
+    const selCol = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_col'));
+    if (selRow === undefined || selCol === undefined) return;
+
     const post = await postService.findById(postId);
     if (!post) return;
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
     const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
-    if (!buttons[row] || !buttons[row][0]) return;
-    const btn = buttons[row][0];
-    if (direction === 'up' && row > 0) {
-      [buttons[row - 1], buttons[row]] = [buttons[row], buttons[row - 1]];
-    } else if (direction === 'down' && row < buttons.length - 1) {
-      [buttons[row], buttons[row + 1]] = [buttons[row + 1], buttons[row]];
-    } else {
-      return;
+    if (!buttons[selRow] || buttons[selRow][selCol] === undefined) return;
+
+    const btn = buttons[selRow][selCol];
+
+    if (direction === 'up') {
+      if (selRow <= 0) return;
+      buttons[selRow].splice(selCol, 1);
+      if (buttons[selRow].length === 0) buttons.splice(selRow, 1);
+      const targetRow = selRow - 1;
+      buttons[targetRow].unshift(btn);
+      cache.set(pendingKey(ctx.from.id, 'move_selected_row'), targetRow, 600);
+      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
+    } else if (direction === 'down') {
+      buttons[selRow].splice(selCol, 1);
+      if (buttons[selRow].length === 0) buttons.splice(selRow, 1);
+      const nextRowIdx = selRow;
+      if (nextRowIdx < buttons.length) {
+        buttons[nextRowIdx].unshift(btn);
+        cache.set(pendingKey(ctx.from.id, 'move_selected_row'), nextRowIdx, 600);
+        cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
+      } else {
+        buttons.push([btn]);
+        cache.set(pendingKey(ctx.from.id, 'move_selected_row'), buttons.length - 1, 600);
+        cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
+      }
+    } else if (direction === 'left') {
+      if (selCol <= 0) return;
+      [buttons[selRow][selCol - 1], buttons[selRow][selCol]] = [buttons[selRow][selCol], buttons[selRow][selCol - 1]];
+      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), selCol - 1, 600);
+    } else if (direction === 'right') {
+      if (selCol >= buttons[selRow].length - 1) return;
+      [buttons[selRow][selCol], buttons[selRow][selCol + 1]] = [buttons[selRow][selCol + 1], buttons[selRow][selCol]];
+      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), selCol + 1, 600);
     }
+
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-    await refreshButtonListView(ctx, postId);
-  });
+    const newRow = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row'))!;
+    const newCol = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_col'))!;
+    const canUp = newRow > 0;
+    const canDown = newRow < buttons.length - 1;
+    const canLeft = newCol > 0;
+    const canRight = newCol < (buttons[newRow]?.length || 0) - 1;
+    const replyKb = buildMoveReplyKeyboard(canUp, canDown, canLeft, canRight);
+    const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
+    if (msgId) {
+      const { text, reply_markup } = renderButtonEditor(postId, buttons, 'move');
+      try { await ctx.telegram.editMessageText(ctx.chat.id, msgId, null, text, { reply_markup }); } catch {}
+    }
+    await ctx.reply(`🔀 "${btn.text}" — جهت بعدی:`, replyKb);
+  }
 
   // ─── Handler: "➕ اضافه کردن دکمه جدید" (legacy reply keyboard) ──
   bot.hears('➕ اضافه کردن دکمه جدید', async (ctx: any) => {
@@ -1633,19 +1707,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode')) || 'create';
 
     if (mode === 'move') {
-      const srcRow = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
-      const srcCol = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
-      if (srcRow === undefined || srcCol === undefined) {
-        cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
-        cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
-        cache.set(pendingKey(ctx.from.id, 'editor_state'), 'move', 600);
-        await refreshButtonListView(ctx, postId);
-        await ctx.reply('🔀 حالت جابجایی:', postMoveModeReplyKeyboard());
-      } else {
-        cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
-        cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
-        await refreshButtonListView(ctx, postId);
-      }
+      // Phase 1: Select a button for moving
+      cache.set(pendingKey(ctx.from.id, 'move_selected_row'), row, 600);
+      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), col, 600);
+      cache.set(pendingKey(ctx.from.id, 'move_active'), true, 600);
+      // Compute valid directions
+      const canUp = row > 0;
+      const canDown = row < buttons.length - 1;
+      const canLeft = col > 0;
+      const canRight = col < (buttons[row]?.length || 0) - 1;
+      // Send Reply Keyboard with directional arrows
+      const replyKb = buildMoveReplyKeyboard(canUp, canDown, canLeft, canRight);
+      await ctx.reply(`🔀 "${buttons[row][col].text}" انتخاب شد.\nجهت حرکت را انتخاب کنید:`, replyKb);
       return;
     }
 
