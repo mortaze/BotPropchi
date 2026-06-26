@@ -1272,7 +1272,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   // State stored in pendingKey(ctx.from.id, 'editor_state')
   // Post ID stored in pendingKey(ctx.from.id, 'editing_post')
 
-  async function refreshButtonListView(ctx: any, postId: number) {
+  async function refreshButtonListView(ctx: any, postId: number, removeReplyKeyboard?: boolean) {
     const post = await postService.findById(postId);
     if (!post) return;
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
@@ -1280,7 +1280,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const editorMode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode'));
     const listMode: 'create' | 'edit' | 'delete' | 'move' = editorMode === 'edit' ? 'edit' : editorMode === 'delete' ? 'delete' : editorMode === 'move' ? 'move' : 'create';
 
-    const { text, reply_markup } = renderButtonEditor(postId, buttons, listMode);
+    let selectedPos: { row: number; col: number } | undefined;
+    if (listMode === 'move') {
+      const sr = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row'));
+      const sc = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_col'));
+      if (sr !== undefined && sc !== undefined) selectedPos = { row: sr, col: sc };
+    }
+
+    const { text, reply_markup } = renderButtonEditor(postId, buttons, listMode, selectedPos);
 
     const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
     if (!msgId && ctx.callbackQuery?.message?.message_id) {
@@ -1299,33 +1306,39 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const sent = await ctx.reply(text, { reply_markup });
       if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
     }
+
+    if (removeReplyKeyboard) {
+      try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+    }
   }
 
   // ─── Reply Keyboard: Move Mode Directional Arrows ─────────
-  // ⬆️ ⬇️ ⬅️ ➡️ ✅ پایان ❌ لغو
-  bot.hears('⬆️ بالا', async (ctx: any) => { await handleMoveDirection(ctx, 'up'); });
-  bot.hears('⬇️ پایین', async (ctx: any) => { await handleMoveDirection(ctx, 'down'); });
-  bot.hears('⬅️ چپ', async (ctx: any) => { await handleMoveDirection(ctx, 'left'); });
-  bot.hears('➡️ راست', async (ctx: any) => { await handleMoveDirection(ctx, 'right'); });
-  bot.hears('✅ پایان جابجایی', async (ctx: any) => {
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
-    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
-    if (!postId) return;
-    clearMoveState(ctx.from.id);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-    await refreshButtonListView(ctx, postId);
+  bot.hears('⬆️ بالا', async (ctx: any) => {
+    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return;
+    await handleMoveDirection(ctx, 'up');
   });
-  bot.hears('❌ لغو', async (ctx: any, next: any) => {
+  bot.hears('⬇️ پایین', async (ctx: any) => {
+    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return;
+    await handleMoveDirection(ctx, 'down');
+  });
+  bot.hears('⬅️ چپ', async (ctx: any) => {
+    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return;
+    await handleMoveDirection(ctx, 'left');
+  });
+  bot.hears('➡️ راست', async (ctx: any) => {
+    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return;
+    await handleMoveDirection(ctx, 'right');
+  });
+  bot.hears('❌ لغو جابجایی', async (ctx: any) => {
     const moveActive = cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'));
-    if (!moveActive) return next();
+    if (!moveActive) return;
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
     if (!postId) return;
     clearMoveState(ctx.from.id);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-    await refreshButtonListView(ctx, postId);
+    await refreshButtonListView(ctx, postId, true);
   });
 
   function clearMoveState(userId: number) {
@@ -1352,76 +1365,76 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!buttons[selRow] || buttons[selRow][selCol] === undefined) return;
 
     const btn = buttons[selRow][selCol];
-    const btnText = btn.text || 'دکمه';
+    let newRow = selRow;
+    let newCol = selCol;
 
     if (direction === 'left') {
-      if (selCol <= 0) return;
+      if (selCol <= 0) { await refreshMoveEditor(ctx, postId, buttons, { row: selRow, col: selCol }); return; }
       [buttons[selRow][selCol - 1], buttons[selRow][selCol]] = [buttons[selRow][selCol], buttons[selRow][selCol - 1]];
-      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), selCol - 1, 600);
+      newCol = selCol - 1;
     } else if (direction === 'right') {
-      if (selCol >= buttons[selRow].length - 1) return;
+      if (selCol >= buttons[selRow].length - 1) { await refreshMoveEditor(ctx, postId, buttons, { row: selRow, col: selCol }); return; }
       [buttons[selRow][selCol], buttons[selRow][selCol + 1]] = [buttons[selRow][selCol + 1], buttons[selRow][selCol]];
-      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), selCol + 1, 600);
+      newCol = selCol + 1;
     } else if (direction === 'down') {
-      // Remove from current row
+      const wasSingleton = buttons[selRow].length === 1;
       buttons[selRow].splice(selCol, 1);
-      if (buttons[selRow].length === 0) buttons.splice(selRow, 1);
-      // After removal, check if there's a row below
-      const newSelRow = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row')) ?? selRow;
-      if (newSelRow < buttons.length) {
-        // There's a row below — insert as independent row between current and next
-        buttons.splice(newSelRow, 0, [btn]);
-        cache.set(pendingKey(ctx.from.id, 'move_selected_row'), newSelRow, 600);
+      const rowEmpty = buttons[selRow].length === 0;
+      if (rowEmpty) buttons.splice(selRow, 1);
+
+      if (!wasSingleton) {
+        buttons.splice(selRow + 1, 0, [btn]);
+        newRow = selRow + 1;
+        newCol = 0;
       } else {
-        // No row below — append to end of last row
-        if (buttons.length > 0) {
-          buttons[buttons.length - 1].push(btn);
-          cache.set(pendingKey(ctx.from.id, 'move_selected_row'), buttons.length - 1, 600);
-          cache.set(pendingKey(ctx.from.id, 'move_selected_col'), buttons[buttons.length - 1].length - 1, 600);
+        if (selRow < buttons.length) {
+          buttons[selRow].push(btn);
+          newRow = selRow;
+          newCol = buttons[selRow].length - 1;
         } else {
           buttons.push([btn]);
-          cache.set(pendingKey(ctx.from.id, 'move_selected_row'), 0, 600);
+          newRow = buttons.length - 1;
+          newCol = 0;
         }
       }
-      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
     } else if (direction === 'up') {
-      // Remove from current row
+      const wasSingleton = buttons[selRow].length === 1;
       buttons[selRow].splice(selCol, 1);
-      if (buttons[selRow].length === 0) buttons.splice(selRow, 1);
-      // After removal, check if there's a row above
-      const newSelRow = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row')) ?? selRow;
-      if (newSelRow > 0) {
-        // There's a row above — insert as independent row between prev and current
-        buttons.splice(newSelRow, 0, [btn]);
-        cache.set(pendingKey(ctx.from.id, 'move_selected_row'), newSelRow, 600);
+      const rowEmpty = buttons[selRow].length === 0;
+      if (rowEmpty) buttons.splice(selRow, 1);
+
+      if (!wasSingleton) {
+        buttons.splice(selRow, 0, [btn]);
+        newRow = selRow;
+        newCol = 0;
       } else {
-        // No row above — prepend to beginning of first row
-        if (buttons.length > 0) {
-          buttons[0].unshift(btn);
-          cache.set(pendingKey(ctx.from.id, 'move_selected_row'), 0, 600);
-          cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
+        if (selRow > 0) {
+          buttons[selRow - 1].unshift(btn);
+          newRow = selRow - 1;
+          newCol = 0;
         } else {
-          buttons.push([btn]);
-          cache.set(pendingKey(ctx.from.id, 'move_selected_row'), 0, 600);
+          buttons.unshift([btn]);
+          newRow = 0;
+          newCol = 0;
         }
       }
-      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
     }
 
+    cache.set(pendingKey(ctx.from.id, 'move_selected_row'), newRow, 600);
+    cache.set(pendingKey(ctx.from.id, 'move_selected_col'), newCol, 600);
+    cache.set(pendingKey(ctx.from.id, 'move_active'), true, 600);
+
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-    const newRow = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row'))!;
-    const newCol = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_col'))!;
-    const canUp = newRow > 0 || buttons.length > 1;
-    const canDown = newRow < buttons.length - 1 || buttons.length > 1;
-    const canLeft = newCol > 0;
-    const canRight = newCol < (buttons[newRow]?.length || 0) - 1;
-    const replyKb = buildMoveReplyKeyboard(canUp, canDown, canLeft, canRight);
+
+    await refreshMoveEditor(ctx, postId, buttons, { row: newRow, col: newCol });
+  }
+
+  async function refreshMoveEditor(ctx: any, postId: number, buttons: any[][], selectedPos: { row: number; col: number }) {
     const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
     if (msgId) {
-      const { text, reply_markup } = renderButtonEditor(postId, buttons, 'move');
+      const { text, reply_markup } = renderButtonEditor(postId, buttons, 'move', selectedPos);
       try { await ctx.telegram.editMessageText(ctx.chat.id, msgId, null, text, { reply_markup }); } catch {}
     }
-    await ctx.reply(`🔀 "${btnText}" — جهت بعدی:`, replyKb);
   }
 
   // ─── Handler: "➕ اضافه کردن دکمه جدید" (legacy reply keyboard) ──
@@ -1693,18 +1706,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode')) || 'create';
 
     if (mode === 'move') {
-      // Phase 1: Select a button for moving
       cache.set(pendingKey(ctx.from.id, 'move_selected_row'), row, 600);
       cache.set(pendingKey(ctx.from.id, 'move_selected_col'), col, 600);
       cache.set(pendingKey(ctx.from.id, 'move_active'), true, 600);
-      // Compute valid directions
-      const canUp = row > 0;
-      const canDown = row < buttons.length - 1;
-      const canLeft = col > 0;
-      const canRight = col < (buttons[row]?.length || 0) - 1;
-      // Send Reply Keyboard with directional arrows
-      const replyKb = buildMoveReplyKeyboard(canUp, canDown, canLeft, canRight);
-      await ctx.reply(`🔀 "${buttons[row][col].text}" انتخاب شد.\nجهت حرکت را انتخاب کنید:`, replyKb);
+
+      const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
+      if (msgId) {
+        const { text, reply_markup } = renderButtonEditor(postId, buttons, 'move', { row, col });
+        try { await ctx.telegram.editMessageText(ctx.chat.id, msgId, null, text, { reply_markup }); } catch {}
+      }
+
+      const replyKb = buildMoveReplyKeyboard();
+      await ctx.reply(`🔀 "${buttons[row][col].text}" انتخاب شد. جهت را انتخاب کنید:`, replyKb);
       return;
     }
 
@@ -1763,6 +1776,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     cache.del(pendingKey(ctx.from.id, 'editor_row'));
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    if (mode === 'move') {
+      clearMoveState(ctx.from.id);
+    }
     await refreshButtonListView(ctx, postId);
   });
 

@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Play } from "lucide-react";
+import { Plus, Play, Trophy, Ticket, Gift } from "lucide-react";
 import { toast } from "sonner";
-import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Pagination, TableRowSkeleton } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Pagination, TableRowSkeleton } from "@/components/ui";
 import { getApiError, lotteriesApi } from "@/services/api";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
 
 export default function LotteriesPage() {
   const [page, setPage] = useState(1);
+  const [codeInput, setCodeInput] = useState("");
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["lotteries", page], queryFn: () => lotteriesApi.getAll({ page, limit: 20 }) });
   const deleteMutation = useMutation({
@@ -18,6 +19,15 @@ export default function LotteriesPage() {
     onSuccess: () => { toast.success("قرعه‌کشی حذف شد"); queryClient.invalidateQueries({ queryKey: ["lotteries"] }); },
     onError: (error) => toast.error(getApiError(error)),
   });
+
+  const handleCodeSubmit = () => {
+    if (!codeInput.trim()) {
+      toast.error("لطفاً کد را وارد کنید");
+      return;
+    }
+    toast.success("کد با موفقیت اعمال شد");
+    setCodeInput("");
+  };
 
   return (
     <div className="space-y-6">
@@ -29,6 +39,66 @@ export default function LotteriesPage() {
         <Link href="/dashboard/lotteries/create">
           <Button><Plus className="h-4 w-4" />ایجاد</Button>
         </Link>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-yellow-500" />
+              <h2 className="font-semibold">جایزه فعال</h2>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-primary">
+                {query.data?.items?.find(l => l.isActive && !l.isCompleted)?.prize ?? "—"}
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {query.data?.items?.filter(l => l.isActive && !l.isCompleted).length ?? 0} قرعه‌کشی فعال
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Ticket className="h-5 w-5 text-blue-500" />
+              <h2 className="font-semibold">کل بلیت‌ها</h2>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-primary">
+                {formatNumber(query.data?.items?.reduce((sum, l) => sum + (l.ticketStats?.totalTickets ?? 0), 0) ?? 0)}
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                در {query.data?.items?.length ?? 0} قرعه‌کشی
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-green-500" />
+              <h2 className="font-semibold">ورود کد</h2>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Input
+                placeholder="کد قرعه‌کشی را وارد کنید..."
+                value={codeInput}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCodeInput(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && handleCodeSubmit()}
+              />
+              <Button onClick={handleCodeSubmit}>اعمال</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>

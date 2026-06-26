@@ -465,6 +465,7 @@ function buildButtonEditorInlineKeyboard(
   postId: number,
   buttons: any[][],
   mode: 'create' | 'edit' | 'delete' | 'move',
+  selectedPos?: { row: number; col: number },
 ): any[][] {
   const rows: any[][] = [];
   const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
@@ -480,7 +481,8 @@ function buildButtonEditorInlineKeyboard(
         if (!btn) continue;
         const label = btn.text || 'بدون عنوان';
         const safe = graphemeTruncate(sanitizeTelegramText(label), 13);
-        const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : mode === 'move' ? '{🔀}' : '{＋}';
+        const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
+        const icon = isSelected ? '{✅}' : mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : mode === 'move' ? '{🔀}' : '{＋}';
         rowButtons.push(
           Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
         );
@@ -492,13 +494,15 @@ function buildButtonEditorInlineKeyboard(
     rows.push([Markup.button.callback('{＋}', `pbedit:click:${postId}:0:0`)]);
   }
 
-  // ─── Management toolbar — ALWAYS the last row ────────────
-  rows.push([
-    Markup.button.callback('➕ ایجاد', `pbedit:mode:create:${postId}`),
-    Markup.button.callback('✏️ ویرایش', `pbedit:mode:edit:${postId}`),
-    Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`),
-    Markup.button.callback('🔀 جابجایی', `pbedit:mode:move:${postId}`),
-  ]);
+  // ─── Management toolbar — ONLY in non-move modes ──────────
+  if (mode !== 'move') {
+    rows.push([
+      Markup.button.callback('➕ ایجاد', `pbedit:mode:create:${postId}`),
+      Markup.button.callback('✏️ ویرایش', `pbedit:mode:edit:${postId}`),
+      Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`),
+      Markup.button.callback('🔀 جابجایی', `pbedit:mode:move:${postId}`),
+    ]);
+  }
 
   return rows;
 }
@@ -518,18 +522,12 @@ export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: nu
 };
 
 // ─── Reply Keyboard for Move Mode (directional arrows) ─────
-export function buildMoveReplyKeyboard(canUp: boolean, canDown: boolean, canLeft: boolean, canRight: boolean) {
-  const row1: string[] = [];
-  if (canUp) row1.push('⬆️ بالا');
-  if (canDown) row1.push('⬇️ پایین');
-  const row2: string[] = [];
-  if (canLeft) row2.push('⬅️ چپ');
-  if (canRight) row2.push('➡️ راست');
-  const rows: string[][] = [];
-  if (row1.length) rows.push(row1);
-  if (row2.length) rows.push(row2);
-  rows.push(['✅ پایان جابجایی', '❌ لغو']);
-  return Markup.keyboard(rows).resize().persistent();
+export function buildMoveReplyKeyboard() {
+  return Markup.keyboard([
+    ['⬆️ بالا', '⬇️ پایین'],
+    ['⬅️ چپ', '➡️ راست'],
+    ['❌ لغو جابجایی'],
+  ]).resize().persistent();
 }
 
 // ─── Centralized Renderer ──────────────────────────────────
@@ -541,9 +539,10 @@ export function renderButtonEditor(
   postId: number,
   buttons: any[][],
   mode?: 'create' | 'edit' | 'delete' | 'move',
+  selectedPos?: { row: number; col: number },
 ): { text: string; reply_markup: any } {
   const effectiveMode = mode || 'create';
-  const rows = buildButtonEditorInlineKeyboard(postId, buttons, effectiveMode);
+  const rows = buildButtonEditorInlineKeyboard(postId, buttons, effectiveMode, selectedPos);
   return {
     text: '⌨️ ویرایشگر دکمه‌ها',
     reply_markup: { inline_keyboard: rows },
