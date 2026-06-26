@@ -509,4 +509,40 @@ export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: nu
   ]);
 };
 
+// ─── Centralized Button Editor Renderer ────────────────────
+// Returns { text, reply_markup } for the full button editor view.
+// Call this from ANY operation (create, edit, delete, move, type change, color change).
+export function renderButtonEditor(
+  postId: number,
+  buttons: any[][],
+  mode?: 'create' | 'edit' | 'delete' | 'move',
+): { text: string; reply_markup: any } {
+  const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
+  const btnCount = hasButtons ? buttons.reduce((sum: number, r: any[]) => sum + (Array.isArray(r) ? r.length : 0), 0) : 0;
+
+  const text = `⌨️ ویرایشگر دکمه‌ها\n📌 ${btnCount} دکمه در ${buttons.length} ردیف`;
+
+  if (!hasButtons) {
+    return {
+      text,
+      reply_markup: {
+        keyboard: [['➕ اضافه کردن دکمه جدید'], ['🚪 خروج از تنظیمات پیام']],
+        resize_keyboard: true,
+        persistent: true,
+      },
+    };
+  }
+
+  const inlineKb = buildButtonListInlineKeyboard(postId, buttons, mode).reply_markup;
+  return {
+    text,
+    reply_markup: {
+      ...inlineKb,
+      keyboard: [['➕ اضافه کردن دکمه جدید'], ['🚪 خروج از تنظیمات پیام']],
+      resize_keyboard: true,
+      persistent: true,
+    },
+  };
+}
+
 
