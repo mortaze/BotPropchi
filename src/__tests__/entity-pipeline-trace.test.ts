@@ -5,17 +5,33 @@ import {
   sanitizeEntities,
   normalizeSingleMessage,
   buildTelegramPayload,
+  TelegramEntity,
 } from '../services/post-message.service';
 import { normalizeEntities, telegramLength } from '../shared/message-format/normalizer';
 
-function snap(label: string, text: string, entities: any[]) {
+interface ScenarioEntity {
+  type: string;
+  offset: number;
+  length: number;
+  url?: string;
+  user?: { id: number; first_name: string };
+  custom_emoji_id?: string;
+}
+
+function getEntityUrl(e: ScenarioEntity, text: string): string {
+  if (e.type === 'text_link' && typeof e.url === 'string') return e.url;
+  if (e.type === 'url') return text.substring(e.offset, e.offset + e.length);
+  return '-';
+}
+
+function snap(label: string, text: string, entities: ScenarioEntity[]) {
   console.log(`\n  ${label}:`);
   console.log(`    text: ${JSON.stringify(text)}`);
   console.log(`    textLen: ${text.length} (JS) / ${telegramLength(text)} (telegram)`);
   console.log(`    entities: ${JSON.stringify(entities)}`);
   for (const e of entities) {
     const fragment = text.substring(e.offset, e.offset + e.length);
-    console.log(`      [${e.type}] offset=${e.offset} length=${e.length} url=${e.url || '-'} fragment="${fragment}"`);
+    console.log(`      [${e.type}] offset=${e.offset} length=${e.length} url=${getEntityUrl(e, text)} fragment="${fragment}"`);
   }
 }
 
@@ -171,7 +187,7 @@ describe('Entity Pipeline Trace — End-to-End', () => {
         for (const orig of ents1) {
           const found = (sanitized.entities || []).find((e: any) => e.type === orig.type && e.offset === orig.offset && e.length === orig.length);
           if (!found) {
-            console.log(`  ❌ LOST: type=${orig.type} offset=${orig.offset} length=${orig.length} url=${orig.url || '-'}`);
+            console.log(`  ❌ LOST: type=${orig.type} offset=${orig.offset} length=${orig.length} url=${getEntityUrl(orig, text1)}`);
           }
         }
       }
@@ -179,7 +195,7 @@ describe('Entity Pipeline Trace — End-to-End', () => {
       // Verify entities survived
       expect(finalCount).toBe(originalCount);
       for (const orig of ents1) {
-        const found = (sanitized.entities || []).find((e: any) => e.type === orig.type && e.offset === orig.offset && e.length === orig.length && (e.url || '') === (orig.url || ''));
+        const found = (sanitized.entities || []).find((e: any) => e.type === orig.type && e.offset === orig.offset && e.length === orig.length && getEntityUrl(e, text1) === getEntityUrl(orig, text1));
         expect(found).toBeDefined();
       }
 
