@@ -1352,29 +1352,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!buttons[selRow] || buttons[selRow][selCol] === undefined) return;
 
     const btn = buttons[selRow][selCol];
+    const btnText = btn.text || 'دکمه';
 
-    if (direction === 'up') {
-      if (selRow <= 0) return;
-      buttons[selRow].splice(selCol, 1);
-      if (buttons[selRow].length === 0) buttons.splice(selRow, 1);
-      const targetRow = selRow - 1;
-      buttons[targetRow].unshift(btn);
-      cache.set(pendingKey(ctx.from.id, 'move_selected_row'), targetRow, 600);
-      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
-    } else if (direction === 'down') {
-      buttons[selRow].splice(selCol, 1);
-      if (buttons[selRow].length === 0) buttons.splice(selRow, 1);
-      const nextRowIdx = selRow;
-      if (nextRowIdx < buttons.length) {
-        buttons[nextRowIdx].unshift(btn);
-        cache.set(pendingKey(ctx.from.id, 'move_selected_row'), nextRowIdx, 600);
-        cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
-      } else {
-        buttons.push([btn]);
-        cache.set(pendingKey(ctx.from.id, 'move_selected_row'), buttons.length - 1, 600);
-        cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
-      }
-    } else if (direction === 'left') {
+    if (direction === 'left') {
       if (selCol <= 0) return;
       [buttons[selRow][selCol - 1], buttons[selRow][selCol]] = [buttons[selRow][selCol], buttons[selRow][selCol - 1]];
       cache.set(pendingKey(ctx.from.id, 'move_selected_col'), selCol - 1, 600);
@@ -1382,13 +1362,57 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (selCol >= buttons[selRow].length - 1) return;
       [buttons[selRow][selCol], buttons[selRow][selCol + 1]] = [buttons[selRow][selCol + 1], buttons[selRow][selCol]];
       cache.set(pendingKey(ctx.from.id, 'move_selected_col'), selCol + 1, 600);
+    } else if (direction === 'down') {
+      // Remove from current row
+      buttons[selRow].splice(selCol, 1);
+      if (buttons[selRow].length === 0) buttons.splice(selRow, 1);
+      // After removal, check if there's a row below
+      const newSelRow = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row')) ?? selRow;
+      if (newSelRow < buttons.length) {
+        // There's a row below — insert as independent row between current and next
+        buttons.splice(newSelRow, 0, [btn]);
+        cache.set(pendingKey(ctx.from.id, 'move_selected_row'), newSelRow, 600);
+      } else {
+        // No row below — append to end of last row
+        if (buttons.length > 0) {
+          buttons[buttons.length - 1].push(btn);
+          cache.set(pendingKey(ctx.from.id, 'move_selected_row'), buttons.length - 1, 600);
+          cache.set(pendingKey(ctx.from.id, 'move_selected_col'), buttons[buttons.length - 1].length - 1, 600);
+        } else {
+          buttons.push([btn]);
+          cache.set(pendingKey(ctx.from.id, 'move_selected_row'), 0, 600);
+        }
+      }
+      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
+    } else if (direction === 'up') {
+      // Remove from current row
+      buttons[selRow].splice(selCol, 1);
+      if (buttons[selRow].length === 0) buttons.splice(selRow, 1);
+      // After removal, check if there's a row above
+      const newSelRow = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row')) ?? selRow;
+      if (newSelRow > 0) {
+        // There's a row above — insert as independent row between prev and current
+        buttons.splice(newSelRow, 0, [btn]);
+        cache.set(pendingKey(ctx.from.id, 'move_selected_row'), newSelRow, 600);
+      } else {
+        // No row above — prepend to beginning of first row
+        if (buttons.length > 0) {
+          buttons[0].unshift(btn);
+          cache.set(pendingKey(ctx.from.id, 'move_selected_row'), 0, 600);
+          cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
+        } else {
+          buttons.push([btn]);
+          cache.set(pendingKey(ctx.from.id, 'move_selected_row'), 0, 600);
+        }
+      }
+      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), 0, 600);
     }
 
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
     const newRow = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_row'))!;
     const newCol = cache.get<number>(pendingKey(ctx.from.id, 'move_selected_col'))!;
-    const canUp = newRow > 0;
-    const canDown = newRow < buttons.length - 1;
+    const canUp = newRow > 0 || buttons.length > 1;
+    const canDown = newRow < buttons.length - 1 || buttons.length > 1;
     const canLeft = newCol > 0;
     const canRight = newCol < (buttons[newRow]?.length || 0) - 1;
     const replyKb = buildMoveReplyKeyboard(canUp, canDown, canLeft, canRight);
@@ -1397,7 +1421,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const { text, reply_markup } = renderButtonEditor(postId, buttons, 'move');
       try { await ctx.telegram.editMessageText(ctx.chat.id, msgId, null, text, { reply_markup }); } catch {}
     }
-    await ctx.reply(`🔀 "${btn.text}" — جهت بعدی:`, replyKb);
+    await ctx.reply(`🔀 "${btnText}" — جهت بعدی:`, replyKb);
   }
 
   // ─── Handler: "➕ اضافه کردن دکمه جدید" (legacy reply keyboard) ──
