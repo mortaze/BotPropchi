@@ -252,16 +252,30 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     userService.processPendingReferral(BigInt(userId)).catch(() => {});
 
-    // ─── Reset all user state ────────────────────────────
+    // ─── HARD RESET: Clear ALL runtime/session/navigation state ──
+    const prefixes = [
+      `post:pending:${userId}:`,
+      `post:editor:${userId}:`,
+    ];
     for (const key of cache.keys) {
-      if (key.startsWith(`post:pending:${userId}:`) || key.startsWith(`post:editor:${userId}:`)) {
-        cache.del(key);
+      for (const prefix of prefixes) {
+        if (key.startsWith(prefix)) cache.del(key);
       }
     }
+    cache.del(`post_mgmt_mode:${userId}`);
+    cache.del(`pbedit:editor_msg_id:${userId}`);
+    cache.del(`admin_broadcast:${userId}`);
+    cache.del(`menu:edit_mode:${userId}`);
+    cache.del(`menu:selected:${userId}`);
+    cache.del(`menu:renaming:${userId}`);
+    cache.del(`ai_mode:${userId}`);
+    cache.del(`search_mode:${userId}`);
+
+    logger.info({ action: 'START_HARD_RESET', telegramId: userId, cleared: true });
 
     const profile = await userService.getProfile(BigInt(userId));
 
-    // ─── Send Start message ─────────────────────────────
+    // ─── Send Start message (single message with Reply Keyboard) ──
     const startPost = await postService.getOrCreateStartPost();
     if (startPost) {
       const vars = {
@@ -272,9 +286,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
         join_date: profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('fa-IR') : '',
         bot_name: DEFAULT_BOT_USERNAME || 'ربات',
       };
-      await sendPostToUser(ctx, { id: startPost.id }, vars);
       const adminOpts = await adminReplyOptions(ctx.from?.id);
-      await ctx.reply('🏠 منوی اصلی', adminOpts);
+      await sendPostToUser(ctx, { id: startPost.id }, vars, adminOpts.reply_markup);
+      logger.info({ action: 'START_RENDER', startPostSent: true, extraMessageBlocked: true, telegramId: userId });
       return;
     }
 

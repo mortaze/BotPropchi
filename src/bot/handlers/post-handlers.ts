@@ -26,11 +26,11 @@ import {
   postGlobalAnalyticsKeyboard,
   postMultiMessageEditorReplyKeyboard,
   postMoveModeReplyKeyboard,
-  postAddMessageReplyKeyboard,
-  postEditMessageReplyKeyboard,
   postCancelOnlyReplyKeyboard,
   postNewPostManagerReplyKeyboard,
   postSingleMessageInlineKeyboard,
+  postAddMessageReplyKeyboard,
+  postEditMessageReplyKeyboard,
   buildNoButtonsReplyKeyboard,
   buildNoButtonsEditorKeyboard,
   buildButtonEditorPersistentKeyboard,
@@ -41,6 +41,7 @@ import {
   buildEditButtonTypeKeyboard,
   buildButtonColorSelectionKeyboard,
   renderButtonEditor,
+  buildButtonEditorReplyKeyboard,
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
@@ -1316,7 +1317,124 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
   }
 
-  // ─── Handler: "➕ ایجاد دکمه" (from reply keyboard when no buttons) ──
+  // ─── Reply Keyboard: Button Editor Tools ─────────────────
+  // All 6 tools: ➕ ایجاد, ✏️ ویرایش, 🗑 حذف, 🔀 جابجایی, ↩️ بازگشت, ❌ خروج
+
+  function isInButtonEditor(ctx: any): boolean {
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    return !!postId;
+  }
+
+  // ➕ ایجاد — switch to create mode or start new button flow
+  bot.hears('➕ ایجاد', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin) || !isInButtonEditor(ctx)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'))!;
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (state && ['wait_url', 'wait_popup', 'wait_command', 'wait_color', 'select_type'].includes(state)) return;
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_state'));
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    await refreshButtonListView(ctx, postId);
+  });
+
+  // ✏️ ویرایش — switch to edit mode
+  bot.hears('✏️ ویرایش', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin) || !isInButtonEditor(ctx)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'))!;
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (state && ['wait_url', 'wait_popup', 'wait_command', 'wait_color', 'select_type'].includes(state)) return;
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_state'));
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    await refreshButtonListView(ctx, postId);
+  });
+
+  // 🗑 حذف — switch to delete mode
+  bot.hears('🗑 حذف', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin) || !isInButtonEditor(ctx)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'))!;
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (state && ['wait_url', 'wait_popup', 'wait_command', 'wait_color', 'select_type'].includes(state)) return;
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'delete', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_state'));
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    await refreshButtonListView(ctx, postId);
+  });
+
+  // 🔀 جابجایی — switch to move mode
+  bot.hears('🔀 جابجایی', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin) || !isInButtonEditor(ctx)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'))!;
+    const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
+    if (state && ['wait_url', 'wait_popup', 'wait_command', 'wait_color', 'select_type'].includes(state)) return;
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'move', 600);
+    cache.del(pendingKey(ctx.from.id, 'editor_state'));
+    cache.del(pendingKey(ctx.from.id, 'editor_row'));
+    cache.del(pendingKey(ctx.from.id, 'editor_col'));
+    await refreshButtonListView(ctx, postId);
+  });
+
+  // ↩️ بازگشت — go back to post editor
+  bot.hears('↩️ بازگشت', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin) || !isInButtonEditor(ctx)) return;
+    clearButtonEditorState(ctx.from.id);
+    cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (postId) {
+      cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
+      cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
+    }
+    // Clear button editor pending keys
+    cache.del(pendingKey(ctx.from.id, 'editing_post'));
+    cache.del(pendingKey(ctx.from.id, 'editing_message_idx'));
+    cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+  });
+
+  // ❌ خروج — exit button editor completely
+  bot.hears('❌ خروج', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    if (!isInButtonEditor(ctx)) return;
+    clearButtonEditorState(ctx.from.id);
+    cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
+    await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+  });
+
+  // ─── Callback: Directional move arrows ────────────────────
+  bot.action(/^pbedit:move:(\d+):(up|down):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    const direction = ctx.match[2];
+    const row = parseInt(ctx.match[3]);
+    if (!requireButtonEditSession(ctx)) return;
+    const post = await postService.findById(postId);
+    if (!post) return;
+    const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
+    const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
+    if (!buttons[row] || !buttons[row][0]) return;
+    const btn = buttons[row][0];
+    if (direction === 'up' && row > 0) {
+      [buttons[row - 1], buttons[row]] = [buttons[row], buttons[row - 1]];
+    } else if (direction === 'down' && row < buttons.length - 1) {
+      [buttons[row], buttons[row + 1]] = [buttons[row + 1], buttons[row]];
+    } else {
+      return;
+    }
+    await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+    await refreshButtonListView(ctx, postId);
+  });
+
+  // ─── Handler: "➕ اضافه کردن دکمه جدید" (legacy reply keyboard) ──
   bot.hears('➕ اضافه کردن دکمه جدید', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;

@@ -446,11 +446,8 @@ export const buildButtonEditorExitKeyboard = () =>
     ['🚪 خروج از تنظیمات پیام'],
   ]).resize().persistent();
 
-// ─── Inline keyboard: button list with actions ──────────────
-// Structure:
-//   {icon} ButtonName  (one per button)
-//   [✏️ ویرایش] [🗑 حذف] [➕ جدید] [🔀 جابجایی]  (always visible)
-// mode controls icon prefix: {+} (create), {✏️} (edit), {❌} (delete), {🔀} (move)
+// ─── Inline keyboard: button list ONLY (no management tools) ──
+// Management tools live in Reply Keyboard exclusively.
 const colorIndicator = (style?: string) => {
   if (style === 'primary') return '🔵';
   if (style === 'success') return '🟢';
@@ -464,34 +461,43 @@ export const buildButtonListInlineKeyboard = (
   mode?: 'create' | 'edit' | 'delete' | 'move',
 ) => {
   const rows: any[][] = [];
-  if (buttons && buttons.length > 0) {
+  const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
+
+  if (hasButtons) {
     for (let r = 0; r < buttons.length; r++) {
       const row = buttons[r];
       if (!Array.isArray(row)) continue;
-      const rowButtons: any[] = [];
-      for (let c = 0; c < row.length; c++) {
-        const btn = row[c];
-        if (!btn) continue;
-        const text = btn.text || 'بدون عنوان';
-        const safe = graphemeTruncate(sanitizeTelegramText(text), 13);
-        const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖️}' : mode === 'move' ? '↕️' : '{＋}';
-        rowButtons.push(
-          Markup.button.callback(
-            `${colorIndicator(btn.style)}${icon} ${safe}`,
-            `pbedit:click:${postId}:${r}:${c}`,
-          ),
-        );
+      if (mode === 'move') {
+        // Move mode: directional arrows per button
+        const canUp = r > 0;
+        const canDown = r < buttons.length - 1;
+        const arrows: any[] = [];
+        if (canUp) arrows.push(Markup.button.callback('⬆️', `pbedit:move:${postId}:up:${r}:0`));
+        if (canDown) arrows.push(Markup.button.callback('⬇️', `pbedit:move:${postId}:down:${r}:0`));
+        if (arrows.length > 0) rows.push(arrows);
+      } else {
+        const rowButtons: any[] = [];
+        for (let c = 0; c < row.length; c++) {
+          const btn = row[c];
+          if (!btn) continue;
+          const text = btn.text || 'بدون عنوان';
+          const safe = graphemeTruncate(sanitizeTelegramText(text), 13);
+          const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : '{＋}';
+          rowButtons.push(
+            Markup.button.callback(
+              `${colorIndicator(btn.style)}${icon} ${safe}`,
+              `pbedit:click:${postId}:${r}:${c}`,
+            ),
+          );
+        }
+        if (rowButtons.length > 0) rows.push(rowButtons);
       }
-      if (rowButtons.length > 0) rows.push(rowButtons);
     }
+  } else if (mode === 'create' || !mode) {
+    // No buttons — show a single {＋} placeholder so user can create the first one
+    rows.push([Markup.button.callback('{＋}', `pbedit:click:${postId}:0:0`)]);
   }
-  // Action row — always the four mode buttons
-  rows.push([
-    Markup.button.callback('✏️ ویرایش', `pbedit:mode:edit:${postId}`),
-    Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`),
-    Markup.button.callback('➕ جدید', `pbedit:mode:create:${postId}`),
-    Markup.button.callback('🔀 جابجایی', `pbedit:mode:move:${postId}`),
-  ]);
+
   return Markup.inlineKeyboard(rows);
 };
 
@@ -509,46 +515,30 @@ export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: nu
   ]);
 };
 
+// ─── Reply Keyboard for Button Editor (tools only) ─────────
+export const buildButtonEditorReplyKeyboard = () =>
+  Markup.keyboard([
+    ['➕ ایجاد', '✏️ ویرایش'],
+    ['🗑 حذف', '🔀 جابجایی'],
+    ['↩️ بازگشت', '❌ خروج'],
+  ]).resize().persistent();
+
 // ─── Centralized Button Editor Renderer ────────────────────
-// Returns { text, reply_markup } for the full button editor view.
-// Call this from ANY operation (create, edit, delete, move, type change, color change).
+// Single entry point for ALL button editor rendering.
+// Inline Keyboard = button list only.
+// Reply Keyboard = editor tools only.
 export function renderButtonEditor(
   postId: number,
   buttons: any[][],
   mode?: 'create' | 'edit' | 'delete' | 'move',
 ): { text: string; reply_markup: any } {
-  const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
-  const btnCount = hasButtons ? buttons.reduce((sum: number, r: any[]) => sum + (Array.isArray(r) ? r.length : 0), 0) : 0;
-
-  const text = `⌨️ ویرایشگر دکمه‌ها\n📌 ${btnCount} دکمه در ${buttons.length} ردیف`;
-
-  // Management tools — always present
-  const managementTools = Markup.inlineKeyboard([
-    [Markup.button.callback('➕ جدید', `pbedit:mode:create:${postId}`)],
-    [Markup.button.callback('✏️ ویرایش', `pbedit:mode:edit:${postId}`)],
-    [Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`)],
-    [Markup.button.callback('🔀 جابجایی', `pbedit:mode:move:${postId}`)],
-    [Markup.button.callback('🚪 خروج', `pbedit:exit:${postId}`)],
-  ]);
-
-  if (!hasButtons) {
-    return {
-      text,
-      reply_markup: {
-        ...managementTools.reply_markup,
-        keyboard: [['🚪 خروج از تنظیمات پیام']],
-        resize_keyboard: true,
-        persistent: true,
-      },
-    };
-  }
-
   const inlineKb = buildButtonListInlineKeyboard(postId, buttons, mode).reply_markup;
+  const replyKb = buildButtonEditorReplyKeyboard().reply_markup;
   return {
-    text,
+    text: '⌨️ ویرایشگر دکمه‌ها',
     reply_markup: {
       ...inlineKb,
-      keyboard: [['🚪 خروج از تنظیمات پیام']],
+      keyboard: replyKb.keyboard,
       resize_keyboard: true,
       persistent: true,
     },

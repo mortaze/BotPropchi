@@ -363,7 +363,7 @@ export async function ensurePostMessages(postId: number): Promise<any[]> {
   return migrateSinglePost(postId);
 }
 
-export async function sendPostToChat(ctx: any, postId: number, templateVars?: Record<string, string>): Promise<void> {
+export async function sendPostToChat(ctx: any, postId: number, templateVars?: Record<string, string>, lastMessageOptions?: any): Promise<void> {
   let rows = await loadPostMessages(postId);
   if (rows.length === 0) {
     rows = await ensurePostMessages(postId);
@@ -372,11 +372,17 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
   const withVars = templateVars ? rows.map(r => applyVarsToRow(r, templateVars)) : rows;
   const validated = validateMessages(withVars, postId);
   logger.info(`[SendPost] postId=${postId} messageCount=${validated.length}`);
-  for (const row of validated) {
+  const lastIndex = validated.length - 1;
+  for (let i = 0; i < validated.length; i++) {
+    const row = validated[i];
     const msg = normalizeSingleMessage(row);
     if (msg.delayMs > 0) await sleep(msg.delayMs);
     const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
     const { method, ...params } = payload as any;
+    const isLast = i === lastIndex && lastMessageOptions;
+    if (isLast) {
+      params.reply_markup = { ...(params.reply_markup || {}), ...lastMessageOptions };
+    }
     logger.debug(`[PreviewRender] postId=${msg.postId} order=${msg.order} textLength=${telegramLength(msg.text ?? '')} entityCount=${msg.entities.length} captionEntityCount=${msg.captionEntities.length}`);
     logger.info(`[SendSingleMessage] postId=${msg.postId} order=${msg.order} type=${msg.messageType} entities=${msg.entities.length} hasReplyMarkup=${!!params.reply_markup}`);
     if (params.reply_markup) {

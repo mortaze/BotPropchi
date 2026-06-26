@@ -17,8 +17,8 @@ export async function safeEdit(ctx: any, text: string, extra?: any): Promise<voi
   await ctx.reply(safeText, safeExtra).catch(() => {});
 }
 
-export async function sendPostToUser(ctx: any, rawPost: any, templateVars?: Record<string, string>) {
+export async function sendPostToUser(ctx: any, rawPost: any, templateVars?: Record<string, string>, lastMessageOptions?: any) {
   const postId = rawPost.id;
   await postService.incrementViews(postId, undefined, BigInt(ctx.from.id));
-  await sendPostToChat(ctx, postId, templateVars);
+  await sendPostToChat(ctx, postId, templateVars, lastMessageOptions);
 }
