@@ -474,7 +474,7 @@ export const buildButtonListInlineKeyboard = (
         if (!btn) continue;
         const text = btn.text || 'بدون عنوان';
         const safe = graphemeTruncate(sanitizeTelegramText(text), 13);
-        const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{❌}' : mode === 'move' ? '{🔀}' : '{+}';
+        const icon = mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖️}' : mode === 'move' ? '↕️' : '{＋}';
         rowButtons.push(
           Markup.button.callback(
             `${colorIndicator(btn.style)}${icon} ${safe}`,
@@ -522,11 +522,21 @@ export function renderButtonEditor(
 
   const text = `⌨️ ویرایشگر دکمه‌ها\n📌 ${btnCount} دکمه در ${buttons.length} ردیف`;
 
+  // Management tools — always present
+  const managementTools = Markup.inlineKeyboard([
+    [Markup.button.callback('➕ جدید', `pbedit:mode:create:${postId}`)],
+    [Markup.button.callback('✏️ ویرایش', `pbedit:mode:edit:${postId}`)],
+    [Markup.button.callback('🗑 حذف', `pbedit:mode:delete:${postId}`)],
+    [Markup.button.callback('🔀 جابجایی', `pbedit:mode:move:${postId}`)],
+    [Markup.button.callback('🚪 خروج', `pbedit:exit:${postId}`)],
+  ]);
+
   if (!hasButtons) {
     return {
       text,
       reply_markup: {
-        keyboard: [['➕ اضافه کردن دکمه جدید'], ['🚪 خروج از تنظیمات پیام']],
+        ...managementTools.reply_markup,
+        keyboard: [['🚪 خروج از تنظیمات پیام']],
         resize_keyboard: true,
         persistent: true,
       },
@@ -538,7 +548,7 @@ export function renderButtonEditor(
     text,
     reply_markup: {
       ...inlineKb,
-      keyboard: [['➕ اضافه کردن دکمه جدید'], ['🚪 خروج از تنظیمات پیام']],
+      keyboard: [['🚪 خروج از تنظیمات پیام']],
       resize_keyboard: true,
       persistent: true,
     },

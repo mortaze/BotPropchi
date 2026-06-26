@@ -1626,21 +1626,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const srcRow = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
       const srcCol = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
       if (srcRow === undefined || srcCol === undefined) {
-        // First click — select source button, enter move sub-state with reply keyboard
         cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_state'), 'move', 600);
-        await safeEdit(ctx,
-          `📍 ${buttons[row][col].text} انتخاب شد.\n⬆️ یا ⬇️ را برای جابجایی انتخاب کنید.`,
-          buildButtonListInlineKeyboard(postId, buttons, 'move'));
+        await refreshButtonListView(ctx, postId);
         await ctx.reply('🔀 حالت جابجایی:', postMoveModeReplyKeyboard());
       } else {
-        // User clicked a different button — update selection
         cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
-        await safeEdit(ctx,
-          `📍 ${buttons[row][col].text} انتخاب شد.\n⬆️ یا ⬇️ را برای جابجایی انتخاب کنید.`,
-          buildButtonListInlineKeyboard(postId, buttons, 'move'));
+        await refreshButtonListView(ctx, postId);
       }
       return;
     }
@@ -1700,14 +1694,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     cache.del(pendingKey(ctx.from.id, 'editor_row'));
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
-
-    const label: Record<string, string> = {
-      create: '➕ حالت ایجاد دکمه — روی یک دکمه ضربه بزنید تا دکمه جدید بعد از آن اضافه شود.',
-      edit: '✏️ روی دکمه مورد نظر برای ویرایش کلیک کنید.',
-      delete: '🗑 روی دکمه مورد نظر برای حذف کلیک کنید.',
-      move: '🔀 روی دکمه مورد نظر برای جابجایی کلیک کنید.',
-    };
-    await safeEdit(ctx, label[mode] || '', buildButtonListInlineKeyboard(postId, buttons, mode as any));
+    await refreshButtonListView(ctx, postId);
   });
 
   // ─── Handler: Select edit button type ──────────────────
@@ -1788,6 +1775,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.set(pendingKey(ctx.from.id, 'editor_row'), buttons.length - 1, 600);
     cache.set(pendingKey(ctx.from.id, 'editor_col'), 0, 600);
     await ctx.reply('✅ ردیف جدید اضافه شد.\n❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
+  });
+
+  // ─── Handler: Exit button editor (from inline keyboard) ──
+  bot.action(/^pbedit:exit:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    clearButtonEditorState(ctx.from.id);
+    cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
+    delete ctx.session?.pbedit;
+    await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
   });
 
 
