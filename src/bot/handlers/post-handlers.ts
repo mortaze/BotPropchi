@@ -1495,47 +1495,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return next();
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
 
-    // ─── MOVE MODE (button swap with reply keyboard) ─────
+    // ─── MOVE MODE — legacy handler removed, new handlers at lines 1306+ ──
     if (state === 'move') {
-      const text = ctx.message.text;
-
-      // EXIT — immediate, no DB queries
-      if (text === '🚪 خروج از تنظیمات پیام') {
-        clearButtonEditorState(ctx.from.id);
-        cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
-        delete ctx.session?.pbedit;
-        return;
-      }
-
-      if (text === '⬆️ بالا' || text === '⬇️ پایین') {
-        const row = cache.get<number>(pendingKey(ctx.from.id, 'editor_row'));
-        const col = cache.get<number>(pendingKey(ctx.from.id, 'editor_col'));
-        if (row === undefined || col === undefined) return ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
-        const post = await postService.findById(postId);
-        if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
-        const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
-        if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
-
-        const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
-
-        await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-        cache.del(pendingKey(ctx.from.id, 'editor_state'));
-        cache.del(pendingKey(ctx.from.id, 'editor_row'));
-        cache.del(pendingKey(ctx.from.id, 'editor_col'));
-        cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-        await refreshButtonListView(ctx, postId);
-        return;
-      }
-      if (text === '🔙 بازگشت') {
-        cache.del(pendingKey(ctx.from.id, 'editor_row'));
-        cache.del(pendingKey(ctx.from.id, 'editor_col'));
-        cache.del(pendingKey(ctx.from.id, 'editor_state'));
-        cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-        await refreshButtonListView(ctx, postId);
-        return;
-      }
-      return;
+      return next();
     }
 
     if (!state || !['wait_popup', 'wait_url', 'wait_command', 'wait_color'].includes(state)) return next();
