@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-// ─── Mock prisma ─────────────────────────────────────────────
+// ─── Mock prisma — simulates ON DELETE CASCADE ──────────────
 const keyboards: any[] = [];
 const messages: any[] = [];
 
@@ -18,6 +18,10 @@ vi.mock('../prisma/client', () => ({
       delete: vi.fn().mockImplementation(({ where }: any) => {
         const idx = messages.findIndex(m => m.id === where.id);
         if (idx >= 0) messages.splice(idx, 1);
+        // Simulate ON DELETE CASCADE: remove keyboards with matching messageId
+        for (let i = keyboards.length - 1; i >= 0; i--) {
+          if (keyboards[i].messageId === where.id) keyboards.splice(i, 1);
+        }
         return Promise.resolve({});
       }),
       deleteMany: vi.fn().mockImplementation(({ where }: any) => {
@@ -54,8 +58,6 @@ vi.mock('../prisma/client', () => ({
         for (let i = keyboards.length - 1; i >= 0; i--) {
           const kb = keyboards[i];
           if (where.messageId !== undefined && kb.messageId === where.messageId) {
-            keyboards.splice(i, 1);
-          } else if (where.postId !== undefined && kb.postId === where.postId && where.messageId === null && kb.messageId == null) {
             keyboards.splice(i, 1);
           }
         }
@@ -100,25 +102,20 @@ describe('Post keyboard cleanup on message delete', () => {
     vi.clearAllMocks();
   });
 
-  it('delete message removes all keyboards for that messageId', async () => {
-    // Create a message
+  it('delete message removes all keyboards for that messageId (CASCADE)', async () => {
     const msg = await prisma.postMessage.create({ data: {
       postId: 1, order: 0, messageType: 'text', text: 'test',
       entities: [], parseMode: 'None', captionEntities: [], delayMs: 0,
     }});
 
-    // Add keyboards for that message
     keyboards.push(
       { id: 1, postId: 1, messageId: msg.id, row: 0, col: 0, text: 'Btn1', type: 'URL', value: 'https://a.com' },
       { id: 2, postId: 1, messageId: msg.id, row: 0, col: 1, text: 'Btn2', type: 'CALLBACK', value: 'cb1' },
     );
-
     expect(keyboards.length).toBe(2);
 
-    // Delete the message
     await postMessageService.delete(msg.id);
 
-    // Keyboards must be gone
     const remaining = await prisma.postKeyboard.findMany({ where: { messageId: msg.id } });
     expect(remaining.length).toBe(0);
   });
@@ -138,14 +135,11 @@ describe('Post keyboard cleanup on message delete', () => {
       { id: 2, postId: 1, messageId: msg2.id, row: 0, col: 0, text: 'Btn2', type: 'URL', value: 'https://b.com' },
     );
 
-    // Delete msg1 only
     await postMessageService.delete(msg1.id);
 
-    // msg1 keyboards gone
     const remaining1 = await prisma.postKeyboard.findMany({ where: { messageId: msg1.id } });
     expect(remaining1.length).toBe(0);
 
-    // msg2 keyboards still exist
     const remaining2 = await prisma.postKeyboard.findMany({ where: { messageId: msg2.id } });
     expect(remaining2.length).toBe(1);
     expect(remaining2[0].text).toBe('Btn2');
@@ -157,12 +151,11 @@ describe('Post keyboard cleanup on message delete', () => {
       entities: [], parseMode: 'None', captionEntities: [], delayMs: 0,
     }});
 
-    // No keyboards should exist for a newly created message
     const kbs = await prisma.postKeyboard.findMany({ where: { messageId: msg.id } });
     expect(kbs.length).toBe(0);
   });
 
-  it('full cycle: create msg with buttons → delete → create new msg → editor shows empty', async () => {
+  it('full cycle: create msg with buttons → delete → create new msg → editor shows empty → add button → only that button exists', async () => {
     // Step 1: Create message with buttons
     const msg1 = await prisma.postMessage.create({ data: {
       postId: 1, order: 0, messageType: 'text', text: 'first',
@@ -176,7 +169,7 @@ describe('Post keyboard cleanup on message delete', () => {
     expect(kbs.length).toBe(1);
     expect(kbs[0].text).toBe('OldBtn');
 
-    // Step 2: Delete the message
+    // Step 2: Delete the message — CASCADE removes keyboards
     await postMessageService.delete(msg1.id);
 
     // Step 3: Create new message
@@ -197,5 +190,52 @@ describe('Post keyboard cleanup on message delete', () => {
     kbs = await prisma.postKeyboard.findMany({ where: { messageId: msg2.id } });
     expect(kbs.length).toBe(1);
     expect(kbs[0].text).toBe('NewBtn');
+
+    // Step 6: Old message's keyboards never return
+    const oldKbs = await prisma.postKeyboard.findMany({ where: { messageId: msg1.id } });
+    expect(oldKbs.length).toBe(0);
+  });
+
+  it('delete does not touch keyboards of unrelated posts', async () => {
+    const msg1 = await prisma.postMessage.create({ data: {
+      postId: 1, order: 0, messageType: 'text', text: 'post1msg',
+      entities: [], parseMode: 'None', captionEntities: [], delayMs: 0,
+    }});
+    const msg2 = await prisma.postMessage.create({ data: {
+      postId: 2, order: 0, messageType: 'text', text: 'post2msg',
+      entities: [], parseMode: 'None', captionEntities: [], delayMs: 0,
+    }});
+
+    keyboards.push(
+      { id: 1, postId: 1, messageId: msg1.id, row: 0, col: 0, text: 'Post1Btn', type: 'URL', value: 'https://a.com' },
+      { id: 2, postId: 2, messageId: msg2.id, row: 0, col: 0, text: 'Post2Btn', type: 'URL', value: 'https://b.com' },
+    );
+
+    await postMessageService.delete(msg1.id);
+
+    const post2Kbs = await prisma.postKeyboard.findMany({ where: { messageId: msg2.id } });
+    expect(post2Kbs.length).toBe(1);
+    expect(post2Kbs[0].text).toBe('Post2Btn');
+  });
+
+  it('multiple keyboards per message all cleaned on delete', async () => {
+    const msg = await prisma.postMessage.create({ data: {
+      postId: 1, order: 0, messageType: 'text', text: 'multi',
+      entities: [], parseMode: 'None', captionEntities: [], delayMs: 0,
+    }});
+
+    await prisma.postKeyboard.createMany({ data: [
+      { postId: 1, messageId: msg.id, row: 0, col: 0, text: 'A', type: 'URL', value: 'https://a.com' },
+      { postId: 1, messageId: msg.id, row: 0, col: 1, text: 'B', type: 'URL', value: 'https://b.com' },
+      { postId: 1, messageId: msg.id, row: 1, col: 0, text: 'C', type: 'CALLBACK', value: 'cb' },
+    ]});
+
+    const before = await prisma.postKeyboard.findMany({ where: { messageId: msg.id } });
+    expect(before.length).toBe(3);
+
+    await postMessageService.delete(msg.id);
+
+    const after = await prisma.postKeyboard.findMany({ where: { messageId: msg.id } });
+    expect(after.length).toBe(0);
   });
 });

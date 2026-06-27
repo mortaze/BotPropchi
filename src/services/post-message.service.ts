@@ -556,11 +556,9 @@ export const postMessageService = {
   },
     async delete(id: number) {
     logger.info(`[PostEditor][MessageDelete] messageId=${id}`);
-    await prisma.$transaction([
-      prisma.postKeyboard.deleteMany({ where: { messageId: id } }),
-      prisma.postMessage.delete({ where: { id } }),
-    ]);
-    logger.info(`[PostEditor][MessageDelete] messageId=${id} keyboardsDeleted=true`);
+    // ON DELETE CASCADE on post_keyboards.messageId handles keyboard cleanup
+    await prisma.postMessage.delete({ where: { id } });
+    logger.info(`[PostEditor][MessageDelete] messageId=${id} deleted (cascade handled by FK)`);
   },
   async reorder(postId: number, orderedIds: number[]) {
     const tx = orderedIds.map((id, order) => prisma.postMessage.update({ where: { id, postId } as any, data: { order } }));

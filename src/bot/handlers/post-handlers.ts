@@ -2502,13 +2502,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (msgIdx < 0 || msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
     const msgId = messages[msgIdx].id;
     logger.debug('[PostEditor][MessageDelete] postId=%d orderIndex=%d resolvedMsgId=%d', postId, msgIdx, msgId);
-    await prisma.$transaction([
-      prisma.postKeyboard.deleteMany({ where: { messageId: msgId } }),
-      prisma.postMessage.delete({ where: { id: msgId } }),
-    ]);
+    // ON DELETE CASCADE on post_keyboards.messageId handles keyboard cleanup
+    await prisma.postMessage.delete({ where: { id: msgId } });
     const remaining = await prisma.postKeyboard.findMany({ where: { messageId: msgId } });
-    logger.info('[PostEditor][MessageDelete] deleted keyboards for messageId=%d', msgId);
-    logger.info('[PostEditor][MessageDelete] remaining keyboards after delete: %d', remaining.length);
+    logger.info('[PostEditor][MessageDelete] deleted messageId=%d remainingKeyboards=%d', msgId, remaining.length);
     postService.invalidateCache();
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
