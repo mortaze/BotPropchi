@@ -1,7 +1,7 @@
 import { PostMessageParseMode, PostMessageType, Prisma } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
-import { normalizeEntities, telegramLength } from '../shared/message-format/normalizer';
+import { normalizeEntities, normalizeTelegramEntities, telegramLength } from '../shared/message-format/normalizer';
 import { buildTelegramKeyboard, MEDIA_SENDERS, TelegramPayload } from './renderer';
 import { postService } from './post.service';
 
@@ -94,12 +94,16 @@ export function createEntity(type: string, offset: number, length: number, extra
 export function validateEntities(text: string | null | undefined, entities: TelegramEntity[], messageId?: number | string): TelegramEntity[] {
   const source = text ?? '';
   const len = telegramLength(source);
-  for (const entity of entities) {
+
+  const { entities: enriched } = normalizeTelegramEntities(source, entities as any);
+
+  for (const entity of enriched) {
     if (!Number.isInteger(entity.offset) || !Number.isInteger(entity.length) || entity.offset < 0 || entity.length <= 0 || entity.offset + entity.length > len) {
       throw new Error(`[PostMessage] invalid entity messageId=${messageId ?? 'unknown'} offset=${entity.offset} length=${entity.length} textLength=${len}`);
     }
   }
-  const normalized = normalizeEntities(source, entities as any) as TelegramEntity[];
+
+  const normalized = normalizeEntities(source, enriched as any) as TelegramEntity[];
   return validateStyleEntities(normalized);
 }
 

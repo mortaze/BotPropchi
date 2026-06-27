@@ -1,5 +1,95 @@
 import { MessageEntity, telegramLength } from './types';
 
+const URL_PATTERN = /https?:\/\/[^\s<>"']+/g;
+const TRAILING_PUNCTUATION = /[.,;:!?)]+$/;
+
+export function extractUrlsWithOffsets(text: string): Array<{ url: string; offset: number; length: number }> {
+  const results: Array<{ url: string; offset: number; length: number }> = [];
+  if (!text) return results;
+
+  const regex = new RegExp(URL_PATTERN.source, 'g');
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    const raw = match[0];
+    const clean = raw.replace(TRAILING_PUNCTUATION, '');
+    if (clean.length < 10) continue;
+
+    results.push({
+      url: clean,
+      offset: telegramLength(text.slice(0, match.index)),
+      length: telegramLength(clean),
+    });
+  }
+
+  return results;
+}
+
+export function escapeMarkdownV2(str: string): string {
+  return str.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+}
+
+export function normalizeTelegramEntities(
+  text: string,
+  entities: MessageEntity[],
+  parseMode?: string,
+): { text: string; entities: MessageEntity[] } {
+  if (!text) return { text, entities };
+
+  const pm = (parseMode || '').toLowerCase();
+
+  if (pm === 'markdownv2') {
+    return normalizeMarkdownV2Mode(text, entities);
+  }
+
+  // HTML / default: enrich with URL entities only, no normalization
+  const urlEntities = extractNewUrlEntities(text, entities);
+  if (urlEntities.length === 0) return { text, entities };
+  return { text, entities: [...entities, ...urlEntities] };
+}
+
+function normalizeMarkdownV2Mode(text: string, entities: MessageEntity[]): { text: string; entities: MessageEntity[] } {
+  const urls = extractUrlsWithOffsets(text);
+  if (urls.length === 0) return { text, entities: entities };
+
+  let newText = text;
+  const sorted = [...urls].sort((a, b) => b.offset - a.offset);
+
+  for (const u of sorted) {
+    const escaped = escapeMarkdownV2(u.url);
+    const replacement = `[${escaped}](${escaped})`;
+    const before = newText.slice(0, u.offset);
+    const after = newText.slice(u.offset + u.length);
+    newText = before + replacement + after;
+  }
+
+  return { text: newText, entities: [] };
+}
+
+function extractNewUrlEntities(text: string, existingEntities: MessageEntity[]): MessageEntity[] {
+  const urls = extractUrlsWithOffsets(text);
+  const result: MessageEntity[] = [];
+
+  for (const u of urls) {
+    const alreadyCovered = existingEntities.some(e =>
+      (e.type === 'text_link' || e.type === 'url') &&
+      e.offset < u.offset + u.length &&
+      e.offset + e.length > u.offset
+    );
+
+    if (!alreadyCovered) {
+      result.push({
+        type: 'text_link',
+        offset: u.offset,
+        length: u.length,
+        url: u.url,
+      } as MessageEntity);
+    }
+  }
+
+  return result;
+}
+
 export function normalizeEntities(
   text: string,
   entities: MessageEntity[],
