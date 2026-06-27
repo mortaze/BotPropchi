@@ -167,8 +167,8 @@ function extractButtonsForMessage(post: any, messageIdx: number): any[][] {
   // 1) Try post.keyboards — filter by messageId if available, else use all
   if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
     const filtered = currentMsgId != null
-      ? post.keyboards.filter((kb: any) => kb.messageId === currentMsgId || kb.messageId == null)
-      : post.keyboards;
+      ? post.keyboards.filter((kb: any) => kb.messageId === currentMsgId)
+      : [];
     const grouped: { [row: number]: any[] } = {};
     for (const kb of filtered) {
       if (kb.row === undefined) continue;
@@ -2509,6 +2509,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const remaining = await prisma.postKeyboard.findMany({ where: { messageId: msgId } });
     logger.info('[PostEditor][MessageDelete] deleted keyboards for messageId=%d', msgId);
     logger.info('[PostEditor][MessageDelete] remaining keyboards after delete: %d', remaining.length);
+    postService.invalidateCache();
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
     await ctx.reply('✅ پیام حذف شد.');

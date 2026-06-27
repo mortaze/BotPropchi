@@ -555,14 +555,12 @@ export const postMessageService = {
     });
   },
     async delete(id: number) {
-    const message = await prisma.postMessage.findUnique({ where: { id }, select: { postId: true } });
     logger.info(`[PostEditor][MessageDelete] messageId=${id}`);
     await prisma.$transaction([
       prisma.postKeyboard.deleteMany({ where: { messageId: id } }),
-      ...(message ? [prisma.postKeyboard.deleteMany({ where: { postId: message.postId, messageId: null } })] : []),
       prisma.postMessage.delete({ where: { id } }),
     ]);
-    logger.info(`[PostEditor][MessageDelete] post=${message?.postId ?? '?'} messageId=${id} keyboardsDeleted=true`);
+    logger.info(`[PostEditor][MessageDelete] messageId=${id} keyboardsDeleted=true`);
   },
   async reorder(postId: number, orderedIds: number[]) {
     const tx = orderedIds.map((id, order) => prisma.postMessage.update({ where: { id, postId } as any, data: { order } }));

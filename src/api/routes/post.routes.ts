@@ -118,6 +118,7 @@ postRouter.put('/:id/messages/:messageId', async (req, res) => {
 
 postRouter.delete('/:id/messages/:messageId', async (req, res) => {
   await postMessageService.delete(Number(req.params.messageId));
+  postService.invalidateCache();
   res.json({ success: true });
 });
 
