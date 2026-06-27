@@ -1,4 +1,5 @@
 import { PostStatus } from '@prisma/client';
+import { prisma } from '../../prisma/client';
 import { Context, Markup, Telegraf } from 'telegraf';
 import { botAdminService } from '../../services/bot-admin.service';
 import { postService } from '../../services/post.service';
@@ -2489,7 +2490,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = post.messages || [];
     if (msgIdx < 0 || msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
-    await postMessageService.delete(messages[msgIdx].id);
+    const msgId = messages[msgIdx].id;
+    await prisma.$transaction([
+      prisma.postKeyboard.deleteMany({ where: { messageId: msgId } }),
+      prisma.postKeyboard.deleteMany({ where: { postId, messageId: null } }),
+      prisma.postMessage.delete({ where: { id: msgId } }),
+    ]);
+    logger.info('[PostEditor][MessageDelete] post=%d messageId=%d keyboards deleted', postId, msgId);
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
     await ctx.reply('✅ پیام حذف شد.');
