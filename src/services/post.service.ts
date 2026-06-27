@@ -228,6 +228,30 @@ export const postService = {
             });
             logger.info(`[KeyboardSync] post=${post.id} synced buttons to messageId=${lastMsg.id} (array format)`);
           }
+          // ── Sync to post_keyboards: clear + re-insert per message ──
+          for (const msg of existingMessages) {
+            const msgBtns = (messagesFormat && typeof messagesFormat === 'object')
+              ? (messagesFormat as any)[String(msg.order)]
+              : (Array.isArray(rawButtons) && msg === existingMessages[existingMessages.length - 1] ? rawButtons : null);
+            if (!Array.isArray(msgBtns) || msgBtns.length === 0) continue;
+            const newRows = msgBtns.flatMap((row: any[], r: number) =>
+              row.map((btn: any, c: number) => ({
+                postId: post.id,
+                messageId: msg.id,
+                row: r,
+                col: c,
+                text: btn.text || btn.label || '',
+                type: btn.url ? 'URL' : btn.callback_data ? 'CALLBACK' : btn.type || 'NATIVE',
+                value: btn.url || btn.callback_data || btn.value || null,
+                payload: btn,
+              }))
+            );
+            await prisma.$transaction([
+              prisma.postKeyboard.deleteMany({ where: { messageId: msg.id } }),
+              prisma.postKeyboard.createMany({ data: newRows }),
+            ]);
+            logger.debug(`[KeyboardSave] cleared old keyboards for messageId=%d before save`, msg.id);
+          }
         }
       } catch (e) {
         logger.warn(`[KeyboardSync] post=${post.id} failed to sync buttons: ${e}`);
