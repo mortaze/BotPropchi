@@ -157,10 +157,20 @@ function getMessageButtons(raw: any, messageIdx: number): any[][] {
 // ─── Extract buttons for a given message from post with priority ──
 // Priority: post.keyboards (normalized) → post_messages.replyMarkup → post.buttons
 function extractButtonsForMessage(post: any, messageIdx: number): any[][] {
-  // 1) Try post.keyboards — a flat [{row, col, text, type, value, payload}] array
+  // Resolve the current message's DB id for keyboard filtering
+  let currentMsgId: number | null = null;
+  if (post.messages && Array.isArray(post.messages)) {
+    const msg = post.messages.find((m: any) => (m.order ?? m.messageIdx) === messageIdx) || post.messages[messageIdx];
+    if (msg) currentMsgId = msg.id;
+  }
+
+  // 1) Try post.keyboards — filter by messageId if available, else use all
   if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
+    const filtered = currentMsgId != null
+      ? post.keyboards.filter((kb: any) => kb.messageId === currentMsgId || kb.messageId == null)
+      : post.keyboards;
     const grouped: { [row: number]: any[] } = {};
-    for (const kb of post.keyboards) {
+    for (const kb of filtered) {
       if (kb.row === undefined) continue;
       if (!grouped[kb.row]) grouped[kb.row] = [];
       const baseStyle = kb.payload?.style;
@@ -2491,11 +2501,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messages = post.messages || [];
     if (msgIdx < 0 || msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
     const msgId = messages[msgIdx].id;
+    logger.debug('[PostEditor][MessageDelete] postId=%d orderIndex=%d resolvedMsgId=%d', postId, msgIdx, msgId);
     await prisma.$transaction([
       prisma.postKeyboard.deleteMany({ where: { messageId: msgId } }),
       prisma.postMessage.delete({ where: { id: msgId } }),
     ]);
-    logger.info('[PostEditor][MessageDelete] post=%d messageId=%d keyboards deleted', postId, msgId);
+    const remaining = await prisma.postKeyboard.findMany({ where: { messageId: msgId } });
+    logger.info('[PostEditor][MessageDelete] deleted keyboards for messageId=%d', msgId);
+    logger.info('[PostEditor][MessageDelete] remaining keyboards after delete: %d', remaining.length);
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
     await ctx.reply('✅ پیام حذف شد.');
