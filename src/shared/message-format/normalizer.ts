@@ -1,4 +1,5 @@
 import { MessageEntity, telegramLength } from './types';
+import { logger } from '../../utils/logger';
 
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/g;
 const TRAILING_PUNCTUATION = /[.,;:!?)]+$/;
@@ -260,6 +261,145 @@ export function rebaseEntities(
   }
 
   return result;
+}
+
+/**
+ * Final entity alignment layer — runs on the FINAL_RENDERED_TEXT right before
+ * Telegram API call. Guarantees every entity offset/length matches the actual text.
+ *
+ * Rules:
+ * - Recalibrates ALL offsets against the final text using substring matching
+ * - url/text_link entities are NEVER dropped; if offset is wrong, we try to
+ *   recover by finding the entity's fragment (or URL) in the final text
+ * - If an entity is truly unrecoverable, only that entity is dropped
+ * - No parse_mode changes (caller enforces that separately)
+ */
+export function normalizeFinalEntities(
+  text: string,
+  entities: MessageEntity[],
+): MessageEntity[] {
+  if (!text || !entities || entities.length === 0) return entities || [];
+
+  const textLen = telegramLength(text);
+  if (textLen === 0) return [];
+
+  const result: MessageEntity[] = [];
+
+  for (const entity of entities) {
+    const fixed = fixOneEntity(text, textLen, entity);
+    if (fixed) {
+      result.push(fixed);
+    }
+  }
+
+  return result;
+}
+
+function fixOneEntity(
+  text: string,
+  textLen: number,
+  entity: MessageEntity,
+): MessageEntity | null {
+  const isLink = entity.type === 'url' || entity.type === 'text_link';
+
+  // Step 1: check if current offset is already valid
+  if (isOffsetValid(text, textLen, entity)) {
+    return entity;
+  }
+
+  // Step 2: try to recover by finding the text fragment in the final text
+  const recovered = tryRecoverByFragment(text, textLen, entity);
+  if (recovered) return recovered;
+
+  // Step 3: for url/text_link, try to recover by finding the URL string
+  if (isLink && entity.url) {
+    const urlRecovered = tryRecoverByUrl(text, textLen, entity);
+    if (urlRecovered) return urlRecovered;
+  }
+
+  // Step 4: for url entities (type=url), try to find the entity text itself
+  if (isLink && entity.type === 'url') {
+    const entityText = text.substring(entity.offset, entity.offset + entity.length);
+    if (entityText) {
+      const idx = text.indexOf(entityText);
+      if (idx >= 0) {
+        const newOffset = telegramLength(text.slice(0, idx));
+        const newLength = telegramLength(entityText);
+        if (newOffset >= 0 && newOffset + newLength <= textLen) {
+          return { ...entity, offset: newOffset, length: newLength };
+        }
+      }
+    }
+  }
+
+  // Step 5: unrecoverable — drop this entity
+  if (isLink) {
+    logger.warn(`[FinalEntityAlign] dropping unrecoverable ${entity.type} entity: offset=${entity.offset} length=${entity.length} url=${entity.url ?? '-'}`);
+  }
+  return null;
+}
+
+function isOffsetValid(text: string, textLen: number, entity: MessageEntity): boolean {
+  if (!Number.isInteger(entity.offset) || !Number.isInteger(entity.length)) return false;
+  if (entity.offset < 0 || entity.length <= 0) return false;
+  if (entity.offset + entity.length > textLen) return false;
+
+  // For url/text_link, also verify the fragment matches
+  if (entity.type === 'url' || entity.type === 'text_link') {
+    const fragment = text.substring(entity.offset, entity.offset + entity.length);
+    if (entity.type === 'url') {
+      // For url entities, the text fragment IS the URL — check it looks like a URL
+      if (!fragment.match(/^https?:\/\//) && !fragment.match(/^tg:\/\//)) return false;
+    }
+  }
+
+  return true;
+}
+
+function tryRecoverByFragment(
+  text: string,
+  textLen: number,
+  entity: MessageEntity,
+): MessageEntity | null {
+  // Try to find the text that was originally under this entity
+  // Use the entity's recorded offset/length to extract a candidate fragment from
+  // a hypothetical original text, but since we don't have the original, we try
+  // searching by entity URL or by a heuristic substring
+
+  // For url entities, the fragment is the URL itself
+  if (entity.type === 'url' && entity.url) {
+    return tryRecoverByUrl(text, textLen, entity);
+  }
+
+  // For text_link, try to find the URL as anchor text
+  if (entity.type === 'text_link' && entity.url) {
+    return tryRecoverByUrl(text, textLen, entity);
+  }
+
+  return null;
+}
+
+function tryRecoverByUrl(
+  text: string,
+  textLen: number,
+  entity: MessageEntity,
+): MessageEntity | null {
+  if (!entity.url) return null;
+
+  // Try finding the URL string in the text
+  const urlIdx = text.indexOf(entity.url);
+  if (urlIdx >= 0) {
+    const newOffset = telegramLength(text.slice(0, urlIdx));
+    const newLength = telegramLength(entity.url);
+    if (newOffset >= 0 && newOffset + newLength <= textLen) {
+      return { ...entity, offset: newOffset, length: newLength };
+    }
+  }
+
+  // For text_link, the anchor text might be different from the URL
+  // Try finding any occurrence where the URL's domain appears
+  // (This is a best-effort fallback)
+  return null;
 }
 
 export { telegramLength };

@@ -5,7 +5,7 @@
 Telegram bot for prop firm discount codes with lottery, scoring, and referral system. Three separate codebases in one repo:
 
 - **Root** (`src/`): Main Telegram bot + Express API (TypeScript, Telegraf, Prisma)
-- **Admin** (`admin/`): Next.js 15 admin panel
+- **Admin** (`admin/`): Next.js 15 admin panel (calls root API via `NEXT_PUBLIC_API_URL`)
 - **Plugin** (`wordpress-plugin/`): WordPress AI backend plugin (PHP)
 
 ## Quick Commands
@@ -39,7 +39,7 @@ Middleware stack (applied in order):
 1. loggingMiddleware
 2. rateLimitMiddleware (20 req/60s)
 3. userMiddleware
-4. membershipGuard
+4. membershipGuard (in `src/middleware/`, not `src/bot/middlewares/`)
 5. featureToggleMiddleware
 6. groupAccessMiddleware
 
@@ -68,10 +68,17 @@ Test files: `src/__tests__/*.test.ts`
 
 ## TypeScript Config
 
+Root (`tsconfig.json`):
 - Target: ES2020, Module: commonjs
-- `strict: false`, `noImplicitAny: false`
+- `strict: false`, `noImplicitAny: false`, `strictNullChecks: false`
 - Path alias: `@/*` → `src/*`
 - Output: `dist/`
+- No lint or typecheck script exists in root `package.json`
+
+Admin (`admin/tsconfig.json`):
+- `strict: true`, module: esnext, moduleResolution: bundler
+- Excludes `src/api`, `src/index.ts`, `src/scheduler.ts` (legacy dead files)
+- Lint: `cd admin && npm run lint` (uses `next lint`)
 
 ## Adding Features
 
@@ -83,14 +90,15 @@ Test files: `src/__tests__/*.test.ts`
 
 ## Gotchas
 
-- `docker-compose.yml` runs PostgreSQL 16 and Redis 7 (ports 5432, 6379)
-- Docker production runs `prisma db push` on container start
-- No linter configured in root project; admin uses `next lint`
+- `docker-compose.yml` only runs PostgreSQL 16 and Redis 7 (ports 5432, 6379). The bot service is NOT in docker-compose — deploy via the Dockerfile which runs `npx prisma db push && node dist/index.js` at container start.
+- No linter or typecheck configured in root project; admin uses `next lint`
 - No CI/CD workflows in repo
-- Prisma client is generated at `src/prisma/client.ts`
+- Prisma client wrapper is at `src/prisma/client.ts` (singleton PrismaClient with dev query logging); the generated client lives in `node_modules/.prisma/client`
 - All user-facing strings are in Persian (Farsi)
-- Admin panel `src/index.ts` and `src/api/server.ts` are legacy/dead code — the real app is the Next.js frontend that calls the root API via `NEXT_PUBLIC_API_URL`
-- Admin panel uses cookie-based auth (`admin_token` cookie), root API uses JWT Bearer tokens
+- `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` are legacy/dead code — the real admin app is the Next.js frontend
+- Admin panel uses cookie-based auth (`admin_token` + `admin_user` cookies), root API uses JWT Bearer tokens
 - Admin panel middleware blocks non-OWNER/SUPER_ADMIN from `/dashboard/settings` and `/dashboard/admin-users`
 - Redis is optional — falls back to in-memory cache (`node-cache`) if `REDIS_URL` not set
-- `admin/tsconfig.json` excludes `src/api`, `src/index.ts`, `src/scheduler.ts` from Next.js build (those are legacy files)
+- `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — must be set for admin to function
+- Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (Express-level, not Telegraf-level)
+- The Post system (`Post`, `PostMessage`, `PostButton`, `PostEntity`, `PostMedia`, `PostKeyboard`, `PostVersion`) is the richest model — posts support multi-message sequences, rich Telegram entities, inline keyboards, and version snapshots

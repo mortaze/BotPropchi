@@ -1,7 +1,7 @@
 import { PostMessageParseMode, PostMessageType, Prisma } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
-import { normalizeEntities, normalizeTelegramEntities, telegramLength, isAtomicEntity } from '../shared/message-format/normalizer';
+import { normalizeEntities, normalizeTelegramEntities, telegramLength, isAtomicEntity, normalizeFinalEntities } from '../shared/message-format/normalizer';
 import { buildTelegramKeyboard, MEDIA_SENDERS, TelegramPayload } from './renderer';
 import { postService } from './post.service';
 
@@ -248,7 +248,14 @@ export function buildTelegramPayload(msg: NormalizedMessage): TelegramPayload {
 function sleep(ms: number) { return new Promise(resolve => setTimeout(resolve, Math.max(0, ms))); }
 
 export async function sendSingleMessage(telegram: any, chatId: number | string, msg: NormalizedMessage) {
-  const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
+  let payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
+  // ── FINAL ALIGNMENT: recalibrate entity offsets against the exact text being sent ──
+  if (Array.isArray(payload.entities) && payload.entities.length > 0) {
+    payload.entities = normalizeFinalEntities(payload.text ?? '', payload.entities);
+  }
+  if (Array.isArray(payload.caption_entities) && payload.caption_entities.length > 0) {
+    payload.caption_entities = normalizeFinalEntities(payload.caption ?? '', payload.caption_entities);
+  }
   // ── ENFORCE: never send parse_mode + entities together ──
   const hasEntities = (payload.entities?.length ?? 0) + (payload.caption_entities?.length ?? 0) > 0;
   if (hasEntities) delete payload.parse_mode;
@@ -406,6 +413,13 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
     const msg = normalizeSingleMessage(row);
     if (msg.delayMs > 0) await sleep(msg.delayMs);
     const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
+    // ── FINAL ALIGNMENT: recalibrate entity offsets against the exact text being sent ──
+    if (Array.isArray((payload as any).entities) && (payload as any).entities.length > 0) {
+      (payload as any).entities = normalizeFinalEntities((payload as any).text ?? '', (payload as any).entities);
+    }
+    if (Array.isArray((payload as any).caption_entities) && (payload as any).caption_entities.length > 0) {
+      (payload as any).caption_entities = normalizeFinalEntities((payload as any).caption ?? '', (payload as any).caption_entities);
+    }
     const { method, ...params } = payload as any;
     const isLast = i === lastIndex && lastMessageOptions;
     if (isLast) {
