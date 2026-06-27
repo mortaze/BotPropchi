@@ -554,9 +554,12 @@ export const postMessageService = {
       } as any,
     });
   },
-  delete(id: number) {
+    delete(id: number) {
     logger.info(`[PostEditor][MessageDelete] messageId=${id}`);
-    return prisma.postMessage.delete({ where: { id } });
+    return prisma.$transaction([
+      prisma.postKeyboard.deleteMany({ where: { messageId: id } }),
+      prisma.postMessage.delete({ where: { id } }),
+    ]);
   },
   async reorder(postId: number, orderedIds: number[]) {
     const tx = orderedIds.map((id, order) => prisma.postMessage.update({ where: { id, postId } as any, data: { order } }));
