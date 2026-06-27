@@ -3,6 +3,15 @@ import { MessageEntity, telegramLength } from './types';
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/g;
 const TRAILING_PUNCTUATION = /[.,;:!?)]+$/;
 
+const ATOMIC_ENTITY_TYPES = new Set([
+  'url', 'text_link', 'text_mention', 'mention', 'hashtag', 'cashtag',
+  'bot_command', 'email', 'phone_number', 'code', 'pre', 'custom_emoji',
+]);
+
+export function isAtomicEntity(type: string): boolean {
+  return ATOMIC_ENTITY_TYPES.has(type);
+}
+
 export function extractUrlsWithOffsets(text: string): Array<{ url: string; offset: number; length: number }> {
   const results: Array<{ url: string; offset: number; length: number }> = [];
   if (!text) return results;
@@ -129,26 +138,30 @@ function resolveOverlaps(entities: MessageEntity[]): MessageEntity[] {
     const current = entities[i];
     let merged = false;
 
-    for (let j = result.length - 1; j >= 0; j--) {
-      const existing = result[j];
+    // NEVER merge atomic entities (url, text_link, mention, code, etc.)
+    // They carry metadata (url, user, language) that would be lost on merge
+    if (!isAtomicEntity(current.type)) {
+      for (let j = result.length - 1; j >= 0; j--) {
+        const existing = result[j];
 
-      if (existing.type === current.type && doEntitiesOverlap(existing, current)) {
-        const mergedOffset = Math.min(existing.offset, current.offset);
-        const mergedEnd = Math.max(
-          existing.offset + existing.length,
-          current.offset + current.length,
-        );
-        result[j] = {
-          ...existing,
-          offset: mergedOffset,
-          length: mergedEnd - mergedOffset,
-        };
-        merged = true;
-        break;
-      }
+        if (existing.type === current.type && !isAtomicEntity(existing.type) && doEntitiesOverlap(existing, current)) {
+          const mergedOffset = Math.min(existing.offset, current.offset);
+          const mergedEnd = Math.max(
+            existing.offset + existing.length,
+            current.offset + current.length,
+          );
+          result[j] = {
+            ...existing,
+            offset: mergedOffset,
+            length: mergedEnd - mergedOffset,
+          };
+          merged = true;
+          break;
+        }
 
-      if (existing.offset + existing.length <= current.offset) {
-        break;
+        if (existing.offset + existing.length <= current.offset) {
+          break;
+        }
       }
     }
 
@@ -198,6 +211,55 @@ export function mergeEntities(
 ): MessageEntity[] {
   const merged = [...(textEntities || []), ...(captionEntities || [])];
   return merged.sort((a, b) => a.offset - b.offset);
+}
+
+/**
+ * Rebase entities from a parent text segment into a child chunk.
+ *
+ * @param segmentText  - The text of the child chunk (already sliced)
+ * @param entities     - Entities with offsets relative to the PARENT text
+ * @param segmentStart - Start offset of this segment within the parent text
+ * @returns Entities rebased to the child text, with partial overlaps clamped
+ */
+export function rebaseEntities(
+  segmentText: string,
+  entities: MessageEntity[],
+  segmentStart: number,
+): MessageEntity[] {
+  if (!Array.isArray(entities) || entities.length === 0) return [];
+  if (!segmentText) return [];
+
+  const segmentLen = telegramLength(segmentText);
+  const segmentEnd = segmentStart + segmentLen;
+  const result: MessageEntity[] = [];
+
+  for (const e of entities) {
+    const entityEnd = e.offset + e.length;
+
+    // Skip entities entirely outside this segment
+    if (e.offset >= segmentEnd || entityEnd <= segmentStart) continue;
+
+    // Clamp to segment boundaries
+    const clampedStart = Math.max(e.offset, segmentStart);
+    const clampedEnd = Math.min(entityEnd, segmentEnd);
+    const newOffset = clampedStart - segmentStart;
+    const newLength = clampedEnd - clampedStart;
+
+    if (newLength <= 0) continue;
+
+    const rebased: MessageEntity = {
+      ...e,
+      offset: newOffset,
+      length: newLength,
+    };
+
+    // Validate against segment text bounds
+    if (rebased.offset >= 0 && rebased.offset + rebased.length <= segmentLen) {
+      result.push(rebased);
+    }
+  }
+
+  return result;
 }
 
 export { telegramLength };

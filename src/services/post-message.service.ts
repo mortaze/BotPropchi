@@ -1,7 +1,7 @@
 import { PostMessageParseMode, PostMessageType, Prisma } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { logger } from '../utils/logger';
-import { normalizeEntities, normalizeTelegramEntities, telegramLength } from '../shared/message-format/normalizer';
+import { normalizeEntities, normalizeTelegramEntities, telegramLength, isAtomicEntity } from '../shared/message-format/normalizer';
 import { buildTelegramKeyboard, MEDIA_SENDERS, TelegramPayload } from './renderer';
 import { postService } from './post.service';
 
@@ -51,6 +51,27 @@ export function validateEntityOverlap(entities: TelegramEntity[]): TelegramEntit
   for (const e of entities) {
     const hasOverlap = valid.some(v => doPartiallyOverlap(e, v));
     if (hasOverlap) {
+      // NEVER drop url/text_link entities — they are structural (clickable links)
+      // Instead, drop the style entity that overlaps with the url entity
+      if (e.type === 'url' || e.type === 'text_link') {
+        // Find the overlapping style entity and remove it, keeping the url entity
+        const overlappingIdx = valid.findIndex(v => doPartiallyOverlap(e, v));
+        if (overlappingIdx >= 0 && !ATOMIC_ENTITY_TYPES.has(valid[overlappingIdx].type)) {
+          logger.warn(`[EntityOverlap] removing style entity type=${valid[overlappingIdx].type} offset=${valid[overlappingIdx].offset} length=${valid[overlappingIdx].length} to preserve url entity at offset=${e.offset}`);
+          valid.splice(overlappingIdx, 1);
+        } else {
+          // Both are atomic or the overlapping one is also atomic — keep the url
+          logger.warn(`[EntityOverlap] keeping url/text_link entity type=${e.type} offset=${e.offset} length=${e.length}, dropping overlapping type=${valid.find(v => doPartiallyOverlap(e, v))?.type}`);
+          // Remove any overlapping non-atomic entities
+          for (let i = valid.length - 1; i >= 0; i--) {
+            if (doPartiallyOverlap(e, valid[i]) && !ATOMIC_ENTITY_TYPES.has(valid[i].type)) {
+              valid.splice(i, 1);
+            }
+          }
+        }
+        valid.push(e);
+        continue;
+      }
       logger.warn(`[EntityOverlap] dropping entity type=${e.type} offset=${e.offset} length=${e.length} due to partial overlap`);
       continue;
     }
@@ -228,7 +249,10 @@ function sleep(ms: number) { return new Promise(resolve => setTimeout(resolve, M
 
 export async function sendSingleMessage(telegram: any, chatId: number | string, msg: NormalizedMessage) {
   const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
-  logger.info(`[PostSender] post=${msg.postId} messageId=${msg.id} order=${msg.order} method=${payload.method}`);
+  // ── ENFORCE: never send parse_mode + entities together ──
+  const hasEntities = (payload.entities?.length ?? 0) + (payload.caption_entities?.length ?? 0) > 0;
+  if (hasEntities) delete payload.parse_mode;
+  logger.info(`[PostSender] post=${msg.postId} messageId=${msg.id} order=${msg.order} method=${payload.method} entities=${payload.entities?.length ?? 0}`);
   switch (payload.method) {
     case 'sendMessage': return telegram.sendMessage(chatId, payload.text, payload);
     case 'sendMediaGroup': return telegram.sendMediaGroup(chatId, payload.media, payload);
@@ -393,6 +417,24 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
       const kbRows = params.reply_markup.inline_keyboard?.length ?? 0;
       const kbBtns = params.reply_markup.inline_keyboard?.reduce((a: number, r: any[]) => a + r.length, 0) ?? 0;
       logger.info(`[KeyboardDebug] postId=${msg.postId} order=${msg.order} reply_markup: ${kbRows} rows, ${kbBtns} buttons`);
+    }
+    // ── FINAL DEBUG: log exact payload sent to Telegram ──
+    const finalText = params.text || '';
+    const finalEntities = params.entities || [];
+    const finalCaptionEntities = params.caption_entities || [];
+    logger.info(`[FINAL_TELEGRAM] postId=${msg.postId} order=${msg.order} text="${finalText.substring(0, 80)}${finalText.length > 80 ? '...' : ''}" entities=${JSON.stringify(finalEntities)}`);
+    if (finalCaptionEntities.length > 0) {
+      logger.info(`[FINAL_TELEGRAM_CAPTION] postId=${msg.postId} order=${msg.order} caption_entities=${JSON.stringify(finalCaptionEntities)}`);
+    }
+    // Validate entity bounds before send
+    for (const ent of finalEntities) {
+      if (!Number.isInteger(ent.offset) || !Number.isInteger(ent.length) || ent.offset < 0 || ent.length <= 0 || ent.offset + ent.length > telegramLength(finalText)) {
+        logger.error(`[FINAL_TELEGRAM_INVALID] postId=${msg.postId} order=${msg.order} INVALID entity type=${ent.type} offset=${ent.offset} length=${ent.length} textLen=${telegramLength(finalText)}`);
+      }
+    }
+    // ── ENFORCE: never send parse_mode + entities together ──
+    if (finalEntities.length > 0 || finalCaptionEntities.length > 0) {
+      delete params.parse_mode;
     }
     if (method === 'sendMessage') {
       await ctx.reply(params.text, params);
