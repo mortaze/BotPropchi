@@ -99,6 +99,7 @@ export const postService = {
       });
       await prisma.postMessage.createMany({ data: messageRows as any });
       for (const row of messageRows) {
+        logger.debug(`[PostCreate] postId=${post.id} order=${row.order} entities=%j`, row.entities);
         const linkEntities = (row.entities || []).filter((e: any) => e.type === 'text_link' || e.type === 'url');
         for (const e of linkEntities) {
           logger.info(`[PostCreate][EntityStore] post=${post.id} order=${row.order} type=${e.type} offset=${e.offset} length=${e.length} url=${e.url ?? 'NONE'} displayFragment="${(row.text ?? '').substring(e.offset, e.offset + e.length)}"`);
@@ -183,6 +184,7 @@ export const postService = {
         ...messageRows.map((row: any) => prisma.postMessage.create({ data: row })),
       ]);
       for (const row of messageRows) {
+        logger.debug(`[PostUpdate] postId=${post.id} order=${row.order} entities=%j`, row.entities);
         const linkEntities = (row.entities || []).filter((e: any) => e.type === 'text_link' || e.type === 'url');
         for (const e of linkEntities) {
           logger.info(`[PostUpdate][EntityStore] post=${post.id} order=${row.order} type=${e.type} offset=${e.offset} length=${e.length} url=${e.url ?? 'NONE'} displayFragment="${(row.text ?? '').substring(e.offset, e.offset + e.length)}"`);

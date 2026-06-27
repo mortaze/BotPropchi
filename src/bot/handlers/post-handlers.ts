@@ -588,11 +588,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           updateData.title = ctx.message.text;
           updateData.slug = slugify(ctx.message.text);
         } else if (field === 'content') {
-          const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length })) || [];
+          const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
           updateData.messages = [{ messageType: 'text', text: ctx.message.text, entities, order: 0 }];
           logger.info(`[PostEdit] content update post=${postId} textLength=${(ctx.message.text || '').length} entities=${entities.length}`);
         } else if (field === 'add_content') {
-          const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length })) || [];
+          const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
           await postMessageService.create(postId, { messageType: 'text', text: ctx.message.text, entities });
           const updated = await postService.findById(postId);
           await ctx.reply(formatPostInfoPersian(updated), {
@@ -2807,7 +2807,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const post = await postService.findById(editorPostId);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       const messages = post.messages || [];
-      const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length })) || [];
+      const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
       const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
       await postMessageService.create(editorPostId, {
         messageType: 'text',
@@ -2921,7 +2921,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       const messages = post.messages || [];
       if (msgIdx >= 0 && msgIdx < messages.length) {
-        const entityData = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length })) || [];
+        const entityData = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
         await postMessageService.update(messages[msgIdx].id, {
           text: text,
           entities: entityData,
@@ -2974,7 +2974,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const post = await postService.findById(editorPostId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = post.messages || [];
-    const captionEntities = msg.caption_entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length })) || [];
+    const captionEntities = msg.caption_entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
     const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
     await postMessageService.create(editorPostId, {
       messageType: 'text',
