@@ -125,7 +125,16 @@ export function validateEntities(text: string | null | undefined, entities: Tele
   }
 
   const normalized = normalizeEntities(source, enriched as any) as TelegramEntity[];
-  return validateStyleEntities(normalized);
+  const styleValidated = validateStyleEntities(normalized);
+  const result: TelegramEntity[] = [];
+  for (const e of styleValidated) {
+    if (e.type === 'text_link' && (!e.url || typeof e.url !== 'string' || e.url.trim() === '')) {
+      logger.warn(`[Sanitize] dropping text_link entity at offset=${e.offset} because url is missing`);
+      continue;
+    }
+    result.push(e);
+  }
+  return result;
 }
 
 export function validateMessages(messages: any[], postId: number): any[] {
@@ -144,8 +153,13 @@ export function validateMessages(messages: any[], postId: number): any[] {
       );
       if (!ok) {
         logger.warn(`[ValidateMessages] postId=${postId} order=${msg.order} dropping entity type=${e.type} offset=${e.offset} length=${e.length} textLen=${textLen}`);
+        return false;
       }
-      return ok;
+      if (e.type === 'text_link' && (!e.url || typeof e.url !== 'string' || e.url.trim() === '')) {
+        logger.warn(`[ValidateMessages] postId=${postId} order=${msg.order} dropping text_link entity at offset=${e.offset} length=${e.length} url=${e.url ?? 'MISSING'}`);
+        return false;
+      }
+      return true;
     });
     if (validEntities.length !== rawEntities.length) {
       logger.warn(`[ValidateMessages] postId=${postId} order=${msg.order} dropped ${rawEntities.length - validEntities.length}/${rawEntities.length} invalid entities`);
@@ -261,10 +275,15 @@ export async function sendSingleMessage(telegram: any, chatId: number | string, 
   const hasEntities = (payload.entities?.length ?? 0) + (payload.caption_entities?.length ?? 0) > 0;
   if (hasEntities) delete payload.parse_mode;
   logger.info(`[PostSender] post=${msg.postId} messageId=${msg.id} order=${msg.order} method=${payload.method} entities=${payload.entities?.length ?? 0}`);
-  switch (payload.method) {
-    case 'sendMessage': return telegram.sendMessage(chatId, payload.text, payload);
-    case 'sendMediaGroup': return telegram.sendMediaGroup(chatId, payload.media, payload);
-    default: return telegram[payload.method](chatId, payload.media, payload);
+  try {
+    switch (payload.method) {
+      case 'sendMessage': return await telegram.sendMessage(chatId, payload.text, payload);
+      case 'sendMediaGroup': return await telegram.sendMediaGroup(chatId, payload.media, payload);
+      default: return await telegram[payload.method](chatId, payload.media, payload);
+    }
+  } catch (err: any) {
+    logger.error(`[SendMessage] Telegram API error postId=${msg.postId} order=${msg.order} error=${err?.message || err}`);
+    throw err;
   }
 }
 
@@ -451,19 +470,47 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
     if (finalEntities.length > 0 || finalCaptionEntities.length > 0) {
       delete params.parse_mode;
     }
-    if (method === 'sendMessage') {
-      await ctx.reply(params.text, params);
-    } else if (method === 'sendMediaGroup') {
-      await ctx.replyWithMediaGroup(params.media);
-    } else {
-      const media = params.media;
-      delete params.media;
-      const methodMap: Record<string, string> = {
-        sendPhoto: 'replyWithPhoto', sendVideo: 'replyWithVideo',
-        sendDocument: 'replyWithDocument', sendAudio: 'replyWithAudio',
-        sendAnimation: 'replyWithAnimation', sendVoice: 'replyWithVoice',
-      };
-      await ctx[methodMap[method] || 'replyWithDocument'](media, params);
+    // Drop any text_link entities missing url — Telegram rejects them
+    if (Array.isArray(params.entities)) {
+      const beforeCount = params.entities.length;
+      params.entities = params.entities.filter((e: any) => {
+        if (e.type === 'text_link' && (!e.url || typeof e.url !== 'string' || e.url.trim() === '')) {
+          logger.warn(`[SendPost] postId=${msg.postId} order=${msg.order} dropping text_link entity at offset=${e.offset} url=${e.url ?? 'MISSING'}`);
+          return false;
+        }
+        return true;
+      });
+      if (params.entities.length !== beforeCount) {
+        logger.warn(`[SendPost] postId=${msg.postId} order=${msg.order} dropped ${beforeCount - params.entities.length} entities with missing url`);
+      }
+    }
+    if (Array.isArray(params.caption_entities)) {
+      params.caption_entities = params.caption_entities.filter((e: any) => {
+        if (e.type === 'text_link' && (!e.url || typeof e.url !== 'string' || e.url.trim() === '')) {
+          logger.warn(`[SendPost] postId=${msg.postId} order=${msg.order} dropping caption text_link entity at offset=${e.offset} url=${e.url ?? 'MISSING'}`);
+          return false;
+        }
+        return true;
+      });
+    }
+    try {
+      if (method === 'sendMessage') {
+        await ctx.reply(params.text, params);
+      } else if (method === 'sendMediaGroup') {
+        await ctx.replyWithMediaGroup(params.media);
+      } else {
+        const media = params.media;
+        delete params.media;
+        const methodMap: Record<string, string> = {
+          sendPhoto: 'replyWithPhoto', sendVideo: 'replyWithVideo',
+          sendDocument: 'replyWithDocument', sendAudio: 'replyWithAudio',
+          sendAnimation: 'replyWithAnimation', sendVoice: 'replyWithVoice',
+        };
+        await ctx[methodMap[method] || 'replyWithDocument'](media, params);
+      }
+    } catch (sendErr: any) {
+      logger.error(`[SendMessage] Telegram API error postId=${msg.postId} order=${msg.order} error=${sendErr?.message || sendErr}`);
+      throw sendErr;
     }
   }
 }
