@@ -132,6 +132,7 @@ export function validateMessages(messages: any[], postId: number): any[] {
   const valid: any[] = [];
   for (const msg of messages) {
     const text = msg.text ?? '';
+    const textLen = telegramLength(text);
     const rawEntities = Array.isArray(msg.entities) ? msg.entities : [];
     const validEntities = rawEntities.filter((e: any) => {
       const ok = (
@@ -139,10 +140,10 @@ export function validateMessages(messages: any[], postId: number): any[] {
         Number.isInteger(e.length) &&
         e.offset >= 0 &&
         e.length > 0 &&
-        e.offset + e.length <= text.length
+        e.offset + e.length <= textLen
       );
       if (!ok) {
-        logger.warn(`[ValidateMessages] postId=${postId} order=${msg.order} dropping entity type=${e.type} offset=${e.offset} length=${e.length} textLen=${text.length}`);
+        logger.warn(`[ValidateMessages] postId=${postId} order=${msg.order} dropping entity type=${e.type} offset=${e.offset} length=${e.length} textLen=${textLen}`);
       }
       return ok;
     });

@@ -98,6 +98,12 @@ export const postService = {
         };
       });
       await prisma.postMessage.createMany({ data: messageRows as any });
+      for (const row of messageRows) {
+        const linkEntities = (row.entities || []).filter((e: any) => e.type === 'text_link' || e.type === 'url');
+        for (const e of linkEntities) {
+          logger.info(`[PostCreate][EntityStore] post=${post.id} order=${row.order} type=${e.type} offset=${e.offset} length=${e.length} url=${e.url ?? 'NONE'} displayFragment="${(row.text ?? '').substring(e.offset, e.offset + e.length)}"`);
+        }
+      }
       logger.info(`[PostEditor][MessageCreate] post=${post.id} created ${messageRows.length} post_messages`);
     }
     this.invalidateCache();
@@ -176,6 +182,12 @@ export const postService = {
         prisma.postMessage.deleteMany({ where: { postId: post.id } }),
         ...messageRows.map((row: any) => prisma.postMessage.create({ data: row })),
       ]);
+      for (const row of messageRows) {
+        const linkEntities = (row.entities || []).filter((e: any) => e.type === 'text_link' || e.type === 'url');
+        for (const e of linkEntities) {
+          logger.info(`[PostUpdate][EntityStore] post=${post.id} order=${row.order} type=${e.type} offset=${e.offset} length=${e.length} url=${e.url ?? 'NONE'} displayFragment="${(row.text ?? '').substring(e.offset, e.offset + e.length)}"`);
+        }
+      }
       logger.info(`[PostEditor][MessageUpdate] post=${post.id} replaced ${messageRows.length} post_messages`);
     }
 
@@ -493,6 +505,11 @@ export const postService = {
       updatedBy,
     };
     logger.info(`[PostImport] Importing Telegram message into post ${postId} entities=${entities.length} captionEntities=${captionEntities.length} media=${media.length} buttons=${keyboard.length}`);
+    for (const e of entities) {
+      if (e.type === 'text_link' || e.type === 'url') {
+        logger.info(`[PostImport][EntityStore] post=${postId} source=text type=${e.type} offset=${e.offset} length=${e.length} url=${e.url ?? 'NONE'} displayFragment="${(content || '').substring(e.offset, e.offset + e.length)}"`);
+      }
+    }
     const post = await postRepository.update(postId, update);
     await prisma.$transaction([
       prisma.postMedia.deleteMany({ where: { postId } }),

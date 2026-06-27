@@ -289,6 +289,8 @@ export function normalizeFinalEntities(
     const fixed = fixOneEntity(text, textLen, entity);
     if (fixed) {
       result.push(fixed);
+    } else if (entity.type === 'text_link' || entity.type === 'url') {
+      logger.warn(`[FinalEntityAlign] DROPPED ${entity.type} entity: offset=${entity.offset} length=${entity.length} url=${entity.url ?? '-'} textLen=${textLen}`);
     }
   }
 
@@ -307,18 +309,46 @@ function fixOneEntity(
     return entity;
   }
 
-  // Step 2: try to recover by finding the text fragment in the final text
-  const recovered = tryRecoverByFragment(text, textLen, entity);
-  if (recovered) return recovered;
-
-  // Step 3: for url/text_link, try to recover by finding the URL string
-  if (isLink && entity.url) {
-    const urlRecovered = tryRecoverByUrl(text, textLen, entity);
-    if (urlRecovered) return urlRecovered;
+  // Step 2: for text_link, the offset/length points to the DISPLAY TEXT (not the URL).
+  // The URL is a separate href. So recovery must find the display text fragment,
+  // NOT search for the URL string in the text.
+  if (entity.type === 'text_link') {
+    // Try to find the old display text fragment at some position in the new text
+    const oldFragment = text.substring(Math.min(entity.offset, text.length),
+      Math.min(entity.offset + entity.length, text.length));
+    if (oldFragment && oldFragment.length > 0) {
+      const idx = text.indexOf(oldFragment);
+      if (idx >= 0) {
+        const newOffset = telegramLength(text.slice(0, idx));
+        const newLength = telegramLength(oldFragment);
+        if (newOffset >= 0 && newOffset + newLength <= textLen) {
+          return { ...entity, offset: newOffset, length: newLength };
+        }
+      }
+    }
+    // text_link with valid URL but unmatchable display text — KEEP it with clamped bounds
+    // Telegram will still render the link if the entity is within text bounds
+    const clampedLength = Math.min(entity.length, textLen - Math.max(0, entity.offset));
+    const clampedOffset = Math.max(0, Math.min(entity.offset, textLen - 1));
+    if (clampedLength > 0 && clampedOffset + clampedLength <= textLen) {
+      return { ...entity, offset: clampedOffset, length: clampedLength };
+    }
+    // Truly out of bounds — keep with zero-length safety (Telegram ignores zero-length entities)
+    logger.warn(`[FinalEntityAlign] keeping text_link entity (unclampable): offset=${entity.offset} length=${entity.length} url=${entity.url ?? '-'}`);
+    return entity;
   }
 
-  // Step 4: for url entities (type=url), try to find the entity text itself
-  if (isLink && entity.type === 'url') {
+  // Step 3: for url entities (type=url), try to find the URL string in the text
+  if (entity.type === 'url' && entity.url) {
+    const urlIdx = text.indexOf(entity.url);
+    if (urlIdx >= 0) {
+      const newOffset = telegramLength(text.slice(0, urlIdx));
+      const newLength = telegramLength(entity.url);
+      if (newOffset >= 0 && newOffset + newLength <= textLen) {
+        return { ...entity, offset: newOffset, length: newLength };
+      }
+    }
+    // url entity — find the URL fragment at its old offset range
     const entityText = text.substring(entity.offset, entity.offset + entity.length);
     if (entityText) {
       const idx = text.indexOf(entityText);
@@ -332,10 +362,7 @@ function fixOneEntity(
     }
   }
 
-  // Step 5: unrecoverable — drop this entity
-  if (isLink) {
-    logger.warn(`[FinalEntityAlign] dropping unrecoverable ${entity.type} entity: offset=${entity.offset} length=${entity.length} url=${entity.url ?? '-'}`);
-  }
+  // Step 4: non-link style entities — drop if unrecoverable
   return null;
 }
 
@@ -344,62 +371,12 @@ function isOffsetValid(text: string, textLen: number, entity: MessageEntity): bo
   if (entity.offset < 0 || entity.length <= 0) return false;
   if (entity.offset + entity.length > textLen) return false;
 
-  // For url/text_link, also verify the fragment matches
-  if (entity.type === 'url' || entity.type === 'text_link') {
+  if (entity.type === 'url') {
     const fragment = text.substring(entity.offset, entity.offset + entity.length);
-    if (entity.type === 'url') {
-      // For url entities, the text fragment IS the URL — check it looks like a URL
-      if (!fragment.match(/^https?:\/\//) && !fragment.match(/^tg:\/\//)) return false;
-    }
+    if (!fragment.match(/^https?:\/\//) && !fragment.match(/^tg:\/\//)) return false;
   }
 
   return true;
-}
-
-function tryRecoverByFragment(
-  text: string,
-  textLen: number,
-  entity: MessageEntity,
-): MessageEntity | null {
-  // Try to find the text that was originally under this entity
-  // Use the entity's recorded offset/length to extract a candidate fragment from
-  // a hypothetical original text, but since we don't have the original, we try
-  // searching by entity URL or by a heuristic substring
-
-  // For url entities, the fragment is the URL itself
-  if (entity.type === 'url' && entity.url) {
-    return tryRecoverByUrl(text, textLen, entity);
-  }
-
-  // For text_link, try to find the URL as anchor text
-  if (entity.type === 'text_link' && entity.url) {
-    return tryRecoverByUrl(text, textLen, entity);
-  }
-
-  return null;
-}
-
-function tryRecoverByUrl(
-  text: string,
-  textLen: number,
-  entity: MessageEntity,
-): MessageEntity | null {
-  if (!entity.url) return null;
-
-  // Try finding the URL string in the text
-  const urlIdx = text.indexOf(entity.url);
-  if (urlIdx >= 0) {
-    const newOffset = telegramLength(text.slice(0, urlIdx));
-    const newLength = telegramLength(entity.url);
-    if (newOffset >= 0 && newOffset + newLength <= textLen) {
-      return { ...entity, offset: newOffset, length: newLength };
-    }
-  }
-
-  // For text_link, the anchor text might be different from the URL
-  // Try finding any occurrence where the URL's domain appears
-  // (This is a best-effort fallback)
-  return null;
 }
 
 export { telegramLength };
