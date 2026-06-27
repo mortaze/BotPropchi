@@ -2493,7 +2493,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const msgId = messages[msgIdx].id;
     await prisma.$transaction([
       prisma.postKeyboard.deleteMany({ where: { messageId: msgId } }),
-      prisma.postKeyboard.deleteMany({ where: { postId, messageId: null } }),
       prisma.postMessage.delete({ where: { id: msgId } }),
     ]);
     logger.info('[PostEditor][MessageDelete] post=%d messageId=%d keyboards deleted', postId, msgId);
