@@ -365,7 +365,7 @@ function EntityChips({ entities, text }: { entities: TelegramEntity[]; text?: st
           <span className="font-semibold">{e.type}</span>
           <span className="opacity-70">[{e.offset}:{e.length}]</span>
           {e.url && <span className="opacity-50 truncate max-w-[80px]">↗</span>}
-          {text && <span className="opacity-50 truncate max-w-[60px]">"{text.slice(e.offset, e.offset + e.length)}"</span>}
+          {text && <span className="opacity-50 truncate max-w-[60px]">{String.fromCharCode(8220)}{text.slice(e.offset, e.offset + e.length)}{String.fromCharCode(8221)}</span>}
         </span>
       ))}
     </div>
