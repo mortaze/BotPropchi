@@ -211,7 +211,7 @@ export const postService = {
           if (messagesFormat && typeof messagesFormat === 'object') {
             let syncedCount = 0;
             for (const msg of existingMessages) {
-              const idx = String(msg.order);
+              const idx = String(msg.id);
               const perMsgButtons = (messagesFormat as any)[idx];
               await prisma.postMessage.update({
                 where: { id: msg.id },
@@ -231,7 +231,7 @@ export const postService = {
           // ── Sync to post_keyboards: clear + re-insert per message ──
           for (const msg of existingMessages) {
             const msgBtns = (messagesFormat && typeof messagesFormat === 'object')
-              ? (messagesFormat as any)[String(msg.order)]
+              ? (messagesFormat as any)[String(msg.id)]
               : (Array.isArray(rawButtons) && msg === existingMessages[existingMessages.length - 1] ? rawButtons : null);
             if (!Array.isArray(msgBtns) || msgBtns.length === 0) continue;
             const newRows = msgBtns.flatMap((row: any[], r: number) =>

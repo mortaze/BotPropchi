@@ -1756,10 +1756,29 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return;
     }
 
-    // Default: create mode — add a new default button in a new row below clicked row
-    buttons.splice(row + 1, 0, [{ text: 'دکمه جدید', type: 'URL', value: '' }]);
-    await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-    await refreshButtonListView(ctx, postId);
+    // Default: create mode — add a new default button, then enter edit mode for it
+    const newRow = row + 1;
+    buttons.splice(newRow, 0, [{ text: 'دکمه جدید', type: 'URL', value: '' }]);
+    logger.info(`[ButtonEditor] create placeholder postId=${postId} messageIdx=${messageIdx} row=${newRow}`);
+    try {
+      await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+      logger.info(`[ButtonEditor] persist keyboard postId=${postId}`);
+    } catch (e: any) {
+      logger.error(`[ButtonEditor] persist failed postId=${postId}: ${e.message}`);
+      await ctx.reply('❌ خطا در ذخیره دکمه.');
+      return;
+    }
+    cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_col'), 0, 600);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
+    const freshPost = await postService.findById(postId);
+    const freshButtons = extractButtonsForMessage(freshPost, messageIdx);
+    const { text: editorText, reply_markup } = renderButtonEditor(postId, freshButtons, 'edit', { row: newRow, col: 0 });
+    const editMsgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
+    if (editMsgId) {
+      try { await ctx.telegram.editMessageText(ctx.chat.id, editMsgId, null, editorText, { reply_markup }); } catch {}
+    }
+    logger.info(`[ButtonEditor] sync complete postId=${postId}`);
     return;
   });
 
@@ -2786,12 +2805,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         if (row === undefined || col === undefined) return ctx.reply('❌ دکمه‌ای انتخاب نشده است.');
         const post = await postService.findById(editorPostId);
         if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const buttons: any[][] = JSON.parse(JSON.stringify((post as any).buttons || []));
+        const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
+        const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
         if (!buttons[row] || !buttons[row][col]) return ctx.reply('❌ دکمه یافت نشد.');
 
         const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
 
-        await postService.update(editorPostId, { buttons } as any);
+        await postService.update(editorPostId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
         cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
         cache.set(pendingKey(ctx.from.id, 'editor_col'), newCol, 600);
         const updated = await postService.findById(editorPostId);
