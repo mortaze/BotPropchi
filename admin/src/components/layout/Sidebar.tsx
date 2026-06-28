@@ -30,6 +30,7 @@ const menuItems: MenuItem[] = [
   { key: "lotteries", label: "قرعه‌کشی‌ها", href: "/dashboard/lotteries", icon: Ticket },
   { key: "discounts", label: "تخفیف‌ها", href: "/dashboard/discounts", icon: Percent },
   { key: "prop-firms", label: "پراپ فرم‌ها", href: "/dashboard/prop-firms", icon: Building2 },
+  { key: "ticket-categories", label: "دسته‌بندی تیکت", href: "/dashboard/ticket-categories", icon: Ticket },
   {
     key: "referrals", label: "دعوت دوستان", href: "/dashboard/referrals", icon: Share2,
     children: [

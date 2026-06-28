@@ -779,16 +779,47 @@ export const searchApi = {
 
 
 export const forceJoinApi = {
-  async getSettings(): Promise<{ success: boolean; data: import("@/types").ForceJoinSettings }> {
-    const { data } = await api.get("/api/admin/force-join/settings");
+  async get(): Promise<any> {
+    const { data } = await api.get("/api/admin/force-join");
     return data;
   },
-  async updateSettings(payload: Partial<import("@/types").ForceJoinSettings>): Promise<{ success: boolean; data: import("@/types").ForceJoinSettings }> {
-    const { data } = await api.put("/api/admin/force-join/settings", payload);
+  async getSettings(): Promise<any> {
+    const { data } = await api.get("/api/admin/force-join");
     return data;
   },
-  async resetToDefaults(): Promise<{ success: boolean; data: import("@/types").ForceJoinSettings }> {
-    const { data } = await api.post("/api/admin/force-join/settings/reset");
+  async update(settings: any): Promise<any> {
+    const { data } = await api.put("/api/admin/force-join", settings);
+    return data;
+  },
+  async updateSettings(settings: any): Promise<any> {
+    const { data } = await api.put("/api/admin/force-join", settings);
+    return data;
+  },
+  async resetToDefaults(): Promise<any> {
+    const { data } = await api.post("/api/admin/force-join/reset");
+    return data;
+  },
+};
+
+export const ticketCategoryApi = {
+  async listAll(): Promise<any[]> {
+    const { data } = await api.get("/api/ticket-categories", { params: { all: "true" } });
+    return data;
+  },
+  async create(title: string): Promise<any> {
+    const { data } = await api.post("/api/ticket-categories", { title });
+    return data;
+  },
+  async update(id: number, payload: { title?: string; enabled?: boolean; order?: number }): Promise<any> {
+    const { data } = await api.patch(`/api/ticket-categories/${id}`, payload);
+    return data;
+  },
+  async remove(id: number): Promise<any> {
+    const { data } = await api.delete(`/api/ticket-categories/${id}`);
+    return data;
+  },
+  async reorder(ids: number[]): Promise<any> {
+    const { data } = await api.post("/api/ticket-categories/reorder", { ids });
     return data;
   },
 };
