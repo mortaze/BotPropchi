@@ -156,15 +156,13 @@ function getMessageButtons(raw: any, messageIdx: number): any[][] {
 
 // ─── Extract buttons for a given message from post with priority ──
 // Priority: post.keyboards (normalized) → post_messages.replyMarkup → post.buttons
-function extractButtonsForMessage(post: any, messageIdx: number): any[][] {
-  // Resolve the current message's DB id for keyboard filtering
+function extractButtonsForMessage(post: any, messageId: number): any[][] {
   let currentMsgId: number | null = null;
   if (post.messages && Array.isArray(post.messages)) {
-    const msg = post.messages.find((m: any) => (m.order ?? m.messageIdx) === messageIdx) || post.messages[messageIdx];
+    const msg = post.messages.find((m: any) => m.id === messageId);
     if (msg) currentMsgId = msg.id;
   }
 
-  // 1) Try post.keyboards — filter by messageId if available, else use all
   if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
     const filtered = currentMsgId != null
       ? post.keyboards.filter((kb: any) => kb.messageId === currentMsgId)
@@ -182,16 +180,14 @@ function extractButtonsForMessage(post: any, messageIdx: number): any[][] {
     if (rows.some(r => r.length > 0)) return rows;
   }
 
-  // 2) Try post_messages[messageIdx].replyMarkup
   if (post.messages && Array.isArray(post.messages)) {
-    const msg = post.messages.find((m: any) => (m.order ?? m.messageIdx) === messageIdx) || post.messages[messageIdx];
+    const msg = post.messages.find((m: any) => m.id === messageId);
     if (msg && msg.replyMarkup && Array.isArray(msg.replyMarkup)) {
       return msg.replyMarkup;
     }
   }
 
-  // 3) Fallback to post.buttons (JSON field)
-  return getMessageButtons((post as any).buttons, messageIdx);
+  return [];
 }
 
 function setMessageButtons(raw: any, messageIdx: number, buttons: any[][]): any {
@@ -2438,12 +2434,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const sent = await ctx.reply(`${label}\n\n${msgText}`, {
           parse_mode: 'Markdown',
           link_preview_options: { is_disabled: true },
-          ...postSingleMessageInlineKeyboard(postId, i, messages.length),
+          ...postSingleMessageInlineKeyboard(postId, messages[i], i, messages.length),
         });
         if (sent) newMsgIds.push(sent.message_id);
       } catch (e) {
         const sent = await ctx.reply(`${label}\n\n${msgText}`, {
-          ...postSingleMessageInlineKeyboard(postId, i, messages.length),
+          ...postSingleMessageInlineKeyboard(postId, messages[i], i, messages.length),
         });
         if (sent) newMsgIds.push(sent.message_id);
       }
@@ -2470,20 +2466,22 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
+    const messageId = parseInt(ctx.match[2]);
     cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
     cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
-    cache.set(editorKey(ctx.from.id, 'msg_idx'), msgIdx, 600);
+    cache.set(editorKey(ctx.from.id, 'msg_idx'), messageId, 600);
     try {
       const post = await postService.findById(postId);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
       const messages = post.messages || [];
-      const msgText = messages[msgIdx]?.text || '(بدون محتوا)';
-      await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
+      const msg = messages.find((m: any) => m.id === messageId);
+      if (!msg) return ctx.reply('❌ پیام یافت نشد.');
+      const msgText = msg.text || '(بدون محتوا)';
+      await ctx.reply(`✏️ ویرایش پیام:\n\n${msgText}`, {
         ...postEditMessageReplyKeyboard(),
       });
     } catch (e: any) {
-      logger.error(`[MsgEdit] Failed postId=${postId} msgIdx=${msgIdx}: ${e.message}`, { postId, msgIdx, userId: ctx.from?.id });
+      logger.error(`[MsgEdit] Failed postId=${postId} messageId=${messageId}: ${e.message}`, { postId, messageId, userId: ctx.from?.id });
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       try { await ctx.reply('❌ خطا در ویرایش پیام. لطفاً دوباره تلاش کنید.'); } catch (_) {}
@@ -2495,17 +2493,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
+    const messageId = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = post.messages || [];
-    if (msgIdx < 0 || msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
-    const msgId = messages[msgIdx].id;
-    logger.debug('[PostEditor][MessageDelete] postId=%d orderIndex=%d resolvedMsgId=%d', postId, msgIdx, msgId);
-    // ON DELETE CASCADE on post_keyboards.messageId handles keyboard cleanup
-    await prisma.postMessage.delete({ where: { id: msgId } });
-    const remaining = await prisma.postKeyboard.findMany({ where: { messageId: msgId } });
-    logger.info('[PostEditor][MessageDelete] deleted messageId=%d remainingKeyboards=%d', msgId, remaining.length);
+    const msg = messages.find((m: any) => m.id === messageId);
+    if (!msg) return ctx.reply('❌ پیام یافت نشد.');
+    logger.debug('[PostEditor][MessageDelete] postId=%d messageId=%d', postId, messageId);
+    await prisma.postMessage.delete({ where: { id: messageId } });
+    const remaining = await prisma.postKeyboard.findMany({ where: { messageId } });
+    logger.info('[PostEditor][MessageDelete] deleted messageId=%d remainingKeyboards=%d', messageId, remaining.length);
     postService.invalidateCache();
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
@@ -2517,17 +2514,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
-    if (msgIdx <= 0) return;
+    const messageId = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = post.messages || [];
-    if (msgIdx >= messages.length) return ctx.reply('❌ پیام یافت نشد.');
+    const msgIdx = messages.findIndex((m: any) => m.id === messageId);
+    if (msgIdx <= 0) return;
     const msgId = messages[msgIdx].id;
     const prevMsgId = messages[msgIdx - 1].id;
     const currentOrder = messages[msgIdx].order;
     const prevOrder = messages[msgIdx - 1].order;
     await postMessageService.swapOrder(msgId, currentOrder, prevMsgId, prevOrder, postId);
+    postService.invalidateCache();
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
@@ -2537,16 +2535,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
+    const messageId = parseInt(ctx.match[2]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     const messages = post.messages || [];
+    const msgIdx = messages.findIndex((m: any) => m.id === messageId);
     if (msgIdx < 0 || msgIdx >= messages.length - 1) return ctx.reply('❌ در پایین‌ترین موقعیت.');
     const msgId = messages[msgIdx].id;
     const nextMsgId = messages[msgIdx + 1].id;
     const currentOrder = messages[msgIdx].order;
     const nextOrder = messages[msgIdx + 1].order;
     await postMessageService.swapOrder(msgId, currentOrder, nextMsgId, nextOrder, postId);
+    postService.invalidateCache();
     const updated = await postService.findById(postId);
     if (updated) await refreshEditorMessages(ctx, updated);
   });
@@ -2556,10 +2556,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    const msgIdx = parseInt(ctx.match[2]);
     cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
     cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
-    cache.set(editorKey(ctx.from.id, 'msg_idx'), msgIdx, 600);
+    cache.del(editorKey(ctx.from.id, 'msg_idx'));
     try {
       const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
       await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
@@ -2653,10 +2652,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         case '➕ افزودن پیام': {
           const post = await postService.findById(editorPostId);
           if (!post) return ctx.reply('❌ پست یافت نشد.');
-          const messages = post.messages || [];
-          const addAfter = messages.length - 1;
           cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
-          cache.set(editorKey(ctx.from.id, 'msg_idx'), addAfter, 600);
+          cache.del(editorKey(ctx.from.id, 'msg_idx'));
           const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
           await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
             ...postAddMessageReplyKeyboard(forwardOn),
@@ -2801,8 +2798,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── ADD MESSAGE MODE ────────────────────────────────
     if (mode === 'add_message') {
-      const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
-
       if (text === '↪️ ارسال به عنوان فوروارد (خاموش)' || text === '✅ ارسال به عنوان فوروارد (روشن)') {
         const current = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
         cache.set(editorKey(ctx.from.id, 'forward_on'), !current, 600);
@@ -2823,17 +2818,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       // Regular text = new message content
       const post = await postService.findById(editorPostId);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
-      const messages = post.messages || [];
       const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
-      const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
       await postMessageService.create(editorPostId, {
         messageType: 'text',
         text: text,
         entities: entities,
-        order: insertAt,
       });
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      postService.invalidateCache();
       await ctx.reply('✅ پیام اضافه شد');
       const updated = await postService.findById(editorPostId);
       if (updated) await refreshEditorMessages(ctx, updated);
@@ -2874,20 +2867,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── EDIT MESSAGE MODE ───────────────────────────────
     if (mode === 'edit_message') {
+      const messageId = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
+      const post = await postService.findById(editorPostId);
+      const messages = post?.messages || [];
+      const targetMsg = messages.find((m: any) => m.id === messageId);
       if (text === '✏️ ویرایش محتوا') {
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
         cache.set(editorKey(ctx.from.id, 'mode'), 'edit_content', 600);
-        const post = await postService.findById(editorPostId);
-        const messages = post?.messages || [];
-        const current = messages[msgIdx]?.text || '(بدون محتوا)';
-        await ctx.reply(`✏️ پیام ${msgIdx + 1} - محتوای جدید را ارسال کنید:\n\nمتن فعلی: ${current}`, {
+        const current = targetMsg?.text || '(بدون محتوا)';
+        await ctx.reply(`✏️ محتوای جدید را ارسال کنید:\n\nمتن فعلی: ${current}`, {
           ...postCancelOnlyReplyKeyboard(),
         });
         return;
       }
       if (text === '📝 ویرایش عنوان') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'edit_title', 600);
-        const post = await postService.findById(editorPostId);
         await ctx.reply(`✏️ عنوان جدید را ارسال کنید:\n\nعنوان فعلی: *${post?.title || ''}*`, {
           parse_mode: 'Markdown' as any,
           ...postCancelOnlyReplyKeyboard(),
@@ -2895,16 +2888,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
       if (text === 'ویرایش دکمه ها') {
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? 0;
         clearButtonEditorState(ctx.from.id);
         cache.set(pendingKey(ctx.from.id, 'editing_post'), editorPostId, 600);
-        cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), msgIdx, 600);
+        cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), messageId, 600);
         cache.set(pendingKey(ctx.from.id, 'edit_mode'), editorPostId, 300);
         cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
-        const post = await postService.findById(editorPostId);
         if (!post) return ctx.reply('❌ پست یافت نشد.');
-        const buttons = extractButtonsForMessage(post, msgIdx);
+        const buttons = extractButtonsForMessage(post, messageId);
         const { text: editorText, reply_markup } = renderButtonEditor(editorPostId, buttons, 'create');
         const sent = await ctx.reply(editorText, { reply_markup });
         if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
@@ -2913,7 +2904,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (text === '🔙 بازگشت') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
         cache.del(editorKey(ctx.from.id, 'msg_idx'));
-        const post = await postService.findById(editorPostId);
         if (post) await refreshEditorMessages(ctx, post);
         return;
       }
@@ -2922,30 +2912,27 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── EDIT CONTENT MODE ───────────────────────────────
     if (mode === 'edit_content') {
+      const messageId = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
       if (text === '❌ لغو') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
         const post = await postService.findById(editorPostId);
         const messages = post?.messages || [];
-        const msgText = messages[msgIdx]?.text || '(بدون محتوا)';
-        await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
+        const msgText = messages.find((m: any) => m.id === messageId)?.text || '(بدون محتوا)';
+        await ctx.reply(`✏️ ویرایش پیام:\n\n${msgText}`, {
           ...postEditMessageReplyKeyboard(),
         });
         return;
       }
-      const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
-      const post = await postService.findById(editorPostId);
-      if (!post) return ctx.reply('❌ پست یافت نشد.');
-      const messages = post.messages || [];
-      if (msgIdx >= 0 && msgIdx < messages.length) {
+      if (messageId > 0) {
         const entityData = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
-        await postMessageService.update(messages[msgIdx].id, {
+        await postMessageService.update(messageId, {
           text: text,
           entities: entityData,
         });
       }
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      postService.invalidateCache();
       const updated = await postService.findById(editorPostId);
       if (updated) await refreshEditorMessages(ctx, updated);
       return;
@@ -2953,13 +2940,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── EDIT TITLE MODE ─────────────────────────────────
     if (mode === 'edit_title') {
+      const messageId = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
       if (text === '❌ لغو') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
-        const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
         const post = await postService.findById(editorPostId);
         const messages = post?.messages || [];
-        const msgText = messages[msgIdx]?.text || '(بدون محتوا)';
-        await ctx.reply(`✏️ ویرایش پیام ${msgIdx + 1}:\n\n${msgText}`, {
+        const msgText = messages.find((m: any) => m.id === messageId)?.text || '(بدون محتوا)';
+        await ctx.reply(`✏️ ویرایش پیام:\n\n${msgText}`, {
           ...postEditMessageReplyKeyboard(),
         });
         return;
@@ -2967,6 +2954,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       await postService.update(editorPostId, { title: text, updatedBy: BigInt(ctx.from.id) } as any);
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
+      postService.invalidateCache();
       const updated = await postService.findById(editorPostId);
       if (updated) await refreshEditorMessages(ctx, updated);
       return;
@@ -2987,20 +2975,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const msg = ctx.message;
     const caption = msg.caption || '';
-    const msgIdx = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
     const post = await postService.findById(editorPostId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const messages = post.messages || [];
     const captionEntities = msg.caption_entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
-    const insertAt = msgIdx < 0 ? messages.length : Math.min(msgIdx + 1, messages.length);
     await postMessageService.create(editorPostId, {
       messageType: 'text',
       text: caption || '(رسانه)',
       entities: captionEntities,
-      order: insertAt,
     });
     cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
+    postService.invalidateCache();
     await ctx.reply('✅ پیام اضافه شد');
     const updated = await postService.findById(editorPostId);
     if (updated) await refreshEditorMessages(ctx, updated);

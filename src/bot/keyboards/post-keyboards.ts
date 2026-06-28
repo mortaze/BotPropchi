@@ -378,18 +378,19 @@ export const postCancelOnlyReplyKeyboard = () =>
     ['❌ لغو'],
   ]).resize().persistent();
 
-export const postSingleMessageInlineKeyboard = (postId: number, msgIdx: number, totalMsgs: number) => {
+export const postSingleMessageInlineKeyboard = (postId: number, msg: any, msgIndex: number, totalMsgs: number) => {
+  const msgId = msg.id;
   const rows: any[][] = [
     [
-      Markup.button.callback('✏️ ویرایش پیام', `post:msg:edit:${postId}:${msgIdx}`),
-      Markup.button.callback('🗑 حذف پیام', `post:msg:delete:${postId}:${msgIdx}`),
+      Markup.button.callback('✏️ ویرایش پیام', `post:msg:edit:${postId}:${msgId}`),
+      Markup.button.callback('🗑 حذف پیام', `post:msg:delete:${postId}:${msgId}`),
     ],
   ];
   const moveRow: any[] = [];
-  if (msgIdx > 0) moveRow.push(Markup.button.callback('⬆️ بالا', `post:msg:up:${postId}:${msgIdx}`));
-  if (msgIdx < totalMsgs - 1) moveRow.push(Markup.button.callback('⬇️ پایین', `post:msg:down:${postId}:${msgIdx}`));
+  if (msgIndex > 0) moveRow.push(Markup.button.callback('⬆️ بالا', `post:msg:up:${postId}:${msgId}`));
+  if (msgIndex < totalMsgs - 1) moveRow.push(Markup.button.callback('⬇️ پایین', `post:msg:down:${postId}:${msgId}`));
   if (moveRow.length > 0) rows.push(moveRow);
-  rows.push([Markup.button.callback('➕ افزودن پیام', `post:msg:add:${postId}:${msgIdx}`)]);
+  rows.push([Markup.button.callback('➕ افزودن پیام', `post:msg:add:${postId}:${msgId}`)]);
   return Markup.inlineKeyboard(rows);
 };
 

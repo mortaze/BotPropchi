@@ -18,15 +18,17 @@ npm start                # node dist/index.js
 
 # Database (requires PostgreSQL)
 npm run db:push          # push schema to DB
+npm run db:generate      # regenerate Prisma client only
 npm run db:seed          # seed initial data (admin: admin/admin123)
 npm run db:studio        # Prisma Studio UI
 
-# Testing
-npm run test             # vitest run (tests in src/__tests__/)
+# Testing (pure unit tests, no DB/Redis needed)
+npm run test             # vitest run — picks up src/__tests__/*.test.ts
 
 # Admin panel (from admin/ directory)
 cd admin && npm run dev  # Next.js dev server
 cd admin && npm run build
+cd admin && npm run lint # next lint
 ```
 
 ## Architecture
@@ -66,6 +68,8 @@ Tests are pure unit tests (no DB/Redis needed). Run with `npm run test`.
 
 Test files: `src/__tests__/*.test.ts`
 
+Note: there is a stray `src/tests/` directory with one file — vitest does NOT pick it up (config only includes `src/__tests__/`).
+
 ## TypeScript Config
 
 Root (`tsconfig.json`):
@@ -73,7 +77,7 @@ Root (`tsconfig.json`):
 - `strict: false`, `noImplicitAny: false`, `strictNullChecks: false`
 - Path alias: `@/*` → `src/*`
 - Output: `dist/`
-- No lint or typecheck script exists in root `package.json`
+- No lint or typecheck script in root `package.json`
 
 Admin (`admin/tsconfig.json`):
 - `strict: true`, module: esnext, moduleResolution: bundler
@@ -90,15 +94,16 @@ Admin (`admin/tsconfig.json`):
 
 ## Gotchas
 
-- `docker-compose.yml` only runs PostgreSQL 16 and Redis 7 (ports 5432, 6379). The bot service is NOT in docker-compose — deploy via the Dockerfile which runs `npx prisma db push && node dist/index.js` at container start.
+- `docker-compose.yml` is mostly commented out — the active config only runs PostgreSQL 16 and Redis 7 (ports 5432, 6379). The bot service is NOT in docker-compose — deploy via the Dockerfile which runs `npx prisma db push && node dist/index.js` at container start.
 - No linter or typecheck configured in root project; admin uses `next lint`
 - No CI/CD workflows in repo
 - Prisma client wrapper is at `src/prisma/client.ts` (singleton PrismaClient with dev query logging); the generated client lives in `node_modules/.prisma/client`
 - All user-facing strings are in Persian (Farsi)
-- `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` are legacy/dead code — the real admin app is the Next.js frontend
+- `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` are legacy/dead code — the real admin app is the Next.js frontend. Admin also has legacy bot scripts (`dev:bot`, `build:bot`, `start:bot`) in its package.json.
 - Admin panel uses cookie-based auth (`admin_token` + `admin_user` cookies), root API uses JWT Bearer tokens
 - Admin panel middleware blocks non-OWNER/SUPER_ADMIN from `/dashboard/settings` and `/dashboard/admin-users`
 - Redis is optional — falls back to in-memory cache (`node-cache`) if `REDIS_URL` not set
 - `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — must be set for admin to function
 - Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (Express-level, not Telegraf-level)
 - The Post system (`Post`, `PostMessage`, `PostButton`, `PostEntity`, `PostMedia`, `PostKeyboard`, `PostVersion`) is the richest model — posts support multi-message sequences, rich Telegram entities, inline keyboards, and version snapshots
+- Admin uses shadcn/ui components (Radix UI primitives + Tailwind CSS + class-variance-authority)

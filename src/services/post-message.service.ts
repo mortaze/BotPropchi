@@ -519,30 +519,27 @@ export const postMessageService = {
   list(postId: number) { return prisma.postMessage.findMany({ where: { postId }, orderBy: { order: 'asc' } }); },
   get(id: number) { return prisma.postMessage.findUnique({ where: { id } }); },
   async create(postId: number, data: any) {
-    let order: number;
-    if (data.order != null) {
-      order = data.order;
-    } else {
-      const last = await prisma.postMessage.aggregate({ where: { postId }, _max: { order: true } });
-      order = (last._max.order ?? -1) + 1;
-    }
-    const msg = await prisma.postMessage.create({
-      data: {
-        postId, order,
-        messageType: data.messageType ?? PostMessageType.text,
-        text: data.text ?? null,
-        entities: Array.isArray(data.entities) ? arrayJson(data.entities) : [],
-        parseMode: PostMessageParseMode.None,
-        mediaFileId: data.mediaFileId ?? null,
-        mediaGroupId: data.mediaGroupId ?? null,
-        caption: data.caption ?? null,
-        captionEntities: Array.isArray(data.captionEntities) ? arrayJson(data.captionEntities) : [],
-        replyMarkup: data.replyMarkup ?? null,
-        delayMs: data.delayMs ?? 0,
-      } as any,
+    return prisma.$transaction(async (tx) => {
+      const last = await tx.postMessage.aggregate({ where: { postId }, _max: { order: true } });
+      const order = (last._max.order ?? -1) + 1;
+      const msg = await tx.postMessage.create({
+        data: {
+          postId, order,
+          messageType: data.messageType ?? PostMessageType.text,
+          text: data.text ?? null,
+          entities: Array.isArray(data.entities) ? arrayJson(data.entities) : [],
+          parseMode: PostMessageParseMode.None,
+          mediaFileId: data.mediaFileId ?? null,
+          mediaGroupId: data.mediaGroupId ?? null,
+          caption: data.caption ?? null,
+          captionEntities: Array.isArray(data.captionEntities) ? arrayJson(data.captionEntities) : [],
+          replyMarkup: data.replyMarkup ?? null,
+          delayMs: data.delayMs ?? 0,
+        } as any,
+      });
+      logger.info(`[PostEditor][MessageCreate] post=${postId} messageId=${msg.id} order=${order}`);
+      return msg;
     });
-    logger.info(`[PostEditor][MessageCreate] post=${postId} messageId=${msg.id} order=${order}`);
-    return msg;
   },
   update(id: number, data: any) {
     return prisma.postMessage.update({

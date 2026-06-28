@@ -1,18 +1,30 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('../prisma/client', () => ({
-  prisma: {
+vi.mock('../prisma/client', () => {
+  const mockAggregate = vi.fn().mockResolvedValue({ _max: { order: null } });
+  const mockCreate = vi.fn().mockImplementation((data: any) =>
+    Promise.resolve({ id: Date.now(), ...data.data, createdAt: new Date(), updatedAt: new Date() })
+  );
+  const mockTx = {
     postMessage: {
-      findMany: vi.fn(),
-      create: vi.fn().mockImplementation((data: any) => Promise.resolve({ id: Date.now(), ...data.data })),
-      update: vi.fn().mockImplementation(({ where, data }: any) => Promise.resolve({ id: where.id, ...data })),
-      delete: vi.fn().mockResolvedValue({ id: 1 }),
-      deleteMany: vi.fn(),
-      aggregate: vi.fn().mockResolvedValue({ _max: { order: null } }),
+      aggregate: mockAggregate,
+      create: mockCreate,
     },
-    $transaction: vi.fn(),
-  },
-}));
+  };
+  return {
+    prisma: {
+      postMessage: {
+        findMany: vi.fn(),
+        create: mockCreate,
+        update: vi.fn().mockImplementation(({ where, data }: any) => Promise.resolve({ id: where.id, ...data })),
+        delete: vi.fn().mockResolvedValue({ id: 1 }),
+        deleteMany: vi.fn(),
+        aggregate: mockAggregate,
+      },
+      $transaction: vi.fn().mockImplementation((fn: any) => fn(mockTx)),
+    },
+  };
+});
 
 vi.mock('../services/post.service', () => ({
   postService: {
