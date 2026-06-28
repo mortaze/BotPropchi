@@ -2459,6 +2459,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(editorKey(ctx.from.id, 'forward_on'));
   }
 
+  async function openEditorAfterMessageCreate(ctx: any, postId: number) {
+    cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+    cache.del(editorKey(ctx.from.id, 'msg_idx'));
+    postService.invalidateCache();
+    await ctx.reply('✅ پیام اضافه شد');
+    try {
+      const updated = await postService.findById(postId);
+      if (updated) await refreshEditorMessages(ctx, updated);
+    } catch (e: any) {
+      logger.error(`[MsgAdd] refresh failed postId=${postId}: ${e.message}`);
+      try { await ctx.reply('⚠️ پیام ذخیره شد اما نمایش ویرایشگر با خطا مواجه شد. دوباره وارد پست شوید.'); } catch (_) {}
+    }
+  }
+
   // ─── Per-Message Callbacks ─────────────────────────────
 
   bot.action(/^post:msg:edit:(\d+):(\d+)$/, async (ctx: any) => {
@@ -2816,20 +2830,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }
 
       // Regular text = new message content
-      const post = await postService.findById(editorPostId);
-      if (!post) return ctx.reply('❌ پست یافت نشد.');
       const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
-      await postMessageService.create(editorPostId, {
-        messageType: 'text',
-        text: text,
-        entities: entities,
-      });
-      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
-      cache.del(editorKey(ctx.from.id, 'msg_idx'));
-      postService.invalidateCache();
-      await ctx.reply('✅ پیام اضافه شد');
-      const updated = await postService.findById(editorPostId);
-      if (updated) await refreshEditorMessages(ctx, updated);
+      try {
+        await postMessageService.create(editorPostId, {
+          messageType: 'text',
+          text: text,
+          entities: entities,
+        });
+        await openEditorAfterMessageCreate(ctx, editorPostId);
+      } catch (e: any) {
+        logger.error(`[MsgAdd] create failed postId=${editorPostId}: ${e.message}`);
+        await ctx.reply('❌ خطا در ایجاد پیام. لطفاً دوباره تلاش کنید.');
+      }
       return;
     }
 
@@ -2975,20 +2987,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const msg = ctx.message;
     const caption = msg.caption || '';
-    const post = await postService.findById(editorPostId);
-    if (!post) return ctx.reply('❌ پست یافت نشد.');
     const captionEntities = msg.caption_entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
-    await postMessageService.create(editorPostId, {
-      messageType: 'text',
-      text: caption || '(رسانه)',
-      entities: captionEntities,
-    });
-    cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
-    cache.del(editorKey(ctx.from.id, 'msg_idx'));
-    postService.invalidateCache();
-    await ctx.reply('✅ پیام اضافه شد');
-    const updated = await postService.findById(editorPostId);
-    if (updated) await refreshEditorMessages(ctx, updated);
+    try {
+      await postMessageService.create(editorPostId, {
+        messageType: 'text',
+        text: caption || '(رسانه)',
+        entities: captionEntities,
+      });
+      await openEditorAfterMessageCreate(ctx, editorPostId);
+    } catch (e: any) {
+      logger.error(`[MsgAdd] media create failed postId=${editorPostId}: ${e.message}`);
+      await ctx.reply('❌ خطا در ایجاد پیام. لطفاً دوباره تلاش کنید.');
+    }
   });
 }
 
