@@ -1,10 +1,11 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import { redisClient } from '../../utils/redis';
 import { logger } from '../../utils/logger';
 import { ticketService } from '../../services/ticket.service';
 import { ticketCategoryService } from '../../services/ticket-category.service';
-import { ticketCategoryKeyboard, ticketViewKeyboard, ticketReplyKeyboard } from '../keyboards/ticket.keyboards';
+import { ticketCategoryKeyboard, ticketViewKeyboard, ticketReplyKeyboard, ticketUserMenuKeyboard } from '../keyboards/ticket.keyboards';
 import { notifyAdminsNewTicket } from '../ticket-notification.service';
+import { settingsService } from '../../services/settings.service';
 import { prisma } from '../../prisma/client';
 
 interface TicketState {
@@ -55,15 +56,108 @@ function extractFileData(ctx: any) {
   return {};
 }
 
+async function sendTicketMessageLocal(
+  telegram: any,
+  chatId: number,
+  msg: { messageType: string; text?: string | null; fileId?: string | null; caption?: string | null },
+): Promise<void> {
+  const caption = msg.text || msg.caption || undefined;
+  switch (msg.messageType) {
+    case 'TEXT':
+      if (msg.text) await telegram.sendMessage(chatId, msg.text);
+      break;
+    case 'PHOTO':
+      if (msg.fileId) await telegram.sendPhoto(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'VIDEO':
+      if (msg.fileId) await telegram.sendVideo(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'VOICE':
+      if (msg.fileId) await telegram.sendVoice(chatId, msg.fileId);
+      break;
+    case 'AUDIO':
+      if (msg.fileId) await telegram.sendAudio(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'DOCUMENT':
+      if (msg.fileId) await telegram.sendDocument(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'STICKER':
+      if (msg.fileId) await telegram.sendSticker(chatId, msg.fileId);
+      break;
+    default:
+      if (msg.text) await telegram.sendMessage(chatId, msg.text);
+  }
+}
+
 export function registerTicketUserHandlers(bot: Telegraf) {
   bot.hears('🎫 تیکت', async (ctx: any) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
+
+    const isEnabled = await settingsService.isFeatureEnabled('ticket_system');
+    if (!isEnabled) {
+      return ctx.reply('❌ سیستم پشتیبانی موقتاً غیرفعال است.');
+    }
+
+    await ctx.reply('بخش پشتیبانی — چه کاری می\u200cتوانم برایتان انجام دهم؟', ticketUserMenuKeyboard());
+  });
+
+  bot.hears('🎫 ایجاد تیکت جدید', async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const isEnabled = await settingsService.isFeatureEnabled('ticket_system');
+    if (!isEnabled) return ctx.reply('❌ سیستم پشتیبانی غیرفعال است.');
+
     const cd = await redisClient.get<boolean>(cooldownKey(telegramId));
-    if (cd) return ctx.reply('⏳ لطفا چند دقیقه صبر کنید');
+    if (cd) return ctx.reply('⏳ لطفاً چند دقیقه صبر کنید قبل از ارسال تیکت جدید.');
+
     const categories = await ticketCategoryService.list();
     await setState(telegramId, { step: 'SELECT_CATEGORY' });
-    return ctx.reply('لطفا موضوع تیکت خود را انتخاب کنید', ticketCategoryKeyboard(categories));
+    return ctx.reply('لطفاً موضوع تیکت خود را انتخاب کنید:', ticketCategoryKeyboard(categories));
+  });
+
+  bot.hears('📋 تیکت\u200cهای من', async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(telegramId) } });
+    if (!user) return ctx.reply('❌ ابتدا /start را بزنید.');
+
+    const result = await ticketService.getUserTickets(user.id, 1, 10);
+    if (result.total === 0) {
+      return ctx.reply('📭 هیچ تیکتی ثبت نکرده\u200cاید.\n\nبرای ارسال تیکت از «🎫 ایجاد تیکت جدید» استفاده کنید.');
+    }
+
+    const lines = result.items.map((t: any) => {
+      const status = t.status === 'OPEN' ? '🟢 باز' : '🔴 بسته';
+      const cat = t.category?.title || '';
+      const date = new Date(t.createdAt).toLocaleDateString('fa-IR');
+      return `${status} تیکت #${t.id} — ${cat} — ${date}`;
+    });
+
+    const text = `📋 تیکت\u200cهای شما (${result.total} مورد):\n\n` + lines.join('\n');
+
+    const keyboard = Markup.inlineKeyboard(
+      result.items.map((t: any) => {
+        const emoji = t.status === 'OPEN' ? '🟢' : '🔴';
+        return [Markup.button.callback(`${emoji} تیکت #${t.id}`, `ticket:view:${t.id}`)];
+      })
+    );
+
+    return ctx.reply(text, keyboard);
+  });
+
+  bot.hears('↩️ بازگشت به منو', async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+    await redisClient.del(stateKey(telegramId));
+    const { adminReplyOptions } = require('./index');
+    const keyboard = await adminReplyOptions(telegramId).catch(() => null);
+    if (keyboard) {
+      return ctx.reply('منوی اصلی:', keyboard);
+    }
+    return ctx.reply('منوی اصلی:');
   });
 
   bot.action(/^ticket:cat:(\d+)$/, async (ctx: any) => {
@@ -74,7 +168,7 @@ export function registerTicketUserHandlers(bot: Telegraf) {
     if (!state || state.step !== 'SELECT_CATEGORY') return;
     const categoryId = parseInt(ctx.match[1]);
     await setState(telegramId, { step: 'IN_TICKET', categoryId });
-    return ctx.reply('پیام خود را ارسال کنید. می‌توانید متن، عکس، ویدیو، فایل یا وویس ارسال کنید.');
+    return ctx.reply('پیام خود را ارسال کنید. می\u200cتوانید متن، عکس، ویدیو، فایل یا وویس ارسال کنید.');
   });
 
   bot.on('message', async (ctx: any, next) => {
@@ -108,6 +202,7 @@ export function registerTicketUserHandlers(bot: Telegraf) {
           firstName: user.firstName || '', username: (ctx.from as any).username,
           categoryTitle: category?.title || 'نامشخص',
           messagePreview: text || `[${messageType}]`, createdAt: new Date(),
+          firstMessage: { messageType, text, fileId: (fileData as any).fileId ?? null },
         }).catch(err => logger.error(`[TicketUser] notifyAdmins failed ticketId=${ticketId}`, err));
       } else {
         await ctx.reply('📨 پیام ارسال شد');
@@ -133,12 +228,24 @@ export function registerTicketUserHandlers(bot: Telegraf) {
       const messages = ticket.messages || [];
       const recent = messages.slice(-5);
       if (recent.length === 0) return ctx.reply('📭 هنوز پیامی در این تیکت وجود ندارد.');
-      const lines = recent.map((m: any) => {
-        const sender = m.senderType === 'ADMIN' ? 'پشتیبانی' : 'کاربر';
-        const content = m.text || `[${m.messageType}]`;
-        return `[${sender}] ${content}`;
-      });
-      return ctx.reply(lines.join('\n\n'), ticketReplyKeyboard());
+
+      const summary = `📋 تیکت #${ticket.id} — ${ticket.category?.title || ''} — ${recent.length} پیام`;
+      await ctx.reply(summary);
+
+      for (const m of recent) {
+        const senderLabel = m.senderType === 'ADMIN' ? '🛡 پشتیبانی:' : '👤 شما:';
+        try {
+          if (m.messageType === 'TEXT' || !m.fileId) {
+            await ctx.reply(`${senderLabel}\n${m.text || '—'}`);
+          } else {
+            await ctx.reply(senderLabel);
+            await sendTicketMessageLocal(ctx.telegram, ctx.from!.id, m);
+          }
+        } catch (err) {
+          await ctx.reply(`${senderLabel}\n[${m.messageType}]`);
+        }
+      }
+      return ctx.reply('برای پاسخ دادن:', ticketReplyKeyboard());
     } catch (err) {
       logger.error(`[TicketUser] view error ticketId=${ticketId}`, err);
       return ctx.reply('❌ خطا در بارگذاری تیکت.');

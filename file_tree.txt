@@ -55107,6 +55107,8 @@ C:.
 |   |           settings.routes.ts
 |   |           system-integrity.routes.ts
 |   |           system-log.routes.ts
+|   |           ticket-category.routes.ts
+|   |           ticket.routes.ts
 |   |           user-delete.routes.ts
 |   |           user-event.routes.ts
 |   |           user.routes.ts
@@ -55115,14 +55117,18 @@ C:.
 |   |   |   notifications.ts
 |   |   |   service-toggle.ts
 |   |   |   shared.ts
+|   |   |   ticket-notification.service.ts
 |   |   |   
 |   |   +---handlers
 |   |   |       index.ts
 |   |   |       post-handlers.ts
+|   |   |       ticket-admin.handler.ts
+|   |   |       ticket-user.handler.ts
 |   |   |       
 |   |   +---keyboards
 |   |   |       index.ts
 |   |   |       post-keyboards.ts
+|   |   |       ticket.keyboards.ts
 |   |   |       
 |   |   +---middlewares
 |   |   |       index.ts
@@ -55152,6 +55158,7 @@ C:.
 |   |       discount.repository.ts
 |   |       lottery.repository.ts
 |   |       post.repository.ts
+|   |       ticket.repository.ts
 |   |       user.repository.ts
 |   |       
 |   +---scripts
@@ -55190,6 +55197,8 @@ C:.
 |   |   |   settings.service.ts
 |   |   |   system-integrity.service.ts
 |   |   |   system-log.service.ts
+|   |   |   ticket-category.service.ts
+|   |   |   ticket.service.ts
 |   |   |   user-delete.service.ts
 |   |   |   user-event.service.ts
 |   |   |   user.service.ts

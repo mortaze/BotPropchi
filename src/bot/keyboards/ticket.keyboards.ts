@@ -34,16 +34,23 @@ export function ticketReplyKeyboard() {
   ]);
 }
 
-export function adminTicketListKeyboard(tickets: { id: number; status: string }[], page: number, totalPages: number) {
-  const rows: any[][] = tickets.map(t => [
-    Markup.button.callback(`🎫 #${t.id} [${t.status}]`, `ticket:admin:view:${t.id}`),
-  ]);
+export function adminTicketListKeyboard(
+  tickets: { id: number; status: string; user?: { firstName?: string | null; username?: string | null } | null }[],
+  page: number,
+  totalPages: number
+) {
+  const rows: any[][] = tickets.map(t => {
+    const emoji = t.status === 'OPEN' ? '🟢' : t.status === 'CLOSED' ? '🔴' : '⚫';
+    const name = t.user?.firstName || t.user?.username || 'کاربر';
+    return [Markup.button.callback(`${emoji} #${t.id} — ${name}`, `ticket:admin:view:${t.id}`)];
+  });
 
   if (totalPages > 1) {
     const navRow: any[] = [];
     if (page > 1) navRow.push(Markup.button.callback('◀️ قبلی', `ticket:admin:page:${page - 1}`));
+    navRow.push(Markup.button.callback(`${page}/${totalPages}`, 'noop'));
     if (page < totalPages) navRow.push(Markup.button.callback('▶️ بعدی', `ticket:admin:page:${page + 1}`));
-    if (navRow.length > 0) rows.push(navRow);
+    rows.push(navRow);
   }
 
   return Markup.inlineKeyboard(rows);
@@ -56,5 +63,22 @@ export function adminTicketFilterKeyboard() {
       Markup.button.callback('باز', 'ticket:admin:filter:open'),
       Markup.button.callback('بسته', 'ticket:admin:filter:closed'),
     ],
+  ]);
+}
+
+export function ticketUserMenuKeyboard() {
+  return Markup.keyboard([
+    ['🎫 ایجاد تیکت جدید'],
+    ['📋 تیکت\u200cهای من'],
+    ['↩️ بازگشت به منو'],
+  ]).resize().persistent();
+}
+
+export function adminTicketByCategoryKeyboard(categories: { id: number; title: string }[]) {
+  if (!categories || categories.length === 0) {
+    return Markup.inlineKeyboard([[Markup.button.callback('دسته\u200cبندی تعریف نشده', 'noop')]]);
+  }
+  return Markup.inlineKeyboard([
+    ...categories.map(c => [Markup.button.callback(`📂 ${c.title}`, `ticket:admin:cat:${c.id}`)]),
   ]);
 }

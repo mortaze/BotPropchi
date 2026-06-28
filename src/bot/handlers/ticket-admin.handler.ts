@@ -4,7 +4,7 @@ import { logger } from '../../utils/logger';
 import { ticketService } from '../../services/ticket.service';
 import { ticketCategoryService } from '../../services/ticket-category.service';
 import { botAdminService } from '../../services/bot-admin.service';
-import { ticketActionKeyboard, adminTicketListKeyboard, adminTicketFilterKeyboard } from '../keyboards/ticket.keyboards';
+import { ticketActionKeyboard, adminTicketListKeyboard, adminTicketFilterKeyboard, adminTicketByCategoryKeyboard } from '../keyboards/ticket.keyboards';
 import { notifyUserNewReply } from '../ticket-notification.service';
 import { prisma } from '../../prisma/client';
 
@@ -38,16 +38,42 @@ function extractFileData(ctx: any) {
   return {};
 }
 
-function formatTicketMessages(ticket: any): string {
+async function sendTicketMessageLocal(
+  telegram: any,
+  chatId: number,
+  msg: { messageType: string; text?: string | null; fileId?: string | null; caption?: string | null },
+): Promise<void> {
+  const caption = msg.text || msg.caption || undefined;
+  switch (msg.messageType) {
+    case 'TEXT':
+      if (msg.text) await telegram.sendMessage(chatId, msg.text);
+      break;
+    case 'PHOTO':
+      if (msg.fileId) await telegram.sendPhoto(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'VIDEO':
+      if (msg.fileId) await telegram.sendVideo(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'VOICE':
+      if (msg.fileId) await telegram.sendVoice(chatId, msg.fileId);
+      break;
+    case 'AUDIO':
+      if (msg.fileId) await telegram.sendAudio(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'DOCUMENT':
+      if (msg.fileId) await telegram.sendDocument(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'STICKER':
+      if (msg.fileId) await telegram.sendSticker(chatId, msg.fileId);
+      break;
+    default:
+      if (msg.text) await telegram.sendMessage(chatId, msg.text);
+  }
+}
+
+async function sendTicketHistory(ctx: any, ticket: any): Promise<void> {
   const msgs = ticket.messages || [];
   const recent = msgs.slice(-10);
-  if (recent.length === 0) return '📭 هیچ پیامی وجود ندارد.';
-
-  const lines = recent.map((m: any) => {
-    const sender = m.senderType === 'ADMIN' ? '🧑‍💼 پشتیبانی' : '👤 کاربر';
-    const content = m.text || `[${m.messageType}]`;
-    return `${sender}:\n${content}`;
-  });
 
   const header = [
     `🎫 تیکت #${ticket.id}`,
@@ -55,11 +81,30 @@ function formatTicketMessages(ticket: any): string {
     `👤 کاربر: ${ticket.user?.firstName || ''} ${ticket.user?.lastName || ''}`.trim(),
     `📊 وضعیت: ${ticket.status}`,
     `📅 ایجاد: ${new Date(ticket.createdAt).toLocaleString('fa-IR')}`,
-    '',
-    '--- پیام‌ها ---',
+    `💬 تعداد پیام: ${msgs.length}`,
   ].join('\n');
 
-  return header + '\n\n' + lines.join('\n\n');
+  await ctx.reply(header);
+
+  if (recent.length === 0) {
+    await ctx.reply('📭 هنوز پیامی ارسال نشده.');
+    return;
+  }
+
+  for (const m of recent) {
+    const senderLabel = m.senderType === 'ADMIN' ? '🛡 پشتیبانی:' : '👤 کاربر:';
+    const time = new Date(m.createdAt).toLocaleString('fa-IR');
+    try {
+      if (m.messageType === 'TEXT' || !m.fileId) {
+        await ctx.reply(`${senderLabel} [${time}]\n${m.text || '—'}`);
+      } else {
+        await ctx.reply(`${senderLabel} [${time}]`);
+        await sendTicketMessageLocal(ctx.telegram, ctx.from!.id, m);
+      }
+    } catch (err) {
+      await ctx.reply(`${senderLabel}\n[${m.messageType}]`);
+    }
+  }
 }
 
 async function requireAdmin(ctx: any): Promise<boolean> {
@@ -75,7 +120,7 @@ function buildTicketAdminMenuKeyboard() {
   return Markup.keyboard([
     ['📋 همه تیکت\u200cها', '🟢 تیکت\u200cهای باز'],
     ['🔴 تیکت\u200cهای بسته', '📂 دسته\u200cبندی\u200cها'],
-    ['↩️ بازگشت به پنل ادمین'],
+    ['🗂 فیلتر دسته\u200cبندی', '↩️ بازگشت به پنل ادمین'],
   ]).resize().persistent();
 }
 
@@ -134,6 +179,18 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
     );
   });
 
+  bot.hears('🗂 فیلتر دسته\u200cبندی', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from?.id);
+    if (!admin) return;
+
+    const categories = await ticketCategoryService.list();
+    if (categories.length === 0) {
+      return ctx.reply('❌ هیچ دسته\u200cبندی فعالی وجود ندارد.');
+    }
+
+    await ctx.reply('یک دسته\u200cبندی انتخاب کنید:', adminTicketByCategoryKeyboard(categories));
+  });
+
   bot.hears('↩️ بازگشت به پنل ادمین', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from?.id);
     if (!admin) return;
@@ -165,6 +222,29 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
     await ctx.answerCbQuery('🗑 حذف شد');
   });
 
+  bot.action(/^ticket:admin:cat:(\d+)$/, async (ctx: any) => {
+    if (!(await requireAdmin(ctx))) return;
+    await ctx.answerCbQuery();
+
+    const categoryId = parseInt(ctx.match[1]);
+    try {
+      const result = await ticketService.getAllTickets({ categoryId, page: 1, limit: 10 });
+      const totalPages = Math.ceil(result.total / 10);
+
+      if (result.total === 0) {
+        return ctx.reply('📭 هیچ تیکتی در این دسته\u200cبندی وجود ندارد.');
+      }
+
+      await ctx.reply(
+        `📂 تیکت\u200cهای این دسته\u200cبندی (${result.total} مورد):`,
+        adminTicketListKeyboard(result.items, 1, totalPages)
+      );
+    } catch (err) {
+      logger.error('[TicketAdmin] cat filter error', err);
+      await ctx.reply('❌ خطا در دریافت تیکت\u200cها.');
+    }
+  });
+
   // ─── ticket:admin:view:{id} ────────────────────────
   bot.action(/^ticket:admin:view:(\d+)$/, async (ctx: any) => {
     if (!(await requireAdmin(ctx))) return;
@@ -177,7 +257,8 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
         return ctx.reply('❌ تیکت یافت نشد.');
       }
 
-      await ctx.reply(formatTicketMessages(ticket), ticketActionKeyboard(ticketId));
+      await sendTicketHistory(ctx, ticket);
+      await ctx.reply('عملیات:', ticketActionKeyboard(ticketId));
     } catch (err) {
       logger.error(`[TicketAdmin] view error ticketId=${ticketId}`, err);
       await ctx.reply('❌ خطا در بارگذاری تیکت.');

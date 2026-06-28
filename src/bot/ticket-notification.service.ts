@@ -12,6 +12,39 @@ export function setTicketBotInstance(bot: Telegraf) {
   _ticketBotInstance = bot;
 }
 
+async function sendTicketMessage(
+  telegram: any,
+  chatId: number,
+  msg: { messageType: string; text?: string | null; fileId?: string | null; caption?: string | null },
+): Promise<void> {
+  const caption = msg.text || msg.caption || undefined;
+  switch (msg.messageType) {
+    case 'TEXT':
+      if (msg.text) await telegram.sendMessage(chatId, msg.text);
+      break;
+    case 'PHOTO':
+      if (msg.fileId) await telegram.sendPhoto(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'VIDEO':
+      if (msg.fileId) await telegram.sendVideo(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'VOICE':
+      if (msg.fileId) await telegram.sendVoice(chatId, msg.fileId);
+      break;
+    case 'AUDIO':
+      if (msg.fileId) await telegram.sendAudio(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'DOCUMENT':
+      if (msg.fileId) await telegram.sendDocument(chatId, msg.fileId, caption ? { caption } : {});
+      break;
+    case 'STICKER':
+      if (msg.fileId) await telegram.sendSticker(chatId, msg.fileId);
+      break;
+    default:
+      if (msg.text) await telegram.sendMessage(chatId, msg.text);
+  }
+}
+
 export async function notifyAdminsNewTicket(params: {
   ticketId: number;
   userId: number;
@@ -21,6 +54,7 @@ export async function notifyAdminsNewTicket(params: {
   categoryTitle: string;
   messagePreview: string;
   createdAt: Date;
+  firstMessage?: { messageType: string; text?: string | null; fileId?: string | null };
 }): Promise<void> {
   if (!_ticketBotInstance) {
     logger.warn(`[TicketNotify] bot not set, cannot send notification ticketId=${params.ticketId}`);
@@ -72,6 +106,18 @@ export async function notifyAdminsNewTicket(params: {
     }
     if (lastError) {
       logger.error(`[TicketNotify] failed admin=${admin.telegramId.toString()} after ${MAX_RETRIES} attempts ticketId=${params.ticketId}`, lastError);
+    }
+
+    if (params.firstMessage && params.firstMessage.messageType !== 'TEXT' && params.firstMessage.fileId) {
+      try {
+        await sendTicketMessage(
+          _ticketBotInstance!.telegram,
+          Number(admin.telegramId),
+          params.firstMessage
+        );
+      } catch (err) {
+        logger.warn(`[TicketNotify] failed to send file to admin ticketId=${params.ticketId}`, err);
+      }
     }
   }
 

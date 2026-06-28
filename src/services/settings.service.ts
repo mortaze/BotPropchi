@@ -21,6 +21,7 @@ export const DEFAULT_FEATURES = [
   { key: 'prop_firm_check', label: 'Prop Firm Check' },
   { key: 'ai_assistant', label: 'AI Assistant' },
   { key: 'posts', label: 'Posts / CMS' },
+  { key: 'ticket_system', label: 'سیستم تیکت' },
 ];
 
 export function isOwnerRole(role?: string | null) {
