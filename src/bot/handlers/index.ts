@@ -812,8 +812,49 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const admins = await botAdminService.list();
-    const text = admins.map((item) => `${item.status === 'ACTIVE' ? '✅' : '⏸'} ${item.role} — ${item.telegramId.toString()} ${item.username ? '@' + item.username : ''}`).join('\n') || 'ادمینی ثبت نشده است.';
-    await ctx.reply(`👥 مدیریت ادمین‌ها\n\nبرای افزودن ادمین پیام را به شکل زیر ارسال کنید:\n/admin_add TELEGRAM_ID ROLE\nمثال: /admin_add 123456 ADMIN\n\n${text}`);
+    const text = admins.length
+      ? admins.map((item) =>
+          `${item.status === 'ACTIVE' ? '✅' : '⏸'} ${item.role} — ${item.telegramId.toString()} ${item.username ? '@' + item.username : ''}`
+        ).join('\n')
+      : 'ادمینی ثبت نشده است.';
+    const ticketRows = admins.map((item) => [
+      {
+        text: `${(item as any).receiveTickets !== false ? '🔔' : '🔕'} تیکت: ${item.username ? '@' + item.username : item.telegramId.toString()}`,
+        callback_data: `admin:toggle_ticket:${item.id}`,
+      },
+    ]);
+    await ctx.reply(
+      `👥 مدیریت ادمین\u200cها\n\nبرای افزودن ادمین:\n/admin_add TELEGRAM_ID ROLE\n\n${text}\n\n─────────────\n🔔 = دریافت تیکت فعال | 🔕 = غیرفعال`,
+      { reply_markup: { inline_keyboard: ticketRows } }
+    );
+  });
+
+  bot.action(/^admin:toggle_ticket:(\d+)$/, async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from?.id);
+    if (!admin) return ctx.answerCbQuery('⛔ دسترسی ندارید');
+    const targetId = parseInt(ctx.match[1]);
+    const target = await prisma.botAdmin.findUnique({ where: { id: targetId } });
+    if (!target) return ctx.answerCbQuery('❌ ادمین یافت نشد');
+    const newValue = !(target as any).receiveTickets;
+    await prisma.botAdmin.update({
+      where: { id: targetId },
+      data: { receiveTickets: newValue } as any,
+    });
+    const name = target.username ? `@${target.username}` : target.telegramId.toString();
+    await ctx.answerCbQuery(
+      newValue ? `🔔 ${name} — دریافت تیکت فعال شد` : `🔕 ${name} — دریافت تیکت غیرفعال شد`,
+      { show_alert: true }
+    );
+    const admins = await botAdminService.list();
+    const ticketRows = admins.map((item) => [
+      {
+        text: `${(item as any).receiveTickets !== false ? '🔔' : '🔕'} تیکت: ${item.username ? '@' + item.username : item.telegramId.toString()}`,
+        callback_data: `admin:toggle_ticket:${item.id}`,
+      },
+    ]);
+    try {
+      await ctx.editMessageReplyMarkup({ inline_keyboard: ticketRows });
+    } catch (_) {}
   });
 
   bot.command('debug_post_render', async (ctx: any) => {

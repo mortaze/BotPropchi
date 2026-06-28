@@ -193,19 +193,34 @@ export function registerTicketUserHandlers(bot: Telegraf) {
         await setState(telegramId, { ...state, ticketId });
       }
       await ticketService.addUserMessage(ticketId!, user.id, { messageType, text, ...fileData });
+      const category = await ticketCategoryService.findById(state.categoryId);
       if (isFirstMessage) {
         await redisClient.set(cooldownKey(telegramId), true, COOLDOWN_TTL);
-        await ctx.reply('✅ تیکت شما ثبت شد.', ticketViewKeyboard(ticketId!));
-        const category = await ticketCategoryService.findById(state.categoryId);
+        await ctx.reply('\u2705 تیکت شما ثبت شد.', ticketViewKeyboard(ticketId!));
         notifyAdminsNewTicket({
-          ticketId: ticketId!, userId: user.id, telegramId,
-          firstName: user.firstName || '', username: (ctx.from as any).username,
-          categoryTitle: category?.title || 'نامشخص',
-          messagePreview: text || `[${messageType}]`, createdAt: new Date(),
-          firstMessage: { messageType, text, fileId: (fileData as any).fileId ?? null },
+          ticketId: ticketId!,
+          userId: user.id,
+          telegramId,
+          firstName: user.firstName || '',
+          username: (ctx.from as any).username,
+          categoryTitle: category?.title || '\u0646\u0627\u0645\u0634\u062E\u0635',
+          lastMessage: { messageType, text, fileId: (fileData as any).fileId ?? null },
+          createdAt: new Date(),
+          isNew: true,
         }).catch(err => logger.error(`[TicketUser] notifyAdmins failed ticketId=${ticketId}`, err));
       } else {
-        await ctx.reply('📨 پیام ارسال شد');
+        await ctx.reply('\uD83D\uDCE8 \u067E\u06CC\u0627\u0645\u062A \u0627\u0631\u0633\u0627\u0644 \u0634\u062F. \u067E\u0634\u062A\u06CC\u0628\u0627\u0646\u06CC \u0628\u0647 \u0632\u0648\u062F\u06CC \u067E\u0627\u0633\u062E \u0645\u06CC\u200C\u062F\u0647\u062F.');
+        notifyAdminsNewTicket({
+          ticketId: ticketId!,
+          userId: user.id,
+          telegramId,
+          firstName: user.firstName || '',
+          username: (ctx.from as any).username,
+          categoryTitle: category?.title || '\u0646\u0627\u0645\u0634\u062E\u0635',
+          lastMessage: { messageType, text, fileId: (fileData as any).fileId ?? null },
+          createdAt: new Date(),
+          isNew: false,
+        }).catch(err => logger.error(`[TicketUser] notifyAdmins failed ticketId=${ticketId}`, err));
       }
     } catch (err: any) {
       logger.error(`[TicketUser] message handler error telegramId=${telegramId}`, err);

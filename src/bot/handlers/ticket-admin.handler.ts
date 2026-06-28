@@ -8,12 +8,6 @@ import { ticketActionKeyboard, adminTicketListKeyboard, adminTicketFilterKeyboar
 import { notifyUserNewReply } from '../ticket-notification.service';
 import { prisma } from '../../prisma/client';
 
-const REPLY_TTL = 600;
-
-function replyStateKey(adminId: number) {
-  return `ticket:admin:reply:${adminId}`;
-}
-
 function detectMessageType(ctx: any): string {
   if (ctx.message?.photo) return 'PHOTO';
   if (ctx.message?.video) return 'VIDEO';
@@ -265,60 +259,50 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
     }
   });
 
-  // ─── ticket:reply:{ticketId} ───────────────────────
-  bot.action(/^ticket:reply:(\d+)$/, async (ctx: any) => {
-    if (!(await requireAdmin(ctx))) return;
-
-    const ticketId = parseInt(ctx.match[1]);
-    await redisClient.set(replyStateKey(ctx.from.id), { ticketId }, REPLY_TTL);
-    await ctx.answerCbQuery('✅ حالت پاسخ فعال شد');
-    await ctx.reply('✍️ پیام خود را ارسال کنید (متن، عکس، ویدیو، فایل یا وویس)');
-  });
-
-  // ─── Admin reply message handler ───────────────────
+  // ─── Admin reply message handler (Reply-based) ─────
   bot.on('message', async (ctx: any, next) => {
     const admin = await botAdminService.getActive(ctx.from?.id);
     if (!admin) return next();
 
-    const addCatState = await redisClient.get<{ waiting: boolean }>(`ticket:admin:addcat:${ctx.from?.id}`);
+    const addCatState = await redisClient.get<{ waiting: boolean }>(`ticket:admin:addcat:${ctx.from.id}`);
     if (addCatState?.waiting && ctx.message?.text) {
       await redisClient.del(`ticket:admin:addcat:${ctx.from.id}`);
       await ticketCategoryService.create(ctx.message.text.trim());
-      await ctx.reply(`✅ دسته\u200cبندی «${ctx.message.text.trim()}» اضافه شد.`);
+      await ctx.reply(`\u2705 \u062F\u0633\u062A\u0647\u200C\u0628\u0646\u062F\u06CC \u00AB${ctx.message.text.trim()}\u00BB \u0627\u0636\u0627\u0641\u0647 \u0634\u062F.`);
       return;
     }
 
-    const replyState = await redisClient.get<{ ticketId: number }>(replyStateKey(ctx.from.id));
-    if (!replyState) return next();
+    const replyToMsgId = ctx.message?.reply_to_message?.message_id;
+    if (!replyToMsgId) return next();
 
+    const mapKey = `ticket:msgmap:${ctx.from.id}:${replyToMsgId}`;
+    const mapped = await redisClient.get<{ ticketId: number }>(mapKey);
+    if (!mapped?.ticketId) return next();
+
+    const ticketId = mapped.ticketId;
     try {
       const messageType = detectMessageType(ctx);
       const fileData = extractFileData(ctx);
       const text = ctx.message?.text || ctx.message?.caption || null;
 
-      await ticketService.addAdminMessage(replyState.ticketId, {
-        messageType,
-        text,
-        ...fileData,
-      });
+      await ticketService.addAdminMessage(ticketId, { messageType, text, ...fileData });
 
-      const ticket = await prisma.ticket.findUnique({ where: { id: replyState.ticketId } });
-      if (ticket) {
-        const user = await prisma.user.findUnique({ where: { id: ticket.userId } });
-        if (user) {
-          notifyUserNewReply(user.telegramId, replyState.ticketId, text || `[${messageType}]`)
-            .catch(err => logger.error(`[TicketAdmin] notifyUser failed ticketId=${replyState.ticketId}`, err));
-        }
+      const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { user: true } });
+      if (ticket?.user) {
+        notifyUserNewReply({
+          telegramId: ticket.user.telegramId,
+          ticketId,
+          message: { messageType, text, fileId: (fileData as any).fileId ?? null },
+        }).catch(err => logger.error(`[TicketAdmin] notifyUser failed ticketId=${ticketId}`, err));
       }
 
-      await redisClient.del(replyStateKey(ctx.from.id));
-      await ctx.reply('✅ پاسخ ارسال شد');
+      await ctx.reply(`✅ پاسخ شما به تیکت #${ticketId} ارسال شد.`);
     } catch (err: any) {
       logger.error(`[TicketAdmin] reply error`, err);
       if (err.message === 'TICKET_NOT_FOUND_OR_CLOSED') {
-        await ctx.reply('❌ تیکت یافت نشد یا بسته شده است.');
+        await ctx.reply(`❌ تیکت #${ticketId} یافت نشد یا بسته شده است.`);
       } else {
-        await ctx.reply('❌ خطا در ارسال پاسخ.');
+        await ctx.reply('\u274C \u062E\u0637\u0627 \u062F\u0631 \u0627\u0631\u0633\u0627\u0644 \u067E\u0627\u0633\u062E.');
       }
     }
   });

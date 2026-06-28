@@ -534,8 +534,9 @@ model BotAdmin {
   firstName  String?
   lastName   String?
   role       BotAdminRole   @default(ADMIN)
-  status     BotAdminStatus @default(ACTIVE)
-  createdAt  DateTime       @default(now())
+  status         BotAdminStatus @default(ACTIVE)
+  receiveTickets Boolean        @default(true)
+  createdAt      DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 
   @@index([status])
