@@ -187,7 +187,7 @@ function extractButtonsForMessage(post: any, messageId: number): any[][] {
     }
   }
 
-  return [];
+  return getMessageButtons((post as any).buttons, messageId);
 }
 
 function setMessageButtons(raw: any, messageIdx: number, buttons: any[][]): any {
