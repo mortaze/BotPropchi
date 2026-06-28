@@ -359,7 +359,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const existingKey = cache.get<number>(editorKey(ctx.from.id, 'active'));
     if (existingKey) {
       const existingMode = cache.get<string>(editorKey(ctx.from.id, 'mode'));
-      // If in 'main' mode and text doesn't look like an editor action, the key is stale
       if (existingMode === 'main') {
         const text = ctx.message.text;
         const isEditorAction = ['➕ افزودن پیام', 'افزودن دستور', '📊 آمار', '📤 لغو انتشار', '✅ انتشار', '🔗 متغیرها',
@@ -374,8 +373,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           clearEditorKeyState(ctx.from.id);
         }
       }
-      // In sub-modes like 'edit_message', the editor is legit — skip
-      // In stale 'main' mode (cleared above), fall through to post title matching
       if (cache.get<number>(editorKey(ctx.from.id, 'active'))) return next();
     }
 
@@ -2604,8 +2601,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (!post) { clearEditorKeyState(ctx.from.id); return next(); }
       switch (text) {
         case '➕ افزودن پیام': {
-          cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
-          await refreshEditorMessages(ctx, post);
+          cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
+          cache.del(editorKey(ctx.from.id, 'msg_idx'));
+          const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
+          await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
+            ...postAddMessageReplyKeyboard(forwardOn),
+          });
           return;
         }
         case 'افزودن دستور': {
