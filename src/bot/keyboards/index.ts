@@ -64,6 +64,7 @@ export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   rows.push(['🎛 ویرایش منو']);
   rows.push(['👥 مدیریت ادمین‌ها']);
   rows.push(['📊 گزارشات']);
+  rows.push(['🎫 تیکت‌ها']);
   rows.push(['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی']);
   return Markup.keyboard(rows).resize().persistent();
 }

@@ -1711,6 +1711,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
     }
   });
 
+  // ─── Register Ticket Handlers ──────────────────────────
+  const { registerTicketUserHandlers } = require('./ticket-user.handler');
+  const { registerTicketAdminHandlers } = require('./ticket-admin.handler');
+  registerTicketUserHandlers(bot);
+  registerTicketAdminHandlers(bot);
+
   // ─── Register Post Management Handlers ─────────────────
   const { registerPostHandlers } = require('./post-handlers');
   registerPostHandlers(bot);

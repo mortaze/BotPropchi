@@ -63,6 +63,7 @@ model User {
   attributionEvents          AttributionEvent[]
   userEvents                 UserEvent[]
   userMessageHistory         UserMessageHistory[]
+  tickets                    Ticket[]
 
   @@index([referredById])
   @@index([profileCompleted])
@@ -1182,4 +1183,94 @@ model UserMessageHistory {
   @@index([messageType])
   @@index([createdAt])
   @@map("user_message_history")
+}
+
+enum TicketStatus {
+  OPEN
+  CLOSED
+  DELETED
+}
+
+enum TicketSenderType {
+  USER
+  ADMIN
+}
+
+enum TicketMessageType {
+  TEXT
+  PHOTO
+  VIDEO
+  VOICE
+  AUDIO
+  DOCUMENT
+  STICKER
+  MEDIA_GROUP
+}
+
+model TicketCategory {
+  id        Int       @id @default(autoincrement())
+  title     String
+  enabled   Boolean   @default(true)
+  order     Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  tickets   Ticket[]
+
+  @@index([enabled])
+  @@index([order])
+  @@map("ticket_categories")
+}
+
+model Ticket {
+  id          Int              @id @default(autoincrement())
+  userId      Int
+  categoryId  Int
+  status      TicketStatus     @default(OPEN)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  closedAt    DateTime?
+  deletedAt   DateTime?
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    TicketCategory   @relation(fields: [categoryId], references: [id])
+  messages    TicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([categoryId])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id             Int                @id @default(autoincrement())
+  ticketId       Int
+  senderType     TicketSenderType
+  messageType    TicketMessageType  @default(TEXT)
+  text           String?
+  fileId         String?
+  fileUniqueId   String?
+  mimeType       String?
+  fileSize       Int?
+  isRead         Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+  ticket         Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  attachments    TicketAttachment[]
+
+  @@index([ticketId])
+  @@index([senderType])
+  @@index([isRead])
+  @@map("ticket_messages")
+}
+
+model TicketAttachment {
+  id              Int           @id @default(autoincrement())
+  messageId       Int
+  telegramFileId  String
+  type            String
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+  message         TicketMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("ticket_attachments")
 }

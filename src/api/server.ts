@@ -46,6 +46,8 @@ import { createBroadcastTraceRouter } from "./routes/broadcast-trace.routes";
 import { systemIntegrityRouter } from "./routes/system-integrity.routes";
 import { userDeleteRouter } from "./routes/user-delete.routes";
 import { userEventRouter } from "./routes/user-event.routes";
+import { ticketRouter } from "./routes/ticket.routes";
+import { ticketCategoryRouter } from "./routes/ticket-category.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -228,6 +230,10 @@ export function startAdminApi(bot?: Telegraf) {
 
   // ───────────────── FORCE JOIN SETTINGS ────────────────────────
   app.use("/api/admin/force-join", forceJoinRouter);
+
+  // ───────────────── TICKET ROUTES ────────────────────────────
+  app.use("/api/tickets", authMiddleware, ticketRouter);
+  app.use("/api/ticket-categories", authMiddleware, ticketCategoryRouter);
 
   // ───────────────── 404 HANDLER ─────────────────
   app.use(
