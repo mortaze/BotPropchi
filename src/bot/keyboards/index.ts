@@ -37,6 +37,9 @@ export function buildMainMenuKeyboard(
       if (!allTexts.includes('👨‍💼 پنل ادمین')) {
         visibleRows.push(['👨‍💼 پنل ادمین']);
       }
+      if (!allTexts.includes('🎫 تیکت')) {
+        visibleRows.push(['🎫 تیکت']);
+      }
     }
 
     if (displayMode === 'toggle_allowed') {
