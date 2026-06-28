@@ -37,6 +37,10 @@ export function buildMainMenuKeyboard(
       if (!allTexts.includes('👨‍💼 پنل ادمین')) {
         visibleRows.push(['👨‍💼 پنل ادمین']);
       }
+    }
+
+    {
+      const allTexts = visibleRows.flat();
       if (!allTexts.includes('🎫 تیکت')) {
         visibleRows.push(['🎫 تیکت']);
       }

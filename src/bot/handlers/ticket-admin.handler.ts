@@ -1,7 +1,8 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import { redisClient } from '../../utils/redis';
 import { logger } from '../../utils/logger';
 import { ticketService } from '../../services/ticket.service';
+import { ticketCategoryService } from '../../services/ticket-category.service';
 import { botAdminService } from '../../services/bot-admin.service';
 import { ticketActionKeyboard, adminTicketListKeyboard, adminTicketFilterKeyboard } from '../keyboards/ticket.keyboards';
 import { notifyUserNewReply } from '../ticket-notification.service';
@@ -70,19 +71,98 @@ async function requireAdmin(ctx: any): Promise<boolean> {
   return true;
 }
 
+function buildTicketAdminMenuKeyboard() {
+  return Markup.keyboard([
+    ['📋 همه تیکت\u200cها', '🟢 تیکت\u200cهای باز'],
+    ['🔴 تیکت\u200cهای بسته', '📂 دسته\u200cبندی\u200cها'],
+    ['↩️ بازگشت به پنل ادمین'],
+  ]).resize().persistent();
+}
+
 export function registerTicketAdminHandlers(bot: Telegraf) {
-  // ─── 🎫 تیکت‌ها (admin ticket list) ────────────────
-  bot.hears('🎫 تیکت\u200cها', async (ctx: any) => {
+  bot.hears('\uD83C\uDFAB تیکت\u200cها', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from?.id);
     if (!admin) return;
+    await ctx.reply('مدیریت تیکت\u200cها:', buildTicketAdminMenuKeyboard());
+  });
 
+  bot.hears('📋 همه تیکت\u200cها', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from?.id);
+    if (!admin) return;
     const result = await ticketService.getAllTickets({ page: 1, limit: 10 });
     const totalPages = Math.ceil(result.total / 10);
+    await ctx.reply('همه تیکت\u200cها:', adminTicketListKeyboard(result.items, 1, totalPages));
+  });
 
-    await ctx.reply('تیکت\u200cها:', {
-      ...adminTicketListKeyboard(result.items, 1, totalPages),
-    });
-    await ctx.reply('فیلتر:', adminTicketFilterKeyboard());
+  bot.hears('🟢 تیکت\u200cهای باز', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from?.id);
+    if (!admin) return;
+    const result = await ticketService.getAllTickets({ status: 'OPEN', page: 1, limit: 10 });
+    const totalPages = Math.ceil(result.total / 10);
+    await ctx.reply('تیکت\u200cهای باز:', adminTicketListKeyboard(result.items, 1, totalPages));
+  });
+
+  bot.hears('🔴 تیکت\u200cهای بسته', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from?.id);
+    if (!admin) return;
+    const result = await ticketService.getAllTickets({ status: 'CLOSED', page: 1, limit: 10 });
+    const totalPages = Math.ceil(result.total / 10);
+    await ctx.reply('تیکت\u200cهای بسته:', adminTicketListKeyboard(result.items, 1, totalPages));
+  });
+
+  bot.hears('📂 دسته\u200cبندی\u200cها', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from?.id);
+    if (!admin) return;
+    const cats = await ticketCategoryService.listAll();
+    if (cats.length === 0) {
+      await ctx.reply('هیچ دسته\u200cبندی تعریف نشده.\n\nبرای افزودن بنویسید:\n➕ نام دسته\u200cبندی را ارسال کنید',
+        Markup.inlineKeyboard([[Markup.button.callback('➕ افزودن دسته\u200cبندی', 'ticket:cat:add')]]));
+      return;
+    }
+    const list = cats.map((c: any, i: number) =>
+      `${i + 1}. ${c.title} ${c.enabled ? '✅' : '❌'}`
+    ).join('\n');
+    await ctx.reply(`دسته\u200cبندی\u200cهای تیکت:\n\n${list}`,
+      Markup.inlineKeyboard([
+        ...cats.map((c: any) => [
+          Markup.button.callback(`\u270F\uFE0F ${c.title}`, `ticket:cat:edit:${c.id}`),
+          Markup.button.callback(c.enabled ? '❌ غیرفعال' : '✅ فعال', `ticket:cat:toggle:${c.id}`),
+          Markup.button.callback('🗑', `ticket:cat:del:${c.id}`),
+        ]),
+        [Markup.button.callback('➕ افزودن', 'ticket:cat:add')],
+      ])
+    );
+  });
+
+  bot.hears('↩️ بازگشت به پنل ادمین', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from?.id);
+    if (!admin) return;
+    const { buildBotAdminPanelKeyboard } = require('../keyboards');
+    const canBroadcast = admin.role === 'OWNER' || admin.role === 'ADMIN';
+    await ctx.reply('پنل ادمین:', buildBotAdminPanelKeyboard(canBroadcast));
+  });
+
+  bot.action('ticket:cat:add', async (ctx: any) => {
+    if (!(await requireAdmin(ctx))) return;
+    await ctx.answerCbQuery();
+    await redisClient.set(`ticket:admin:addcat:${ctx.from.id}`, { waiting: true }, 300);
+    await ctx.reply('نام دسته\u200cبندی جدید را ارسال کنید:');
+  });
+
+  bot.action(/^ticket:cat:toggle:(\d+)$/, async (ctx: any) => {
+    if (!(await requireAdmin(ctx))) return;
+    const id = parseInt(ctx.match[1]);
+    const cat = await ticketCategoryService.findById(id);
+    if (!cat) return ctx.answerCbQuery('❌ یافت نشد');
+    await ticketCategoryService.update(id, { enabled: !cat.enabled });
+    await ctx.answerCbQuery(cat.enabled ? '❌ غیرفعال شد' : '✅ فعال شد');
+  });
+
+  bot.action(/^ticket:cat:del:(\d+)$/, async (ctx: any) => {
+    if (!(await requireAdmin(ctx))) return;
+    const id = parseInt(ctx.match[1]);
+    await ticketCategoryService.remove(id);
+    await ctx.answerCbQuery('🗑 حذف شد');
   });
 
   // ─── ticket:admin:view:{id} ────────────────────────
@@ -118,6 +198,14 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
   bot.on('message', async (ctx: any, next) => {
     const admin = await botAdminService.getActive(ctx.from?.id);
     if (!admin) return next();
+
+    const addCatState = await redisClient.get<{ waiting: boolean }>(`ticket:admin:addcat:${ctx.from?.id}`);
+    if (addCatState?.waiting && ctx.message?.text) {
+      await redisClient.del(`ticket:admin:addcat:${ctx.from.id}`);
+      await ticketCategoryService.create(ctx.message.text.trim());
+      await ctx.reply(`✅ دسته\u200cبندی «${ctx.message.text.trim()}» اضافه شد.`);
+      return;
+    }
 
     const replyState = await redisClient.get<{ ticketId: number }>(replyStateKey(ctx.from.id));
     if (!replyState) return next();
