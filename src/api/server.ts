@@ -20,7 +20,6 @@ import { authRouter } from "./routes/auth.routes";
 import { analyticsRouter } from "./routes/analytics.routes";
 import { botAdminRouter } from "./routes/bot-admin.routes";
 import { systemLogRouter } from "./routes/system-log.routes";
-import { discountRouter } from "./routes/discount.routes";
 import lotteryRouter from "./routes/lottery.routes";
 import { userRouter } from "./routes/user.routes";
 import { referralRouter } from "./routes/referral.routes";
@@ -33,7 +32,6 @@ import { adminUserRouter } from "./routes/admin-user.routes";
 import { scoringRouter } from "./routes/scoring.routes";
 import { createMiniAppRouter } from "./routes/mini-app.routes";
 import { miniAppLogRouter } from "./routes/mini-app-log.routes";
-import { createAiRouter } from "./routes/ai.routes";
 import { postRouter } from "./routes/post.routes";
 import { menuRouter } from "./routes/menu.routes";
 import { forcedMembershipRouter } from "./routes/forced-membership.routes";
@@ -42,7 +40,6 @@ import { searchRouter } from "./routes/search.routes";
 import { attributionRouter } from "./routes/attribution.routes";
 import { broadcastDiagnosticsRouter } from "./routes/broadcast-diagnostics.routes";
 import { broadcastRcaRouter } from "./routes/broadcast-rca.routes";
-import { createBroadcastTraceRouter } from "./routes/broadcast-trace.routes";
 import { systemIntegrityRouter } from "./routes/system-integrity.routes";
 import { userDeleteRouter } from "./routes/user-delete.routes";
 import { userEventRouter } from "./routes/user-event.routes";
@@ -146,13 +143,6 @@ export function startAdminApi(bot?: Telegraf) {
   // ───────────────── TELEGRAM MINI APP ROUTES ─────────────────
   app.use("/api/mini-app", createMiniAppRouter(bot));
 
-  // ───────────────── DISCOUNT ROUTES ─────────────────
-  app.use(
-    "/api/discounts",
-    authMiddleware,
-    discountRouter
-  );
-
   // ───────────────── LOTTERY ROUTES ─────────────────
   app.use(
     "/api/lotteries",
@@ -208,12 +198,10 @@ export function startAdminApi(bot?: Telegraf) {
   app.use("/api/attribution", authMiddleware, requireFeature("reports"), attributionRouter);
   app.use("/api/broadcast-diagnostics", authMiddleware, requireFeature("reports"), broadcastDiagnosticsRouter);
   app.use("/api/broadcast-rca", authMiddleware, requireFeature("reports"), broadcastRcaRouter);
-  app.use("/api/broadcast-trace", authMiddleware, requireFeature("reports"), createBroadcastTraceRouter(bot));
   app.use("/api/system-integrity", authMiddleware, requireFeature("reports"), systemIntegrityRouter);
   app.use("/api/admin/users", authMiddleware, userDeleteRouter);
   app.use("/api/user-events", authMiddleware, userEventRouter);
   app.use("/api/search", authMiddleware, searchRouter);
-  app.use("/api/ai", createAiRouter(bot));
   app.use("/api/settings", authMiddleware, settingsRouter);
   app.use("/api/admin-users", authMiddleware, requireOwner, adminUserRouter);
   app.use("/api/system-logs", authMiddleware, systemLogRouter);

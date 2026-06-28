@@ -67,7 +67,6 @@ userRouter.get('/:id', async (req, res) => {
       referredBy: { select: { id: true, telegramId: true, username: true, firstName: true, lastName: true } },
       lotteryEntries: { include: { lottery: true }, orderBy: { createdAt: 'desc' } },
       lotteryWins: { include: { lottery: true }, orderBy: { wonAt: 'desc' } },
-      clickLogs: { include: { discountCode: true }, orderBy: { createdAt: 'desc' }, take: 50 },
     },
   });
 

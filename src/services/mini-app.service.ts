@@ -3,7 +3,6 @@ import { PointLogType, Prisma, SystemEventType } from '@prisma/client';
 import { config } from '../config';
 import { prisma } from '../prisma/client';
 import { scoringService } from './scoring.service';
-import { discountService } from './discount.service';
 import { pointService } from './point.service';
 import { referralService } from './referral.service';
 import { systemLogService } from './system-log.service';
@@ -349,48 +348,11 @@ class MiniAppService {
 
   async getAppData() {
     const featureMap = await settingsService.getFeatureMap();
-    const propFirmsEnabled = featureMap.prop_firms !== false;
-    const discountsEnabled = featureMap.discount_codes !== false;
-    const propFirmCheckEnabled = featureMap.prop_firm_check !== false;
-    const [settings, scoring, propFirms] = await Promise.all([
+    const [settings, scoring] = await Promise.all([
       this.getMiniAppSettings(),
       scoringService.getSettings(),
-      propFirmsEnabled ? prisma.propFirm.findMany({
-        where: { isActive: true },
-        select: {
-          id: true, name: true, slug: true, description: true, logoUrl: true, websiteUrl: true, reviewLink: true, isActive: true,
-          discountCodes: {
-            where: { isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-            orderBy: [{ isFeatured: 'desc' }, { usageCount: 'desc' }, { createdAt: 'desc' }],
-            take: 1,
-            select: { id: true, title: true, code: true, discountPercent: true, affiliateLink: true, expiresAt: true, isFeatured: true },
-          },
-        },
-        orderBy: { name: 'asc' },
-      }) : Promise.resolve([]),
     ]);
-    const visiblePropFirms = (propFirms as any[]).map((firm) => ({
-      ...firm,
-      reviewLink: propFirmCheckEnabled ? firm.reviewLink : null,
-      discountCodes: discountsEnabled ? firm.discountCodes : [],
-    }));
-    return serializeBigInts({ settings: { ...settings, profileCompletionPoints: scoring.profileCompletionPoints }, features: featureMap, propFirms: visiblePropFirms });
-  }
-
-  async getDiscountsForPropFirm(propFirmId: number) {
-    return serializeBigInts(await discountService.getByPropFirm(propFirmId, 1, 50));
-  }
-
-  async registerDiscountClick(initData: string, discountCodeId: number, context: ValidationContext = {}) {
-    const telegramUser = await this.verifyInitData(initData, context);
-    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(telegramUser.id) } });
-    const discount = await prisma.discountCode.findUnique({ where: { id: discountCodeId }, include: { propFirm: true } });
-    if (!discount || !discount.isActive || (discount.expiresAt && discount.expiresAt <= new Date())) {
-      throw new MiniAppValidationError('MINI_APP_INVALID_PROFILE', 'کد تخفیف فعال یافت نشد', { reason: 'inactive_discount', discountCodeId });
-    }
-    if (user) await discountService.handleClick(discountCodeId, user.id);
-    else await discountService.incrementUsage(discountCodeId);
-    return serializeBigInts({ discount });
+    return serializeBigInts({ settings: { ...settings, profileCompletionPoints: scoring.profileCompletionPoints }, features: featureMap });
   }
 
   private async getMiniAppSettings() {

@@ -329,7 +329,6 @@ export const analyticsService = {
         topReferrers: [],
       },
       forceJoin: { channels: forceChannels, groups: forceGroups, verifiedUsers: verifiedMemberships },
-      discounts: { topClicks: [], topUsage: [], topViewed: [] },
       lotteries: {
         total: lotteryCount,
         participants: lotteryParticipants,
@@ -340,7 +339,7 @@ export const analyticsService = {
       },
       broadcasts: { total: broadcastCount, successRate: totalBroadcastLogs ? Math.round((broadcastSuccess / totalBroadcastLogs) * 10000) / 100 : 0, errorRate: totalBroadcastLogs ? Math.round((broadcastFailed / totalBroadcastLogs) * 10000) / 100 : 0, success: broadcastSuccess, failed: broadcastFailed },
       groups: { approved: approvedGroups, active: activeGroups },
-      charts: { dailyUsers: [], dailyReferrals: [], dailyDiscountClicks: [], dailyLotteryEntries: [] },
+      charts: { dailyUsers: [], dailyReferrals: [], dailyLotteryEntries: [] },
     };
 
     await redisClient.set(cacheKey, result, CACHE_TTL).catch(() => {});

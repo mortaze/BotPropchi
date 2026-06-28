@@ -11,8 +11,6 @@ import { forcedMembershipSettingsService } from '../../services/membership/force
 
 
 const initDataSchema = z.object({ initData: z.string().optional().default('') });
-const propFirmParamSchema = z.object({ id: z.coerce.number().int().positive() });
-const discountClickSchema = initDataSchema.extend({ discountCodeId: z.coerce.number().int().positive() });
 const profileSchema = initDataSchema.extend({
   firstName: z.string().trim().min(2).max(80),
   lastName: z.string().trim().min(2).max(80),
@@ -87,23 +85,6 @@ export function createMiniAppRouter(bot?: Telegraf) {
   miniAppRouter.get('/app-data', async (_req, res) => {
     res.status(401).json({ success: false, error: 'InitData تلگرام دریافت نشد' });
   });
-
-  miniAppRouter.post('/prop-firms/:id/discounts', requireMembership, requireFeature('discount_codes'), async (req, res) => {
-  const parsed = propFirmParamSchema.safeParse(req.params);
-  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
-  res.json({ success: true, ...(await miniAppService.getDiscountsForPropFirm(parsed.data.id)) });
-});
-
-  miniAppRouter.post('/discount-click', requireMembership, requireFeature('discount_codes'), async (req, res) => {
-  const parsed = discountClickSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
-  try {
-    res.json({ success: true, ...(await miniAppService.registerDiscountClick(parsed.data.initData, parsed.data.discountCodeId, getRequestContext(req))) });
-  } catch (error) {
-    const response = authErrorResponse(error);
-    res.status(response.status).json(response.body);
-  }
-});
 
   miniAppRouter.post('/profile', requireMembership, async (req, res) => {
   try {

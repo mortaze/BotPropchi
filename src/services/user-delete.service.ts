@@ -76,8 +76,6 @@ export const userDeleteService = {
       prisma.lotteryWinner.count({ where: { userId } }),
       prisma.userRequiredChannelMembership.count({ where: { userId } }),
       prisma.broadcastLog.count({ where: { userId } }),
-      prisma.clickLog.count({ where: { userId } }),
-      prisma.aiChatLog.count({ where: { userId } }),
       prisma.miniAppDebugLog.count({ where: { userId } }),
       prisma.systemLog.count({ where: { userId } }),
     ]);
@@ -87,7 +85,7 @@ export const userDeleteService = {
       'referralsAsInviter', 'referralsAsReferred', 'leaderboardCache',
       'referralLogsAsInviter', 'referralLogsAsReferred',
       'lotteryEntries', 'lotteryWins', 'channelMemberships',
-      'broadcastLogs', 'clickLogs', 'aiChatLogs',
+      'broadcastLogs',
       'miniAppDebugLogs', 'systemLogs',
     ];
 
@@ -153,8 +151,6 @@ export const userDeleteService = {
       deleted.lotteryWins = (await tx.lotteryWinner.deleteMany({ where: { userId } })).count;
       deleted.channelMemberships = (await tx.userRequiredChannelMembership.deleteMany({ where: { userId } })).count;
       deleted.broadcastLogs = (await tx.broadcastLog.deleteMany({ where: { userId } })).count;
-      deleted.clickLogs = (await tx.clickLog.deleteMany({ where: { userId } })).count;
-      deleted.aiChatLogs = (await tx.aiChatLog.deleteMany({ where: { userId } })).count;
       deleted.miniAppDebugLogs = (await tx.miniAppDebugLog.deleteMany({ where: { userId } })).count;
       deleted.systemLogs = (await tx.systemLog.deleteMany({ where: { userId } })).count;
 

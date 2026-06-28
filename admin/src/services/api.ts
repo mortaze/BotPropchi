@@ -1,6 +1,6 @@
 import axios, { AxiosError } from "axios";
 import Cookies from "js-cookie";
-import type { AdminUser, DiscountCode, Lottery, LotteryWinner, PropFirm, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails, PostItem, MenuLayoutButton, MenuLayoutResponse, Season, LeaderboardEntry, LeaderboardStats, WheelSegment, WheelParticipant, SpinResult } from "@/types";
+import type { AdminUser, Lottery, LotteryWinner, ReferralAdminResponse, ReferralLeaderboardItem, ReferralSettings, ReferralStats, User, UserDetails, PostItem, MenuLayoutButton, MenuLayoutResponse, Season, LeaderboardEntry, LeaderboardStats, WheelSegment, WheelParticipant, SpinResult } from "@/types";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://botprophub-production.up.railway.app";
 
@@ -80,52 +80,6 @@ export const usersApi = {
   },
   async grantPoints(id: number, amount: number, description?: string): Promise<{ success: boolean; message: string }> {
     const { data } = await api.post(`/api/users/${id}/grant`, { amount, description });
-    return data;
-  },
-};
-
-export interface DiscountPayload {
-  title: string;
-  code: string;
-  discountPercent: number;
-  propFirmId: number;
-  affiliateLink?: string | null;
-  expiresAt?: string | null;
-  isFeatured: boolean;
-  isActive: boolean;
-}
-
-export const discountsApi = {
-  async getAll(params: { page?: number; limit?: number; q?: string; propFirmId?: number | "" } = {}): Promise<{ items: DiscountCode[]; total: number; pages: number }> {
-    const { data } = await api.get("/api/discounts", { params: { page: params.page ?? 1, limit: params.limit ?? 10, q: params.q || undefined, propFirmId: params.propFirmId || undefined } });
-    return data;
-  },
-  async getById(id: number): Promise<DiscountCode> {
-    const { data } = await api.get(`/api/discounts/${id}`);
-    return data;
-  },
-  async create(payload: DiscountPayload): Promise<DiscountCode> {
-    const { data } = await api.post("/api/discounts", payload);
-    return data;
-  },
-  async update(id: number, payload: Partial<DiscountPayload>): Promise<DiscountCode> {
-    const { data } = await api.put(`/api/discounts/${id}`, payload);
-    return data;
-  },
-  async delete(id: number): Promise<{ success: boolean; message: string }> {
-    const { data } = await api.delete(`/api/discounts/${id}`);
-    return data;
-  },
-  async getPropFirms(): Promise<PropFirm[]> {
-    const { data } = await api.get("/api/discounts/prop-firms", { params: { activeOnly: false } });
-    return data;
-  },
-  async createPropFirm(payload: Omit<PropFirm, "id" | "createdAt" | "updatedAt" | "_count">): Promise<PropFirm> {
-    const { data } = await api.post("/api/discounts/prop-firms", payload);
-    return data;
-  },
-  async updatePropFirm(id: number, payload: Partial<Omit<PropFirm, "id" | "createdAt" | "updatedAt" | "_count">>): Promise<PropFirm> {
-    const { data } = await api.patch(`/api/discounts/prop-firms/${id}`, payload);
     return data;
   },
 };
@@ -403,21 +357,6 @@ export const broadcastRcaApi = {
   },
 };
 
-export const broadcastTraceApi = {
-  async liveTest(userId: number): Promise<{ success: boolean; data: import("@/types").LiveTestResult }> {
-    const { data } = await api.post(`/api/broadcast-trace/live-test/${userId}`);
-    return data;
-  },
-  async getChat(userId: number): Promise<{ success: boolean; data: import("@/types").LiveTestResult & { getChatResponse: any } }> {
-    const { data } = await api.post(`/api/broadcast-trace/get-chat/${userId}`);
-    return data;
-  },
-  async batchTrace(): Promise<{ success: boolean; data: import("@/types").ComparisonReport }> {
-    const { data } = await api.post("/api/broadcast-trace/batch-trace");
-    return data;
-  },
-};
-
 export const systemIntegrityApi = {
   async getHealth(): Promise<{ success: boolean; data: import("@/types").SystemHealthReport }> {
     const { data } = await api.get("/api/system-integrity/health");
@@ -558,33 +497,6 @@ export const settingsApi = {
   },
 };
 
-
-export const aiApi = {
-  async getSettings(): Promise<{ success: boolean; settings: import("@/types").AiAssistantSettings }> {
-    const { data } = await api.get("/api/ai/settings");
-    return data;
-  },
-  async updateSettings(payload: Partial<import("@/types").AiAssistantSettings>): Promise<{ success: boolean; settings: import("@/types").AiAssistantSettings }> {
-    const { data } = await api.patch("/api/ai/settings", payload);
-    return data;
-  },
-  async getKeys(): Promise<{ success: boolean; items: import("@/types").AiApiKeyItem[] }> {
-    const { data } = await api.get("/api/ai/keys");
-    return data;
-  },
-  async createKey(payload: { name?: string | null; apiKey: string; isActive?: boolean }): Promise<{ success: boolean; item: import("@/types").AiApiKeyItem }> {
-    const { data } = await api.post("/api/ai/keys", payload);
-    return data;
-  },
-  async updateKey(id: number, payload: { name?: string | null; apiKey?: string; isActive?: boolean }): Promise<{ success: boolean; item: import("@/types").AiApiKeyItem }> {
-    const { data } = await api.patch(`/api/ai/keys/${id}`, payload);
-    return data;
-  },
-  async deleteKey(id: number): Promise<{ success: boolean }> {
-    const { data } = await api.delete(`/api/ai/keys/${id}`);
-    return data;
-  },
-};
 
 export interface PanelAdminPayload {
   firstName?: string | null;
@@ -764,10 +676,6 @@ export const searchApi = {
   },
   async botAdmins(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
     const { data } = await api.get("/api/search/bot-admins", { params });
-    return data;
-  },
-  async propFirms(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {
-    const { data } = await api.get("/api/search/prop-firms", { params });
     return data;
   },
   async lotteries(params: Record<string, any>): Promise<{ success: boolean; items: any[]; total: number; pages: number }> {

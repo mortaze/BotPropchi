@@ -1,7 +1,6 @@
 import { BotAdminRole, BotAdminStatus, BroadcastType, SystemEventType } from '@prisma/client';
 import { Context, Markup, Telegraf } from 'telegraf';
 import { channelService } from '../../services/channel.service';
-import { discountService } from '../../services/discount.service';
 import { lotteryService } from '../../services/lottery.service';
 import { groupService } from '../../services/group.service';
 import { keywordReplyService } from '../../services/keyword-reply.service';
@@ -18,7 +17,6 @@ import { redisClient } from '../../utils/redis';
 import { membershipService } from '../../services/membership/membership.service';
 import { forcedMembershipSettingsService } from '../../services/membership/forcedMembership.service';
 import { requiredChannelsService } from '../../services/requiredChannels.service';
-import { wordpressApiClient, WordPressApiClientError } from '../../services/wordpress-api.client';
 import { DEFAULT_BOT_USERNAME } from '../../constants';
 import { postService } from '../../services/post.service';
 import { config } from '../../config';
@@ -30,7 +28,6 @@ import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../servic
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { safeEdit, sendPostToUser } from '../shared';
 import {
-  propFirmDiscountKeyboard,
   lotteryHistoryKeyboard,
   lotteryKeyboard,
   buildBotAdminPanelKeyboard,
@@ -87,24 +84,6 @@ async function assertMenuTextPreserved(before: any[][], after: any[][], operatio
     logger.error(`[MenuEditor] Corrupted placeholder detected during ${operation}`, { beforeTexts, afterTexts });
   }
   logger.info(`[MenuEditor] ${operation}: before=${beforeTexts.length} after=${afterTexts.length}`);
-}
-
-function formatDiscount(d: any, index?: number): string {
-  const prefix = index !== undefined ? `${index + 1}. ` : '';
-  const expired = d.expiresAt ? `\n⏳ انقضا: ${new Date(d.expiresAt).toLocaleDateString('fa-IR')}` : '';
-
-  return (
-    `${prefix}🏢 *${d.propFirm?.name || 'Unknown'}*\n` +
-    `📌 ${d.title}\n` +
-    `💸 تخفیف: *${d.discountPercent}%*\n` +
-    `🔑 کد: \`${d.code}\`` +
-    expired +
-    `\n👆 استفاده: ${d.usageCount || 0} بار`
-  );
-}
-
-async function getDiscountPage(propFirmId: number, page: number) {
-  return (await discountService.getByPropFirm(propFirmId, page)) as PaginatedResult<any>;
 }
 
 
@@ -268,7 +247,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
     cache.del(`menu:edit_mode:${userId}`);
     cache.del(`menu:selected:${userId}`);
     cache.del(`menu:renaming:${userId}`);
-    cache.del(`ai_mode:${userId}`);
     cache.del(`search_mode:${userId}`);
 
     logger.info({ action: 'START_HARD_RESET', telegramId: userId, cleared: true });
@@ -778,7 +756,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {
-    cache.del(`ai_mode:${ctx.from.id}`);
     await ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));
   });
 
@@ -1187,129 +1164,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await showBroadcastPreview(ctx, [ctx.message.message_id]);
   });
 
-  bot.hears('🎯 کدهای تخفیف', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('discount_codes'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
-    const firms = (await discountService.getPropFirms()) as any[];
-
-    if (!firms.length) {
-      return ctx.reply('❌ هنوز کد تخفیف فعالی برای پراپ فرم‌ها ثبت نشده است.');
-    }
-
-    await ctx.reply('🏢 ابتدا پراپ فرم مورد نظر را انتخاب کنید:', propFirmDiscountKeyboard(firms));
-  });
-
-  bot.action('back:discounts', async (ctx) => {
-    await ctx.answerCbQuery();
-    const firms = (await discountService.getPropFirms()) as any[];
-    await ctx.editMessageText('🏢 ابتدا پراپ فرم مورد نظر را انتخاب کنید:', propFirmDiscountKeyboard(firms));
-  });
-
-  bot.action(/^firm:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-
-    const propFirmId = parseInt(ctx.match[1]);
-    const page = 1;
-    const result = await getDiscountPage(propFirmId, page);
-
-    if (!result.items || result.items.length === 0) {
-      return ctx.editMessageText('❌ برای این پراپ فرم کد تخفیف فعالی یافت نشد.');
-    }
-
-    const firmName = result.items[0]?.propFirm?.name || 'پراپ فرم';
-    const text = result.items.map((d: any, i: number) => formatDiscount(d, i)).join('\n\n─────────\n\n');
-    const callbackPrefix = `firmPage:${propFirmId}`;
-
-    await ctx.editMessageText(`📋 *کدهای تخفیف ${firmName}* (${result.total} کد)\n\n${text}`, {
-      parse_mode: 'Markdown',
-      ...(result.pages > 1 ? paginationKeyboard(page, result.pages, callbackPrefix) : {}),
-    });
-  });
-
-  bot.action(/^firmPage:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-
-    const propFirmId = parseInt(ctx.match[1]);
-    const page = parseInt(ctx.match[2]);
-    const result = await getDiscountPage(propFirmId, page);
-
-    if (!result.items || result.items.length === 0) {
-      return ctx.editMessageText('❌ صفحه‌ای یافت نشد.');
-    }
-
-    const firmName = result.items[0]?.propFirm?.name || 'پراپ فرم';
-    const text = result.items.map((d: any, i: number) => formatDiscount(d, i)).join('\n\n─────────\n\n');
-    const callbackPrefix = `firmPage:${propFirmId}`;
-
-    await ctx.editMessageText(`📋 *کدهای تخفیف ${firmName}* — صفحه ${page}\n\n${text}`, {
-      parse_mode: 'Markdown',
-      ...paginationKeyboard(page, result.pages, callbackPrefix),
-    });
-  });
-
-  bot.action(/^copy:(\d+)$/, async (ctx: any) => {
-    const id = parseInt(ctx.match[1]);
-    const discount = await discountService.getDetails(id);
-
-    if (!discount) {
-      return ctx.answerCbQuery('کد یافت نشد');
-    }
-
-    const user = await userService.getProfile(BigInt(ctx.from.id));
-
-    if (user) {
-      await discountService.handleClick(id, user.id).catch(logger.error);
-    }
-
-    await ctx.answerCbQuery(`کد کپی شد: ${discount.code}`, { show_alert: true });
-  });
-
-  bot.hears('🏢 پراپ فرم‌ها', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('prop_firms'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
-    const firms = (await discountService.getPropFirms()) as any[];
-
-    if (!firms || firms.length === 0) {
-      return ctx.reply('❌ هنوز پراپ فرمی ثبت نشده.');
-    }
-
-    await ctx.reply('📋 *پراپ فرم‌های موجود:*', { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
-
-    const propFirmCheckEnabled = await settingsService.isFeatureEnabled('prop_firm_check');
-    for (const firm of firms) {
-      const buttons: any[][] = [];
-      if (firm.websiteUrl) buttons.push([Markup.button.url('🛒 خرید', firm.websiteUrl)]);
-      buttons.push([Markup.button.callback('🎯 کد تخفیف', `firm:${firm.id}`)]);
-      if (propFirmCheckEnabled && firm.reviewLink) buttons.push([Markup.button.callback('🔎 بررسی پراپ', `propReview:${firm.id}`)]);
-
-      await ctx.reply(`🏢 *${firm.name}* — ${firm._count?.discountCodes || 0} کد تخفیف`, {
-        parse_mode: 'Markdown',
-        link_preview_options: { is_disabled: true },
-        ...Markup.inlineKeyboard(buttons),
-      });
-    }
-  });
-
-  bot.action(/^propReview:(\d+)$/, async (ctx: any) => {
-    if (!(await settingsService.isFeatureEnabled('prop_firm_check'))) return ctx.answerCbQuery('⛔ این سرویس در حال حاضر غیرفعال است.', { show_alert: true });
-    const firmId = Number(ctx.match[1]);
-    const firms = (await discountService.getPropFirms(false)) as any[];
-    const firm = firms.find((item) => item.id === firmId);
-    if (!firm?.reviewLink) return ctx.answerCbQuery('لینک بررسی برای این پراپ ثبت نشده است.');
-    await ctx.answerCbQuery();
-    return ctx.reply(`🔎 لینک بررسی ${firm.name}:\n${firm.reviewLink}`, { link_preview_options: { is_disabled: true } });
-  });
-
-  bot.hears('🔍 جستجو', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('discount_codes'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
-    await ctx.reply('🔍 نام پراپ فرم مورد نظر را بنویسید:');
-    cache.set(`search_mode:${ctx.from?.id}`, true, 60);
-  });
-
-  bot.hears('🤖 هوش مصنوعی پراپ هاب', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('ai_assistant'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
-    cache.set(`ai_mode:${ctx.from?.id}`, true, 600);
-    await ctx.reply('🤖 سوال خود را درباره پراپ فرم‌ها، قوانین حساب، قوانین تریدینگ یا کدهای تخفیف بنویسید.\nبرای خروج «↩️ بازگشت به منوی اصلی» را بزنید.');
-  });
-
   bot.on('text', async (ctx: any, next) => {
     if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
       const group = (ctx.state as any).telegramGroup;
@@ -1320,29 +1174,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return next();
     }
 
-    const isAiMode = cache.get<boolean>(`ai_mode:${ctx.from.id}`);
-    if (isAiMode) {
-      await ctx.reply('⏳ در حال بررسی سوال شما...');
-      try {
-        const result = await wordpressApiClient.sendMessage({
-          telegramId: BigInt(ctx.from.id),
-          message: ctx.message.text,
-          userData: {
-            username: ctx.from.username,
-            firstName: ctx.from.first_name,
-            lastName: ctx.from.last_name,
-            languageCode: ctx.from.language_code,
-            chatId: ctx.chat?.id,
-          },
-        });
-        cache.set(`ai_mode:${ctx.from.id}`, true, 600);
-        return ctx.reply(result.response, { link_preview_options: { is_disabled: true } });
-      } catch (error) {
-        const message = error instanceof WordPressApiClientError ? error.message : 'این سوال خارج از محدوده سیستم است.';
-        return ctx.reply(message, { link_preview_options: { is_disabled: true } });
-      }
-    }
-
     const isSearchMode = cache.get<boolean>(`search_mode:${ctx.from.id}`);
 
     if (!isSearchMode) {
@@ -1351,16 +1182,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     cache.del(`search_mode:${ctx.from.id}`);
 
-    const query = ctx.message.text;
-    const result: PaginatedResult<any> = await discountService.search(query);
-
-    if (!result.items || result.items.length === 0) {
-      return ctx.reply(`❌ نتیجه‌ای برای "*${query}*" یافت نشد.`, { parse_mode: 'Markdown' });
-    }
-
-    const text = result.items.map((d: any, i: number) => formatDiscount(d, i)).join('\n\n─────────\n\n');
-
-    await ctx.reply(`🔍 نتایج جستجو برای "*${query}*":\n\n${text}`, { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
+    await ctx.reply('🔍 قابلیت جستجو در حال حاضر غیرفعال است.');
   });
 
   bot.hears('🎰 قرعه‌کشی', async (ctx) => {

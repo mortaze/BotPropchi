@@ -43,9 +43,7 @@ model User {
   lastDeviceType             String?
   attributionConfidence      Int                             @default(0)
   attribution                UserAttribution?
-  aiChatLogs                 AiChatLog[]
   broadcastLogs              BroadcastLog[]
-  clickLogs                  ClickLog[]
   leaderboardCacheEntries    LeaderboardCache[]              @relation("LeaderboardCacheUser")
   lotteryEntries             LotteryEntry[]
   lotteryWins                LotteryWinner[]
@@ -130,41 +128,6 @@ model AttributionEvent {
   @@index([eventType])
   @@index([createdAt])
   @@map("attribution_events")
-}
-
-model PropFirm {
-  id            Int            @id @default(autoincrement())
-  name          String         @unique
-  slug          String         @unique
-  description   String?
-  logoUrl       String?
-  websiteUrl    String?
-  isActive      Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  reviewLink    String?
-  discountCodes DiscountCode[]
-
-  @@map("prop_firms")
-}
-
-model DiscountCode {
-  id              Int        @id @default(autoincrement())
-  title           String
-  code            String     @unique
-  discountPercent Float
-  affiliateLink   String?
-  expiresAt       DateTime?
-  isFeatured      Boolean    @default(false)
-  isActive        Boolean    @default(true)
-  usageCount      Int        @default(0)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  propFirmId      Int
-  clickLogs       ClickLog[]
-  propFirm        PropFirm   @relation(fields: [propFirmId], references: [id], onDelete: Cascade)
-
-  @@map("discount_codes")
 }
 
 model PointLog {
@@ -461,17 +424,6 @@ model BroadcastDeliveryLog {
   @@map("broadcast_delivery_logs")
 }
 
-model ClickLog {
-  id             Int          @id @default(autoincrement())
-  userId         Int
-  discountCodeId Int
-  createdAt      DateTime     @default(now())
-  discountCode   DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("click_logs")
-}
-
 model TelegramGroup {
   id                Int                 @id @default(autoincrement())
   chatId            BigInt              @unique
@@ -614,57 +566,6 @@ model ScoringSettings {
   profileCompletionPoints  Int      @default(50)
 
   @@map("scoring_settings")
-}
-
-model AiSettings {
-  id                    Int      @id @default(1)
-  systemPrompt          String   @default("تو یک دستیار تخصصی فارسی‌زبان در حوزه پراپ فرم‌ها هستی. فقط درباره پراپ فرم‌ها، قوانین حساب‌ها، قوانین تریدینگ و کدهای تخفیف پاسخ بده.")
-  allowedSourceUrls     Json     @default("[]")
-  fallbackMessage       String   @default("این سوال خارج از محدوده سیستم است.")
-  topicFallbackMessage  String   @default("⚠️ این دستیار فقط برای سوالات مربوط به پراپ فرم‌ها و کدهای تخفیف فعال است.")
-  sourceFallbackMessage String   @default("اطلاعات این موضوع در منابع معتبر پراپ هاب موجود نیست.")
-  model                 String   @default("gemini-2.5-flash")
-  rateLimitPerHour      Int      @default(20)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  @@map("ai_settings")
-}
-
-model AiApiKey {
-  id         Int         @id @default(autoincrement())
-  name       String?
-  apiKey     String
-  keyPreview String
-  isActive   Boolean     @default(true)
-  lastUsedAt DateTime?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  chatLogs   AiChatLog[]
-
-  @@index([isActive])
-  @@map("ai_api_keys")
-}
-
-model AiChatLog {
-  id         Int          @id @default(autoincrement())
-  userId     Int?
-  telegramId BigInt?
-  message    String
-  response   String?
-  status     AiChatStatus @default(SUCCESS)
-  source     String       @default("API")
-  error      String?
-  aiApiKeyId Int?
-  createdAt  DateTime     @default(now())
-  aiApiKey   AiApiKey?    @relation(fields: [aiApiKeyId], references: [id])
-  user       User?        @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([telegramId])
-  @@index([status])
-  @@index([createdAt])
-  @@map("ai_chat_logs")
 }
 
 model SystemSetting {
@@ -1068,13 +969,11 @@ enum SystemEventType {
   REFERRAL
   BROADCAST
   LOTTERY
-  DISCOUNT_CLICK
   ERROR
   ADMIN_ACTION
   GROUP_INTEGRATION
   USER_PROFILE_COMPLETED
   USER_PROFILE_UPDATED
-  AI_CHAT
 }
 
 enum SystemLogLevel {
@@ -1088,14 +987,6 @@ enum AdminRole {
   ADMIN
   MODERATOR
   OWNER
-}
-
-enum AiChatStatus {
-  SUCCESS
-  REJECTED_TOPIC
-  BLOCKED_INJECTION
-  RATE_LIMITED
-  ERROR
 }
 
 enum PostMessageType {

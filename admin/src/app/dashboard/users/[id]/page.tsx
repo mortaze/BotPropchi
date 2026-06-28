@@ -118,11 +118,6 @@ export default function UserDetailsPage() {
           <CardContent>{user.lotteryWins.map((win) => <div key={win.id} className="mb-2 rounded-lg bg-muted/40 p-3"><p className="font-medium">{win.lottery?.title}</p><p className="text-xs text-muted-foreground">{win.prize} · {safeDateFormat(win.wonAt)}</p></div>)}{!user.lotteryWins.length && <EmptyState title="برنده‌ای ثبت نشده" />}</CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader><h2 className="font-semibold">کلیک‌های تخفیف</h2></CardHeader>
-        <CardContent>{user.clickLogs.length ? user.clickLogs.map((click) => <div key={click.id} className="mb-2 flex justify-between rounded-lg bg-muted/40 p-3"><span>{click.discountCode?.title ?? click.discountCodeId}</span><span className="text-xs text-muted-foreground">{safeDateFormat(click.createdAt)}</span></div>) : <EmptyState />}</CardContent>
-      </Card>
     </div>
   );
 }

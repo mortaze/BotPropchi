@@ -212,28 +212,6 @@ searchRouter.get('/bot-admins', asyncHandler(async (req, res) => {
   res.json(serializeBigInts({ success: true, items, total, pages: Math.ceil(total / limit) }));
 }));
 
-searchRouter.get('/prop-firms', asyncHandler(async (req, res) => {
-  const { q, sortKey, sortDir } = req.query as Record<string, string | undefined>;
-  const { skip, take, page, limit } = paginate(req.query.page as string, req.query.limit as string);
-
-  const where: Prisma.PropFirmWhereInput = {};
-  if (q) where.OR = [
-    { name: { contains: q, mode: 'insensitive' } },
-    { slug: { contains: q, mode: 'insensitive' } },
-  ];
-
-  const validSortKeys = ['id', 'name', 'isActive', 'createdAt'];
-  const orderBy: any = validSortKeys.includes(sortKey || '')
-    ? { [sortKey!]: sortDir === 'asc' ? 'asc' : 'desc' }
-    : { name: 'asc' };
-
-  const [items, total] = await Promise.all([
-    prisma.propFirm.findMany({ where, skip, take, orderBy, include: { _count: { select: { discountCodes: true } } } }),
-    prisma.propFirm.count({ where }),
-  ]);
-  res.json({ success: true, items, total, pages: Math.ceil(total / limit) });
-}));
-
 searchRouter.get('/lotteries', asyncHandler(async (req, res) => {
   const { q, sortKey, sortDir, filter_status } = req.query as Record<string, string | undefined>;
   const { skip, take, page, limit } = paginate(req.query.page as string, req.query.limit as string);

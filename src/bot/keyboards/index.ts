@@ -2,14 +2,9 @@
 // تمام صفحه‌کلیدهای ربات
 
 import { Markup } from 'telegraf';
-import { DiscountCode, PropFirm } from '@prisma/client';
 import { config } from '../../config';
 import { buildSafeTelegramButton, sanitizeTelegramText, sanitizeTextArray } from '../../utils/unicode';
 import { logger } from '../../utils/logger';
-
-type DiscountWithFirm = DiscountCode & {
-  propFirm: PropFirm;
-};
 
 // ─── منوی اصلی (1:1 mapping from menu_layout stored text) ───
 // WARNING: This function must NEVER resolve, transform, or merge buttons.
@@ -76,48 +71,6 @@ export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   return Markup.keyboard(rows).resize().persistent();
 }
 
-// ─── انتخاب پراپ فرم برای کدهای تخفیف ─────────────────────
-export function propFirmDiscountKeyboard(firms: Array<PropFirm & { _count?: { discountCodes: number } }>) {
-  const rows = firms.map((firm) => [
-    Markup.button.callback(`🏢 ${firm.name} (${firm._count?.discountCodes ?? 0})`, `firm:${firm.id}`),
-  ]);
-  return Markup.inlineKeyboard(rows.length ? rows : [[Markup.button.callback('کدی موجود نیست', 'noop')]]);
-}
-
-// ─── نمایش کارت کد تخفیف ─────────────────────────────────
-export function discountCardKeyboard(
-  discount: DiscountWithFirm
-) {
-  const buttons: any[] = [];
-
-  // دکمه لینک افیلیت
-  if (discount.affiliateLink) {
-    buttons.push([
-      Markup.button.url(
-        '🛒 خرید از لینک افیلیت',
-        discount.affiliateLink
-      ),
-    ]);
-  }
-
-  // دکمه کپی کد
-  buttons.push([
-    Markup.button.callback(
-      `📋 کپی کد: ${sanitizeTelegramText(discount.code, 64)}`,
-      `copy:${discount.id}`
-    ),
-  ]);
-
-  // دکمه برگشت
-  buttons.push([
-    Markup.button.callback(
-      '« برگشت به پراپ فرم‌ها',
-      'back:discounts'
-    ),
-  ]);
-
-  return Markup.inlineKeyboard(buttons);
-}
 
 // ─── صفحه‌بندی ────────────────────────────────────────────
 export function paginationKeyboard(

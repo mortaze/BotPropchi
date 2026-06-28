@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Gift, Ticket, Trophy, Users } from "lucide-react";
+import { Activity, Ticket, Trophy, Users } from "lucide-react";
 import { Badge, Card, CardContent, CardHeader, EmptyState, StatCardSkeleton } from "@/components/ui";
-import { discountsApi, lotteriesApi, usersApi } from "@/services/api";
+import { lotteriesApi, usersApi } from "@/services/api";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
 import DashboardCharts from "@/components/charts/DashboardCharts";
 
@@ -12,7 +12,6 @@ export default function DashboardPage() {
   const usersStats = useQuery({ queryKey: ["users", "stats"], queryFn: usersApi.getStats });
   const users = useQuery({ queryKey: ["users", 1], queryFn: () => usersApi.getAll({ page: 1, limit: 5 }) });
   const lotteries = useQuery({ queryKey: ["lotteries", 1], queryFn: () => lotteriesApi.getAll({ page: 1, limit: 10 }) });
-  const discounts = useQuery({ queryKey: ["discounts", 1], queryFn: () => discountsApi.getAll({ page: 1, limit: 5 }) });
 
   const lotteryItems = lotteries.data?.items ?? [];
   const completed = lotteryItems.filter((item) => item.isCompleted).length;
@@ -27,7 +26,6 @@ export default function DashboardPage() {
         {usersStats.isLoading ? <StatCardSkeleton /> : <Metric icon={<Users />} title="کل کاربران" value={formatNumber(usersStats.data?.total)} subtitle={`امروز: ${formatNumber(usersStats.data?.today)}`} />}
         {lotteries.isLoading ? <StatCardSkeleton /> : <Metric icon={<Ticket />} title="کل قرعه‌کشی‌ها" value={formatNumber(lotteries.data?.total)} subtitle={`فعال: ${formatNumber(active)}`} />}
         {lotteries.isLoading ? <StatCardSkeleton /> : <Metric icon={<Trophy />} title="تکمیل‌شده‌ها" value={formatNumber(completed)} subtitle="بر اساس صفحه فعلی API" />}
-        {discounts.isLoading ? <StatCardSkeleton /> : <Metric icon={<Gift />} title="کدهای تخفیف" value={formatNumber(discounts.data?.total)} subtitle="فعال/منقضی توسط backend" />}
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
         <Card><CardHeader><h2 className="font-semibold">کاربران اخیر</h2></CardHeader><CardContent className="overflow-x-auto"><table className="data-table"><tbody>{(users.data?.users ?? []).map((user) => <tr key={user.id}><td><Link className="font-medium hover:text-primary" href={`/dashboard/users/${user.id}`}>{user.firstName} {user.lastName}</Link><p className="text-xs text-muted-foreground">@{user.username ?? "-"}</p></td><td>{formatNumber(user.points)} امتیاز</td><td>{safeDateFormat(user.createdAt, { dateStyle: "medium" })}</td></tr>)}</tbody></table>{!users.data?.users.length && <EmptyState />}</CardContent></Card>

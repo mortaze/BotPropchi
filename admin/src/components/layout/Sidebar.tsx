@@ -4,7 +4,7 @@ import { useState } from "react";
 import { BRAND_NAME } from "@/config/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, Building2, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, Percent, RadioTower, Route, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X } from "lucide-react";
+import { BarChart3, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Route, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
 
@@ -28,8 +28,6 @@ const menuItems: MenuItem[] = [
     ],
   },
   { key: "lotteries", label: "قرعه‌کشی‌ها", href: "/dashboard/lotteries", icon: Ticket },
-  { key: "discounts", label: "تخفیف‌ها", href: "/dashboard/discounts", icon: Percent },
-  { key: "prop-firms", label: "پراپ فرم‌ها", href: "/dashboard/prop-firms", icon: Building2 },
   { key: "ticket-categories", label: "دسته‌بندی تیکت", href: "/dashboard/ticket-categories", icon: Ticket },
   {
     key: "referrals", label: "دعوت دوستان", href: "/dashboard/referrals", icon: Share2,
@@ -64,7 +62,6 @@ const menuItems: MenuItem[] = [
       { key: "broadcast-trace", label: "Delivery Trace", href: "/dashboard/broadcast-diagnostics/trace", icon: BarChart3 },
       { key: "broadcast-rca", label: "Root Cause Analysis", href: "/dashboard/broadcast-diagnostics/rca", icon: BarChart3 },
       { key: "system-logs", label: "لاگ سیستم", href: "/dashboard/system-logs", icon: FileText },
-      { key: "ai-assistant", label: "AI Assistant", href: "/dashboard/ai-assistant", icon: Bot },
     ],
   },
 ];

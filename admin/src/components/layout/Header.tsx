@@ -11,10 +11,8 @@ const labels: Record<string, string> = {
   dashboard: "داشبورد",
   users: "کاربران",
   lotteries: "قرعه‌کشی‌ها",
-  discounts: "تخفیف‌ها",
   referrals: "دعوت دوستان",
   scoring: "سیستم امتیازدهی",
-  "prop-firms": "پراپ فرم‌ها",
   create: "ایجاد",
   edit: "ویرایش",
 };

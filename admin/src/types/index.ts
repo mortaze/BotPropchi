@@ -44,14 +44,6 @@ export interface PointLog {
   createdAt: string;
 }
 
-export interface ClickLog {
-  id: number;
-  userId: number;
-  discountCodeId: number;
-  createdAt: string;
-  discountCode?: DiscountCode;
-}
-
 export interface UserDetails extends User {
   pointLogs: PointLog[];
   sentReferrals: ReferralItem[];
@@ -59,37 +51,6 @@ export interface UserDetails extends User {
   referredBy?: ReferralUserSummary | null;
   lotteryEntries: Array<{ id: number; lotteryId: number; userId: number; createdAt: string; lottery: Lottery }>;
   lotteryWins: LotteryWinner[];
-  clickLogs: ClickLog[];
-}
-
-export interface PropFirm {
-  id: number;
-  name: string;
-  slug: string;
-  description?: string | null;
-  logoUrl?: string | null;
-  websiteUrl?: string | null;
-  reviewLink?: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt?: string;
-  _count?: { discountCodes: number };
-}
-
-export interface DiscountCode {
-  id: number;
-  title: string;
-  code: string;
-  discountPercent: number;
-  affiliateLink?: string | null;
-  expiresAt?: string | null;
-  isFeatured: boolean;
-  isActive: boolean;
-  usageCount: number;
-  propFirmId: number;
-  propFirm?: PropFirm;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface LotteryCount {
@@ -345,7 +306,7 @@ export type SystemEventType = "USER_LOGIN" | "FORCE_JOIN" | "REFERRAL" | "BROADC
 export interface SystemLog { id: number; eventType: SystemEventType; level: "INFO" | "WARN" | "ERROR"; message: string; userId?: number | null; telegramId?: string | null; metadata?: unknown; createdAt: string; user?: ReferralUserSummary | null; }
 export interface MiniAppDebugLog { id: number; telegramId?: string | null; eventType: string; message: string; payload?: unknown; userAgent?: string | null; userId?: number | null; createdAt: string; user?: ReferralUserSummary | null; }
 export interface MiniAppLogsReport { latestErrors: MiniAppDebugLog[]; latestSuccesses: MiniAppDebugLog[]; latestValidationFailures: MiniAppDebugLog[]; successfulUsersCount: number; failedUsersCount: number; }
-export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: number; activeWeek: number; activeMonth: number; newUsers: number }; referrals: { totalInvites: number; successful: number; failed: number; conversionRate: number; topReferrers: Array<{ referrerId: number; _count: { _all: number }; _sum: { rewardPoints: number | null }; user?: User }> }; forceJoin: { channels: number; groups: number; verifiedUsers: number }; discounts: { topClicks: Array<{ discountCodeId: number; clicks: number; discountCode?: DiscountCode }>; topUsage: DiscountCode[]; topViewed: DiscountCode[] }; lotteries: { total: number; participants: number; ticketsSold: number; pointsSpent: number; totalChance: number; topLottery?: { lottery: Lottery; tickets: number; participants: number } | null }; broadcasts: { total: number; successRate: number; errorRate: number; success: number; failed: number }; groups: { approved: number; active: number }; charts: { dailyUsers: Array<{ date: string; count: number }>; dailyReferrals: Array<{ date: string; count: number }>; dailyDiscountClicks: Array<{ date: string; count: number }>; dailyLotteryEntries: Array<{ date: string; count: number }> } }
+export interface AnalyticsDashboard { users: { totalUsers: number; activeToday: number; activeWeek: number; activeMonth: number; newUsers: number }; referrals: { totalInvites: number; successful: number; failed: number; conversionRate: number; topReferrers: Array<{ referrerId: number; _count: { _all: number }; _sum: { rewardPoints: number | null }; user?: User }> }; forceJoin: { channels: number; groups: number; verifiedUsers: number }; lotteries: { total: number; participants: number; ticketsSold: number; pointsSpent: number; totalChance: number; topLottery?: { lottery: Lottery; tickets: number; participants: number } | null }; broadcasts: { total: number; successRate: number; errorRate: number; success: number; failed: number }; groups: { approved: number; active: number }; charts: { dailyUsers: Array<{ date: string; count: number }>; dailyReferrals: Array<{ date: string; count: number }>; dailyLotteryEntries: Array<{ date: string; count: number }> } }
 
 export interface UserAnalyticsKPI {
   totalUsers: number;
@@ -660,35 +621,6 @@ export interface SystemErrorUser {
   telegramErrorCode: number | null;
 }
 
-export interface LiveTestResult {
-  userId: number;
-  databaseTelegramId: string;
-  databaseChatId: string | null;
-  databaseUsername: string | null;
-  resolvedChatId: string;
-  botTokenFingerprint: string;
-  apiEndpoint: string;
-  rawRequestPayload: any;
-  rawResponse: any;
-  httpStatus: number | null;
-  telegramErrorCode: number | null;
-  telegramDescription: string | null;
-  success: boolean;
-  error: string | null;
-  timestamp: string;
-}
-
-export interface ComparisonReport {
-  successfulUsers: LiveTestResult[];
-  failedUsers: LiveTestResult[];
-  summary: {
-    totalTested: number;
-    successCount: number;
-    failCount: number;
-    commonFailures: Array<{ description: string; count: number }>;
-  };
-}
-
 export interface HealthIssue {
   severity: string;
   message: string;
@@ -812,26 +744,6 @@ export interface MiniAppContentSettings {
   aboutText: string;
 }
 
-
-export interface AiAssistantSettings {
-  systemPrompt: string;
-  allowedSourceUrls: string[];
-  fallbackMessage: string;
-  topicFallbackMessage: string;
-  sourceFallbackMessage: string;
-  model: string;
-  rateLimitPerHour: number;
-}
-
-export interface AiApiKeyItem {
-  id: number;
-  name?: string | null;
-  keyPreview: string;
-  isActive: boolean;
-  lastUsedAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface PostItem {
   id: number;

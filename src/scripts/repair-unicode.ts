@@ -79,24 +79,6 @@ async function main() {
   }
   console.log(`   Checked ${settings.length} settings\n`);
 
-  // ─── Prop Firms ─────────────────────────────────────────
-  console.log('🏢 Scanning prop firms...');
-  const firms = await prisma.propFirm.findMany({ take: 500 });
-  for (const firm of firms) {
-    const fields: [string, string | null][] = [
-      ['name', firm.name],
-      ['description', firm.description],
-    ];
-    for (const [field, value] of fields) {
-      if (!value || !needsRepair(value)) continue;
-      const result = await repairField('PropFirm', firm.id, field, value, () =>
-        prisma.propFirm.update({ where: { id: firm.id }, data: { [field]: sanitizeAndNormalize(value) } })
-      );
-      if (result) { results.push(result); totalIssues += result.issues; }
-    }
-  }
-  console.log(`   Checked ${firms.length} prop firms\n`);
-
   // ─── Admins ─────────────────────────────────────────────
   console.log('👤 Scanning admins...');
   const admins = await prisma.admin.findMany({ take: 200 });

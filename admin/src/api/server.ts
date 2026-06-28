@@ -15,7 +15,6 @@ import { logger } from '../utils/logger';
 import { BRAND_NAME } from '../config/brand';
 
 import { authRouter } from './routes/auth.routes';
-import { discountRouter } from './routes/discount.routes';
 import { lotteryRouter } from './routes/lottery.routes';
 import { userRouter } from './routes/user.routes';
 
@@ -74,12 +73,6 @@ export function startAdminApi() {
 
   // ───────────────── API Routes ─────────────────
   app.use('/api/auth', authRouter);
-
-  app.use(
-    '/api/discounts',
-    authMiddleware,
-    discountRouter
-  );
 
   app.use(
     '/api/lotteries',

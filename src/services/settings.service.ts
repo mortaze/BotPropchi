@@ -8,7 +8,6 @@ import { sanitizeTelegramText, validateUnicode, sanitizeJsonStrings, validateTel
 
 
 export const DEFAULT_FEATURES = [
-  { key: 'discount_codes', label: 'کدهای تخفیف' },
   { key: 'lottery', label: 'قرعه کشی' },
   { key: 'referrals', label: 'دعوت دوستان' },
   { key: 'force_join', label: 'عضویت اجباری' },
@@ -17,9 +16,6 @@ export const DEFAULT_FEATURES = [
   { key: 'groups', label: 'مدیریت گروه‌ها' },
   { key: 'leaderboard', label: 'لیدربورد' },
   { key: 'points', label: 'امتیازدهی' },
-  { key: 'prop_firms', label: 'پراپ فرم‌ها' },
-  { key: 'prop_firm_check', label: 'Prop Firm Check' },
-  { key: 'ai_assistant', label: 'AI Assistant' },
   { key: 'posts', label: 'Posts / CMS' },
   { key: 'ticket_system', label: 'سیستم تیکت' },
 ];
@@ -105,8 +101,7 @@ class SettingsService {
     const cached = this.featureCache.get(key);
     if (cached && cached.expires > Date.now()) return cached.enabled;
     await this.ensureDefaults();
-    const normalizedKey = key === 'prop_firm_check' ? 'prop_firm_check' : key;
-    const feature = await prisma.featureToggle.findUnique({ where: { key: normalizedKey } });
+    const feature = await prisma.featureToggle.findUnique({ where: { key } });
     const enabled = feature?.isEnabled ?? true;
     this.featureCache.set(key, { enabled, expires: Date.now() + 30_000 });
     return enabled;
