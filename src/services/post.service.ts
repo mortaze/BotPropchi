@@ -37,6 +37,8 @@ export const postService = {
     replyMediaType?: string;
     isForwarded?: boolean;
     forwardMeta?: any;
+    forwardSourceChatId?: bigint;
+    forwardSourceMessageId?: number;
     parseMode?: string;
     buttons?: any[];
     entities?: any[];
@@ -80,6 +82,8 @@ export const postService = {
       replyMediaType: data.replyMediaType ?? null,
       isForwarded: data.isForwarded ?? false,
       forwardMeta: data.forwardMeta ?? null,
+      forwardSourceChatId: data.forwardSourceChatId ?? null,
+      forwardSourceMessageId: data.forwardSourceMessageId ?? null,
       parseMode: data.parseMode ?? 'HTML',
       buttons: Array.isArray(data.buttons) && (data.buttons?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
       entities: Array.isArray(data.entities) && (data.entities?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.entities))) : undefined,
@@ -160,6 +164,8 @@ export const postService = {
       replyMediaType: (existing as any).replyMediaType,
       isForwarded: (existing as any).isForwarded,
       forwardMeta: (existing as any).forwardMeta,
+      forwardSourceChatId: (existing as any).forwardSourceChatId,
+      forwardSourceMessageId: (existing as any).forwardSourceMessageId,
       parseMode: existing.parseMode,
       buttons: existing.buttons,
       entities: (existing as any).entities,
@@ -560,6 +566,30 @@ export const postService = {
       else { replyMessageType = 'text'; }
     }
 
+    const isForward = !!(message.forward_origin || message.forward_from_chat || message.forward_from || message.forward_date || message.forward_sender_name);
+    let forwardMeta: any = null;
+    let forwardSourceChatId: bigint | null = null;
+    let forwardSourceMessageId: number | null = null;
+    if (isForward) {
+      let type = 'hidden_user';
+      let originName = message.forward_sender_name || '';
+      let originChatId: number | null = null;
+      let originMessageId: number | null = null;
+      if (message.forward_from_chat) {
+        type = message.forward_from_chat.type || 'channel';
+        originName = message.forward_from_chat.title || '';
+        originChatId = message.forward_from_chat.id;
+        originMessageId = message.forward_from_message_id || null;
+      } else if (message.forward_from) {
+        type = 'user';
+        originName = [message.forward_from.first_name, message.forward_from.last_name].filter(Boolean).join(' ');
+      }
+      forwardMeta = { type, originName, originChatId, originMessageId, forwardDate: message.forward_date || null };
+      forwardSourceChatId = originChatId ? BigInt(originChatId) : null;
+      forwardSourceMessageId = originMessageId;
+      logger.info(`[ForwardDetect] postId=${postId} messageId=${message.message_id} hasForwardOrigin=true originChat=${originChatId} originMsg=${originMessageId}`);
+    }
+
     const firstMedia = media[0];
     const update: any = {
       content: content || undefined,
@@ -585,9 +615,14 @@ export const postService = {
       replyMessageText,
       replyMediaFileId,
       replyMediaType,
+      isForwarded: isForward,
+      forwardMeta,
+      forwardSourceChatId,
+      forwardSourceMessageId,
       parseMode: null,
       updatedBy,
     };
+    logger.info(`[PostSave] postId=${postId} isForwarded=${isForward} forwardMeta=${forwardMeta ? JSON.stringify(forwardMeta) : 'null'}`);
     logger.info(`[PostImport] Importing Telegram message into post ${postId} entities=${entities.length} captionEntities=${captionEntities.length} media=${media.length} buttons=${keyboard.length}`);
     for (const e of entities) {
       if (e.type === 'text_link' || e.type === 'url') {

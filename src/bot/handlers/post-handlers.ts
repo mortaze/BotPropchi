@@ -56,11 +56,16 @@ function requirePostAdmin(ctx: any): Promise<any> {
   return botAdminService.getActive(ctx.from.id);
 }
 
-function extractForwardMeta(message: any): { isForwarded: boolean; forwardMeta: any } {
-  const origin = message.forward_origin || message.forward_from || message.forward_from_chat;
-  if (!origin && !message.forward_date && !message.forward_sender_name) {
-    return { isForwarded: false, forwardMeta: null };
+function extractForwardMeta(message: any): { isForwarded: boolean; forwardMeta: any; forwardSourceChatId: bigint | null; forwardSourceMessageId: number | null } {
+  const hasOrigin = !!(message.forward_origin || message.forward_from_chat || message.forward_from);
+  const hasDate = !!message.forward_date;
+  const hasSenderName = !!message.forward_sender_name;
+  logger.info(`[ForwardDetect] messageId=${message.message_id} hasForwardOrigin=${hasOrigin} hasForwardDate=${hasDate} hasForwardChat=${!!message.forward_from_chat} hasForwardUser=${!!message.forward_from}`);
+
+  if (!hasOrigin && !hasDate && !hasSenderName) {
+    return { isForwarded: false, forwardMeta: null, forwardSourceChatId: null, forwardSourceMessageId: null };
   }
+
   let type = 'hidden_user';
   let originName = message.forward_sender_name || '';
   let originChatId: number | null = null;
@@ -74,9 +79,12 @@ function extractForwardMeta(message: any): { isForwarded: boolean; forwardMeta: 
     type = 'user';
     originName = [message.forward_from.first_name, message.forward_from.last_name].filter(Boolean).join(' ');
   }
+  logger.info(`[ForwardDetected] type=${type} originName=${originName} originChat=${originChatId} originMsg=${originMessageId}`);
   return {
     isForwarded: true,
     forwardMeta: { type, originName, originChatId, originMessageId, forwardDate: message.forward_date || null },
+    forwardSourceChatId: originChatId ? BigInt(originChatId) : null,
+    forwardSourceMessageId: originMessageId,
   };
 }
 
@@ -868,7 +876,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         else { replyMessageType = 'text'; }
       }
 
-      const { isForwarded, forwardMeta } = extractForwardMeta(msg);
+      const { isForwarded, forwardMeta, forwardSourceChatId, forwardSourceMessageId } = extractForwardMeta(msg);
 
       if (msg.media_group_id) {
         const groupKey = `post_media_group:${ctx.from.id}:${msg.media_group_id}`;
@@ -891,6 +899,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
                 replyMediaType,
                 isForwarded,
                 forwardMeta,
+                forwardSourceChatId,
+                forwardSourceMessageId,
                 updatedBy: BigInt(ctx.from.id),
               } as any);
               await ctx.reply(`✅ آلبوم با ${allMedia.length} رسانه ذخیره شد!`);
@@ -906,6 +916,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
                 replyMediaType,
                 isForwarded,
                 forwardMeta,
+                forwardSourceChatId,
+                forwardSourceMessageId,
                 updatedBy: BigInt(ctx.from.id),
               } as any);
               await ctx.reply(`✅ ${mediaType} ذخیره شد!`);
@@ -930,6 +942,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         replyMediaType,
         isForwarded,
         forwardMeta,
+        forwardSourceChatId,
+        forwardSourceMessageId,
         updatedBy: BigInt(ctx.from.id),
       } as any);
       cache.del(pendingKey(ctx.from.id, 'editing_post'));
@@ -2939,7 +2953,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
       // Regular text = new message content
       const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
-      const { isForwarded, forwardMeta } = extractForwardMeta(ctx.message);
+      const { isForwarded, forwardMeta, forwardSourceChatId, forwardSourceMessageId } = extractForwardMeta(ctx.message);
       try {
         await postMessageService.create(editorPostId, {
           messageType: 'text',
@@ -2947,7 +2961,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           entities: entities,
         });
         if (isForwarded) {
-          await postService.update(editorPostId, { isForwarded, forwardMeta, updatedBy: BigInt(ctx.from.id) } as any);
+          await postService.update(editorPostId, { isForwarded, forwardMeta, forwardSourceChatId, forwardSourceMessageId, updatedBy: BigInt(ctx.from.id) } as any);
         }
         await openEditorAfterMessageCreate(ctx, editorPostId);
       } catch (e: any) {
@@ -3135,6 +3149,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         await ctx.reply('❌ نوع فایل پشتیبانی نمی‌شود.');
         return;
       }
+      const { isForwarded, forwardMeta } = extractForwardMeta(msg);
+      let forwardSourceChatId: bigint | null = null;
+      let forwardSourceMessageId: number | null = null;
+      if (isForwarded && forwardMeta) {
+        forwardSourceChatId = forwardMeta.originChatId ? BigInt(forwardMeta.originChatId) : null;
+        forwardSourceMessageId = forwardMeta.originMessageId;
+        logger.info(`[ForwardDetect] add_message media postId=${editorPostId} messageId=${msg.message_id} originChat=${forwardMeta.originChatId} originMsg=${forwardMeta.originMessageId}`);
+      }
       await postMessageService.create(editorPostId, {
         messageType,
         mediaFileId,
@@ -3143,6 +3165,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         caption,
         captionEntities,
       });
+      if (isForwarded) {
+        await postService.update(editorPostId, { isForwarded, forwardMeta, forwardSourceChatId, forwardSourceMessageId, updatedBy: BigInt(ctx.from.id) } as any);
+      }
       await openEditorAfterMessageCreate(ctx, editorPostId);
     } catch (e: any) {
       logger.error(`[MsgAdd] media create failed postId=${editorPostId}: ${e.message}`);

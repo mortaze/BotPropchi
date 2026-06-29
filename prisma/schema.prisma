@@ -661,6 +661,8 @@ model Post {
   replyMediaType   String?       @map("reply_media_type")
   isForwarded      Boolean       @default(false) @map("is_forwarded")
   forwardMeta      Json?         @map("forward_meta")
+  forwardSourceChatId  BigInt?   @map("forward_source_chat_id")
+  forwardSourceMessageId Int?    @map("forward_source_message_id")
   parseMode       String?        @default("Markdown")
   buttons         Json?
   entities                Json?

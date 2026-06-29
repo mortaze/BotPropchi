@@ -274,6 +274,10 @@ export const postRepository = {
         command: snapshot.command,
         status: snapshot.status,
         sortOrder: snapshot.sortOrder,
+        isForwarded: snapshot.isForwarded ?? false,
+        forwardMeta: snapshot.forwardMeta ?? null,
+        forwardSourceChatId: snapshot.forwardSourceChatId ?? null,
+        forwardSourceMessageId: snapshot.forwardSourceMessageId ?? null,
       },
     });
     return post;
@@ -346,6 +350,10 @@ export const postRepository = {
           command: original.command ? `${original.command}_copy` : undefined,
           status: PostStatus.DRAFT,
           sortOrder: (original.sortOrder ?? 0) + 1,
+          isForwarded: (original as any).isForwarded ?? false,
+          forwardMeta: (original as any).forwardMeta ?? undefined,
+          forwardSourceChatId: (original as any).forwardSourceChatId ?? undefined,
+          forwardSourceMessageId: (original as any).forwardSourceMessageId ?? undefined,
           createdBy,
         },
       });

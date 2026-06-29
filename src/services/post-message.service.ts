@@ -419,6 +419,20 @@ export async function ensurePostMessages(postId: number): Promise<any[]> {
 }
 
 export async function sendPostToChat(ctx: any, postId: number, templateVars?: Record<string, string>, lastMessageOptions?: any): Promise<void> {
+  // Check if this is a forwarded post — try forwardMessage first
+  try {
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { isForwarded: true, forwardSourceChatId: true, forwardSourceMessageId: true } });
+    if (post?.isForwarded && post.forwardSourceChatId && post.forwardSourceMessageId) {
+      try {
+        await ctx.telegram.forwardMessage(ctx.chat.id, Number(post.forwardSourceChatId), post.forwardSourceMessageId);
+        logger.info(`[ForwardSuccess] postId=${postId} sourceChat=${post.forwardSourceChatId} sourceMsg=${post.forwardSourceMessageId}`);
+        return;
+      } catch (err: any) {
+        logger.warn(`[ForwardFail] postId=${postId} sourceChat=${post.forwardSourceChatId} sourceMsg=${post.forwardSourceMessageId} error=${err?.message}`);
+      }
+    }
+  } catch (_) {}
+
   let rows = await loadPostMessages(postId);
   if (rows.length === 0) {
     rows = await ensurePostMessages(postId);
