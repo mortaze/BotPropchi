@@ -5,24 +5,33 @@ import { Markup } from 'telegraf';
 import { config } from '../../config';
 import { buildSafeTelegramButton, sanitizeTelegramText, sanitizeTextArray } from '../../utils/unicode';
 import { logger } from '../../utils/logger';
-import { BOT_TEXT_FEATURES } from '../service-toggle';
 
-const FEATURE_BUTTON_TEXTS: Record<string, string> = {
-  lottery: '🎲 قرعه کشی',
-  referrals: '👥 دعوت دوستان',
-  leaderboard: '🏆 لیدربورد',
-  ticket_system: '🎫 تیکت',
-};
+export const SERVICE_BUTTONS = [
+  { id: 'lottery', text: '🎰 قرعه‌کشی', featureKey: 'lottery' },
+  { id: 'referrals', text: '👥 دعوت دوستان', featureKey: 'referrals' },
+  { id: 'points', text: '🏆 امتیازهای من', featureKey: 'leaderboard' },
+  { id: 'ticket', text: '🎫 تیکت', featureKey: 'ticket_system' },
+];
 
-// ─── منوی اصلی ─────────────────────────────────────────
+export function injectServiceButtons(layout: any[][], features: Record<string, boolean>): any[][] {
+  const result = layout.map(row => [...row]);
+  const allTexts = result.flat().map((btn: any) => btn?.text || btn?.label || btn?.title || btn?.ref || '');
+  for (const svc of SERVICE_BUTTONS) {
+    if (features[svc.featureKey] !== false && !allTexts.includes(svc.text)) {
+      result.push([{ id: `svc_${svc.id}`, text: svc.text, ref: svc.text, visible: true }]);
+    }
+  }
+  return result;
+}
+
 export function buildMainMenuKeyboard(
   isAdmin = false,
-  _features: Record<string, boolean> = {},
+  features: Record<string, boolean> = {},
   menuLayout?: any[][],
   displayMode: 'always_open' | 'toggle_allowed' = 'always_open'
 ) {
   if (menuLayout && menuLayout.length > 0) {
-    logger.debug(`[MenuKeyboard] Generating main keyboard rows=${menuLayout.length} admin=${isAdmin} displayMode=${displayMode}`);
+    logger.debug(`[MenuKeyboard] rows=${menuLayout.length} admin=${isAdmin}`);
 
     const visibleRows = menuLayout
       .filter((row: any) => Array.isArray(row))
@@ -31,8 +40,8 @@ export function buildMainMenuKeyboard(
           .filter((btn: any) => {
             if (!btn || btn.visible === false) return false;
             const btnText = btn.text || btn.label || btn.title || btn.ref || '';
-            const featureKey = BOT_TEXT_FEATURES[btnText];
-            if (featureKey && _features[featureKey] === false) return false;
+            const svc = SERVICE_BUTTONS.find(s => s.text === btnText);
+            if (svc && features[svc.featureKey] === false) return false;
             return true;
           })
           .map((btn: any) => buildSafeTelegramButton(btn.text || btn.label || btn.title || btn.ref || '', 128))
@@ -42,9 +51,9 @@ export function buildMainMenuKeyboard(
 
     const allTexts = visibleRows.flat();
 
-    for (const [featureKey, buttonText] of Object.entries(FEATURE_BUTTON_TEXTS)) {
-      if (_features[featureKey] !== false && !allTexts.includes(buttonText)) {
-        visibleRows.push([buttonText]);
+    for (const svc of SERVICE_BUTTONS) {
+      if (features[svc.featureKey] !== false && !allTexts.includes(svc.text)) {
+        visibleRows.push([svc.text]);
       }
     }
 
@@ -52,8 +61,8 @@ export function buildMainMenuKeyboard(
       visibleRows.push(['👨‍💼 پنل ادمین']);
     }
 
-    logger.info(`[FeatureMenu] lottery=${_features.lottery ?? true} referrals=${_features.referrals ?? true} leaderboard=${_features.leaderboard ?? true} ticket_system=${_features.ticket_system ?? true}`);
-    logger.info(`[FeatureMenu] Generated buttons: ${visibleRows.flat().join(' | ')}`);
+    logger.info(`[FeatureMenu] lottery=${features.lottery ?? true} referrals=${features.referrals ?? true} leaderboard=${features.leaderboard ?? true} ticket_system=${features.ticket_system ?? true}`);
+    logger.info(`[FeatureMenu] Generated: ${visibleRows.flat().join(' | ')}`);
 
     if (displayMode === 'toggle_allowed') {
       return Markup.keyboard(visibleRows).resize();

@@ -38,6 +38,7 @@ import {
   buildForceJoinKeyboard,
   buildReferralShareKeyboard,
   buildReferralMenuKeyboard,
+  injectServiceButtons,
 } from '../keyboards';
 import {
   buildMenuEditorReplyKeyboard,
@@ -386,11 +387,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     cache.del(`menu:selected:${ctx.from.id}`);
     cache.del(`menu:renaming:${ctx.from.id}`);
-    // Load fresh layout from DB and open a new editing session
     settingsService.invalidateMenuLayoutCache();
-    await settingsService.getMenuLayout(); // populate cache from DB
+    await settingsService.getMenuLayout();
     settingsService.startEditSession(ctx.from.id);
+    const features = await settingsService.getFeatureMap();
     const draftLayout = settingsService.getEditableLayout(ctx.from.id);
+    const injected = injectServiceButtons(draftLayout, features);
+    settingsService.updateDraftLayout(ctx.from.id, injected);
     const resolvedDraft = await settingsService.getResolvedEditableLayout(ctx.from.id, false);
     cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
     await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید:', buildMenuEditorReplyKeyboard(resolvedDraft));
@@ -1276,8 +1279,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.reply(`📜 *تاریخچه قرعه‌کشی‌ها*\n\n${text}`, { parse_mode: 'Markdown' });
   });
 
-  bot.hears('⭐️ امتیاز من', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('points'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
+  const pointsHandler = async (ctx: any) => {
+    if (!(await settingsService.isFeatureEnabled('leaderboard'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const profile: any = await userService.getProfile(BigInt(ctx.from.id));
 
     if (!profile) {
@@ -1294,7 +1297,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
         `${profileStatus}`,
       { parse_mode: 'Markdown' }
     );
-  });
+  };
+  bot.hears('🏆 امتیازهای من', pointsHandler);
+  bot.hears('⭐️ امتیاز من', pointsHandler);
 
   bot.hears('🏆 لیدربورد', async (ctx) => {
     if (!(await settingsService.isFeatureEnabled('leaderboard'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');

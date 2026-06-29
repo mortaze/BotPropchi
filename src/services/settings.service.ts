@@ -165,6 +165,15 @@ class SettingsService {
     return this.editSessions.get(userId)?.draftLayout;
   }
 
+  /** Replace the draft layout for a user's session. */
+  updateDraftLayout(userId: number, layout: any[][]): void {
+    const session = this.editSessions.get(userId);
+    if (session) {
+      session.draftLayout = layout;
+      session.changed = true;
+    }
+  }
+
   /** Get the immutable original layout from the user's session. */
   getOriginalLayout(userId: number): any[][] | undefined {
     return this.editSessions.get(userId)?.originalLayout;
