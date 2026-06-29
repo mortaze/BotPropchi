@@ -1297,7 +1297,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('🏆 لیدربورد', async (ctx) => {
-    if (!(await settingsService.isFeatureEnabled('referrals'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
+    if (!(await settingsService.isFeatureEnabled('leaderboard'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     try {
       const season = await leaderboardService.getActiveSeason();
       if (!season) {
@@ -1531,6 +1531,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.command('leaderboard', async (ctx) => {
+    if (!(await settingsService.isFeatureEnabled('leaderboard'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     try {
       const season = await leaderboardService.getActiveSeason();
       if (!season) {

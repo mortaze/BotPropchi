@@ -5,6 +5,7 @@ import { Markup } from 'telegraf';
 import { config } from '../../config';
 import { buildSafeTelegramButton, sanitizeTelegramText, sanitizeTextArray } from '../../utils/unicode';
 import { logger } from '../../utils/logger';
+import { BOT_TEXT_FEATURES } from '../service-toggle';
 
 // ─── منوی اصلی (1:1 mapping from menu_layout stored text) ───
 // WARNING: This function must NEVER resolve, transform, or merge buttons.
@@ -21,7 +22,13 @@ export function buildMainMenuKeyboard(
       .filter((row: any) => Array.isArray(row))
       .map(row =>
         row
-          .filter((btn: any) => btn && btn.visible !== false)
+          .filter((btn: any) => {
+            if (!btn || btn.visible === false) return false;
+            const btnText = btn.text || btn.label || btn.title || btn.ref || '';
+            const featureKey = BOT_TEXT_FEATURES[btnText];
+            if (featureKey && _features[featureKey] === false) return false;
+            return true;
+          })
           .map((btn: any) => buildSafeTelegramButton(btn.text || btn.label || btn.title || btn.ref || '', 128))
           .filter(Boolean)
       )
@@ -34,7 +41,7 @@ export function buildMainMenuKeyboard(
       }
     }
 
-    {
+    if (_features.ticket_system !== false) {
       const allTexts = visibleRows.flat();
       if (!allTexts.includes('🎫 تیکت')) {
         visibleRows.push(['🎫 تیکت']);

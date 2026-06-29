@@ -121,6 +121,9 @@ export function registerTicketUserHandlers(bot: Telegraf) {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
+    const isEnabled = await settingsService.isFeatureEnabled('ticket_system');
+    if (!isEnabled) return ctx.reply('⛔ سیستم تیکت در حال حاضر غیرفعال است.');
+
     const user = await prisma.user.findUnique({ where: { telegramId: BigInt(telegramId) } });
     if (!user) return ctx.reply('❌ ابتدا /start را بزنید.');
 
@@ -241,6 +244,8 @@ export function registerTicketUserHandlers(bot: Telegraf) {
 
   bot.action(/^ticket:view:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
+    const isEnabled = await settingsService.isFeatureEnabled('ticket_system');
+    if (!isEnabled) return ctx.reply('⛔ سیستم تیکت در حال حاضر غیرفعال است.');
     const ticketId = parseInt(ctx.match[1]);
     try {
       const ticket = await ticketService.getTicketWithHistory(ticketId);
