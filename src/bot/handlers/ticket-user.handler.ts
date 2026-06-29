@@ -154,11 +154,14 @@ export function registerTicketUserHandlers(bot: Telegraf) {
     await redisClient.del(stateKey(telegramId));
     try {
       const { buildMainMenuKeyboard } = require('../keyboards');
-      const { botAdminService } = await import('../../services/bot-admin.service');
+      const { botAdminService } = require('../../services/bot-admin.service');
+      const { settingsService } = require('../../services/settings.service');
       const admin = await botAdminService.getActive(telegramId);
-      await ctx.reply('🏠 منوی اصلی:', buildMainMenuKeyboard(!!admin));
-    } catch {
-      await ctx.reply('🏠 منوی اصلی:');
+      const isAdmin = !!admin;
+      const menuLayout = await settingsService.getResolvedMenuLayout(true);
+      await ctx.reply('🏠 منوی اصلی:', buildMainMenuKeyboard(isAdmin, {}, menuLayout));
+    } catch (err) {
+      await ctx.reply('برای بازگشت به منو /start بزنید.');
     }
   });
 
