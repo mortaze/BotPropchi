@@ -61,9 +61,10 @@ export async function notifyAdminsNewTicket(params: {
     logger.warn(`[TicketNotify] bot not set ticketId=${params.ticketId}`);
     return;
   }
+  logger.info(`[TicketNotify] START ticketId=${params.ticketId} isNew=${params.isNew}`);
   const adminList = await botAdminService.list();
   const activeAdmins = adminList.filter((a: any) => a.status === 'ACTIVE' && a.receiveTickets !== false);
-  logger.info(`[TicketNotify] notifying admins=${activeAdmins.length} ticketId=${params.ticketId}`);
+  logger.info(`[TicketNotify] total admins from list=${adminList.length} activeWithTicket=${activeAdmins.length}`);
 
   const header = params.isNew
     ? `\uD83C\uDFAB \u062A\u06CC\u06A9\u062A \u062C\u062F\u06CC\u062F #${params.ticketId}`
@@ -88,16 +89,24 @@ export async function notifyAdminsNewTicket(params: {
     ],
   };
   for (const admin of activeAdmins) {
+    logger.info(`[TicketNotify] trying admin telegramId=${admin.telegramId} receiveTickets=${(admin as any).receiveTickets}`);
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         await _ticketBotInstance.telegram.sendMessage(
           Number(admin.telegramId),
           infoText,
-          { parse_mode: 'HTML', link_preview_options: { is_disabled: true } }
+          { link_preview_options: { is_disabled: true } }
         );
         let sentMessage: any;
-        if (params.lastMessage.messageType === 'TEXT' && params.lastMessage.text) {
+        const hasContent = params.lastMessage.text || params.lastMessage.fileId;
+        if (!hasContent) {
+          sentMessage = await _ticketBotInstance.telegram.sendMessage(
+            Number(admin.telegramId),
+            `[${params.lastMessage.messageType}] — برای پاسخ، روی این پیام Reply بزنید`,
+            { reply_markup: historyKeyboard }
+          );
+        } else if (params.lastMessage.messageType === 'TEXT' && params.lastMessage.text) {
           sentMessage = await _ticketBotInstance.telegram.sendMessage(
             Number(admin.telegramId),
             params.lastMessage.text + replyHintText,
@@ -119,6 +128,7 @@ export async function notifyAdminsNewTicket(params: {
         lastError = null;
         break;
       } catch (err) {
+        logger.error(`[TicketNotify] FAILED attempt=${attempt} admin=${admin.telegramId} error=${(err as any)?.message}`, err);
         lastError = err as Error;
         if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
       }

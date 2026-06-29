@@ -34,736 +34,6 @@ C:.
 |   |   tsconfig.json
 |   |   tsconfig.tsbuildinfo
 |   |   
-|   +---.next
-|   |   |   app-build-manifest.json
-|   |   |   build-manifest.json
-|   |   |   package.json
-|   |   |   react-loadable-manifest.json
-|   |   |   trace
-|   |   |   
-|   |   +---cache
-|   |   |   |   .rscinfo
-|   |   |   |   .tsbuildinfo
-|   |   |   |   
-|   |   |   +---eslint
-|   |   |   |       .cache_1pvea0x
-|   |   |   |       
-|   |   |   +---swc
-|   |   |   |   \---plugins
-|   |   |   |       \---v7_windows_x86_64_4.0.0
-|   |   |   \---webpack
-|   |   |       +---client-development
-|   |   |       |       0.pack.gz
-|   |   |       |       1.pack.gz
-|   |   |       |       10.pack.gz
-|   |   |       |       2.pack.gz
-|   |   |       |       3.pack.gz
-|   |   |       |       4.pack.gz
-|   |   |       |       5.pack.gz
-|   |   |       |       6.pack.gz
-|   |   |       |       7.pack.gz
-|   |   |       |       8.pack.gz
-|   |   |       |       9.pack.gz
-|   |   |       |       index.pack.gz
-|   |   |       |       index.pack.gz.old
-|   |   |       |       
-|   |   |       +---client-development-fallback
-|   |   |       |       0.pack.gz
-|   |   |       |       index.pack.gz.old
-|   |   |       |       
-|   |   |       +---client-production
-|   |   |       |       0.pack
-|   |   |       |       1.pack
-|   |   |       |       10.pack
-|   |   |       |       11.pack
-|   |   |       |       12.pack
-|   |   |       |       13.pack
-|   |   |       |       14.pack
-|   |   |       |       15.pack
-|   |   |       |       16.pack
-|   |   |       |       17.pack
-|   |   |       |       18.pack
-|   |   |       |       19.pack
-|   |   |       |       2.pack
-|   |   |       |       20.pack
-|   |   |       |       21.pack
-|   |   |       |       22.pack
-|   |   |       |       23.pack
-|   |   |       |       3.pack
-|   |   |       |       4.pack
-|   |   |       |       5.pack
-|   |   |       |       6.pack
-|   |   |       |       7.pack
-|   |   |       |       8.pack
-|   |   |       |       9.pack
-|   |   |       |       index.pack
-|   |   |       |       index.pack.old
-|   |   |       |       
-|   |   |       +---edge-server-development
-|   |   |       |       0.pack.gz
-|   |   |       |       1.pack.gz
-|   |   |       |       index.pack.gz
-|   |   |       |       index.pack.gz.old
-|   |   |       |       
-|   |   |       +---edge-server-production
-|   |   |       |       0.pack
-|   |   |       |       1.pack
-|   |   |       |       index.pack
-|   |   |       |       index.pack.old
-|   |   |       |       
-|   |   |       +---server-development
-|   |   |       |       0.pack.gz
-|   |   |       |       1.pack.gz
-|   |   |       |       10.pack.gz
-|   |   |       |       11.pack.gz
-|   |   |       |       12.pack.gz
-|   |   |       |       13.pack.gz
-|   |   |       |       2.pack.gz
-|   |   |       |       3.pack.gz
-|   |   |       |       4.pack.gz
-|   |   |       |       5.pack.gz
-|   |   |       |       6.pack.gz
-|   |   |       |       7.pack.gz
-|   |   |       |       8.pack.gz
-|   |   |       |       9.pack.gz
-|   |   |       |       index.pack.gz
-|   |   |       |       index.pack.gz.old
-|   |   |       |       
-|   |   |       \---server-production
-|   |   |               0.pack
-|   |   |               1.pack
-|   |   |               10.pack
-|   |   |               11.pack
-|   |   |               12.pack
-|   |   |               13.pack
-|   |   |               14.pack
-|   |   |               15.pack
-|   |   |               16.pack
-|   |   |               17.pack
-|   |   |               18.pack
-|   |   |               19.pack
-|   |   |               2.pack
-|   |   |               20.pack
-|   |   |               21.pack
-|   |   |               3.pack
-|   |   |               4.pack
-|   |   |               5.pack
-|   |   |               6.pack
-|   |   |               7.pack
-|   |   |               8.pack
-|   |   |               9.pack
-|   |   |               index.pack
-|   |   |               index.pack.old
-|   |   |               
-|   |   +---diagnostics
-|   |   |       build-diagnostics.json
-|   |   |       framework.json
-|   |   |       
-|   |   +---server
-|   |   |   |   app-paths-manifest.json
-|   |   |   |   edge-runtime-webpack.js
-|   |   |   |   edge-runtime-webpack.js.map
-|   |   |   |   interception-route-rewrite-manifest.js
-|   |   |   |   middleware-build-manifest.js
-|   |   |   |   middleware-manifest.json
-|   |   |   |   middleware-react-loadable-manifest.js
-|   |   |   |   next-font-manifest.js
-|   |   |   |   next-font-manifest.json
-|   |   |   |   pages-manifest.json
-|   |   |   |   server-reference-manifest.js
-|   |   |   |   server-reference-manifest.json
-|   |   |   |   webpack-runtime.js
-|   |   |   |   
-|   |   |   +---app
-|   |   |   |   |   page.js
-|   |   |   |   |   page.js.nft.json
-|   |   |   |   |   page_client-reference-manifest.js
-|   |   |   |   |   
-|   |   |   |   +---dashboard
-|   |   |   |   |   |   page.js
-|   |   |   |   |   |   page.js.nft.json
-|   |   |   |   |   |   page_client-reference-manifest.js
-|   |   |   |   |   |   
-|   |   |   |   |   +---admin-users
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---ai-assistant
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---analytics
-|   |   |   |   |   |   |   page.js
-|   |   |   |   |   |   |   page.js.nft.json
-|   |   |   |   |   |   |   page_client-reference-manifest.js
-|   |   |   |   |   |   |   
-|   |   |   |   |   |   +---acquisition
-|   |   |   |   |   |   |       page.js
-|   |   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---attribution
-|   |   |   |   |   |   |       page.js
-|   |   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   \---heatmap
-|   |   |   |   |   |           page.js
-|   |   |   |   |   |           page.js.nft.json
-|   |   |   |   |   |           page_client-reference-manifest.js
-|   |   |   |   |   |           
-|   |   |   |   |   +---bot-admins
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---broadcast-diagnostics
-|   |   |   |   |   |   |   page.js
-|   |   |   |   |   |   |   page.js.nft.json
-|   |   |   |   |   |   |   page_client-reference-manifest.js
-|   |   |   |   |   |   |   
-|   |   |   |   |   |   +---rca
-|   |   |   |   |   |   |       page.js
-|   |   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---trace
-|   |   |   |   |   |   |       page.js
-|   |   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   \---[id]
-|   |   |   |   |   |           page.js
-|   |   |   |   |   |           page.js.nft.json
-|   |   |   |   |   |           page_client-reference-manifest.js
-|   |   |   |   |   |           
-|   |   |   |   |   +---deleted-users
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---discounts
-|   |   |   |   |   |   |   page.js
-|   |   |   |   |   |   |   page.js.nft.json
-|   |   |   |   |   |   |   page_client-reference-manifest.js
-|   |   |   |   |   |   |   
-|   |   |   |   |   |   +---create
-|   |   |   |   |   |   |       page.js
-|   |   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   \---edit
-|   |   |   |   |   |       \---[id]
-|   |   |   |   |   |               page.js
-|   |   |   |   |   |               page.js.nft.json
-|   |   |   |   |   |               page_client-reference-manifest.js
-|   |   |   |   |   |               
-|   |   |   |   |   +---force-join
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---groups
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---keyword-replies
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---leaderboard
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---lotteries
-|   |   |   |   |   |   |   page.js
-|   |   |   |   |   |   |   page.js.nft.json
-|   |   |   |   |   |   |   page_client-reference-manifest.js
-|   |   |   |   |   |   |   
-|   |   |   |   |   |   +---create
-|   |   |   |   |   |   |       page.js
-|   |   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---edit
-|   |   |   |   |   |   |   \---[id]
-|   |   |   |   |   |   |           page.js
-|   |   |   |   |   |   |           page.js.nft.json
-|   |   |   |   |   |   |           page_client-reference-manifest.js
-|   |   |   |   |   |   |           
-|   |   |   |   |   |   \---[id]
-|   |   |   |   |   |       |   page.js
-|   |   |   |   |   |       |   page.js.nft.json
-|   |   |   |   |   |       |   page_client-reference-manifest.js
-|   |   |   |   |   |       |   
-|   |   |   |   |   |       \---execute
-|   |   |   |   |   |               page.js
-|   |   |   |   |   |               page.js.nft.json
-|   |   |   |   |   |               page_client-reference-manifest.js
-|   |   |   |   |   |               
-|   |   |   |   |   +---menu
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---mini-app-logs
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---posts
-|   |   |   |   |   |   |   page.js
-|   |   |   |   |   |   |   page.js.nft.json
-|   |   |   |   |   |   |   page_client-reference-manifest.js
-|   |   |   |   |   |   |   
-|   |   |   |   |   |   +---create
-|   |   |   |   |   |   |       page.js
-|   |   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   \---[id]
-|   |   |   |   |   |           page.js
-|   |   |   |   |   |           page.js.nft.json
-|   |   |   |   |   |           page_client-reference-manifest.js
-|   |   |   |   |   |           
-|   |   |   |   |   +---prop-firms
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---referrals
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---required-channels
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---scoring
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---seasons
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---settings
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---system-integrity
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---system-logs
-|   |   |   |   |   |       page.js
-|   |   |   |   |   |       page.js.nft.json
-|   |   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---user-journey
-|   |   |   |   |   |   \---[telegramId]
-|   |   |   |   |   |           page.js
-|   |   |   |   |   |           page.js.nft.json
-|   |   |   |   |   |           page_client-reference-manifest.js
-|   |   |   |   |   |           
-|   |   |   |   |   \---users
-|   |   |   |   |       |   page.js
-|   |   |   |   |       |   page.js.nft.json
-|   |   |   |   |       |   page_client-reference-manifest.js
-|   |   |   |   |       |   
-|   |   |   |   |       \---[id]
-|   |   |   |   |               page.js
-|   |   |   |   |               page.js.nft.json
-|   |   |   |   |               page_client-reference-manifest.js
-|   |   |   |   |               
-|   |   |   |   +---login
-|   |   |   |   |       page.js
-|   |   |   |   |       page.js.nft.json
-|   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |       
-|   |   |   |   +---mini-app
-|   |   |   |   |       page.js
-|   |   |   |   |       page.js.nft.json
-|   |   |   |   |       page_client-reference-manifest.js
-|   |   |   |   |       
-|   |   |   |   \---_not-found
-|   |   |   |           page.js
-|   |   |   |           page.js.nft.json
-|   |   |   |           page_client-reference-manifest.js
-|   |   |   |           
-|   |   |   +---chunks
-|   |   |   |       1395.js
-|   |   |   |       2875.js
-|   |   |   |       3416.js
-|   |   |   |       3524.js
-|   |   |   |       5033.js
-|   |   |   |       5234.js
-|   |   |   |       6108.js
-|   |   |   |       7301.js
-|   |   |   |       7530.js
-|   |   |   |       7627.js
-|   |   |   |       7651.js
-|   |   |   |       8389.js
-|   |   |   |       8535.js
-|   |   |   |       8649.js
-|   |   |   |       8927.js
-|   |   |   |       9381.js
-|   |   |   |       985.js
-|   |   |   |       
-|   |   |   +---pages
-|   |   |   |       _app.js
-|   |   |   |       _app.js.nft.json
-|   |   |   |       _document.js
-|   |   |   |       _document.js.nft.json
-|   |   |   |       _error.js
-|   |   |   |       _error.js.nft.json
-|   |   |   |       
-|   |   |   \---src
-|   |   |           middleware.js
-|   |   |           middleware.js.map
-|   |   |           
-|   |   +---static
-|   |   |   +---chunks
-|   |   |   |   |   1100-0fed9505f5c298e1.js
-|   |   |   |   |   1416-555ea0b5df8fd8b5.js
-|   |   |   |   |   1442-195de64e0f1ebd7f.js
-|   |   |   |   |   1517-731a814e573ac8d6.js
-|   |   |   |   |   1763-f100863a12f1922d.js
-|   |   |   |   |   1887-dea22431b180361e.js
-|   |   |   |   |   2649-c7c5c40b77fd1c7a.js
-|   |   |   |   |   2931-7235ad2fe93cee91.js
-|   |   |   |   |   3035-d2e0e97e49d4caf3.js
-|   |   |   |   |   3599-9b095af97a9ce7e5.js
-|   |   |   |   |   4470-583cddb37ab79329.js
-|   |   |   |   |   4bd1b696-7133677277b350ed.js
-|   |   |   |   |   5535-084cabbb766e677b.js
-|   |   |   |   |   6079-68517dd733ce0875.js
-|   |   |   |   |   6395-aa785eebb31e6c5d.js
-|   |   |   |   |   6573-675ee1deac818cd6.js
-|   |   |   |   |   6655-8a4d5aa24b56eb6b.js
-|   |   |   |   |   6843-778dcb783ec0e19c.js
-|   |   |   |   |   7324-f438a8e40a877d98.js
-|   |   |   |   |   7396-937a9ae1c94dd7e1.js
-|   |   |   |   |   7571-7c5662adee51d2cb.js
-|   |   |   |   |   7991-52e607ce91466424.js
-|   |   |   |   |   8075-dc5ea333260a1996.js
-|   |   |   |   |   814-08ff8b108571bc3d.js
-|   |   |   |   |   8868-47b56b1693eba5d6.js
-|   |   |   |   |   9134-0195247abedc29c3.js
-|   |   |   |   |   9232-76331ca0c287b12a.js
-|   |   |   |   |   9546-d79bb1bc53d5436d.js
-|   |   |   |   |   9556-09b06501a8edb224.js
-|   |   |   |   |   framework-1ec85e83ffeb8a74.js
-|   |   |   |   |   main-3007a95f3cc9bf84.js
-|   |   |   |   |   main-app-d073e7912a6b5fe8.js
-|   |   |   |   |   polyfills-42372ed130431b0a.js
-|   |   |   |   |   webpack-33886f3520b99f1b.js
-|   |   |   |   |   
-|   |   |   |   +---app
-|   |   |   |   |   |   layout-4af735ee85ad8e28.js
-|   |   |   |   |   |   page-e074063bb0a3189c.js
-|   |   |   |   |   |   
-|   |   |   |   |   +---dashboard
-|   |   |   |   |   |   |   layout-91d3524f6511c94c.js
-|   |   |   |   |   |   |   page-6dd316197d7580c9.js
-|   |   |   |   |   |   |   
-|   |   |   |   |   |   +---admin-users
-|   |   |   |   |   |   |       page-bf13c7d3ed921ae9.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---ai-assistant
-|   |   |   |   |   |   |       page-339fb727db6467d8.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---analytics
-|   |   |   |   |   |   |   |   page-9ea1ba5230a38d1b.js
-|   |   |   |   |   |   |   |   
-|   |   |   |   |   |   |   +---acquisition
-|   |   |   |   |   |   |   |       page-2aec161227d14515.js
-|   |   |   |   |   |   |   |       
-|   |   |   |   |   |   |   +---attribution
-|   |   |   |   |   |   |   |       page-cbc4ce8331ca1a00.js
-|   |   |   |   |   |   |   |       
-|   |   |   |   |   |   |   \---heatmap
-|   |   |   |   |   |   |           page-e1e30b8e295c616f.js
-|   |   |   |   |   |   |           
-|   |   |   |   |   |   +---bot-admins
-|   |   |   |   |   |   |       page-74ca21d24a88a124.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---broadcast-diagnostics
-|   |   |   |   |   |   |   |   page-371ebee002bb9327.js
-|   |   |   |   |   |   |   |   
-|   |   |   |   |   |   |   +---rca
-|   |   |   |   |   |   |   |       page-09fe885a4dba7cbc.js
-|   |   |   |   |   |   |   |       
-|   |   |   |   |   |   |   +---trace
-|   |   |   |   |   |   |   |       page-e30b1bd975a85d35.js
-|   |   |   |   |   |   |   |       
-|   |   |   |   |   |   |   \---[id]
-|   |   |   |   |   |   |           page-7191d1c4028cb9ad.js
-|   |   |   |   |   |   |           
-|   |   |   |   |   |   +---deleted-users
-|   |   |   |   |   |   |       page-1165d224592619a1.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---discounts
-|   |   |   |   |   |   |   |   page-0ebc0c8ee08505b3.js
-|   |   |   |   |   |   |   |   
-|   |   |   |   |   |   |   +---create
-|   |   |   |   |   |   |   |       page-acbd952538706a2d.js
-|   |   |   |   |   |   |   |       
-|   |   |   |   |   |   |   \---edit
-|   |   |   |   |   |   |       \---[id]
-|   |   |   |   |   |   |               page-92a48929b1baa3d0.js
-|   |   |   |   |   |   |               
-|   |   |   |   |   |   +---force-join
-|   |   |   |   |   |   |       page-aff66049b4dc518f.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---groups
-|   |   |   |   |   |   |       page-349353f55d9c20ca.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---keyword-replies
-|   |   |   |   |   |   |       page-bfa91906942de666.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---leaderboard
-|   |   |   |   |   |   |       page-971a84291955453a.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---lotteries
-|   |   |   |   |   |   |   |   page-8f5d6a5925c39d3f.js
-|   |   |   |   |   |   |   |   
-|   |   |   |   |   |   |   +---create
-|   |   |   |   |   |   |   |       page-aada1244ff4b04e1.js
-|   |   |   |   |   |   |   |       
-|   |   |   |   |   |   |   +---edit
-|   |   |   |   |   |   |   |   \---[id]
-|   |   |   |   |   |   |   |           page-c7f7209f606c2203.js
-|   |   |   |   |   |   |   |           
-|   |   |   |   |   |   |   \---[id]
-|   |   |   |   |   |   |       |   page-1cba4afbb39b65a5.js
-|   |   |   |   |   |   |       |   
-|   |   |   |   |   |   |       \---execute
-|   |   |   |   |   |   |               page-8fc2a94d800e9d17.js
-|   |   |   |   |   |   |               
-|   |   |   |   |   |   +---menu
-|   |   |   |   |   |   |       page-c5938978827dbf30.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---mini-app-logs
-|   |   |   |   |   |   |       page-55f76e8bcab583a0.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---posts
-|   |   |   |   |   |   |   |   page-e47c6c7e95b27da8.js
-|   |   |   |   |   |   |   |   
-|   |   |   |   |   |   |   +---create
-|   |   |   |   |   |   |   |       page-7fa64c722284aba8.js
-|   |   |   |   |   |   |   |       
-|   |   |   |   |   |   |   \---[id]
-|   |   |   |   |   |   |           page-cee9d5d957ec650e.js
-|   |   |   |   |   |   |           
-|   |   |   |   |   |   +---prop-firms
-|   |   |   |   |   |   |       page-5feafc58abe3d485.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---referrals
-|   |   |   |   |   |   |       page-8a3fc2a304a97e4a.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---required-channels
-|   |   |   |   |   |   |       page-bfc5cf12414bcf2b.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---scoring
-|   |   |   |   |   |   |       page-cfebdf3eba35ec11.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---seasons
-|   |   |   |   |   |   |       page-7295d7a1ba42a1e8.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---settings
-|   |   |   |   |   |   |       page-809cd8200c7a1aa4.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---system-integrity
-|   |   |   |   |   |   |       page-0713b47aa8fc6702.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---system-logs
-|   |   |   |   |   |   |       page-5ec1df8f1835ac76.js
-|   |   |   |   |   |   |       
-|   |   |   |   |   |   +---user-journey
-|   |   |   |   |   |   |   \---[telegramId]
-|   |   |   |   |   |   |           page-b66b401ac99ee0d7.js
-|   |   |   |   |   |   |           
-|   |   |   |   |   |   \---users
-|   |   |   |   |   |       |   page-7b202361332d49e1.js
-|   |   |   |   |   |       |   
-|   |   |   |   |   |       \---[id]
-|   |   |   |   |   |               page-1e9fd7c575c1ad64.js
-|   |   |   |   |   |               
-|   |   |   |   |   +---login
-|   |   |   |   |   |       page-06b3c3764954ffee.js
-|   |   |   |   |   |       
-|   |   |   |   |   +---mini-app
-|   |   |   |   |   |       page-e044b21f1822594e.js
-|   |   |   |   |   |       
-|   |   |   |   |   \---_not-found
-|   |   |   |   |           page-51ae2c0fc945df10.js
-|   |   |   |   |           
-|   |   |   |   \---pages
-|   |   |   |           _app-5f03510007f8ee45.js
-|   |   |   |           _error-8efa4fbf3acc0458.js
-|   |   |   |           
-|   |   |   +---css
-|   |   |   |       f5b20551b2db5096.css
-|   |   |   |       
-|   |   |   +---media
-|   |   |   |       92b9d4b4d469ff8d-s.p.woff2
-|   |   |   |       
-|   |   |   \---uSqb8MF5vwL6dRi1hx5Li
-|   |   |           _buildManifest.js
-|   |   |           _ssgManifest.js
-|   |   |           
-|   |   \---types
-|   |       |   cache-life.d.ts
-|   |       |   package.json
-|   |       |   
-|   |       \---app
-|   |           |   layout.ts
-|   |           |   page.ts
-|   |           |   
-|   |           +---dashboard
-|   |           |   |   page.ts
-|   |           |   |   
-|   |           |   +---admin-users
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---ai-assistant
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---analytics
-|   |           |   |   |   page.ts
-|   |           |   |   |   
-|   |           |   |   +---acquisition
-|   |           |   |   |       page.ts
-|   |           |   |   |       
-|   |           |   |   +---attribution
-|   |           |   |   |       page.ts
-|   |           |   |   |       
-|   |           |   |   \---heatmap
-|   |           |   |           page.ts
-|   |           |   |           
-|   |           |   +---bot-admins
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---broadcast-diagnostics
-|   |           |   |   |   page.ts
-|   |           |   |   |   
-|   |           |   |   +---rca
-|   |           |   |   |       page.ts
-|   |           |   |   |       
-|   |           |   |   +---trace
-|   |           |   |   |       page.ts
-|   |           |   |   |       
-|   |           |   |   \---[id]
-|   |           |   |           page.ts
-|   |           |   |           
-|   |           |   +---deleted-users
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---discounts
-|   |           |   |   |   page.ts
-|   |           |   |   |   
-|   |           |   |   +---create
-|   |           |   |   |       page.ts
-|   |           |   |   |       
-|   |           |   |   \---edit
-|   |           |   |       \---[id]
-|   |           |   |               page.ts
-|   |           |   |               
-|   |           |   +---force-join
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---groups
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---keyword-replies
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---leaderboard
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---lotteries
-|   |           |   |   |   page.ts
-|   |           |   |   |   
-|   |           |   |   +---create
-|   |           |   |   |       page.ts
-|   |           |   |   |       
-|   |           |   |   +---edit
-|   |           |   |   |   \---[id]
-|   |           |   |   |           page.ts
-|   |           |   |   |           
-|   |           |   |   \---[id]
-|   |           |   |       |   page.ts
-|   |           |   |       |   
-|   |           |   |       \---execute
-|   |           |   |               page.ts
-|   |           |   |               
-|   |           |   +---menu
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---mini-app-logs
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---posts
-|   |           |   |   |   page.ts
-|   |           |   |   |   
-|   |           |   |   +---create
-|   |           |   |   |       page.ts
-|   |           |   |   |       
-|   |           |   |   \---[id]
-|   |           |   |           page.ts
-|   |           |   |           
-|   |           |   +---prop-firms
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---referrals
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---required-channels
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---scoring
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---seasons
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---settings
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---system-integrity
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---system-logs
-|   |           |   |       page.ts
-|   |           |   |       
-|   |           |   +---user-journey
-|   |           |   |   \---[telegramId]
-|   |           |   |           page.ts
-|   |           |   |           
-|   |           |   \---users
-|   |           |       |   page.ts
-|   |           |       |   
-|   |           |       \---[id]
-|   |           |               page.ts
-|   |           |               
-|   |           +---login
-|   |           |       page.ts
-|   |           |       
-|   |           \---mini-app
-|   |                   page.ts
-|   |                   
 |   +---node_modules
 |   |   |   .package-lock.json
 |   |   |   
@@ -47434,7 +46704,6 @@ C:.
 |       |   |   
 |       |   \---routes
 |       |           auth.routes.ts
-|       |           discount.routes.ts
 |       |           lottery.routes.ts
 |       |           user.routes.ts
 |       |           
@@ -47448,9 +46717,6 @@ C:.
 |       |   |   |   page.tsx
 |       |   |   |   
 |       |   |   +---admin-users
-|       |   |   |       page.tsx
-|       |   |   |       
-|       |   |   +---ai-assistant
 |       |   |   |       page.tsx
 |       |   |   |       
 |       |   |   +---analytics
@@ -47474,25 +46740,12 @@ C:.
 |       |   |   |   +---rca
 |       |   |   |   |       page.tsx
 |       |   |   |   |       
-|       |   |   |   +---trace
-|       |   |   |   |       page.tsx
-|       |   |   |   |       
 |       |   |   |   \---[id]
 |       |   |   |           page.tsx
 |       |   |   |           
 |       |   |   +---deleted-users
 |       |   |   |       page.tsx
 |       |   |   |       
-|       |   |   +---discounts
-|       |   |   |   |   page.tsx
-|       |   |   |   |   
-|       |   |   |   +---create
-|       |   |   |   |       page.tsx
-|       |   |   |   |       
-|       |   |   |   \---edit
-|       |   |   |       \---[id]
-|       |   |   |               page.tsx
-|       |   |   |               
 |       |   |   +---force-join
 |       |   |   |       page.tsx
 |       |   |   |       
@@ -47536,9 +46789,6 @@ C:.
 |       |   |   |   \---[id]
 |       |   |   |           page.tsx
 |       |   |   |           
-|       |   |   +---prop-firms
-|       |   |   |       page.tsx
-|       |   |   |       
 |       |   |   +---referrals
 |       |   |   |       page.tsx
 |       |   |   |       
@@ -47558,6 +46808,9 @@ C:.
 |       |   |   |       page.tsx
 |       |   |   |       
 |       |   |   +---system-logs
+|       |   |   |       page.tsx
+|       |   |   |       
+|       |   |   +---ticket-categories
 |       |   |   |       page.tsx
 |       |   |   |       
 |       |   |   +---user-journey
@@ -47584,7 +46837,6 @@ C:.
 |       |   |       MessageEditor.tsx
 |       |   |       
 |       |   +---forms
-|       |   |       DiscountForm.tsx
 |       |   |       LotteryForm.tsx
 |       |   |       PostForm.tsx
 |       |   |       
@@ -47698,6 +46950,10 @@ C:.
 |   |           system-integrity.routes.js.map
 |   |           system-log.routes.js
 |   |           system-log.routes.js.map
+|   |           ticket-category.routes.js
+|   |           ticket-category.routes.js.map
+|   |           ticket.routes.js
+|   |           ticket.routes.js.map
 |   |           user-delete.routes.js
 |   |           user-delete.routes.js.map
 |   |           user-event.routes.js
@@ -47712,18 +46968,26 @@ C:.
 |   |   |   service-toggle.js.map
 |   |   |   shared.js
 |   |   |   shared.js.map
+|   |   |   ticket-notification.service.js
+|   |   |   ticket-notification.service.js.map
 |   |   |   
 |   |   +---handlers
 |   |   |       index.js
 |   |   |       index.js.map
 |   |   |       post-handlers.js
 |   |   |       post-handlers.js.map
+|   |   |       ticket-admin.handler.js
+|   |   |       ticket-admin.handler.js.map
+|   |   |       ticket-user.handler.js
+|   |   |       ticket-user.handler.js.map
 |   |   |       
 |   |   +---keyboards
 |   |   |       index.js
 |   |   |       index.js.map
 |   |   |       post-keyboards.js
 |   |   |       post-keyboards.js.map
+|   |   |       ticket.keyboards.js
+|   |   |       ticket.keyboards.js.map
 |   |   |       
 |   |   +---middlewares
 |   |   |       index.js
@@ -47766,6 +47030,8 @@ C:.
 |   |       lottery.repository.js.map
 |   |       post.repository.js
 |   |       post.repository.js.map
+|   |       ticket.repository.js
+|   |       ticket.repository.js.map
 |   |       user.repository.js
 |   |       user.repository.js.map
 |   |       
@@ -47838,6 +47104,10 @@ C:.
 |   |   |   system-integrity.service.js.map
 |   |   |   system-log.service.js
 |   |   |   system-log.service.js.map
+|   |   |   ticket-category.service.js
+|   |   |   ticket-category.service.js.map
+|   |   |   ticket.service.js
+|   |   |   ticket.service.js.map
 |   |   |   user-delete.service.js
 |   |   |   user-delete.service.js.map
 |   |   |   user-event.service.js
@@ -47941,6 +47211,8 @@ C:.
 |           multi-message-posts.test.js.map
 |           normalize-post.test.js
 |           normalize-post.test.js.map
+|           post-keyboard-cleanup.test.js
+|           post-keyboard-cleanup.test.js.map
 |           post-message-buttons.test.js
 |           post-message-buttons.test.js.map
 |           post-messages-normalizer.test.js
@@ -55068,220 +54340,195 @@ C:.
 +---scripts
 |       migrate-post-messages.ts
 |       
-+---src
-|   |   constants.ts
-|   |   index.ts
-|   |   scheduler.ts
-|   |   
-|   +---api
-|   |   |   server.ts
-|   |   |   
-|   |   +---middlewares
-|   |   |       auth.middleware.ts
-|   |   |       
-|   |   \---routes
-|   |           admin-user.routes.ts
-|   |           ai.routes.ts
-|   |           analytics.routes.ts
-|   |           attribution.routes.ts
-|   |           auth.routes.ts
-|   |           bot-admin.routes.ts
-|   |           broadcast-diagnostics.routes.ts
-|   |           broadcast-rca.routes.ts
-|   |           broadcast-trace.routes.ts
-|   |           channel.routes.ts
-|   |           discount.routes.ts
-|   |           force-join.routes.ts
-|   |           forced-membership.routes.ts
-|   |           group.routes.ts
-|   |           keyword-reply.routes.ts
-|   |           leaderboard.routes.ts
-|   |           lottery.routes.ts
-|   |           menu.routes.ts
-|   |           mini-app-log.routes.ts
-|   |           mini-app.routes.ts
-|   |           post.routes.ts
-|   |           referral.routes.ts
-|   |           scoring.routes.ts
-|   |           search.routes.ts
-|   |           settings.routes.ts
-|   |           system-integrity.routes.ts
-|   |           system-log.routes.ts
-|   |           ticket-category.routes.ts
-|   |           ticket.routes.ts
-|   |           user-delete.routes.ts
-|   |           user-event.routes.ts
-|   |           user.routes.ts
-|   |           
-|   +---bot
-|   |   |   notifications.ts
-|   |   |   service-toggle.ts
-|   |   |   shared.ts
-|   |   |   ticket-notification.service.ts
-|   |   |   
-|   |   +---handlers
-|   |   |       index.ts
-|   |   |       post-handlers.ts
-|   |   |       ticket-admin.handler.ts
-|   |   |       ticket-user.handler.ts
-|   |   |       
-|   |   +---keyboards
-|   |   |       index.ts
-|   |   |       post-keyboards.ts
-|   |   |       ticket.keyboards.ts
-|   |   |       
-|   |   +---middlewares
-|   |   |       index.ts
-|   |   |       
-|   |   +---services
-|   |   |       inline-keyboard-session.service.ts
-|   |   |       
-|   |   \---webhooks
-|   |           chatMember.handler.ts
-|   |           
-|   +---config
-|   |       index.ts
-|   |       
-|   +---middleware
-|   |       membership.guard.ts
-|   |       
-|   +---prisma
-|   |       client.ts
-|   |       
-|   +---queue
-|   |       leaderboard.queue.ts
-|   |       membership.queue.ts
-|   |       
-|   +---repositories
-|   |       broadcast.repository.ts
-|   |       channel.repository.ts
-|   |       discount.repository.ts
-|   |       lottery.repository.ts
-|   |       post.repository.ts
-|   |       ticket.repository.ts
-|   |       user.repository.ts
-|   |       
-|   +---scripts
-|   |       check-post-messages.ts
-|   |       migrate-post-messages.ts
-|   |       repair-broadcast-data.ts
-|   |       repair-unicode.ts
-|   |       
-|   +---services
-|   |   |   ai.service.ts
-|   |   |   analytics.service.ts
-|   |   |   attribution.service.ts
-|   |   |   bot-admin.service.ts
-|   |   |   broadcast-diagnostics.service.ts
-|   |   |   broadcast-rca.service.ts
-|   |   |   broadcast-trace.service.ts
-|   |   |   broadcast.service.ts
-|   |   |   channel.service.ts
-|   |   |   discount.service.ts
-|   |   |   forceJoin.service.ts
-|   |   |   group.service.ts
-|   |   |   keyword-reply.service.ts
-|   |   |   leaderboard.service.ts
-|   |   |   lottery.service.ts
-|   |   |   mini-app-log.service.ts
-|   |   |   mini-app.service.ts
-|   |   |   notification.service.ts
-|   |   |   point.service.ts
-|   |   |   post-message.service.ts
-|   |   |   post-normalizer.service.ts
-|   |   |   post-renderer.service.ts
-|   |   |   post.service.ts
-|   |   |   referral.service.ts
-|   |   |   requiredChannels.service.ts
-|   |   |   scoring.service.ts
-|   |   |   settings.service.ts
-|   |   |   system-integrity.service.ts
-|   |   |   system-log.service.ts
-|   |   |   ticket-category.service.ts
-|   |   |   ticket.service.ts
-|   |   |   user-delete.service.ts
-|   |   |   user-event.service.ts
-|   |   |   user.service.ts
-|   |   |   wordpress-api.client.ts
-|   |   |   
-|   |   +---membership
-|   |   |       forcedMembership.service.ts
-|   |   |       membership.service.ts
-|   |   |       
-|   |   \---renderer
-|   |           delivery-debug.service.ts
-|   |           index.ts
-|   |           renderer-resolver.service.ts
-|   |           telegram-native-renderer.service.ts
-|   |           telegram-request-validator.service.ts
-|   |           telegram-snapshot-comparator.service.ts
-|   |           
-|   +---shared
-|   |   \---message-format
-|   |           index.ts
-|   |           normalizer.ts
-|   |           parser.ts
-|   |           renderer.ts
-|   |           serializer.ts
-|   |           telegram.ts
-|   |           types.ts
-|   |           validator.ts
-|   |           
-|   +---tests
-|   |       post-content-preservation.test.ts
-|   |       
-|   +---utils
-|   |       cache.ts
-|   |       events.ts
-|   |       grapheme.ts
-|   |       logger.ts
-|   |       prisma-error.ts
-|   |       redis.ts
-|   |       serialize.ts
-|   |       unicode.ts
-|   |       
-|   +---workers
-|   |       leaderboard.worker.ts
-|   |       membership.worker.ts
-|   |       
-|   \---__tests__
-|       |   button-editor-move.test.ts
-|       |   command-resolution.test.ts
-|       |   entity-isolation-acceptance.test.ts
-|       |   entity-pipeline-trace.test.ts
-|       |   grapheme.test.ts
-|       |   menu-move.test.ts
-|       |   menu-unicode-stability.test.ts
-|       |   message-format.test.ts
-|       |   multi-message-e2e-full.test.ts
-|       |   multi-message-e2e.test.ts
-|       |   multi-message-posts.test.ts
-|       |   normalize-post.test.ts
-|       |   post-keyboard-cleanup.test.ts
-|       |   post-message-buttons.test.ts
-|       |   post-messages-normalizer.test.ts
-|       |   styles.test.ts
-|       |   telegram-native-renderer.test.ts
-|       |   unicode.test.ts
-|       |   verify-fix.test.ts
-|       |   
-|       \---__snapshots__
-|               telegram-native-renderer.test.ts.snap
-|               
-\---wordpress-plugin
-    |   propchi-ai-backend.php
-    |   README.md
+\---src
+    |   constants.ts
+    |   index.ts
+    |   scheduler.ts
     |   
-    +---admin
-    |       class-propchi-admin.php
+    +---api
+    |   |   server.ts
+    |   |   
+    |   +---middlewares
+    |   |       auth.middleware.ts
+    |   |       
+    |   \---routes
+    |           admin-user.routes.ts
+    |           analytics.routes.ts
+    |           attribution.routes.ts
+    |           auth.routes.ts
+    |           bot-admin.routes.ts
+    |           broadcast-diagnostics.routes.ts
+    |           broadcast-rca.routes.ts
+    |           channel.routes.ts
+    |           force-join.routes.ts
+    |           forced-membership.routes.ts
+    |           group.routes.ts
+    |           keyword-reply.routes.ts
+    |           leaderboard.routes.ts
+    |           lottery.routes.ts
+    |           menu.routes.ts
+    |           mini-app-log.routes.ts
+    |           mini-app.routes.ts
+    |           post.routes.ts
+    |           referral.routes.ts
+    |           scoring.routes.ts
+    |           search.routes.ts
+    |           settings.routes.ts
+    |           system-integrity.routes.ts
+    |           system-log.routes.ts
+    |           ticket-category.routes.ts
+    |           ticket.routes.ts
+    |           user-delete.routes.ts
+    |           user-event.routes.ts
+    |           user.routes.ts
+    |           
+    +---bot
+    |   |   notifications.ts
+    |   |   service-toggle.ts
+    |   |   shared.ts
+    |   |   ticket-notification.service.ts
+    |   |   
+    |   +---handlers
+    |   |       index.ts
+    |   |       post-handlers.ts
+    |   |       ticket-admin.handler.ts
+    |   |       ticket-user.handler.ts
+    |   |       
+    |   +---keyboards
+    |   |       index.ts
+    |   |       post-keyboards.ts
+    |   |       ticket.keyboards.ts
+    |   |       
+    |   +---middlewares
+    |   |       index.ts
+    |   |       
+    |   +---services
+    |   |       inline-keyboard-session.service.ts
+    |   |       
+    |   \---webhooks
+    |           chatMember.handler.ts
+    |           
+    +---config
+    |       index.ts
     |       
-    \---includes
-            class-propchi-activator.php
-            class-propchi-db.php
-            class-propchi-engine.php
-            class-propchi-gemini.php
-            class-propchi-rest.php
-            class-propchi-security.php
-            class-propchi-settings.php
-            class-propchi-utils.php
-            
+    +---middleware
+    |       membership.guard.ts
+    |       
+    +---prisma
+    |       client.ts
+    |       
+    +---queue
+    |       leaderboard.queue.ts
+    |       membership.queue.ts
+    |       
+    +---repositories
+    |       broadcast.repository.ts
+    |       channel.repository.ts
+    |       lottery.repository.ts
+    |       post.repository.ts
+    |       ticket.repository.ts
+    |       user.repository.ts
+    |       
+    +---scripts
+    |       check-post-messages.ts
+    |       migrate-post-messages.ts
+    |       repair-broadcast-data.ts
+    |       repair-unicode.ts
+    |       
+    +---services
+    |   |   analytics.service.ts
+    |   |   attribution.service.ts
+    |   |   bot-admin.service.ts
+    |   |   broadcast-diagnostics.service.ts
+    |   |   broadcast-rca.service.ts
+    |   |   broadcast.service.ts
+    |   |   channel.service.ts
+    |   |   forceJoin.service.ts
+    |   |   group.service.ts
+    |   |   keyword-reply.service.ts
+    |   |   leaderboard.service.ts
+    |   |   lottery.service.ts
+    |   |   mini-app-log.service.ts
+    |   |   mini-app.service.ts
+    |   |   notification.service.ts
+    |   |   point.service.ts
+    |   |   post-message.service.ts
+    |   |   post-normalizer.service.ts
+    |   |   post-renderer.service.ts
+    |   |   post.service.ts
+    |   |   referral.service.ts
+    |   |   requiredChannels.service.ts
+    |   |   scoring.service.ts
+    |   |   settings.service.ts
+    |   |   system-integrity.service.ts
+    |   |   system-log.service.ts
+    |   |   ticket-category.service.ts
+    |   |   ticket.service.ts
+    |   |   user-delete.service.ts
+    |   |   user-event.service.ts
+    |   |   user.service.ts
+    |   |   
+    |   +---membership
+    |   |       forcedMembership.service.ts
+    |   |       membership.service.ts
+    |   |       
+    |   \---renderer
+    |           delivery-debug.service.ts
+    |           index.ts
+    |           renderer-resolver.service.ts
+    |           telegram-native-renderer.service.ts
+    |           telegram-request-validator.service.ts
+    |           telegram-snapshot-comparator.service.ts
+    |           
+    +---shared
+    |   \---message-format
+    |           index.ts
+    |           normalizer.ts
+    |           parser.ts
+    |           renderer.ts
+    |           serializer.ts
+    |           telegram.ts
+    |           types.ts
+    |           validator.ts
+    |           
+    +---tests
+    |       post-content-preservation.test.ts
+    |       
+    +---utils
+    |       cache.ts
+    |       events.ts
+    |       grapheme.ts
+    |       logger.ts
+    |       prisma-error.ts
+    |       redis.ts
+    |       serialize.ts
+    |       unicode.ts
+    |       
+    +---workers
+    |       leaderboard.worker.ts
+    |       membership.worker.ts
+    |       
+    \---__tests__
+        |   button-editor-move.test.ts
+        |   command-resolution.test.ts
+        |   entity-isolation-acceptance.test.ts
+        |   entity-pipeline-trace.test.ts
+        |   grapheme.test.ts
+        |   menu-move.test.ts
+        |   menu-unicode-stability.test.ts
+        |   message-format.test.ts
+        |   multi-message-e2e-full.test.ts
+        |   multi-message-e2e.test.ts
+        |   multi-message-posts.test.ts
+        |   normalize-post.test.ts
+        |   post-keyboard-cleanup.test.ts
+        |   post-message-buttons.test.ts
+        |   post-messages-normalizer.test.ts
+        |   styles.test.ts
+        |   telegram-native-renderer.test.ts
+        |   unicode.test.ts
+        |   verify-fix.test.ts
+        |   
+        \---__snapshots__
+                telegram-native-renderer.test.ts.snap
+                

@@ -152,12 +152,7 @@ export function registerTicketUserHandlers(bot: Telegraf) {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
     await redisClient.del(stateKey(telegramId));
-    const { adminReplyOptions } = require('./index');
-    const keyboard = await adminReplyOptions(telegramId).catch(() => null);
-    if (keyboard) {
-      return ctx.reply('منوی اصلی:', keyboard);
-    }
-    return ctx.reply('منوی اصلی:');
+    await ctx.reply('/start');
   });
 
   bot.action(/^ticket:cat:(\d+)$/, async (ctx: any) => {

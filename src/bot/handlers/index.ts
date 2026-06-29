@@ -24,6 +24,7 @@ import { prisma } from '../../prisma/client';
 import { cache } from '../../utils/cache';
 import { logger } from '../../utils/logger';
 import { setBotInstance } from '../notifications';
+import { setTicketBotInstance } from '../ticket-notification.service';
 import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../services/post-renderer.service';
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { safeEdit, sendPostToUser } from '../shared';
@@ -203,6 +204,7 @@ async function finalizeBotBroadcast(ctx: any, pending: PendingBroadcast) {
 
 export function registerHandlers(bot: Telegraf<Context>) {
   setBotInstance(bot);
+  setTicketBotInstance(bot);
   bot.on('my_chat_member', async (ctx: any, next) => {
     const chat = ctx.update.my_chat_member?.chat;
     const newStatus = ctx.update.my_chat_member?.new_chat_member?.status;

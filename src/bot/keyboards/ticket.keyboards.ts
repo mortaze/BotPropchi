@@ -40,9 +40,13 @@ export function adminTicketListKeyboard(
   totalPages: number
 ) {
   const rows: any[][] = tickets.map(t => {
-    const emoji = t.status === 'OPEN' ? '🟢' : t.status === 'CLOSED' ? '🔴' : '⚫';
+    const isOpen = t.status === 'OPEN';
     const name = t.user?.firstName || t.user?.username || 'کاربر';
-    return [Markup.button.callback(`${emoji} #${t.id} — ${name}`, `ticket:admin:view:${t.id}`)];
+    if (isOpen) {
+      return [{ text: `✅ #${t.id} — ${name}`, callback_data: `ticket:admin:view:${t.id}` }];
+    }
+    const label = `🔴 #${t.id} — ${name}`;
+    return [{ text: label, callback_data: `ticket:admin:view:${t.id}` }];
   });
 
   if (totalPages > 1) {
@@ -53,7 +57,7 @@ export function adminTicketListKeyboard(
     rows.push(navRow);
   }
 
-  return Markup.inlineKeyboard(rows);
+  return { reply_markup: { inline_keyboard: rows } };
 }
 
 export function adminTicketFilterKeyboard() {

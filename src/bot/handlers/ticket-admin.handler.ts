@@ -118,6 +118,85 @@ function buildTicketAdminMenuKeyboard() {
   ]).resize().persistent();
 }
 
+type CatEditorMode = 'view' | 'edit' | 'delete' | 'disable' | 'move';
+
+function buildCategoryEditorMessage(
+  categories: { id: number; title: string; enabled: boolean; order: number }[],
+  mode: CatEditorMode,
+  selectedId?: number,
+): { text: string; reply_markup: any } {
+  const sorted = [...categories].sort((a, b) => a.order - b.order);
+
+  const catRows = sorted.map(cat => {
+    const statusEmoji = cat.enabled ? '✅' : '🚫';
+    const modeIcon =
+      mode === 'edit' ? '✏️' :
+      mode === 'delete' ? '✖' :
+      mode === 'disable' ? '🚫' :
+      mode === 'move' && selectedId === cat.id ? '✅' :
+      mode === 'move' ? '🔀' :
+      statusEmoji;
+    const label = `${modeIcon} ${cat.title}`;
+    return [{ text: label, callback_data: `tcat:click:${cat.id}:${mode}` }];
+  });
+
+  const toolbar = [
+    { text: '➕ افزودن', callback_data: 'tcat:add' },
+    { text: '✏️ ویرایش', callback_data: 'tcat:mode:edit' },
+    { text: '✖ حذف', callback_data: 'tcat:mode:delete' },
+  ];
+  const toolbar2 = [
+    { text: '🚫 غیرفعال', callback_data: 'tcat:mode:disable' },
+    { text: '🔀 جابجایی', callback_data: 'tcat:mode:move' },
+  ];
+
+  const moveRow = mode === 'move' && selectedId
+    ? [
+        { text: '⬆️ بالا', callback_data: `tcat:move:up:${selectedId}` },
+        { text: '⬇️ پایین', callback_data: `tcat:move:down:${selectedId}` },
+        { text: '❌ لغو', callback_data: 'tcat:mode:view' },
+      ]
+    : null;
+
+  const rows = [
+    ...catRows,
+    toolbar,
+    toolbar2,
+    ...(moveRow ? [moveRow] : []),
+  ];
+
+  const enabledCount = sorted.filter(c => c.enabled).length;
+  const text = [
+    `📂 دسته‌بندی‌های تیکت`,
+    ``,
+    `✅ فعال: ${enabledCount} | 📊 مجموع: ${sorted.length}`,
+    ``,
+    mode === 'edit' ? `✏️ حالت ویرایش: روی دسته‌بندی بزنید تا ویرایش کنید` :
+    mode === 'delete' ? `✖ حالت حذف: روی دسته‌بندی بزنید تا حذف شود` :
+    mode === 'disable' ? `🚫 حالت غیرفعال: روی دسته‌بندی بزنید تا وضعیت تغییر کند` :
+    mode === 'move' ? `🔀 حالت جابجایی: دسته‌بندی را انتخاب کنید سپس جهت بزنید` :
+    `برای مدیریت، یکی از گزینه‌های پایین را انتخاب کنید`,
+  ].join('\n');
+
+  return { text, reply_markup: { inline_keyboard: rows } };
+}
+
+async function refreshCategoryEditor(ctx: any, adminId: number): Promise<void> {
+  const msgId = await redisClient.get<number>(`tcat:editor:${adminId}:msgId`);
+  const mode = (await redisClient.get<string>(`tcat:editor:${adminId}:mode`) || 'view') as CatEditorMode;
+  const selectedId = await redisClient.get<number>(`tcat:editor:${adminId}:selectedId`) || undefined;
+  if (!msgId) return;
+  const cats = await ticketCategoryService.listAll();
+  const { text, reply_markup } = buildCategoryEditorMessage(cats, mode, selectedId);
+  try {
+    await ctx.telegram.editMessageText(ctx.chat.id, msgId, undefined, text, { reply_markup });
+  } catch (err: any) {
+    if (!err.message?.includes('not modified')) {
+      logger.warn(`[CatEditor] editMessageText failed: ${err.message}`);
+    }
+  }
+}
+
 export function registerTicketAdminHandlers(bot: Telegraf) {
   bot.hears('\uD83C\uDFAB تیکت\u200cها', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from?.id);
@@ -153,24 +232,10 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
     const admin = await botAdminService.getActive(ctx.from?.id);
     if (!admin) return;
     const cats = await ticketCategoryService.listAll();
-    if (cats.length === 0) {
-      await ctx.reply('هیچ دسته\u200cبندی تعریف نشده.\n\nبرای افزودن بنویسید:\n➕ نام دسته\u200cبندی را ارسال کنید',
-        Markup.inlineKeyboard([[Markup.button.callback('➕ افزودن دسته\u200cبندی', 'ticket:cat:add')]]));
-      return;
-    }
-    const list = cats.map((c: any, i: number) =>
-      `${i + 1}. ${c.title} ${c.enabled ? '✅' : '❌'}`
-    ).join('\n');
-    await ctx.reply(`دسته\u200cبندی\u200cهای تیکت:\n\n${list}`,
-      Markup.inlineKeyboard([
-        ...cats.map((c: any) => [
-          Markup.button.callback(`\u270F\uFE0F ${c.title}`, `ticket:cat:edit:${c.id}`),
-          Markup.button.callback(c.enabled ? '❌ غیرفعال' : '✅ فعال', `ticket:cat:toggle:${c.id}`),
-          Markup.button.callback('🗑', `ticket:cat:del:${c.id}`),
-        ]),
-        [Markup.button.callback('➕ افزودن', 'ticket:cat:add')],
-      ])
-    );
+    const { text, reply_markup } = buildCategoryEditorMessage(cats, 'view');
+    const sent = await ctx.reply(text, { reply_markup });
+    await redisClient.set(`tcat:editor:${ctx.from.id}:msgId`, sent.message_id, 600);
+    await redisClient.set(`tcat:editor:${ctx.from.id}:mode`, 'view', 600);
   });
 
   bot.hears('🗂 فیلتر دسته\u200cبندی', async (ctx: any) => {
@@ -193,27 +258,72 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
     await ctx.reply('پنل ادمین:', buildBotAdminPanelKeyboard(canBroadcast));
   });
 
-  bot.action('ticket:cat:add', async (ctx: any) => {
+  bot.action(/^tcat:mode:(view|edit|delete|disable|move)$/, async (ctx: any) => {
     if (!(await requireAdmin(ctx))) return;
     await ctx.answerCbQuery();
-    await redisClient.set(`ticket:admin:addcat:${ctx.from.id}`, { waiting: true }, 300);
-    await ctx.reply('نام دسته\u200cبندی جدید را ارسال کنید:');
+    const newMode = ctx.match[1] as CatEditorMode;
+    await redisClient.set(`tcat:editor:${ctx.from.id}:mode`, newMode, 600);
+    if (newMode !== 'move') {
+      await redisClient.del(`tcat:editor:${ctx.from.id}:selectedId`);
+    }
+    await refreshCategoryEditor(ctx, ctx.from.id);
   });
 
-  bot.action(/^ticket:cat:toggle:(\d+)$/, async (ctx: any) => {
+  bot.action(/^tcat:click:(\d+):(view|edit|delete|disable|move)$/, async (ctx: any) => {
     if (!(await requireAdmin(ctx))) return;
-    const id = parseInt(ctx.match[1]);
-    const cat = await ticketCategoryService.findById(id);
-    if (!cat) return ctx.answerCbQuery('❌ یافت نشد');
-    await ticketCategoryService.update(id, { enabled: !cat.enabled });
-    await ctx.answerCbQuery(cat.enabled ? '❌ غیرفعال شد' : '✅ فعال شد');
+    const catId = parseInt(ctx.match[1]);
+    const mode = ctx.match[2] as CatEditorMode;
+    if (mode === 'delete') {
+      await ctx.answerCbQuery();
+      await ticketCategoryService.remove(catId);
+      await redisClient.set(`tcat:editor:${ctx.from.id}:mode`, 'view', 600);
+      await refreshCategoryEditor(ctx, ctx.from.id);
+    } else if (mode === 'disable') {
+      const cat = await ticketCategoryService.findById(catId);
+      if (!cat) return ctx.answerCbQuery('❌ یافت نشد');
+      await ticketCategoryService.update(catId, { enabled: !cat.enabled });
+      await ctx.answerCbQuery(cat.enabled ? '🚫 غیرفعال شد' : '✅ فعال شد');
+      await refreshCategoryEditor(ctx, ctx.from.id);
+    } else if (mode === 'edit') {
+      await ctx.answerCbQuery('✏️ نام جدید را بنویسید');
+      await redisClient.set(`tcat:editwait:${ctx.from.id}`, catId, 600);
+      await ctx.reply('✏️ نام جدید دسته\u200cبندی را بنویسید:');
+    } else if (mode === 'move') {
+      await ctx.answerCbQuery();
+      await redisClient.set(`tcat:editor:${ctx.from.id}:selectedId`, catId, 600);
+      await refreshCategoryEditor(ctx, ctx.from.id);
+    } else {
+      await ctx.answerCbQuery();
+    }
   });
 
-  bot.action(/^ticket:cat:del:(\d+)$/, async (ctx: any) => {
+  bot.action('tcat:add', async (ctx: any) => {
     if (!(await requireAdmin(ctx))) return;
-    const id = parseInt(ctx.match[1]);
-    await ticketCategoryService.remove(id);
-    await ctx.answerCbQuery('🗑 حذف شد');
+    await ctx.answerCbQuery();
+    await redisClient.set(`tcat:addwait:${ctx.from.id}`, true, 600);
+    await ctx.reply('➕ نام دسته\u200cبندی جدید را بنویسید:');
+  });
+
+  bot.action(/^tcat:move:(up|down):(\d+)$/, async (ctx: any) => {
+    if (!(await requireAdmin(ctx))) return;
+    await ctx.answerCbQuery();
+    const direction = ctx.match[1] as 'up' | 'down';
+    const catId = parseInt(ctx.match[2]);
+    const cats = await ticketCategoryService.listAll();
+    const sorted = [...cats].sort((a: any, b: any) => a.order - b.order);
+    const idx = sorted.findIndex((c: any) => c.id === catId);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const newOrders = sorted.map((c: any, i: number) => {
+      if (i === idx) return { id: c.id, order: sorted[swapIdx].order };
+      if (i === swapIdx) return { id: c.id, order: sorted[idx].order };
+      return { id: c.id, order: c.order };
+    });
+    for (const item of newOrders) {
+      await ticketCategoryService.update(item.id, { order: item.order });
+    }
+    await refreshCategoryEditor(ctx, ctx.from.id);
   });
 
   bot.action(/^ticket:admin:cat:(\d+)$/, async (ctx: any) => {
@@ -264,11 +374,20 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
     const admin = await botAdminService.getActive(ctx.from?.id);
     if (!admin) return next();
 
-    const addCatState = await redisClient.get<{ waiting: boolean }>(`ticket:admin:addcat:${ctx.from.id}`);
-    if (addCatState?.waiting && ctx.message?.text) {
-      await redisClient.del(`ticket:admin:addcat:${ctx.from.id}`);
+    const addCatWait = await redisClient.get<boolean>(`tcat:addwait:${ctx.from.id}`);
+    const editCatWait = await redisClient.get<number>(`tcat:editwait:${ctx.from.id}`);
+    if (addCatWait && ctx.message?.text) {
+      await redisClient.del(`tcat:addwait:${ctx.from.id}`);
       await ticketCategoryService.create(ctx.message.text.trim());
-      await ctx.reply(`\u2705 \u062F\u0633\u062A\u0647\u200C\u0628\u0646\u062F\u06CC \u00AB${ctx.message.text.trim()}\u00BB \u0627\u0636\u0627\u0641\u0647 \u0634\u062F.`);
+      await ctx.reply(`✅ دسته\u200cبندی «${ctx.message.text.trim()}» اضافه شد.`);
+      await refreshCategoryEditor(ctx, ctx.from.id);
+      return;
+    }
+    if (editCatWait && ctx.message?.text) {
+      await redisClient.del(`tcat:editwait:${ctx.from.id}`);
+      await ticketCategoryService.update(editCatWait, { title: ctx.message.text.trim() });
+      await ctx.reply(`✅ نام به «${ctx.message.text.trim()}» تغییر کرد.`);
+      await refreshCategoryEditor(ctx, ctx.from.id);
       return;
     }
 

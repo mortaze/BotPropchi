@@ -2,11 +2,12 @@
 
 ## Project Overview
 
-Telegram bot for prop firm discount codes with lottery, scoring, and referral system. Three separate codebases in one repo:
+Telegram bot for prop firm discount codes with lottery, scoring, and referral system. Two codebases in one repo:
 
 - **Root** (`src/`): Main Telegram bot + Express API (TypeScript, Telegraf, Prisma)
 - **Admin** (`admin/`): Next.js 15 admin panel (calls root API via `NEXT_PUBLIC_API_URL`)
-- **Plugin** (`wordpress-plugin/`): WordPress AI backend plugin (PHP)
+
+Note: WordPress plugin (`wordpress-plugin/`) is referenced in docs but does NOT exist in this repo — deploy separately or remove references.
 
 ## Quick Commands
 
@@ -59,8 +60,12 @@ Required in `.env`:
 
 Optional:
 - `REDIS_URL` - Falls back to in-memory cache if missing
-- `WORDPRESS_API_URL` - For AI responses
+- `WORDPRESS_API_URL` - For AI responses (endpoint: `/wp-json/propchi/v1/message`)
+- `WORDPRESS_BOT_API_KEY` - Auth key for WordPress plugin
+- `WORDPRESS_SIGNATURE_SECRET` - HMAC signature for WordPress plugin
+- `WORDPRESS_API_TIMEOUT_MS` - Timeout for WordPress calls (default 25000)
 - `MEMBERSHIP_REQUIRED_CHANNELS` - Comma-separated channel IDs for force-join
+- `MEMBERSHIP_CACHE_TTL` - Membership status cache TTL in seconds (default 300)
 
 ## Testing
 
@@ -104,6 +109,6 @@ Admin (`admin/tsconfig.json`):
 - Admin panel middleware blocks non-OWNER/SUPER_ADMIN from `/dashboard/settings` and `/dashboard/admin-users`
 - Redis is optional — falls back to in-memory cache (`node-cache`) if `REDIS_URL` not set
 - `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — must be set for admin to function
-- Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (Express-level, not Telegraf-level)
+- Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (separate directory, same Telegraf interface)
 - The Post system (`Post`, `PostMessage`, `PostButton`, `PostEntity`, `PostMedia`, `PostKeyboard`, `PostVersion`) is the richest model — posts support multi-message sequences, rich Telegram entities, inline keyboards, and version snapshots
 - Admin uses shadcn/ui components (Radix UI primitives + Tailwind CSS + class-variance-authority)
