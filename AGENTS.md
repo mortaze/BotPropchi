@@ -108,7 +108,7 @@ Admin (`admin/tsconfig.json`):
 - Admin panel uses cookie-based auth (`admin_token` + `admin_user` cookies), root API uses JWT Bearer tokens
 - Admin panel middleware blocks non-OWNER/SUPER_ADMIN from `/dashboard/settings` and `/dashboard/admin-users`
 - Redis is optional — falls back to in-memory cache (`node-cache`) if `REDIS_URL` not set
-- `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — must be set for admin to function
+- `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — must be set for admin to function (currently set to production Railway URL; override for local dev)
 - Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (separate directory, same Telegraf interface)
 - The Post system (`Post`, `PostMessage`, `PostButton`, `PostEntity`, `PostMedia`, `PostKeyboard`, `PostVersion`) is the richest model — posts support multi-message sequences, rich Telegram entities, inline keyboards, and version snapshots
 - Admin uses shadcn/ui components (Radix UI primitives + Tailwind CSS + class-variance-authority)

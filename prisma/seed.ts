@@ -22,6 +22,19 @@ async function main() {
   });
   console.log('✅ ادمین اولیه ساخته شد: admin / admin123');
 
+  // ساخت ادمین mori82
+  const mori82Hash = '$2b$10$HiaUOutp1KO/F22fJR5u/OBOlVNF.HyyJ0GtY4/juA0fzoy2eCHg';
+  await prisma.admin.upsert({
+    where: { username: 'mori82' },
+    update: { passwordHash: mori82Hash },
+    create: {
+      username: 'mori82',
+      passwordHash: mori82Hash,
+      role: 'ADMIN',
+    },
+  });
+  console.log('✅ ادمین mori82 ساخته شد');
+
   // چند پراپ فرم نمونه
   const ftmo = await prisma.propFirm.upsert({
     where: { slug: 'ftmo' },
