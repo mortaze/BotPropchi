@@ -35,25 +35,33 @@ export function ticketReplyKeyboard() {
 }
 
 export function adminTicketListKeyboard(
-  tickets: { id: number; status: string; user?: { firstName?: string | null; username?: string | null } | null }[],
+  tickets: {
+    id: number;
+    status: string;
+    category?: { title?: string | null } | null;
+    user?: { firstName?: string | null; username?: string | null } | null;
+  }[],
   page: number,
   totalPages: number
 ) {
   const rows: any[][] = tickets.map(t => {
-    const isOpen = t.status === 'OPEN';
     const name = t.user?.firstName || t.user?.username || 'کاربر';
-    if (isOpen) {
-      return [{ text: `✅ #${t.id} — ${name}`, callback_data: `ticket:admin:view:${t.id}` }];
-    }
-    const label = `🔴 #${t.id} — ${name}`;
-    return [{ text: label, callback_data: `ticket:admin:view:${t.id}` }];
+    const subject = t.category?.title || '—';
+    const label = `#${t.id} | ${subject} | ${name}`;
+    const style = t.status === 'OPEN' ? 'success' : t.status === 'CLOSED' ? 'danger' : undefined;
+    const btn: any = {
+      text: label,
+      callback_data: `ticket:admin:view:${t.id}`,
+    };
+    if (style) btn.style = style;
+    return [btn];
   });
 
   if (totalPages > 1) {
     const navRow: any[] = [];
-    if (page > 1) navRow.push(Markup.button.callback('◀️ قبلی', `ticket:admin:page:${page - 1}`));
-    navRow.push(Markup.button.callback(`${page}/${totalPages}`, 'noop'));
-    if (page < totalPages) navRow.push(Markup.button.callback('▶️ بعدی', `ticket:admin:page:${page + 1}`));
+    if (page > 1) navRow.push({ text: '◀️ قبلی', callback_data: `ticket:admin:page:${page - 1}` });
+    navRow.push({ text: `${page}/${totalPages}`, callback_data: 'noop' });
+    if (page < totalPages) navRow.push({ text: '▶️ بعدی', callback_data: `ticket:admin:page:${page + 1}` });
     rows.push(navRow);
   }
 
