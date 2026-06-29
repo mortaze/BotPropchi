@@ -395,6 +395,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return;
     }
 
+    // Anonymous post → open editor
+    if (text === '📩 پیام ناشناس') {
+      const anonPost = await postService.getOrCreateAnonymousPost();
+      if (!anonPost) return ctx.reply('❌ خطا در بارگذاری پیام ناشناس.');
+      cache.set(pendingKey(ctx.from.id, 'selected_post'), anonPost.id, 300);
+      cache.del(`post_mgmt_mode:${ctx.from.id}`);
+      cache.del(pendingKey(ctx.from.id, 'edit_mode'));
+      await enterPostEditor(ctx, anonPost);
+      return;
+    }
+
     // Match post title → select that post (support draft prefix)
     let searchTitle = text;
     const draftPrefix = '📝 پیش‌نویس: ';
@@ -1212,7 +1223,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
+    if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل حذف نیست.');
     await ctx.reply(
       `🗑 آیا از حذف "${post.title}" مطمئن هستید؟`,
       Markup.inlineKeyboard([
@@ -1229,7 +1240,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
+    if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل حذف نیست.');
     await postService.delete(postId);
     await safeEdit(ctx, '🗑 پست حذف شد.');
   });
@@ -2244,7 +2255,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل مخفی‌سازی نیست.');
+    if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل مخفی‌سازی نیست.');
     const wasHidden = post.status === 'HIDDEN';
     if (wasHidden) {
       await postService.show(postId);
@@ -2263,7 +2274,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل بایگانی نیست.');
+    if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل بایگانی نیست.');
     await postService.archive(postId);
     const updated = await postService.findById(postId);
     if (updated) await showPostInfo(ctx, updated);
@@ -2277,7 +2288,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
+    if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل حذف نیست.');
     const text = `🗑 آیا از حذف "${post.title}" مطمئن هستید؟\n\nاین پست از منو و لیست پست‌ها حذف خواهد شد.`;
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('✅ بله، حذف شود', `post:manager:delete:confirm:${postId}`)],
@@ -2293,7 +2304,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
+    if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل حذف نیست.');
     await postService.delete(postId);
     try { await ctx.editMessageText('🗑 پست حذف شد.'); } catch { await ctx.reply('🗑 پست حذف شد.'); }
     await showPostListFromLayout(ctx);
@@ -2307,7 +2318,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
+    if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل حذف نیست.');
     const text = `⚠️ *حذف دائمی*\n\nآیا از حذف دائمی "${post.title}" مطمئن هستید؟\n\nاین عملیات قابل بازگشت نیست و پست به طور کامل از تمام جداول دیتابیس حذف خواهد شد.`;
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🔥 بله، حذف دائمی شود', `post:manager:harddelete:confirm:${postId}`)],
@@ -2323,7 +2334,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
+    if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل حذف نیست.');
     await postService.delete(postId);
     try { await ctx.editMessageText('🔥 پست به طور دائمی حذف شد.'); } catch { await ctx.reply('🔥 پست به طور دائمی حذف شد.'); }
     await showPostListFromLayout(ctx);
@@ -2434,11 +2445,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     try {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
         link_preview_options: { is_disabled: true },
-        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__'),
+        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
       });
     } catch (e: any) {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
-        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__'),
+        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
       });
     }
 
@@ -2654,7 +2665,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           return;
         }
         case '🗑 حذف پست': {
-          if (post.slug === '__start__') return ctx.reply('❌ پیام Start قابل حذف نیست.');
+          if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل حذف نیست.');
           cache.set(pendingKey(ctx.from.id, 'delete_post_id'), editorPostId, 600);
           await ctx.reply(
             '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +

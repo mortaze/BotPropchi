@@ -261,7 +261,7 @@ export const postService = {
     this.invalidateCache();
 
     // Auto-sync published posts to menu (single source of truth = post database — title resolved at render time)
-    if (post.status === 'PUBLISHED' && post.isPublished && post.slug !== '__start__') {
+    if (post.status === 'PUBLISHED' && post.isPublished && post.slug !== '__start__' && post.slug !== '__anonymous__') {
       settingsService.invalidateMenuLayoutCache();
       settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
         logger.warn(`[Post] Menu sync failed for post ${id}:`, err);
@@ -309,7 +309,7 @@ export const postService = {
     });
     this.invalidateCache();
     // Auto-add to menu_layout (visible by default for published posts — title resolved from DB at render time)
-    if (post.slug !== '__start__') {
+    if (post.slug !== '__start__' && post.slug !== '__anonymous__') {
       settingsService.invalidateMenuLayoutCache();
       await settingsService.addPostToMenu(post.id, undefined, true).catch(err => {
         logger.error(`[Post] Failed to add post "${post.title}" to menu:`, err);
@@ -907,5 +907,30 @@ export const postService = {
 
   isStartPost(post: any): boolean {
     return post?.slug === '__start__';
+  },
+
+  // ─── Anonymous Post ──────────────────────────────────
+  async getOrCreateAnonymousPost(): Promise<any> {
+    const slug = '__anonymous__';
+    let post = await postRepository.findBySlug(slug);
+    if (!post) {
+      await postRepository.create({
+        title: '📩 پیام ناشناس',
+        slug,
+        content: '✍ لطفاً پیام ناشناس خود را ارسال کنید.',
+        status: PostStatus.DRAFT,
+        isPublished: false,
+        parseMode: 'Markdown',
+        renderMode: 'telegram_entities',
+        previewText: 'پیام ناشناس',
+      });
+      post = await postRepository.findBySlug(slug);
+      logger.info('[AnonymousPost] Created anonymous message post');
+    }
+    return post ? normalizePost(post) : null;
+  },
+
+  isAnonymousPost(post: any): boolean {
+    return post?.slug === '__anonymous__';
   },
 };

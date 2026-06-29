@@ -146,6 +146,7 @@ export const buildPostListFromMenuLayout = (layout: any[][], drafts?: any[]) => 
     }
   }
   rows.push(['🚀 پیام Start']);
+  rows.push(['📩 پیام ناشناس']);
   rows.push(['🔙 بازگشت به منوی پست‌ها']);
   return Markup.keyboard(rows).resize().persistent();
 };
@@ -162,12 +163,18 @@ export const postInfoActionKeyboard = (post: any) => {
   const isHidden = post.status === 'HIDDEN';
   const isPublished = post.isPublished && post.status === 'PUBLISHED';
   const isStart = post.slug === '__start__';
+  const isAnonymous = post.slug === '__anonymous__';
   const rows: any[][] = [
     [
       Markup.button.callback('✏️ ویرایش', `post:manager:edit:${postId}`),
     ],
   ];
-  if (!isStart) {
+  if (isStart) {
+    // Start post: only edit
+  } else if (isAnonymous) {
+    rows[0].push(Markup.button.callback(isPublished ? '🚫 لغو انتشار' : '✅ انتشار', `post:manager:unpublish:${postId}`));
+    rows[0].push(Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`));
+  } else {
     rows[0].push(Markup.button.callback(isPublished ? '🚫 لغو انتشار' : '✅ انتشار', `post:manager:unpublish:${postId}`));
     rows[0].push(Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`));
     rows.push([
@@ -339,13 +346,15 @@ export const buildMenuItemEditKeyboard = (row: number, col: number, button: any,
 
 // ─── Multi-Message Editor Keyboards ────────────────────────
 
-export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean, isStart?: boolean) => {
+export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean, isStart?: boolean, isAnonymous?: boolean) => {
   const rows: string[][] = [
     ['➕ افزودن پیام', 'افزودن دستور'],
     ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
   ];
   if (isStart) {
-    rows.splice(1, 0, ['📊 آمار', '🔗 متغیرها']);
+    rows.splice(1, 0, ['📊 آمار']);
+  } else if (isAnonymous) {
+    rows.splice(1, 0, ['📊 آمار', isPublished ? '📤 لغو انتشار' : '✅ انتشار']);
   } else {
     rows.splice(1, 0, ['📊 آمار', isPublished ? '📤 لغو انتشار' : '✅ انتشار']);
     rows.push(['🗑 حذف پست']);
