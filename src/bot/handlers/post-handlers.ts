@@ -759,7 +759,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   });
 
   // ─── Handle Media for Post Creation/Editing ──────────────
-  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice'], async (ctx: any, next) => {
+  // ─── Handle media messages for editing posts ──────────
+  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice', 'video_note', 'sticker'], async (ctx: any, next) => {
     if (!ctx.from) return next();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || !isPostAdmin(admin)) return next();
@@ -782,25 +783,66 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const msg = ctx.message;
       let mediaFileId = '';
       let mediaType = '';
+      let mediaFileUniqueId = '';
+      let mediaMimeType = '';
 
       if (msg.photo) {
-        mediaFileId = msg.photo[msg.photo.length - 1].file_id;
+        const p = msg.photo[msg.photo.length - 1];
+        mediaFileId = p.file_id;
+        mediaFileUniqueId = p.file_unique_id;
+        mediaMimeType = p.mime_type || '';
         mediaType = 'photo';
       } else if (msg.video) {
         mediaFileId = msg.video.file_id;
+        mediaFileUniqueId = msg.video.file_unique_id;
+        mediaMimeType = msg.video.mime_type || '';
         mediaType = 'video';
       } else if (msg.animation) {
         mediaFileId = msg.animation.file_id;
+        mediaFileUniqueId = msg.animation.file_unique_id;
+        mediaMimeType = msg.animation.mime_type || '';
         mediaType = 'animation';
       } else if (msg.document) {
         mediaFileId = msg.document.file_id;
+        mediaFileUniqueId = msg.document.file_unique_id;
+        mediaMimeType = msg.document.mime_type || '';
         mediaType = 'document';
       } else if (msg.audio) {
         mediaFileId = msg.audio.file_id;
+        mediaFileUniqueId = msg.audio.file_unique_id;
+        mediaMimeType = msg.audio.mime_type || '';
         mediaType = 'audio';
       } else if (msg.voice) {
         mediaFileId = msg.voice.file_id;
+        mediaFileUniqueId = msg.voice.file_unique_id;
+        mediaMimeType = msg.voice.mime_type || '';
         mediaType = 'voice';
+      } else if (msg.video_note) {
+        mediaFileId = msg.video_note.file_id;
+        mediaFileUniqueId = msg.video_note.file_unique_id;
+        mediaType = 'video_note';
+      } else if (msg.sticker) {
+        mediaFileId = msg.sticker.file_id;
+        mediaFileUniqueId = msg.sticker.file_unique_id;
+        mediaType = 'sticker';
+      }
+
+      let replyMessageType: string | null = null;
+      let replyMessageText: string | null = null;
+      let replyMediaFileId: string | null = null;
+      let replyMediaType: string | null = null;
+      const reply = msg.reply_to_message;
+      if (reply) {
+        replyMessageText = reply.text || reply.caption || null;
+        if (reply.photo) { replyMediaType = 'photo'; replyMediaFileId = reply.photo[reply.photo.length - 1].file_id; }
+        else if (reply.video) { replyMediaType = 'video'; replyMediaFileId = reply.video.file_id; }
+        else if (reply.document) { replyMediaType = 'document'; replyMediaFileId = reply.document.file_id; }
+        else if (reply.animation) { replyMediaType = 'animation'; replyMediaFileId = reply.animation.file_id; }
+        else if (reply.audio) { replyMediaType = 'audio'; replyMediaFileId = reply.audio.file_id; }
+        else if (reply.voice) { replyMediaType = 'voice'; replyMediaFileId = reply.voice.file_id; }
+        else if (reply.sticker) { replyMediaType = 'sticker'; replyMediaFileId = reply.sticker.file_id; }
+        else if (reply.video_note) { replyMediaType = 'video_note'; replyMediaFileId = reply.video_note.file_id; }
+        else { replyMessageType = 'text'; }
       }
 
       if (msg.media_group_id) {
@@ -815,7 +857,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
               await postService.update(editingPostId, {
                 mediaFileId: allMedia[0],
                 mediaType,
+                mediaFileUniqueId,
+                mediaMimeType,
                 albumMediaIds: allMedia,
+                replyMessageType,
+                replyMessageText,
+                replyMediaFileId,
+                replyMediaType,
                 updatedBy: BigInt(ctx.from.id),
               } as any);
               await ctx.reply(`✅ آلبوم با ${allMedia.length} رسانه ذخیره شد!`);
@@ -823,6 +871,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
               await postService.update(editingPostId, {
                 mediaFileId: allMedia[0],
                 mediaType,
+                mediaFileUniqueId,
+                mediaMimeType,
+                replyMessageType,
+                replyMessageText,
+                replyMediaFileId,
+                replyMediaType,
                 updatedBy: BigInt(ctx.from.id),
               } as any);
               await ctx.reply(`✅ ${mediaType} ذخیره شد!`);
@@ -839,6 +893,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       await postService.update(editingPostId, {
         mediaFileId,
         mediaType,
+        mediaFileUniqueId,
+        mediaMimeType,
+        replyMessageType,
+        replyMessageText,
+        replyMediaFileId,
+        replyMediaType,
         updatedBy: BigInt(ctx.from.id),
       } as any);
       cache.del(pendingKey(ctx.from.id, 'editing_post'));
@@ -3008,7 +3068,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   });
 
   // ─── Handle forwarded / media messages in add_message mode ──
-  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice'], async (ctx: any, next) => {
+  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice', 'video_note', 'sticker'], async (ctx: any, next) => {
     if (!ctx.from) return next();
     const editorPostId = cache.get<number>(editorKey(ctx.from.id, 'active'));
     if (!editorPostId) return next();
@@ -3044,6 +3104,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       } else if (msg.voice) {
         mediaFileId = msg.voice.file_id;
         messageType = 'voice';
+      } else if (msg.video_note) {
+        mediaFileId = msg.video_note.file_id;
+        messageType = 'video_note';
+      } else if (msg.sticker) {
+        mediaFileId = msg.sticker.file_id;
+        messageType = 'sticker';
       }
       if (!mediaFileId) {
         await ctx.reply('❌ نوع فایل پشتیبانی نمی‌شود.');

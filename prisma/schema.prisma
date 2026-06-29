@@ -650,7 +650,15 @@ model Post {
   caption         String?
   mediaFileId     String?
   mediaType       String?
+  mediaFileUniqueId String?      @map("media_file_unique_id")
+  mediaCaption    String?        @map("media_caption")
+  mediaMimeType   String?        @map("media_mime_type")
+  mediaMeta       Json?          @map("media_meta")
   albumMediaIds   Json?
+  replyMessageType  String?      @map("reply_message_type")
+  replyMessageText  String?      @map("reply_message_text")
+  replyMediaFileId  String?      @map("reply_media_file_id")
+  replyMediaType   String?       @map("reply_media_type")
   parseMode       String?        @default("Markdown")
   buttons         Json?
   entities                Json?

@@ -33,6 +33,7 @@ const MEDIA_SENDERS: Record<string, { inputType: string; method: string; apiMeth
   document: { inputType: 'document', method: 'replyWithDocument', apiMethod: 'sendDocument' },
   audio: { inputType: 'audio', method: 'replyWithAudio', apiMethod: 'sendAudio' },
   voice: { inputType: 'voice', method: 'replyWithVoice', apiMethod: 'sendVoice' },
+  video_note: { inputType: 'video_note', method: 'replyWithVideoNote', apiMethod: 'sendVideoNote' },
 };
 
 function cloneJson<T>(value: T): T {
@@ -98,11 +99,24 @@ export function extractTelegramSnapshot(message: any) {
   for (const key of SNAPSHOT_FIELDS) if (message[key] !== undefined) nativeSnapshot[key] = cloneJson(message[key]);
   const textEntities = cleanEntities(message.entities) || [];
   const captionEntities = cleanEntities(message.caption_entities) || [];
-  const type = ['photo','video','animation','voice','audio','document','sticker'].find(k => message[k]);
+  const type = ['photo','video','animation','voice','audio','document','sticker','video_note'].find(k => message[k]);
   const media: any[] = [];
   if (type) {
     const obj = type === 'photo' ? message.photo[message.photo.length - 1] : message[type];
-    media.push({ type, fileId: obj.file_id, fileUniqueId: obj.file_unique_id, width: obj.width, height: obj.height, duration: obj.duration, fileName: obj.file_name, mimeType: obj.mime_type, fileSize: obj.file_size, mediaGroupId: message.media_group_id, caption: message.caption, captionEntities, hasMediaSpoiler: message.has_media_spoiler, showCaptionAboveMedia: message.show_caption_above_media, payload: cloneJson(obj) });
+    const base: any = { type, fileId: obj.file_id, fileUniqueId: obj.file_unique_id, mediaGroupId: message.media_group_id, caption: message.caption, captionEntities, hasMediaSpoiler: message.has_media_spoiler, showCaptionAboveMedia: message.show_caption_above_media, payload: cloneJson(obj) };
+    if (type === 'video_note') {
+      base.length = obj.length;
+      base.fileSize = obj.file_size;
+      base.thumbnailFileId = obj.thumbnail?.file_id;
+    } else {
+      base.width = obj.width;
+      base.height = obj.height;
+      base.duration = obj.duration;
+      base.fileName = obj.file_name;
+      base.mimeType = obj.mime_type;
+      base.fileSize = obj.file_size;
+    }
+    media.push(base);
   }
   const keyboard = cloneJson(message.reply_markup?.inline_keyboard || []);
   return { text: message.text || '', caption: message.caption, entities: textEntities, captionEntities, media, keyboard, message: nativeSnapshot, rawMessage: cloneJson(message) };

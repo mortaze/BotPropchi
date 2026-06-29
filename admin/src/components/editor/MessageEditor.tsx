@@ -328,7 +328,7 @@ function MessageCard({ msg, idx, total, disabled, onStyleClick, onTextChange, on
         </div>
       )}
 
-      <PreviewSection text={msg.text ?? ""} entities={msg.entities} caption={msg.caption} captionEntities={msg.captionEntities} isMedia={isMedia} />
+      <PreviewSection text={msg.text ?? ""} entities={msg.entities} caption={msg.caption} captionEntities={msg.captionEntities} isMedia={isMedia} messageType={msg.messageType} />
     </div>
   );
 }
@@ -372,16 +372,20 @@ function EntityChips({ entities, text }: { entities: TelegramEntity[]; text?: st
   );
 }
 
-function PreviewSection({ text, entities, caption, captionEntities, isMedia }: {
-  text: string; entities: TelegramEntity[]; caption?: string | null; captionEntities: TelegramEntity[]; isMedia: boolean;
+function PreviewSection({ text, entities, caption, captionEntities, isMedia, messageType }: {
+  text: string; entities: TelegramEntity[]; caption?: string | null; captionEntities: TelegramEntity[]; isMedia: boolean; messageType?: string;
 }) {
+  const mediaIcons: Record<string, string> = {
+    photo: '🖼 عکس', video: '🎬 ویدیو', animation: '🎭 گیف', document: '📄 فایل',
+    audio: '🎵 صدا', voice: '🎤 ویس', sticker: '😀 استیکر', video_note: '圆形 ویدیو نوت', album: '📦 آلبوم',
+  };
   return (
     <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm space-y-2">
       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">پیش‌نمایش</p>
-      {isMedia && caption ? (
+      {isMedia ? (
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">[Media]</p>
-          <p><StyledTextPreview text={caption} entities={captionEntities} /></p>
+          <p className="text-xs text-muted-foreground">{mediaIcons[messageType || ''] || '[Media]'}</p>
+          {caption ? <p><StyledTextPreview text={caption} entities={captionEntities} /></p> : null}
         </div>
       ) : (
         <p><StyledTextPreview text={text} entities={entities} /></p>

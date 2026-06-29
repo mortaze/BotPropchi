@@ -593,3 +593,43 @@ export function normalizeWriteData(postId: number, data: any): Prisma.PostMessag
     delayMs: data.delayMs ?? 0,
   } as any;
 }
+
+export async function sendStoredMessage(telegram: any, chatId: number | string, post: any): Promise<void> {
+  const hasMedia = !!post.mediaType && !!post.mediaFileId;
+
+  const replyTo: any = {};
+  if (post.replyMessageText || post.replyMediaFileId) {
+    replyTo.reply_parameters = {};
+    if (post.replyMessageText) replyTo.reply_parameters.message_text = post.replyMessageText;
+    if (post.replyMediaFileId) replyTo.reply_parameters.file_id = post.replyMediaFileId;
+  }
+
+  const albumIds: string[] | undefined = Array.isArray(post.albumMediaIds) ? post.albumMediaIds : undefined;
+
+  if (albumIds && albumIds.length > 1) {
+    const caption = post.mediaCaption || post.caption || post.content || undefined;
+    const items = albumIds.map((fid: string, i: number) => {
+      const base: any = { type: post.mediaType || 'photo', media: fid };
+      if (i === 0 && caption) { base.caption = caption; }
+      return base;
+    });
+    await telegram.sendMediaGroup(chatId, items, replyTo);
+    return;
+  }
+
+  if (hasMedia) {
+    const method = MEDIA_SENDERS[post.mediaType]?.apiMethod;
+    if (method && typeof telegram[method] === 'function') {
+      const opts: any = { ...replyTo };
+      const caption = post.mediaCaption || post.caption || undefined;
+      if (caption && post.mediaType !== 'sticker' && post.mediaType !== 'video_note') {
+        opts.caption = caption;
+      }
+      await telegram[method](chatId, post.mediaFileId, opts);
+      return;
+    }
+  }
+
+  const text = post.content || post.caption || '(پست خالی)';
+  await telegram.sendMessage(chatId, text, replyTo);
+}

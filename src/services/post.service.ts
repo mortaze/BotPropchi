@@ -26,7 +26,15 @@ export const postService = {
     caption?: string;
     mediaFileId?: string;
     mediaType?: string;
+    mediaFileUniqueId?: string;
+    mediaCaption?: string;
+    mediaMimeType?: string;
+    mediaMeta?: any;
     albumMediaIds?: string[];
+    replyMessageType?: string;
+    replyMessageText?: string;
+    replyMediaFileId?: string;
+    replyMediaType?: string;
     parseMode?: string;
     buttons?: any[];
     entities?: any[];
@@ -59,7 +67,15 @@ export const postService = {
       caption: data.caption ? sanitizeTelegramText(data.caption) : undefined,
       mediaFileId: data.mediaFileId ?? null,
       mediaType: data.mediaType ?? null,
+      mediaFileUniqueId: data.mediaFileUniqueId ?? null,
+      mediaCaption: data.mediaCaption ?? null,
+      mediaMimeType: data.mediaMimeType ?? null,
+      mediaMeta: data.mediaMeta ?? null,
       albumMediaIds: Array.isArray(data.albumMediaIds) && (data.albumMediaIds?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.albumMediaIds))) : undefined,
+      replyMessageType: data.replyMessageType ?? null,
+      replyMessageText: data.replyMessageText ?? null,
+      replyMediaFileId: data.replyMediaFileId ?? null,
+      replyMediaType: data.replyMediaType ?? null,
       parseMode: data.parseMode ?? 'HTML',
       buttons: Array.isArray(data.buttons) && (data.buttons?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
       entities: Array.isArray(data.entities) && (data.entities?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.entities))) : undefined,
@@ -129,7 +145,15 @@ export const postService = {
       caption: existing.caption,
       mediaFileId: existing.mediaFileId,
       mediaType: existing.mediaType,
+      mediaFileUniqueId: (existing as any).mediaFileUniqueId,
+      mediaCaption: (existing as any).mediaCaption,
+      mediaMimeType: (existing as any).mediaMimeType,
+      mediaMeta: (existing as any).mediaMeta,
       albumMediaIds: existing.albumMediaIds,
+      replyMessageType: (existing as any).replyMessageType,
+      replyMessageText: (existing as any).replyMessageText,
+      replyMediaFileId: (existing as any).replyMediaFileId,
+      replyMediaType: (existing as any).replyMediaType,
       parseMode: existing.parseMode,
       buttons: existing.buttons,
       entities: (existing as any).entities,
@@ -511,6 +535,26 @@ export const postService = {
     const contentText = content || undefined;
     const contentEntities = (caption ? captionEntities : entities) || [];
     const previewText = (content || caption || '').slice(0, 200);
+
+    const reply = message.reply_to_message;
+    let replyMessageType: string | null = null;
+    let replyMessageText: string | null = null;
+    let replyMediaFileId: string | null = null;
+    let replyMediaType: string | null = null;
+    if (reply) {
+      replyMessageText = reply.text || reply.caption || null;
+      if (reply.photo) { replyMediaType = 'photo'; replyMediaFileId = reply.photo[reply.photo.length - 1].file_id; }
+      else if (reply.video) { replyMediaType = 'video'; replyMediaFileId = reply.video.file_id; }
+      else if (reply.document) { replyMediaType = 'document'; replyMediaFileId = reply.document.file_id; }
+      else if (reply.animation) { replyMediaType = 'animation'; replyMediaFileId = reply.animation.file_id; }
+      else if (reply.audio) { replyMediaType = 'audio'; replyMediaFileId = reply.audio.file_id; }
+      else if (reply.voice) { replyMediaType = 'voice'; replyMediaFileId = reply.voice.file_id; }
+      else if (reply.sticker) { replyMediaType = 'sticker'; replyMediaFileId = reply.sticker.file_id; }
+      else if (reply.video_note) { replyMediaType = 'video_note'; replyMediaFileId = reply.video_note.file_id; }
+      else { replyMessageType = 'text'; }
+    }
+
+    const firstMedia = media[0];
     const update: any = {
       content: content || undefined,
       caption,
@@ -524,9 +568,17 @@ export const postService = {
       renderMode: 'telegram_entities',
       previewText,
       buttons: keyboard.length ? keyboard.map((row: any[]) => row.map((b: any) => ({ text: b.text, type: b.url ? 'URL' : b.web_app ? 'WEB_APP' : b.login_url ? 'LOGIN_URL' : b.copy_text ? 'COPY_TEXT' : b.switch_inline_query ? 'SWITCH_INLINE' : 'CALLBACK', value: b.url || b.callback_data || b.web_app?.url || b.login_url?.url || b.copy_text?.text || b.switch_inline_query || '', payload: b }))) : undefined,
-      mediaFileId: media[0]?.fileId,
-      mediaType: media[0]?.type,
+      mediaFileId: firstMedia?.fileId,
+      mediaType: firstMedia?.type,
+      mediaFileUniqueId: firstMedia?.fileUniqueId,
+      mediaCaption: caption,
+      mediaMimeType: firstMedia?.mimeType,
+      mediaMeta: firstMedia?.payload,
       albumMediaIds: media.length > 1 ? media.map((m: any) => m.fileId) : undefined,
+      replyMessageType,
+      replyMessageText,
+      replyMediaFileId,
+      replyMediaType,
       parseMode: null,
       updatedBy,
     };
