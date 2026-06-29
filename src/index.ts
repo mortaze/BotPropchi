@@ -94,6 +94,11 @@ async function bootstrap() {
   startScheduler();
 
   // اجرای ربات با دریافت تمام آپدیت‌های مورد نیاز
+  try {
+    await bot.stop('replacing previous instance');
+    logger.info('[Startup] Previous bot instance stopped');
+  } catch (_) {}
+
   await bot.launch({
     allowedUpdates: ['message', 'edited_message', 'callback_query', 'chat_member', 'my_chat_member'],
   });

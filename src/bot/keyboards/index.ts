@@ -7,9 +7,14 @@ import { buildSafeTelegramButton, sanitizeTelegramText, sanitizeTextArray } from
 import { logger } from '../../utils/logger';
 import { BOT_TEXT_FEATURES } from '../service-toggle';
 
-// ─── منوی اصلی (1:1 mapping from menu_layout stored text) ───
-// WARNING: This function must NEVER resolve, transform, or merge buttons.
-// The menu_layout is the single source of truth.
+const FEATURE_BUTTON_TEXTS: Record<string, string> = {
+  lottery: '🎲 قرعه کشی',
+  referrals: '👥 دعوت دوستان',
+  leaderboard: '🏆 لیدربورد',
+  ticket_system: '🎫 تیکت',
+};
+
+// ─── منوی اصلی ─────────────────────────────────────────
 export function buildMainMenuKeyboard(
   isAdmin = false,
   _features: Record<string, boolean> = {},
@@ -18,6 +23,7 @@ export function buildMainMenuKeyboard(
 ) {
   if (menuLayout && menuLayout.length > 0) {
     logger.debug(`[MenuKeyboard] Generating main keyboard rows=${menuLayout.length} admin=${isAdmin} displayMode=${displayMode}`);
+
     const visibleRows = menuLayout
       .filter((row: any) => Array.isArray(row))
       .map(row =>
@@ -34,19 +40,20 @@ export function buildMainMenuKeyboard(
       )
       .filter((row: string[]) => row.length > 0);
 
-    if (isAdmin) {
-      const allTexts = visibleRows.flat();
-      if (!allTexts.includes('👨‍💼 پنل ادمین')) {
-        visibleRows.push(['👨‍💼 پنل ادمین']);
+    const allTexts = visibleRows.flat();
+
+    for (const [featureKey, buttonText] of Object.entries(FEATURE_BUTTON_TEXTS)) {
+      if (_features[featureKey] !== false && !allTexts.includes(buttonText)) {
+        visibleRows.push([buttonText]);
       }
     }
 
-    if (_features.ticket_system !== false) {
-      const allTexts = visibleRows.flat();
-      if (!allTexts.includes('🎫 تیکت')) {
-        visibleRows.push(['🎫 تیکت']);
-      }
+    if (isAdmin && !allTexts.includes('👨‍💼 پنل ادمین')) {
+      visibleRows.push(['👨‍💼 پنل ادمین']);
     }
+
+    logger.info(`[FeatureMenu] lottery=${_features.lottery ?? true} referrals=${_features.referrals ?? true} leaderboard=${_features.leaderboard ?? true} ticket_system=${_features.ticket_system ?? true}`);
+    logger.info(`[FeatureMenu] Generated buttons: ${visibleRows.flat().join(' | ')}`);
 
     if (displayMode === 'toggle_allowed') {
       return Markup.keyboard(visibleRows).resize();

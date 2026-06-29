@@ -68,6 +68,8 @@ class SettingsService {
     await this.ensureDefaults();
     this.featureCache.delete(key);
     this.featuresCache = null;
+    this.invalidateMenuLayoutCache();
+    logger.info(`[FeatureToggle] ${key}=${isEnabled}`);
     return prisma.featureToggle.update({ where: { key }, data: { isEnabled } });
   }
 
