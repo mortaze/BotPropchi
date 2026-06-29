@@ -3006,19 +3006,50 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || !isPostAdmin(admin)) return next();
 
-    const msg = ctx.message;
-    const caption = msg.caption || '';
-    const captionEntities = msg.caption_entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
     try {
+      const msg = ctx.message;
+      const caption = msg.caption || null;
+      const captionEntities = msg.caption_entities?.map((e: any) => ({
+        type: e.type, offset: e.offset, length: e.length,
+        url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id
+      })) || [];
+      let mediaFileId = '';
+      let messageType = 'text';
+      if (msg.photo) {
+        mediaFileId = msg.photo[msg.photo.length - 1].file_id;
+        messageType = 'photo';
+      } else if (msg.video) {
+        mediaFileId = msg.video.file_id;
+        messageType = 'video';
+      } else if (msg.animation) {
+        mediaFileId = msg.animation.file_id;
+        messageType = 'animation';
+      } else if (msg.document) {
+        mediaFileId = msg.document.file_id;
+        messageType = 'document';
+      } else if (msg.audio) {
+        mediaFileId = msg.audio.file_id;
+        messageType = 'audio';
+      } else if (msg.voice) {
+        mediaFileId = msg.voice.file_id;
+        messageType = 'voice';
+      }
+      if (!mediaFileId) {
+        await ctx.reply('❌ نوع فایل پشتیبانی نمی‌شود.');
+        return;
+      }
       await postMessageService.create(editorPostId, {
-        messageType: 'text',
-        text: caption || '(رسانه)',
-        entities: captionEntities,
+        messageType,
+        mediaFileId,
+        text: null,
+        entities: [],
+        caption,
+        captionEntities,
       });
       await openEditorAfterMessageCreate(ctx, editorPostId);
     } catch (e: any) {
       logger.error(`[MsgAdd] media create failed postId=${editorPostId}: ${e.message}`);
-      await ctx.reply('❌ خطا در ایجاد پیام. لطفاً دوباره تلاش کنید.');
+      await ctx.reply('❌ خطا در ذخیره رسانه. لطفاً دوباره تلاش کنید.');
     }
   });
 }
