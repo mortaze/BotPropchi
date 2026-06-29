@@ -123,6 +123,11 @@ export default function PostDetailPage() {
         <Badge variant={statusConfig[post.status].variant}>
           {statusConfig[post.status].icon} {statusConfig[post.status].label}
         </Badge>
+        {post.isForwarded && (
+          <Badge variant="info">
+            ↪ فوروارد شده{post.forwardMeta?.originName ? ` از ${post.forwardMeta.originName}` : ''}
+          </Badge>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

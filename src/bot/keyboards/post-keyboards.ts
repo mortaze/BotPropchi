@@ -369,9 +369,8 @@ export const postMoveModeReplyKeyboard = () =>
     ['🔙 بازگشت'],
   ]).resize().persistent();
 
-export const postAddMessageReplyKeyboard = (forwardOn: boolean) =>
+export const postAddMessageReplyKeyboard = () =>
   Markup.keyboard([
-    [forwardOn ? '✅ ارسال به عنوان فوروارد (روشن)' : '↪️ ارسال به عنوان فوروارد (خاموش)'],
     ['❌ لغو'],
   ]).resize().persistent();
 

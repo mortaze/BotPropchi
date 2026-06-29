@@ -35,6 +35,8 @@ export const postService = {
     replyMessageText?: string;
     replyMediaFileId?: string;
     replyMediaType?: string;
+    isForwarded?: boolean;
+    forwardMeta?: any;
     parseMode?: string;
     buttons?: any[];
     entities?: any[];
@@ -76,6 +78,8 @@ export const postService = {
       replyMessageText: data.replyMessageText ?? null,
       replyMediaFileId: data.replyMediaFileId ?? null,
       replyMediaType: data.replyMediaType ?? null,
+      isForwarded: data.isForwarded ?? false,
+      forwardMeta: data.forwardMeta ?? null,
       parseMode: data.parseMode ?? 'HTML',
       buttons: Array.isArray(data.buttons) && (data.buttons?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons))) : undefined,
       entities: Array.isArray(data.entities) && (data.entities?.length ?? 0) > 0 ? sanitizeJsonStrings(JSON.parse(JSON.stringify(data.entities))) : undefined,
@@ -154,6 +158,8 @@ export const postService = {
       replyMessageText: (existing as any).replyMessageText,
       replyMediaFileId: (existing as any).replyMediaFileId,
       replyMediaType: (existing as any).replyMediaType,
+      isForwarded: (existing as any).isForwarded,
+      forwardMeta: (existing as any).forwardMeta,
       parseMode: existing.parseMode,
       buttons: existing.buttons,
       entities: (existing as any).entities,

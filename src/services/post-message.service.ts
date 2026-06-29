@@ -604,6 +604,19 @@ export async function sendStoredMessage(telegram: any, chatId: number | string, 
     if (post.replyMediaFileId) replyTo.reply_parameters.file_id = post.replyMediaFileId;
   }
 
+  // Try copyMessage for forwarded posts from channels/public chats
+  if (post.isForwarded && post.forwardMeta) {
+    const fm = typeof post.forwardMeta === 'string' ? JSON.parse(post.forwardMeta) : post.forwardMeta;
+    if (fm.originChatId && fm.originMessageId) {
+      try {
+        await telegram.copyMessage(chatId, fm.originChatId, fm.originMessageId);
+        return;
+      } catch (err: any) {
+        logger.warn(`[ForwardFallback] copyMessage failed chatId=${chatId} origin=${fm.originChatId}:${fm.originMessageId} error=${err?.message}`);
+      }
+    }
+  }
+
   const albumIds: string[] | undefined = Array.isArray(post.albumMediaIds) ? post.albumMediaIds : undefined;
 
   if (albumIds && albumIds.length > 1) {

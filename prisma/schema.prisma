@@ -659,6 +659,8 @@ model Post {
   replyMessageText  String?      @map("reply_message_text")
   replyMediaFileId  String?      @map("reply_media_file_id")
   replyMediaType   String?       @map("reply_media_type")
+  isForwarded      Boolean       @default(false) @map("is_forwarded")
+  forwardMeta      Json?         @map("forward_meta")
   parseMode       String?        @default("Markdown")
   buttons         Json?
   entities                Json?

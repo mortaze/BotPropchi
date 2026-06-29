@@ -56,6 +56,30 @@ function requirePostAdmin(ctx: any): Promise<any> {
   return botAdminService.getActive(ctx.from.id);
 }
 
+function extractForwardMeta(message: any): { isForwarded: boolean; forwardMeta: any } {
+  const origin = message.forward_origin || message.forward_from || message.forward_from_chat;
+  if (!origin && !message.forward_date && !message.forward_sender_name) {
+    return { isForwarded: false, forwardMeta: null };
+  }
+  let type = 'hidden_user';
+  let originName = message.forward_sender_name || '';
+  let originChatId: number | null = null;
+  let originMessageId: number | null = null;
+  if (message.forward_from_chat) {
+    type = message.forward_from_chat.type || 'channel';
+    originName = message.forward_from_chat.title || '';
+    originChatId = message.forward_from_chat.id;
+    originMessageId = message.forward_from_message_id || null;
+  } else if (message.forward_from) {
+    type = 'user';
+    originName = [message.forward_from.first_name, message.forward_from.last_name].filter(Boolean).join(' ');
+  }
+  return {
+    isForwarded: true,
+    forwardMeta: { type, originName, originChatId, originMessageId, forwardDate: message.forward_date || null },
+  };
+}
+
 async function adminMainMenu(ctx: any) {
   clearEditorKeyState(ctx.from.id);
   cache.del(`post_mgmt_mode:${ctx.from.id}`);
@@ -81,7 +105,7 @@ function editorKey(userId: number, field: string) {
 // ─── Clear all editor state (self-healing) ──────────────
 function clearEditorKeyState(userId: number) {
   const keys = [
-    'active', 'mode', 'msg_idx', 'message_ids', 'forward_on',
+    'active', 'mode', 'msg_idx', 'message_ids',
     'btn_sel_row', 'btn_sel_col', 'btn_msg_ids',
     'add_btn_name', 'add_btn_ref_row', 'add_btn_ref_col',
     'btn_text_row', 'btn_text_col', 'btn_link_row', 'btn_link_col',
@@ -364,7 +388,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const isEditorAction = ['➕ افزودن پیام', 'افزودن دستور', '📊 آمار', '📤 لغو انتشار', '✅ انتشار', '🔗 متغیرها',
           '🗂 بازگشت به لیست', '🏠 منو اصلی', '🔙 بازگشت', '⛔ توقف ویرایش',
           '✏️ ویرایش محتوا', '📝 ویرایش عنوان', 'ویرایش دکمه ها', '❌ لغو',
-          '↪️ ارسال به عنوان فوروارد (خاموش)', '✅ ارسال به عنوان فوروارد (روشن)',
           '🔙 بازگشت به ویرایشگر',
           '🗑 حذف پست',
         ].includes(text);
@@ -845,6 +868,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         else { replyMessageType = 'text'; }
       }
 
+      const { isForwarded, forwardMeta } = extractForwardMeta(msg);
+
       if (msg.media_group_id) {
         const groupKey = `post_media_group:${ctx.from.id}:${msg.media_group_id}`;
         const group = cache.get<string[]>(groupKey) || [];
@@ -864,6 +889,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
                 replyMessageText,
                 replyMediaFileId,
                 replyMediaType,
+                isForwarded,
+                forwardMeta,
                 updatedBy: BigInt(ctx.from.id),
               } as any);
               await ctx.reply(`✅ آلبوم با ${allMedia.length} رسانه ذخیره شد!`);
@@ -877,6 +904,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
                 replyMessageText,
                 replyMediaFileId,
                 replyMediaType,
+                isForwarded,
+                forwardMeta,
                 updatedBy: BigInt(ctx.from.id),
               } as any);
               await ctx.reply(`✅ ${mediaType} ذخیره شد!`);
@@ -899,6 +928,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         replyMessageText,
         replyMediaFileId,
         replyMediaType,
+        isForwarded,
+        forwardMeta,
         updatedBy: BigInt(ctx.from.id),
       } as any);
       cache.del(pendingKey(ctx.from.id, 'editing_post'));
@@ -2476,7 +2507,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
     cache.del(editorKey(ctx.from.id, 'message_ids'));
-    cache.del(editorKey(ctx.from.id, 'forward_on'));
 
     try {
       await refreshEditorMessages(ctx, post);
@@ -2487,7 +2517,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(editorKey(ctx.from.id, 'mode'));
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       cache.del(editorKey(ctx.from.id, 'message_ids'));
-      cache.del(editorKey(ctx.from.id, 'forward_on'));
       try { await ctx.reply('❌ خطا در نمایش ویرایشگر. لطفاً دوباره تلاش کنید.'); } catch (_) {}
     }
   }
@@ -2543,7 +2572,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(editorKey(ctx.from.id, 'mode'));
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
     cache.del(editorKey(ctx.from.id, 'message_ids'));
-    cache.del(editorKey(ctx.from.id, 'forward_on'));
   }
 
   async function openEditorAfterMessageCreate(ctx: any, postId: number) {
@@ -2661,9 +2689,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
     try {
-      const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
       await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
-        ...postAddMessageReplyKeyboard(forwardOn),
+        ...postAddMessageReplyKeyboard(),
       });
     } catch (e: any) {
       logger.error(`[MsgAdd] Failed postId=${postId}: ${e.message}`, { postId, userId: ctx.from?.id });
@@ -2693,9 +2720,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         case '➕ افزودن پیام': {
           cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
           cache.del(editorKey(ctx.from.id, 'msg_idx'));
-          const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
           await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
-            ...postAddMessageReplyKeyboard(forwardOn),
+            ...postAddMessageReplyKeyboard(),
           });
           return;
         }
@@ -2759,9 +2785,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           if (!post) return ctx.reply('❌ پست یافت نشد.');
           cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
           cache.del(editorKey(ctx.from.id, 'msg_idx'));
-          const forwardOn = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
           await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
-            ...postAddMessageReplyKeyboard(forwardOn),
+            ...postAddMessageReplyKeyboard(),
           });
           return;
         }
@@ -2904,15 +2929,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── ADD MESSAGE MODE ────────────────────────────────
     if (mode === 'add_message') {
-      if (text === '↪️ ارسال به عنوان فوروارد (خاموش)' || text === '✅ ارسال به عنوان فوروارد (روشن)') {
-        const current = cache.get<boolean>(editorKey(ctx.from.id, 'forward_on')) || false;
-        cache.set(editorKey(ctx.from.id, 'forward_on'), !current, 600);
-        await ctx.reply(`🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.`, {
-          ...postAddMessageReplyKeyboard(!current),
-        });
-        return;
-      }
-
       if (text === '❌ لغو') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
         cache.del(editorKey(ctx.from.id, 'msg_idx'));
@@ -2923,12 +2939,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
       // Regular text = new message content
       const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
+      const { isForwarded, forwardMeta } = extractForwardMeta(ctx.message);
       try {
         await postMessageService.create(editorPostId, {
           messageType: 'text',
           text: text,
           entities: entities,
         });
+        if (isForwarded) {
+          await postService.update(editorPostId, { isForwarded, forwardMeta, updatedBy: BigInt(ctx.from.id) } as any);
+        }
         await openEditorAfterMessageCreate(ctx, editorPostId);
       } catch (e: any) {
         logger.error(`[MsgAdd] create failed postId=${editorPostId}: ${e.message}`);

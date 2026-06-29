@@ -754,6 +754,8 @@ export interface PostItem {
   mediaFileId?: string | null;
   mediaType?: string | null;
   albumMediaIds?: string[] | null;
+  isForwarded?: boolean;
+  forwardMeta?: { type: string; originName: string; originChatId?: number | null; originMessageId?: number | null; forwardDate?: number | null } | null;
   parseMode: string;
   buttons?: any;
   entities?: any;
