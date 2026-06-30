@@ -886,6 +886,34 @@ export const postService = {
     return prisma.postCommand.findMany({ where: { postId } });
   },
 
+  async getCommandByPostId(postId: number) {
+    return prisma.postCommand.findFirst({ where: { postId } });
+  },
+
+  async setCommand(postId: number, command: string) {
+    const conflict = await prisma.postCommand.findFirst({
+      where: { command, NOT: { postId } },
+    });
+    if (conflict) throw new Error(`دستور /${command} قبلاً برای پست دیگری ثبت شده است`);
+    await prisma.postCommand.deleteMany({ where: { postId } });
+    const result = await prisma.postCommand.create({
+      data: { postId, command },
+    });
+    this.invalidateCache();
+    eventBus.emit(Events.COMMAND_ADDED, { postId, command });
+    logger.info(`[Post] Command set: /${command} -> post ${postId}`);
+    return result;
+  },
+
+  async removeCommandByPostId(postId: number) {
+    const cmd = await prisma.postCommand.findFirst({ where: { postId } });
+    if (!cmd) throw new Error('دستوری برای این پست ثبت نشده است');
+    await prisma.postCommand.deleteMany({ where: { postId } });
+    this.invalidateCache();
+    eventBus.emit(Events.COMMAND_REMOVED, { postId, command: cmd.command });
+    logger.info(`[Post] Command removed for post ${postId}: /${cmd.command}`);
+  },
+
   async resolveCommand(command: string): Promise<any | null> {
     logger.debug(`[CommandResolve] Resolving /${command}`);
     const map = await this.getCommandMap();

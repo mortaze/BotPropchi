@@ -766,10 +766,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const cmdText = ctx.message.text.replace(/^\//, '').trim();
       if (!cmdText) return ctx.reply('❌ دستور نامعتبر.');
       try {
-        await postService.addCommand(editingPostId, cmdText);
-        await ctx.reply(`✅ دستور /${cmdText} اضافه شد!`);
+        await postService.setCommand(editingPostId, cmdText);
+        await ctx.reply(`✅ دستور /${cmdText} ثبت شد!`);
       } catch (err: any) {
-        await ctx.reply(`❌ ${err.message || 'افزودن دستور ناموفق بود.'}`);
+        await ctx.reply(`❌ ${err.message || 'ثبت دستور ناموفق بود.'}`);
       }
       if (cache.get(pendingKey(ctx.from.id, 'edit_mode'))) {
         await showEditMode(ctx, editingPostId);
@@ -2205,7 +2205,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
-    await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', { parse_mode: 'Markdown' as any });
+    const existingCmd = await postService.getCommandByPostId(postId);
+    const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
+    await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`);
   });
 
   // 🗑 حذف پست: Ask confirmation, then delete, clear cache, go back to post list
@@ -2571,7 +2573,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   async function refreshEditorMessages(ctx: any, post: any) {
     const postId = post.id;
     const messages = (post.messages || []);
-    const msgTexts = messages.map((m: any) => m.text || '');
 
     const oldMsgIds = cache.get<number[]>(editorKey(ctx.from.id, 'message_ids')) || [];
     for (const msgId of oldMsgIds) {
@@ -2589,22 +2590,60 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       });
     }
 
+    const MEDIA_TYPES = ['photo', 'video', 'animation', 'document', 'audio', 'voice', 'video_note', 'sticker'];
+    const MEDIA_METHODS: Record<string, string> = {
+      photo: 'replyWithPhoto', video: 'replyWithVideo', animation: 'replyWithAnimation',
+      document: 'replyWithDocument', audio: 'replyWithAudio', voice: 'replyWithVoice',
+      video_note: 'replyWithVideoNote', sticker: 'replyWithSticker',
+    };
+
     const newMsgIds: number[] = [];
     for (let i = 0; i < messages.length; i++) {
-      const msgText = msgTexts[i];
+      const msg = messages[i];
+      const msgText = msg.text || '';
+      const isMedia = MEDIA_TYPES.includes(msg.messageType) && msg.mediaFileId;
       const label = `📨 *پیام ${i + 1} از ${messages.length}*`;
-      try {
-        const sent = await ctx.reply(`${label}\n\n${msgText}`, {
-          parse_mode: 'Markdown',
-          link_preview_options: { is_disabled: true },
-          ...postSingleMessageInlineKeyboard(postId, messages[i], i, messages.length),
-        });
-        if (sent) newMsgIds.push(sent.message_id);
-      } catch (e) {
-        const sent = await ctx.reply(`${label}\n\n${msgText}`, {
-          ...postSingleMessageInlineKeyboard(postId, messages[i], i, messages.length),
-        });
-        if (sent) newMsgIds.push(sent.message_id);
+      const keyboard = postSingleMessageInlineKeyboard(postId, msg, i, messages.length);
+
+      if (isMedia) {
+        const labelText = msg.caption ? `${label}\n\n💬 ${msg.caption}` : label;
+        try {
+          const sent = await ctx.reply(labelText, {
+            parse_mode: 'Markdown',
+            link_preview_options: { is_disabled: true },
+            ...keyboard,
+          });
+          if (sent) newMsgIds.push(sent.message_id);
+        } catch (e) {
+          const sent = await ctx.reply(labelText, { ...keyboard });
+          if (sent) newMsgIds.push(sent.message_id);
+        }
+        try {
+          const sendMethod = MEDIA_METHODS[msg.messageType] || 'replyWithDocument';
+          const mediaOpts: any = {};
+          if (msg.caption && msg.messageType !== 'sticker' && msg.messageType !== 'video_note') {
+            mediaOpts.caption = msg.caption;
+          }
+          const sent = await ctx[sendMethod](msg.mediaFileId, mediaOpts);
+          if (sent) newMsgIds.push(sent.message_id);
+        } catch (e) {
+          try {
+            const sent = await ctx.reply('⚠️ رسانه قابل نمایش نیست');
+            if (sent) newMsgIds.push(sent.message_id);
+          } catch (_) {}
+        }
+      } else {
+        try {
+          const sent = await ctx.reply(`${label}\n\n${msgText}`, {
+            parse_mode: 'Markdown',
+            link_preview_options: { is_disabled: true },
+            ...keyboard,
+          });
+          if (sent) newMsgIds.push(sent.message_id);
+        } catch (e) {
+          const sent = await ctx.reply(`${label}\n\n${msgText}`, { ...keyboard });
+          if (sent) newMsgIds.push(sent.message_id);
+        }
       }
     }
     cache.set(editorKey(ctx.from.id, 'message_ids'), newMsgIds, 600);
@@ -2774,10 +2813,22 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         }
         case 'افزودن دستور': {
           cache.set(editorKey(ctx.from.id, 'mode'), 'add_command', 600);
-          await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', {
-            parse_mode: 'Markdown' as any,
+          const existingCmd = await postService.getCommandByPostId(editorPostId);
+          const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
+          await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
             ...postCancelOnlyReplyKeyboard(),
           });
+          return;
+        }
+        case '❌ حذف دستور': {
+          try {
+            await postService.removeCommandByPostId(editorPostId);
+            await ctx.reply('🗑 دستور حذف شد.');
+          } catch (err: any) {
+            await ctx.reply(`❌ ${err.message || 'حذف دستور ناموفق بود.'}`);
+          }
+          const updatedPost = await postService.findById(editorPostId);
+          if (updatedPost) await refreshEditorMessages(ctx, updatedPost);
           return;
         }
         case '📊 آمار': {
@@ -2839,10 +2890,22 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         }
         case 'افزودن دستور': {
           cache.set(editorKey(ctx.from.id, 'mode'), 'add_command', 600);
-          await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nmثلاً \`sgb/discount/rules\`', {
-            parse_mode: 'Markdown' as any,
+          const existingCmd = await postService.getCommandByPostId(editorPostId);
+          const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
+          await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
             ...postCancelOnlyReplyKeyboard(),
           });
+          return;
+        }
+        case '❌ حذف دستور': {
+          try {
+            await postService.removeCommandByPostId(editorPostId);
+            await ctx.reply('🗑 دستور حذف شد.');
+          } catch (err: any) {
+            await ctx.reply(`❌ ${err.message || 'حذف دستور ناموفق بود.'}`);
+          }
+          const updatedPost = await postService.findById(editorPostId);
+          if (updatedPost) await refreshEditorMessages(ctx, updatedPost);
           return;
         }
         case '📊 آمار': {
@@ -3013,7 +3076,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
 
-      // Regular text = command name
       const cmdText = text.replace(/^\//, '').trim();
       if (!cmdText) {
         await ctx.reply('❌ دستور نامعتبر. لطفاً یک نام معتبر ارسال کنید.', {
@@ -3022,10 +3084,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
       try {
-        await postService.addCommand(editorPostId, cmdText);
-        await ctx.reply(`✅ دستور /${cmdText} اضافه شد!`);
+        await postService.setCommand(editorPostId, cmdText);
+        await ctx.reply(`✅ دستور /${cmdText} ثبت شد!`);
       } catch (err: any) {
-        await ctx.reply(`❌ ${err.message || 'افزودن دستور ناموفق بود.'}`, {
+        await ctx.reply(`❌ ${err.message || 'ثبت دستور ناموفق بود.'}`, {
           ...postCancelOnlyReplyKeyboard(),
         });
         return;

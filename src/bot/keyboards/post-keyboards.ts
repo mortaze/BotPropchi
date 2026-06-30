@@ -349,6 +349,7 @@ export const buildMenuItemEditKeyboard = (row: number, col: number, button: any,
 export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean, isStart?: boolean, isAnonymous?: boolean) => {
   const rows: string[][] = [
     ['➕ افزودن پیام', 'افزودن دستور'],
+    ['❌ حذف دستور'],
     ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
   ];
   if (isStart) {
