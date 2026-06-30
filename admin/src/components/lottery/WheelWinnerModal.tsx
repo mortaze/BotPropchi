@@ -16,10 +16,10 @@ function fireConfetti() {
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;";
   document.body.appendChild(canvas);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) { document.body.removeChild(canvas); return; }
 
   const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#BB8FCE", "#F8C471", "#82E0AA", "#FF0000", "#FFD700", "#FF69B4"];
   const particles: Array<{
@@ -47,12 +47,14 @@ function fireConfetti() {
   const duration = 4000;
 
   function frame() {
+    const c = ctx;
+    if (!c) return;
     const elapsed = Date.now() - startTime;
     if (elapsed > duration) {
       document.body.removeChild(canvas);
       return;
     }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    c.clearRect(0, 0, canvas.width, canvas.height);
     const fadeStart = duration * 0.7;
     for (const p of particles) {
       p.x += p.vx;
@@ -63,17 +65,17 @@ function fireConfetti() {
       if (elapsed > fadeStart) {
         p.opacity = 1 - (elapsed - fadeStart) / (duration - fadeStart);
       }
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate((p.rotation * Math.PI) / 180);
-      ctx.globalAlpha = Math.max(0, p.opacity);
-      ctx.fillStyle = p.color;
+      c.save();
+      c.translate(p.x, p.y);
+      c.rotate((p.rotation * Math.PI) / 180);
+      c.globalAlpha = Math.max(0, p.opacity);
+      c.fillStyle = p.color;
       if (p.shape === "rect") {
-        ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        c.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
       } else {
-        ctx.beginPath();
-        ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
-        ctx.fill();
+        c.beginPath();
+        c.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+        c.fill();
       }
       ctx.restore();
     }
