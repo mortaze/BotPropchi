@@ -610,6 +610,7 @@ export function normalizeWriteData(postId: number, data: any): Prisma.PostMessag
     captionEntities: Array.isArray(data.captionEntities) ? arrayJson(data.captionEntities) : [],
     replyMarkup: data.replyMarkup ?? null,
     delayMs: data.delayMs ?? 0,
+    forwardSource: data.forwardSource ?? null,
   } as any;
 }
 

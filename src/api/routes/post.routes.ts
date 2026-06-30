@@ -48,7 +48,7 @@ const updateSchema = basePostSchema.partial();
 
 const postMessageSchema = z.object({
   order: z.number().int().optional(),
-  messageType: z.enum(['text', 'photo', 'video', 'document', 'audio', 'voice', 'animation', 'sticker', 'album']).default('text'),
+  messageType: z.enum(['text', 'photo', 'video', 'document', 'audio', 'voice', 'animation', 'sticker', 'album', 'forward']).default('text'),
   text: z.string().optional().nullable(),
   entities: z.any().optional().default([]),
   parseMode: z.enum(['None', 'MarkdownV2', 'HTML']).default('None'),
