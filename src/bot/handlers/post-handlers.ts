@@ -2601,11 +2601,27 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
       const msgText = msg.text || '';
+      const isForward = msg.messageType === 'forward' && msg.forwardSource;
       const isMedia = MEDIA_TYPES.includes(msg.messageType) && msg.mediaFileId;
       const label = `📨 *پیام ${i + 1} از ${messages.length}*`;
       const keyboard = postSingleMessageInlineKeyboard(postId, msg, i, messages.length);
 
-      if (isMedia) {
+      if (isForward) {
+        const fs = msg.forwardSource;
+        const sourceTitle = fs.sourceTitle || 'ناشناس';
+        const previewText = `${label}\n\n↪️ فوروارد شده از:\n${sourceTitle}`;
+        try {
+          const sent = await ctx.reply(previewText, {
+            parse_mode: 'Markdown',
+            link_preview_options: { is_disabled: true },
+            ...keyboard,
+          });
+          if (sent) newMsgIds.push(sent.message_id);
+        } catch (e) {
+          const sent = await ctx.reply(previewText, { ...keyboard });
+          if (sent) newMsgIds.push(sent.message_id);
+        }
+      } else if (isMedia) {
         const labelText = msg.caption ? `${label}\n\n💬 ${msg.caption}` : label;
         try {
           const sent = await ctx.reply(labelText, {
@@ -3047,17 +3063,26 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
 
-      // Regular text = new message content
-      const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
-      const { isForwarded, forwardMeta, forwardSourceChatId, forwardSourceMessageId } = extractForwardMeta(ctx.message);
+      const { isForwarded, forwardMeta } = extractForwardMeta(ctx.message);
       try {
-        await postMessageService.create(editorPostId, {
-          messageType: 'text',
-          text: text,
-          entities: entities,
-        });
-        if (isForwarded) {
-          await postService.update(editorPostId, { isForwarded, forwardMeta, forwardSourceChatId, forwardSourceMessageId, updatedBy: BigInt(ctx.from.id) } as any);
+        if (isForwarded && forwardMeta && forwardMeta.originChatId && forwardMeta.originMessageId) {
+          await postMessageService.create(editorPostId, {
+            messageType: 'forward',
+            forwardSource: {
+              chatId: forwardMeta.originChatId,
+              messageId: forwardMeta.originMessageId,
+              sourceType: forwardMeta.type,
+              sourceTitle: forwardMeta.originName,
+              sourceUsername: forwardMeta.originUsername,
+            },
+          });
+        } else {
+          const entities = ctx.message.entities?.map((e: any) => ({ type: e.type, offset: e.offset, length: e.length, url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id })) || [];
+          await postMessageService.create(editorPostId, {
+            messageType: 'text',
+            text: text,
+            entities: entities,
+          });
         }
         await openEditorAfterMessageCreate(ctx, editorPostId, isForwarded);
       } catch (e: any) {
@@ -3245,23 +3270,27 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
       const { isForwarded, forwardMeta } = extractForwardMeta(msg);
-      let forwardSourceChatId: bigint | null = null;
-      let forwardSourceMessageId: number | null = null;
-      if (isForwarded && forwardMeta) {
-        forwardSourceChatId = forwardMeta.originChatId ? BigInt(forwardMeta.originChatId) : null;
-        forwardSourceMessageId = forwardMeta.originMessageId;
+      if (isForwarded && forwardMeta && forwardMeta.originChatId && forwardMeta.originMessageId) {
         logger.info(`[ForwardDetect] add_message media postId=${editorPostId} messageId=${msg.message_id} originChat=${forwardMeta.originChatId} originMsg=${forwardMeta.originMessageId}`);
-      }
-      await postMessageService.create(editorPostId, {
-        messageType,
-        mediaFileId,
-        text: null,
-        entities: [],
-        caption,
-        captionEntities,
-      });
-      if (isForwarded) {
-        await postService.update(editorPostId, { isForwarded, forwardMeta, forwardSourceChatId, forwardSourceMessageId, updatedBy: BigInt(ctx.from.id) } as any);
+        await postMessageService.create(editorPostId, {
+          messageType: 'forward',
+          forwardSource: {
+            chatId: forwardMeta.originChatId,
+            messageId: forwardMeta.originMessageId,
+            sourceType: forwardMeta.type,
+            sourceTitle: forwardMeta.originName,
+            sourceUsername: forwardMeta.originUsername,
+          },
+        });
+      } else {
+        await postMessageService.create(editorPostId, {
+          messageType,
+          mediaFileId,
+          text: null,
+          entities: [],
+          caption,
+          captionEntities,
+        });
       }
       await openEditorAfterMessageCreate(ctx, editorPostId, isForwarded);
     } catch (e: any) {

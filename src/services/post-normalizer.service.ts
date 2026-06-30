@@ -27,6 +27,7 @@ function formatMessages(rawMessages: any[]): any[] {
     captionEntities: Array.isArray(m.captionEntities) ? m.captionEntities : [],
     replyMarkup: m.replyMarkup ?? null,
     delayMs: m.delayMs ?? 0,
+    forwardSource: m.forwardSource ?? null,
   }));
 }
 

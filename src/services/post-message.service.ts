@@ -30,6 +30,7 @@ export interface NormalizedMessage {
   captionEntities: TelegramEntity[];
   replyMarkup?: any;
   delayMs: number;
+  forwardSource?: any;
 }
 
 const STYLE_ENTITY_TYPES = new Set(['bold', 'italic', 'underline', 'strikethrough', 'spoiler', 'blockquote', 'expandable_blockquote']);
@@ -214,6 +215,7 @@ export function normalizeSingleMessage(row: any): NormalizedMessage {
     captionEntities,
     replyMarkup: row.replyMarkup ?? row.reply_markup ?? null,
     delayMs: row.delayMs ?? row.delay_ms ?? 0,
+    forwardSource: row.forwardSource ?? row.forward_source ?? null,
   };
   logger.debug(`[PostNormalizer] messageId=${normalized.id} post=${normalized.postId} order=${normalized.order} text=${telegramLength(normalized.text ?? '')} entities=${normalized.entities.length}`);
   return normalized;
@@ -420,20 +422,6 @@ export async function ensurePostMessages(postId: number): Promise<any[]> {
 }
 
 export async function sendPostToChat(ctx: any, postId: number, templateVars?: Record<string, string>, lastMessageOptions?: any): Promise<void> {
-  // Check if this is a forwarded post — try forwardMessage first
-  try {
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { isForwarded: true, forwardSourceChatId: true, forwardSourceMessageId: true } });
-    if (post?.isForwarded && post.forwardSourceChatId && post.forwardSourceMessageId) {
-      try {
-        await ctx.telegram.forwardMessage(ctx.chat.id, Number(post.forwardSourceChatId), post.forwardSourceMessageId);
-        logger.info(`[ForwardSuccess] postId=${postId} sourceChat=${post.forwardSourceChatId} sourceMsg=${post.forwardSourceMessageId}`);
-        return;
-      } catch (err: any) {
-        logger.warn(`[ForwardFail] postId=${postId} sourceChat=${post.forwardSourceChatId} sourceMsg=${post.forwardSourceMessageId} error=${err?.message}`);
-      }
-    }
-  } catch (_) {}
-
   let rows = await loadPostMessages(postId);
   if (rows.length === 0) {
     rows = await ensurePostMessages(postId);
@@ -447,6 +435,21 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
     const row = validated[i];
     const msg = normalizeSingleMessage(row);
     if (msg.delayMs > 0) await sleep(msg.delayMs);
+
+    if (msg.messageType === 'forward' && (row as any).forwardSource) {
+      const fs = (row as any).forwardSource;
+      const srcChatId = Number(fs.chatId);
+      const srcMsgId = Number(fs.messageId);
+      try {
+        await ctx.telegram.forwardMessage(ctx.chat.id, srcChatId, srcMsgId);
+        logger.info(`[ForwardSuccess] postId=${postId} order=${msg.order} sourceChat=${srcChatId} sourceMsg=${srcMsgId}`);
+      } catch (err: any) {
+        logger.warn(`[ForwardFail] postId=${postId} order=${msg.order} sourceChat=${srcChatId} sourceMsg=${srcMsgId} error=${err?.message}`);
+        try { await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست'); } catch (_) {}
+      }
+      continue;
+    }
+
     const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
     // ── FINAL ALIGNMENT: recalibrate entity offsets against the exact text being sent ──
     if (Array.isArray((payload as any).entities) && (payload as any).entities.length > 0) {
@@ -550,6 +553,7 @@ export const postMessageService = {
           captionEntities: Array.isArray(data.captionEntities) ? arrayJson(data.captionEntities) : [],
           replyMarkup: data.replyMarkup ?? null,
           delayMs: data.delayMs ?? 0,
+          forwardSource: data.forwardSource ?? null,
         } as any,
       });
       logger.info(`[PostEditor][MessageCreate] post=${postId} messageId=${msg.id} order=${order}`);
@@ -619,15 +623,17 @@ export async function sendStoredMessage(telegram: any, chatId: number | string, 
     if (post.replyMediaFileId) replyTo.reply_parameters.file_id = post.replyMediaFileId;
   }
 
-  // Try copyMessage for forwarded posts from channels/public chats
+  // Try forwardMessage for forwarded posts from channels/public chats
   if (post.isForwarded && post.forwardMeta) {
     const fm = typeof post.forwardMeta === 'string' ? JSON.parse(post.forwardMeta) : post.forwardMeta;
     if (fm.originChatId && fm.originMessageId) {
       try {
-        await telegram.copyMessage(chatId, fm.originChatId, fm.originMessageId);
+        await telegram.forwardMessage(chatId, Number(fm.originChatId), Number(fm.originMessageId));
         return;
       } catch (err: any) {
-        logger.warn(`[ForwardFallback] copyMessage failed chatId=${chatId} origin=${fm.originChatId}:${fm.originMessageId} error=${err?.message}`);
+        logger.warn(`[ForwardFail] forwardMessage failed chatId=${chatId} origin=${fm.originChatId}:${fm.originMessageId} error=${err?.message}`);
+        try { await telegram.sendMessage(chatId, '⚠️ منبع پیام فوروارد در دسترس نیست'); } catch (_) {}
+        return;
       }
     }
   }

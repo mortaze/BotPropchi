@@ -719,6 +719,7 @@ model PostMessage {
   captionEntities Json                 @default("[]") @map("caption_entities")
   replyMarkup     Json?                @map("reply_markup")
   delayMs         Int                  @default(0) @map("delay_ms")
+  forwardSource   Json?                @map("forward_source")
   createdAt       DateTime             @default(now()) @map("created_at")
   updatedAt       DateTime             @updatedAt @map("updated_at")
   post            Post                 @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -1011,6 +1012,7 @@ enum PostMessageType {
   animation
   sticker
   album
+  forward
 }
 
 enum PostMessageParseMode {
