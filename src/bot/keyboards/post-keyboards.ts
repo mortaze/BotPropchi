@@ -19,7 +19,7 @@ export const postMainMenuKeyboard = () =>
 
 export const postNewPostManagerReplyKeyboard = () =>
   Markup.keyboard([
-    ['➕ افزودن پیام', 'افزودن دستور'],
+    ['➕ افزودن پیام', '🔗 دستور'],
     ['📊 آمار', '✅ انتشار'],
     ['🗑 حذف پست'],
     ['🔙 بازگشت'],
@@ -40,7 +40,7 @@ export const postEditorKeyboard = (postId: number, hasContent: boolean) => {
       Markup.button.callback('📤 انتشار', `post:publish:${postId}`),
     ],
     [
-      Markup.button.callback('🔗 افزودن دستور', `post:cmd:add:${postId}`),
+      Markup.button.callback('🔗 دستور', `post:cmd:add:${postId}`),
     ],
     [
       Markup.button.callback('📜 تاریخچه نسخه‌ها', `post:version:list:${postId}`),
@@ -101,7 +101,7 @@ export const postEditModeReplyKeyboard = () =>
     ['📝 ویرایش محتوا', '🏷 ویرایش عنوان'],
     ['🔘 ویرایش دکمه‌ها', '🖼 ویرایش رسانه'],
     ['🚀 تغییر وضعیت انتشار'],
-    ['➕ افزودن دستور'],
+    ['🔗 دستور'],
     ['🗑 حذف پست'],
     ['🔙 بازگشت'],
   ]).resize().persistent();
@@ -346,10 +346,19 @@ export const buildMenuItemEditKeyboard = (row: number, col: number, button: any,
 
 // ─── Multi-Message Editor Keyboards ────────────────────────
 
+export const postCommandSubMenuKeyboard = (hasCommand: boolean) => {
+  const rows: string[][] = [
+    ['↩️ لغو'],
+  ];
+  if (hasCommand) {
+    rows.unshift(['❌ حذف دستور']);
+  }
+  return Markup.keyboard(rows).resize().persistent();
+};
+
 export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean, isStart?: boolean, isAnonymous?: boolean) => {
   const rows: string[][] = [
-    ['➕ افزودن پیام', 'افزودن دستور'],
-    ['❌ حذف دستور'],
+    ['➕ افزودن پیام', '🔗 دستور'],
     ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
   ];
   if (isStart) {

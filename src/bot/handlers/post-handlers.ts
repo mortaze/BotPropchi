@@ -28,6 +28,7 @@ import {
   postMultiMessageEditorReplyKeyboard,
   postMoveModeReplyKeyboard,
   postCancelOnlyReplyKeyboard,
+  postCommandSubMenuKeyboard,
   postNewPostManagerReplyKeyboard,
   postSingleMessageInlineKeyboard,
   postAddMessageReplyKeyboard,
@@ -426,7 +427,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const existingMode = cache.get<string>(editorKey(ctx.from.id, 'mode'));
       if (existingMode === 'main') {
         const text = ctx.message.text;
-        const isEditorAction = ['➕ افزودن پیام', 'افزودن دستور', '📊 آمار', '📤 لغو انتشار', '✅ انتشار', '🔗 متغیرها',
+        const isEditorAction = ['➕ افزودن پیام', '🔗 دستور', '📊 آمار', '📤 لغو انتشار', '✅ انتشار', '🔗 متغیرها',
           '🗂 بازگشت به لیست', '🏠 منو اصلی', '🔙 بازگشت', '⛔ توقف ویرایش',
           '✏️ ویرایش محتوا', '📝 ویرایش عنوان', 'ویرایش دکمه ها', '❌ لغو',
           '🔙 بازگشت به ویرایشگر',
@@ -766,8 +767,13 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const cmdText = ctx.message.text.replace(/^\//, '').trim();
       if (!cmdText) return ctx.reply('❌ دستور نامعتبر.');
       try {
+        const existingCmd = await postService.getCommandByPostId(editingPostId);
         await postService.setCommand(editingPostId, cmdText);
-        await ctx.reply(`✅ دستور /${cmdText} ثبت شد!`);
+        if (existingCmd) {
+          await ctx.reply(`✅ دستور پست بروزرسانی شد:\n/${existingCmd.command} → /${cmdText}`);
+        } else {
+          await ctx.reply(`✅ دستور پست ایجاد شد:\n/${cmdText}`);
+        }
       } catch (err: any) {
         await ctx.reply(`❌ ${err.message || 'ثبت دستور ناموفق بود.'}`);
       }
@@ -2197,8 +2203,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await showEditMode(ctx, postId);
   });
 
-  // ➕ افزودن دستور
-  bot.hears('➕ افزودن دستور', async (ctx: any) => {
+  // 🔗 دستور
+  bot.hears('🔗 دستور', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
@@ -2827,22 +2833,23 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           });
           return;
         }
-        case 'افزودن دستور': {
+        case '🔗 دستور': {
           cache.set(editorKey(ctx.from.id, 'mode'), 'add_command', 600);
           const existingCmd = await postService.getCommandByPostId(editorPostId);
           const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
           await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
-            ...postCancelOnlyReplyKeyboard(),
+            ...postCommandSubMenuKeyboard(!!existingCmd),
           });
           return;
         }
         case '❌ حذف دستور': {
           try {
             await postService.removeCommandByPostId(editorPostId);
-            await ctx.reply('🗑 دستور حذف شد.');
+            await ctx.reply('✅ دستور پست حذف شد.');
           } catch (err: any) {
             await ctx.reply(`❌ ${err.message || 'حذف دستور ناموفق بود.'}`);
           }
+          cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
           const updatedPost = await postService.findById(editorPostId);
           if (updatedPost) await refreshEditorMessages(ctx, updatedPost);
           return;
@@ -2904,22 +2911,23 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           });
           return;
         }
-        case 'افزودن دستور': {
+        case '🔗 دستور': {
           cache.set(editorKey(ctx.from.id, 'mode'), 'add_command', 600);
           const existingCmd = await postService.getCommandByPostId(editorPostId);
           const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
           await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
-            ...postCancelOnlyReplyKeyboard(),
+            ...postCommandSubMenuKeyboard(!!existingCmd),
           });
           return;
         }
         case '❌ حذف دستور': {
           try {
             await postService.removeCommandByPostId(editorPostId);
-            await ctx.reply('🗑 دستور حذف شد.');
+            await ctx.reply('✅ دستور پست حذف شد.');
           } catch (err: any) {
             await ctx.reply(`❌ ${err.message || 'حذف دستور ناموفق بود.'}`);
           }
+          cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
           const updatedPost = await postService.findById(editorPostId);
           if (updatedPost) await refreshEditorMessages(ctx, updatedPost);
           return;
@@ -3094,7 +3102,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // ─── ADD COMMAND MODE ────────────────────────────────
     if (mode === 'add_command') {
-      if (text === '❌ لغو') {
+      if (text === '↩️ لغو' || text === '❌ لغو') {
         cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
         const post = await postService.findById(editorPostId);
         if (post) await refreshEditorMessages(ctx, post);
@@ -3103,18 +3111,19 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
       const cmdText = text.replace(/^\//, '').trim();
       if (!cmdText) {
-        await ctx.reply('❌ دستور نامعتبر. لطفاً یک نام معتبر ارسال کنید.', {
-          ...postCancelOnlyReplyKeyboard(),
-        });
+        await ctx.reply('❌ دستور نامعتبر. لطفاً یک نام معتبر ارسال کنید.');
         return;
       }
       try {
+        const existingCmd = await postService.getCommandByPostId(editorPostId);
         await postService.setCommand(editorPostId, cmdText);
-        await ctx.reply(`✅ دستور /${cmdText} ثبت شد!`);
+        if (existingCmd) {
+          await ctx.reply(`✅ دستور پست بروزرسانی شد:\n/${existingCmd.command} → /${cmdText}`);
+        } else {
+          await ctx.reply(`✅ دستور پست ایجاد شد:\n/${cmdText}`);
+        }
       } catch (err: any) {
-        await ctx.reply(`❌ ${err.message || 'ثبت دستور ناموفق بود.'}`, {
-          ...postCancelOnlyReplyKeyboard(),
-        });
+        await ctx.reply(`❌ ${err.message || 'ثبت دستور ناموفق بود.'}`);
         return;
       }
       cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
