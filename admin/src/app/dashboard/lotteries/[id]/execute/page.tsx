@@ -33,8 +33,6 @@ export default function LotteryExecutePage() {
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [currentWinner, setCurrentWinner] = useState<LotteryWinner | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
-  const [debugInfo, setDebugInfo] = useState<string | null>(null);
-
   const finalRotationRef = useRef(0);
 
   useEffect(() => {
@@ -118,7 +116,6 @@ export default function LotteryExecutePage() {
     onError: (error) => {
       toast.error(getApiError(error));
       setSpinState("idle");
-      setDebugInfo(null);
     },
   });
 
@@ -141,11 +138,11 @@ export default function LotteryExecutePage() {
       return;
     }
 
-    const normalized = ((finalDegrees % 360) + 360) % 360;
-    const sectorAngle = 360 / totalSegments;
-    const debugLine = `فلش: ${winnerSegment.firstName} | محاسبه: ${winnerSegment.firstName} | rotation=${finalDegrees.toFixed(2)}° normalized=${normalized.toFixed(2)}° sector=${sectorAngle.toFixed(1)}° index=${winnerIndex}`;
-    setDebugInfo(debugLine);
-    console.table({ rotation: finalDegrees, normalized, arrowAngle: ARROW_ANGLE_DEG, sectorAngle, winnerIndex, winnerName: winnerSegment.firstName });
+    if (process.env.NODE_ENV === "development") {
+      const normalized = ((finalDegrees % 360) + 360) % 360;
+      const sectorAngle = 360 / totalSegments;
+      console.debug(`[WheelDebug] rotation=${finalDegrees.toFixed(2)}° normalized=${normalized.toFixed(2)}° sector=${sectorAngle.toFixed(1)}° index=${winnerIndex} name=${winnerSegment.firstName}`);
+    }
 
     setSpinState("winner_reveal");
     await new Promise((r) => setTimeout(r, 50));
@@ -162,7 +159,6 @@ export default function LotteryExecutePage() {
     if (spinState === "spinning" || spinState === "slowing" || segments.length === 0) return;
     setShowWinnerModal(false);
     setCurrentWinner(null);
-    setDebugInfo(null);
     setSpinState("spinning");
   }, [spinState, segments.length]);
 
@@ -272,11 +268,6 @@ export default function LotteryExecutePage() {
                   disabled={isCompleted || noParticipants || isAnimating}
                 />
               </div>
-              {debugInfo && (
-                <div className="mt-2 w-full max-w-lg rounded bg-muted/50 px-3 py-2 text-xs font-mono text-muted-foreground text-center">
-                  {debugInfo}
-                </div>
-              )}
               <div className="mt-4 flex gap-3 shrink-0">
                 <Button
                   size="lg"

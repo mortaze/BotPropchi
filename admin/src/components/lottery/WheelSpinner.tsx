@@ -111,12 +111,12 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
         hasCalledSlowing.current = false;
         prevRotationRef.current = rotationRef.current;
 
-        const extraRotations = (6 + Math.random() * 3) * 2 * Math.PI;
+        const extraRotations = (4 + Math.random() * 2) * 2 * Math.PI;
         const randomAngle = Math.random() * 2 * Math.PI;
         const finalRotation = rotationRef.current + extraRotations + randomAngle;
         const startRotation = rotationRef.current;
         const totalDelta = finalRotation - startRotation;
-        const duration = 5000 + Math.random() * 2000;
+        const duration = 2500 + Math.random() * 1000;
         const startTime = performance.now();
 
         const animate = (now: number) => {
