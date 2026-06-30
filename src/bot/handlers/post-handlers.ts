@@ -764,6 +764,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     if (editingCommand && editingPostId) {
       cache.del(pendingKey(ctx.from.id, 'editing_cmd'));
+      cache.del(pendingKey(ctx.from.id, 'editing_post'));
       const cmdText = ctx.message.text.replace(/^\//, '').trim();
       if (!cmdText) return ctx.reply('❌ دستور نامعتبر.');
       try {
@@ -777,11 +778,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       } catch (err: any) {
         await ctx.reply(`❌ ${err.message || 'ثبت دستور ناموفق بود.'}`);
       }
-      if (cache.get(pendingKey(ctx.from.id, 'edit_mode'))) {
-        await showEditMode(ctx, editingPostId);
-      } else {
-        await showPostEditor(ctx, editingPostId);
-      }
+      await showEditMode(ctx, editingPostId);
       return;
     }
 
@@ -2207,7 +2204,41 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
     const existingCmd = await postService.getCommandByPostId(postId);
     const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
-    await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`);
+    await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
+      ...postCommandSubMenuKeyboard(!!existingCmd),
+    });
+  });
+
+  // ❌ حذف دستور (from command sub-menu)
+  bot.hears('❌ حذف دستور', async (ctx: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    if (!postId) return;
+    const editingCmd = cache.get<boolean>(pendingKey(ctx.from.id, 'editing_cmd'));
+    if (!editingCmd) return;
+    cache.del(pendingKey(ctx.from.id, 'editing_cmd'));
+    cache.del(pendingKey(ctx.from.id, 'editing_post'));
+    try {
+      await postService.removeCommandByPostId(postId);
+      await ctx.reply('✅ دستور پست حذف شد.');
+    } catch (err: any) {
+      await ctx.reply(`❌ ${err.message || 'حذف دستور ناموفق بود.'}`);
+    }
+    await showEditMode(ctx, postId);
+  });
+
+  // ↩️ لغو (from command sub-menu)
+  bot.hears('↩️ لغو', async (ctx: any, next: any) => {
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const editingCmd = cache.get<boolean>(pendingKey(ctx.from.id, 'editing_cmd'));
+    if (!editingCmd) return next();
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
+    cache.del(pendingKey(ctx.from.id, 'editing_cmd'));
+    cache.del(pendingKey(ctx.from.id, 'editing_post'));
+    await ctx.reply('↩️ عملیات دستور لغو شد.');
+    if (postId) await showEditMode(ctx, postId);
   });
 
   // 🗑 حذف پست: Ask confirmation, then delete, clear cache, go back to post list
