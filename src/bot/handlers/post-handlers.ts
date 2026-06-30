@@ -1491,6 +1491,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const { text, reply_markup } = renderButtonEditor(postId, buttons, listMode, selectedPos);
 
+    const existingMsgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
+    if (existingMsgId) {
+      try {
+        await ctx.telegram.editMessageText(ctx.chat.id, existingMsgId, null, text, { reply_markup });
+        return;
+      } catch {}
+    }
+
     const sent = await ctx.reply(text, { reply_markup });
     if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
 
@@ -1722,7 +1730,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
         cache.del(pendingKey(ctx.from.id, 'button_color'));
         cache.del(pendingKey(ctx.from.id, 'button_type'));
-        await refreshButtonListView(ctx, postId);
+        cache.del(pendingKey(ctx.from.id, 'editor_row'));
+        cache.del(pendingKey(ctx.from.id, 'editor_col'));
+        await ctx.reply('✏️ حالت ویرایش:', postEditMessageReplyKeyboard());
         return;
       }
 
@@ -1814,8 +1824,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(pendingKey(ctx.from.id, 'button_color'));
       cache.del(pendingKey(ctx.from.id, 'button_type'));
       cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-      await ctx.reply('✅ تغییرات دکمه انجام شد.');
-      await refreshButtonListView(ctx, postId);
+      await ctx.reply('✅ رنگ دکمه تغییر کرد.');
+      await ctx.reply('✏️ حالت ویرایش:', postEditMessageReplyKeyboard());
       return;
     }
 
@@ -1919,8 +1929,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
 
     if (mode === 'delete') {
-      // Delete the clicked button
       if (buttons[row] && buttons[row][col] !== undefined) {
+        const totalButtons = buttons.reduce((sum: number, r: any[]) => sum + (Array.isArray(r) ? r.length : 0), 0);
+        const pendingDelete = cache.get<{ row: number; col: number } | null>(pendingKey(ctx.from.id, 'pending_delete'));
+        const isPending = pendingDelete && pendingDelete.row === row && pendingDelete.col === col;
+
+        if (totalButtons <= 1 && !isPending) {
+          cache.set(pendingKey(ctx.from.id, 'pending_delete'), { row, col }, 600);
+          await refreshButtonListView(ctx, postId);
+          return;
+        }
+
+        cache.del(pendingKey(ctx.from.id, 'pending_delete'));
         const deletedText = buttons[row][col].text || '';
         buttons[row].splice(col, 1);
         if (buttons[row].length === 0) buttons.splice(row, 1);
@@ -1929,7 +1949,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         cache.del(pendingKey(ctx.from.id, 'editor_row'));
         cache.del(pendingKey(ctx.from.id, 'editor_col'));
         cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-        await ctx.reply('✅ دکمه حذف شد.');
         await refreshButtonListView(ctx, postId);
       }
       return;
