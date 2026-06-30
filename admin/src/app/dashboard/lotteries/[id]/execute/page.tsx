@@ -6,39 +6,47 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Play, Square, Users, Trophy, Send } from "lucide-react";
 import { toast } from "sonner";
-import { Badge, Button, Card, CardContent, CardHeader, EmptyState } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardHeader } from "@/components/ui";
 import { getApiError, lotteriesApi } from "@/services/api";
-import { formatNumber, safeDateFormat } from "@/lib/utils";
 import WheelSpinner from "@/components/lottery/WheelSpinner";
 import WinnerPanel from "@/components/lottery/WinnerPanel";
 import WinnerModal from "@/components/lottery/WheelWinnerModal";
 import type { LotteryWinner, WheelSegment } from "@/types";
 
+type SpinState = "idle" | "spinning" | "slowing" | "finished" | "celebrating";
+
 export default function LotteryExecutePage() {
   const id = Number(useParams<{ id: string }>().id);
-  const router = useRouter();
   const qc = useQueryClient();
-  const prevSidebarRef = useRef<boolean | null>(null);
 
   const [segments, setSegments] = useState<WheelSegment[]>([]);
   const [winners, setWinners] = useState<LotteryWinner[]>([]);
-  const [isSpinning, setIsSpinning] = useState(false);
+  const [spinState, setSpinState] = useState<SpinState>("idle");
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [currentWinner, setCurrentWinner] = useState<LotteryWinner | null>(null);
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
 
   useEffect(() => {
-    try {
-      const { sidebarOpen, setSidebarOpen } = require("@/store/ui.store").useUIStore.getState();
-      prevSidebarRef.current = sidebarOpen;
-      if (sidebarOpen) setSidebarOpen(false);
-    } catch {}
+    const mainDiv = document.querySelector(".min-h-screen.md\\:mr-64") as HTMLElement | null;
+    const sidebarDesktop = document.querySelector(".fixed.inset-y-0.right-0.z-30.hidden.h-screen.w-64.md\\:block") as HTMLElement | null;
+
+    if (mainDiv) {
+      mainDiv.style.marginRight = "0";
+      mainDiv.classList.remove("md:mr-64");
+    }
+    if (sidebarDesktop) {
+      sidebarDesktop.style.display = "none";
+    }
+
     return () => {
-      try {
-        const { setSidebarOpen } = require("@/store/ui.store").useUIStore.getState();
-        if (prevSidebarRef.current !== null) setSidebarOpen(prevSidebarRef.current);
-      } catch {}
+      if (mainDiv) {
+        mainDiv.style.marginRight = "";
+        mainDiv.classList.add("md:mr-64");
+      }
+      if (sidebarDesktop) {
+        sidebarDesktop.style.display = "";
+      }
     };
   }, []);
 
@@ -87,7 +95,15 @@ export default function LotteryExecutePage() {
   }, [winnersQuery.data]);
 
   const handleSpinComplete = useCallback(() => {
-    setIsSpinning(false);
+    setSpinState("finished");
+    setTimeout(() => {
+      setShowWinnerModal(true);
+      setSpinState("celebrating");
+    }, 500);
+  }, []);
+
+  const handleSlowing = useCallback(() => {
+    setSpinState("slowing");
   }, []);
 
   const spinMutation = useMutation({
@@ -115,16 +131,16 @@ export default function LotteryExecutePage() {
     },
     onError: (error) => {
       toast.error(getApiError(error));
-      setIsSpinning(false);
+      setSpinState("idle");
     },
   });
 
   const handleSpin = useCallback(() => {
-    if (isSpinning || segments.length === 0) return;
-    setIsSpinning(true);
+    if (spinState === "spinning" || spinState === "slowing" || segments.length === 0) return;
+    setSpinState("spinning");
     setTargetIndex(null);
     spinMutation.mutate();
-  }, [isSpinning, segments.length, spinMutation]);
+  }, [spinState, segments.length, spinMutation]);
 
   const sendNotificationsMutation = useMutation({
     mutationFn: () => lotteriesApi.sendNotifications(id),
@@ -138,6 +154,7 @@ export default function LotteryExecutePage() {
   const lottery = lotteryQuery.data?.lottery;
   const isCompleted = lottery?.isCompleted;
   const noParticipants = segments.length === 0 && !participantsQuery.isLoading;
+  const isAnimating = spinState === "spinning" || spinState === "slowing";
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -162,7 +179,7 @@ export default function LotteryExecutePage() {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-72 border-l overflow-y-auto p-4 space-y-4 shrink-0">
+        <div className="w-[30%] min-w-[280px] border-l overflow-y-auto p-4 space-y-4 shrink-0">
           <WinnerPanel winners={winners} isLoading={winnersQuery.isLoading} />
           <Card>
             <CardHeader>
@@ -176,7 +193,7 @@ export default function LotteryExecutePage() {
                 className="w-full"
                 size="sm"
                 onClick={() => sendNotificationsMutation.mutate()}
-                disabled={sendNotificationsMutation.isPending || winners.length === 0}
+                disabled={sendNotificationsMutation.isPending || winners.length === 0 || isAnimating}
                 loading={sendNotificationsMutation.isPending}
               >
                 <Send className="h-4 w-4 ml-2" />
@@ -207,7 +224,7 @@ export default function LotteryExecutePage() {
           )}
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center p-6 overflow-hidden">
+        <div className="flex-[7] flex flex-col items-center justify-center p-6 overflow-hidden">
           {isCompleted ? (
             <div className="text-center py-12">
               <Trophy className="h-20 w-20 mx-auto mb-4 text-yellow-500" />
@@ -222,19 +239,22 @@ export default function LotteryExecutePage() {
             </div>
           ) : (
             <>
-              <WheelSpinner
-                segments={segments}
-                targetIndex={targetIndex}
-                onSpinComplete={handleSpinComplete}
-                isSpinning={isSpinning}
-                disabled={isCompleted || noParticipants}
-              />
-              <div className="mt-8 flex gap-3">
+              <div className="flex-1 flex items-center justify-center w-full min-h-0">
+                <WheelSpinner
+                  segments={segments}
+                  targetIndex={targetIndex}
+                  onSpinComplete={handleSpinComplete}
+                  onSlowing={handleSlowing}
+                  isSpinning={isAnimating}
+                  disabled={isCompleted || noParticipants}
+                />
+              </div>
+              <div className="mt-6 flex gap-3 shrink-0">
                 <Button
                   size="lg"
                   onClick={handleSpin}
-                  disabled={isSpinning || isCompleted || noParticipants}
-                  loading={isSpinning}
+                  disabled={isAnimating || isCompleted || noParticipants}
+                  loading={isAnimating}
                 >
                   <Play className="h-5 w-5 ml-2" />
                   شروع چرخش
@@ -243,6 +263,7 @@ export default function LotteryExecutePage() {
                   <Button
                     size="lg"
                     variant="danger"
+                    disabled={isAnimating}
                     onClick={() => {
                       if (confirm("آیا می‌خواهید قرعه‌کشی را پایان دهید؟")) {
                         lotteriesApi.completeLottery(id).then(() => {
@@ -268,6 +289,7 @@ export default function LotteryExecutePage() {
         onClose={() => {
           setShowWinnerModal(false);
           setCurrentWinner(null);
+          setSpinState("idle");
         }}
         onShow={() => setShowWinnerModal(true)}
       />

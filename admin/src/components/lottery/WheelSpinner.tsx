@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useRef, useEffect, useCallback, forwardRef } from "react";
 
 export interface WheelSegment {
   userId: number;
@@ -14,6 +14,7 @@ interface WheelSpinnerProps {
   segments: WheelSegment[];
   targetIndex: number | null;
   onSpinComplete: () => void;
+  onSlowing?: () => void;
   isSpinning: boolean;
   disabled?: boolean;
 }
@@ -24,11 +25,16 @@ const COLORS = [
   "#F8C471", "#82E0AA", "#F1948A", "#AED6F1", "#D7BDE2",
 ];
 
+function easeOutQuint(t: number): number {
+  return 1 - Math.pow(1 - t, 5);
+}
+
 const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
-  function WheelSpinner({ segments, targetIndex, onSpinComplete, isSpinning, disabled }, _ref) {
+  function WheelSpinner({ segments, targetIndex, onSpinComplete, onSlowing, isSpinning, disabled }, _ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const animFrameRef = useRef<number>(0);
     const rotationRef = useRef(0);
+    const hasCalledSlowing = useRef(false);
 
     const drawWheel = useCallback((currentRotation: number) => {
       const canvas = canvasRef.current;
@@ -102,32 +108,31 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
 
     useEffect(() => {
       if (isSpinning && targetIndex !== null && segments.length > 0) {
+        hasCalledSlowing.current = false;
+
         const totalSegments = segments.length;
-        const segmentAngle = (2 * Math.PI) / totalSegments;
-        const targetAngle = -(targetIndex * segmentAngle + segmentAngle / 2);
-        const extraRotations = (5 + Math.random() * 2) * 2 * Math.PI;
-        const microOffset = (Math.random() - 0.5) * segmentAngle * 0.1;
-        const finalRotation = targetAngle - extraRotations + microOffset;
+        const sectorAngle = (2 * Math.PI) / totalSegments;
+        const targetAngle = (2 * Math.PI) - (targetIndex * sectorAngle) - (sectorAngle / 2);
+        const extraRotations = (6 + Math.random() * 3) * 2 * Math.PI;
+        const microOffset = (Math.random() - 0.5) * (sectorAngle * 0.15);
+        const finalRotation = rotationRef.current + extraRotations + targetAngle + microOffset;
         const startRotation = rotationRef.current;
         const totalDelta = finalRotation - startRotation;
-        const duration = 4000 + Math.random() * 2000;
+        const duration = 5000 + Math.random() * 1500;
         const startTime = performance.now();
 
         const animate = (now: number) => {
           const elapsed = now - startTime;
           const rawProgress = Math.min(elapsed / duration, 1);
-          let eased: number;
-          if (rawProgress < 0.8) {
-            eased = rawProgress / 0.8;
-            eased = eased * eased;
-          } else {
-            const tailProgress = (rawProgress - 0.8) / 0.2;
-            const tailCubic = 1 - Math.pow(1 - tailProgress, 3);
-            eased = 0.64 + tailCubic * 0.36;
-          }
+          const eased = easeOutQuint(rawProgress);
           const currentRotation = startRotation + totalDelta * eased;
           rotationRef.current = currentRotation;
           drawWheel(currentRotation);
+
+          if (rawProgress >= 0.3 && !hasCalledSlowing.current) {
+            hasCalledSlowing.current = true;
+            onSlowing?.();
+          }
 
           if (rawProgress < 1) {
             animFrameRef.current = requestAnimationFrame(animate);
@@ -144,7 +149,7 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
       return () => {
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       };
-    }, [isSpinning, targetIndex, segments, drawWheel, onSpinComplete]);
+    }, [isSpinning, targetIndex, segments, drawWheel, onSpinComplete, onSlowing]);
 
     if (segments.length === 0) {
       return (
@@ -158,7 +163,7 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
 
     return (
       <div className="flex flex-col items-center gap-4">
-        <div className="relative w-[min(80vh,65vw)] aspect-square max-w-[500px]">
+        <div className="relative w-full aspect-square max-w-[500px]" style={{ minHeight: "300px" }}>
           <canvas
             ref={canvasRef}
             width={500}
