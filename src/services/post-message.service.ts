@@ -440,11 +440,46 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
       const fs = (row as any).forwardSource;
       const srcChatId = Number(fs.chatId);
       const srcMsgId = Number(fs.messageId);
+
+      if (!srcChatId || !srcMsgId || isNaN(srcChatId) || isNaN(srcMsgId)) {
+        logger.error(`[ForwardValidation] postId=${postId} order=${msg.order} chatId=${fs.chatId} messageId=${fs.messageId} exists=false reason=INVALID_SOURCE_IDS`);
+        try { await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست'); } catch (_) {}
+        continue;
+      }
+
+      let forwarded = false;
       try {
         await ctx.telegram.forwardMessage(ctx.chat.id, srcChatId, srcMsgId);
         logger.info(`[ForwardSuccess] postId=${postId} order=${msg.order} sourceChat=${srcChatId} sourceMsg=${srcMsgId}`);
+        forwarded = true;
       } catch (err: any) {
-        logger.warn(`[ForwardFail] postId=${postId} order=${msg.order} sourceChat=${srcChatId} sourceMsg=${srcMsgId} error=${err?.message}`);
+        const errCode = err?.response?.error_code || err?.code || 0;
+        const errDesc = err?.response?.description || err?.message || 'unknown';
+        let reason = 'UNKNOWN';
+        if (errCode === 400 && errDesc.includes('message to forward not found')) reason = 'MESSAGE_NOT_FOUND';
+        else if (errCode === 400 && errDesc.includes('chat not found')) reason = 'CHAT_NOT_FOUND';
+        else if (errCode === 403) reason = 'BOT_NO_ACCESS';
+        else if (errCode === 400 && errDesc.includes('not enough rights')) reason = 'INSUFFICIENT_RIGHTS';
+        logger.warn(`[ForwardValidation] postId=${postId} order=${msg.order} chatId=${srcChatId} messageId=${srcMsgId} exists=false reason=${reason} error=${errDesc}`);
+      }
+
+      if (!forwarded) {
+        try {
+          await ctx.telegram.copyMessage(ctx.chat.id, srcChatId, srcMsgId);
+          logger.info(`[ForwardFallback] postId=${postId} order=${msg.order} sourceChat=${srcChatId} sourceMsg=${srcMsgId} method=copyMessage`);
+          forwarded = true;
+        } catch (err: any) {
+          const errCode = err?.response?.error_code || err?.code || 0;
+          const errDesc = err?.response?.description || err?.message || 'unknown';
+          let reason = 'UNKNOWN';
+          if (errCode === 400 && errDesc.includes('message to copy not found')) reason = 'MESSAGE_NOT_FOUND';
+          else if (errCode === 400 && errDesc.includes('chat not found')) reason = 'CHAT_NOT_FOUND';
+          else if (errCode === 403) reason = 'BOT_NO_ACCESS';
+          logger.warn(`[ForwardFallback] postId=${postId} order=${msg.order} chatId=${srcChatId} messageId=${srcMsgId} exists=false reason=${reason} error=${errDesc}`);
+        }
+      }
+
+      if (!forwarded) {
         try { await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست'); } catch (_) {}
       }
       continue;
@@ -628,13 +663,32 @@ export async function sendStoredMessage(telegram: any, chatId: number | string, 
   if (post.isForwarded && post.forwardMeta) {
     const fm = typeof post.forwardMeta === 'string' ? JSON.parse(post.forwardMeta) : post.forwardMeta;
     if (fm.originChatId && fm.originMessageId) {
-      try {
-        await telegram.forwardMessage(chatId, Number(fm.originChatId), Number(fm.originMessageId));
-        return;
-      } catch (err: any) {
-        logger.warn(`[ForwardFail] forwardMessage failed chatId=${chatId} origin=${fm.originChatId}:${fm.originMessageId} error=${err?.message}`);
-        try { await telegram.sendMessage(chatId, '⚠️ منبع پیام فوروارد در دسترس نیست'); } catch (_) {}
-        return;
+      const srcChat = Number(fm.originChatId);
+      const srcMsg = Number(fm.originMessageId);
+      if (srcChat && srcMsg && !isNaN(srcChat) && !isNaN(srcMsg)) {
+        let sent = false;
+        try {
+          await telegram.forwardMessage(chatId, srcChat, srcMsg);
+          sent = true;
+        } catch (err: any) {
+          const errCode = err?.response?.error_code || err?.code || 0;
+          const errDesc = err?.response?.description || err?.message || 'unknown';
+          let reason = 'UNKNOWN';
+          if (errDesc.includes('message to forward not found')) reason = 'MESSAGE_NOT_FOUND';
+          else if (errDesc.includes('chat not found')) reason = 'CHAT_NOT_FOUND';
+          else if (errCode === 403) reason = 'BOT_NO_ACCESS';
+          logger.warn(`[ForwardValidation] sendStored chatId=${srcChat} messageId=${srcMsg} exists=false reason=${reason}`);
+        }
+        if (!sent) {
+          try {
+            await telegram.copyMessage(chatId, srcChat, srcMsg);
+            sent = true;
+          } catch (err: any) {
+            const errDesc = err?.response?.description || err?.message || 'unknown';
+            logger.warn(`[ForwardFallback] copyMessage failed chatId=${srcChat} messageId=${srcMsg} error=${errDesc}`);
+          }
+        }
+        if (sent) return;
       }
     }
   }

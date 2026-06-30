@@ -1,20 +1,20 @@
-import { PrismaClient, PostMessageType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function migrateForwardReferences() {
-  console.log('=== Migration: Convert Post-level forwards to PostMessage references ===\n');
+  console.log('=== Migration: Fix forward references ===\n');
+
+  let migrated = 0;
+  let skipped = 0;
+  let errors = 0;
 
   const posts = await prisma.post.findMany({
     where: { isForwarded: true },
     include: { messages: { orderBy: { order: 'asc' } } },
   });
 
-  console.log(`Found ${posts.length} posts with isForwarded=true\n`);
-
-  let migrated = 0;
-  let skipped = 0;
-  let errors = 0;
+  console.log(`Phase 1: ${posts.length} posts with isForwarded=true\n`);
 
   for (const post of posts) {
     const fm = post.forwardMeta as any;
@@ -22,7 +22,7 @@ async function migrateForwardReferences() {
     const messageId = post.forwardSourceMessageId ? String(post.forwardSourceMessageId) : fm?.originMessageId;
 
     if (!chatId || !messageId) {
-      console.log(`SKIP  Post #${post.id}: no source chat/message ID available`);
+      console.log(`SKIP  Post #${post.id}: no source IDs`);
       skipped++;
       continue;
     }
@@ -37,7 +37,7 @@ async function migrateForwardReferences() {
 
     const firstMsg = post.messages[0];
     if (firstMsg && firstMsg.messageType === ('forward' as any) && firstMsg.forwardSource) {
-      console.log(`SKIP  Post #${post.id}: already has forward reference on message #${firstMsg.id}`);
+      console.log(`SKIP  Post #${post.id}: already correct`);
       skipped++;
       continue;
     }
@@ -66,11 +66,38 @@ async function migrateForwardReferences() {
           },
         });
       }
-
-      console.log(`OK    Post #${post.id}: migrated forward reference (chat=${chatId}, msg=${messageId})`);
+      console.log(`OK    Post #${post.id}: forward reference migrated`);
       migrated++;
     } catch (err: any) {
       console.log(`ERROR Post #${post.id}: ${err.message}`);
+      errors++;
+    }
+  }
+
+  console.log('\nPhase 2: Fix post_messages with text type but forward_source data\n');
+
+  const brokenMessages = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT id, post_id, message_type, forward_source FROM post_messages WHERE message_type = 'text' AND forward_source IS NOT NULL`
+  );
+
+  console.log(`Found ${brokenMessages.length} broken post_messages rows\n`);
+
+  for (const row of brokenMessages) {
+    const fs = typeof row.forward_source === 'string' ? JSON.parse(row.forward_source) : row.forward_source;
+    if (!fs?.chatId || !fs?.messageId) {
+      console.log(`SKIP  Message #${row.id}: forward_source has no valid IDs`);
+      skipped++;
+      continue;
+    }
+    try {
+      await prisma.$executeRawUnsafe(
+        `UPDATE post_messages SET message_type = 'forward'::\"PostMessageType\" WHERE id = $1`,
+        row.id,
+      );
+      console.log(`OK    Message #${row.id}: text→forward`);
+      migrated++;
+    } catch (err: any) {
+      console.log(`ERROR Message #${row.id}: ${err.message}`);
       errors++;
     }
   }
