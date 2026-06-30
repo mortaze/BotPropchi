@@ -75,7 +75,7 @@ const DEFAULT_STYLE: MessageStyle = {
 function deepClone<T>(value: T): T {
   if (value == null) return value;
   if (typeof structuredClone === 'function') return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
+  return JSON.parse(JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v));
 }
 
 export function normalizeMessage(msg: any, index = 0): PostMessage {

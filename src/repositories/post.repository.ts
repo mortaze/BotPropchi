@@ -237,7 +237,7 @@ export const postRepository = {
 
   async saveVersion(postId: number, snapshot: any) {
     return prisma.postVersion.create({
-      data: { postId, snapshot: JSON.parse(JSON.stringify(snapshot)) },
+      data: { postId, snapshot: JSON.parse(JSON.stringify(snapshot, (_, v) => typeof v === 'bigint' ? v.toString() : v)) },
     });
   },
 

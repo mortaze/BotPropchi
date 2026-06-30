@@ -37,7 +37,8 @@ const MEDIA_SENDERS: Record<string, { inputType: string; method: string; apiMeth
 };
 
 function cloneJson<T>(value: T): T {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
+  if (value == null) return value;
+  return JSON.parse(JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v));
 }
 
 function cleanEntities(entities: any[] | null | undefined) {

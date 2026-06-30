@@ -46,7 +46,9 @@ Middleware stack (applied in order):
 5. featureToggleMiddleware
 6. groupAccessMiddleware
 
-Background workers: `src/workers/` (membership, leaderboard) use BullMQ with Redis.
+Background workers: `src/workers/` (membership, leaderboard) use BullMQ with Redis. Queue definitions live in `src/queue/`.
+
+One-off migration/repair scripts in `src/scripts/` (not run automatically).
 
 AI responses go through WordPress plugin (`wordpress-plugin/`), not direct Gemini calls.
 
@@ -111,4 +113,5 @@ Admin (`admin/tsconfig.json`):
 - `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — must be set for admin to function (currently set to production Railway URL; override for local dev)
 - Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (separate directory, same Telegraf interface)
 - The Post system (`Post`, `PostMessage`, `PostButton`, `PostEntity`, `PostMedia`, `PostKeyboard`, `PostVersion`) is the richest model — posts support multi-message sequences, rich Telegram entities, inline keyboards, and version snapshots
+- `src/bot/handlers/index.ts` is a 1600+ line monolith — all bot handlers in one file; shared helpers live in `src/bot/shared.ts`
 - Admin uses shadcn/ui components (Radix UI primitives + Tailwind CSS + class-variance-authority)

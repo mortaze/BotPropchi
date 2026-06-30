@@ -8,7 +8,8 @@ import { postService } from './post.service';
 export type TelegramEntity = { type: string; offset: number; length: number; [key: string]: any };
 
 function cloneJson<T>(value: T): T {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
+  if (value == null) return value;
+  return JSON.parse(JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v));
 }
 
 function arrayJson(value: unknown): TelegramEntity[] {
