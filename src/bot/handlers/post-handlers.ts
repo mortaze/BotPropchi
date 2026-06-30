@@ -3074,6 +3074,23 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const { isForwarded, forwardMeta } = extractForwardMeta(ctx.message);
       try {
         if (isForwarded && forwardMeta && forwardMeta.originChatId && forwardMeta.originMessageId) {
+          const srcChatId = Number(forwardMeta.originChatId);
+          const srcMsgId = Number(forwardMeta.originMessageId);
+          if (srcChatId && srcMsgId && !isNaN(srcChatId) && !isNaN(srcMsgId)) {
+            try {
+              await ctx.telegram.copyMessage(ctx.chat.id, srcChatId, srcMsgId);
+            } catch (valErr: any) {
+              const valCode = valErr?.response?.error_code || valErr?.code || 0;
+              const valDesc = valErr?.response?.description || valErr?.message || 'unknown';
+              let reason = 'UNKNOWN';
+              if (valCode === 400 && valDesc.includes('message to copy not found')) reason = 'MESSAGE_DELETED';
+              else if (valCode === 400 && valDesc.includes('chat not found')) reason = 'BOT_NOT_IN_CHAT';
+              else if (valCode === 403) reason = 'NO_FORWARD_PERMISSION';
+              logger.warn(`[ForwardValidation] saveValidation postId=${editorPostId} sourceChat=${srcChatId} sourceMessage=${srcMsgId} reason=${reason} error=${valDesc}`);
+              await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست.\nاین پست را دوباره از منبع ثبت کنید.');
+              return;
+            }
+          }
           await postMessageService.create(editorPostId, {
             messageType: 'forward',
             forwardSource: {
@@ -3280,6 +3297,23 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }
       const { isForwarded, forwardMeta } = extractForwardMeta(msg);
       if (isForwarded && forwardMeta && forwardMeta.originChatId && forwardMeta.originMessageId) {
+        const srcChatId = Number(forwardMeta.originChatId);
+        const srcMsgId = Number(forwardMeta.originMessageId);
+        if (srcChatId && srcMsgId && !isNaN(srcChatId) && !isNaN(srcMsgId)) {
+          try {
+            await ctx.telegram.copyMessage(ctx.chat.id, srcChatId, srcMsgId);
+          } catch (valErr: any) {
+            const valCode = valErr?.response?.error_code || valErr?.code || 0;
+            const valDesc = valErr?.response?.description || valErr?.message || 'unknown';
+            let reason = 'UNKNOWN';
+            if (valCode === 400 && valDesc.includes('message to copy not found')) reason = 'MESSAGE_DELETED';
+            else if (valCode === 400 && valDesc.includes('chat not found')) reason = 'BOT_NOT_IN_CHAT';
+            else if (valCode === 403) reason = 'NO_FORWARD_PERMISSION';
+            logger.warn(`[ForwardValidation] saveValidation postId=${editorPostId} sourceChat=${srcChatId} sourceMessage=${srcMsgId} reason=${reason} error=${valDesc}`);
+            await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست.\nاین پست را دوباره از منبع ثبت کنید.');
+            return;
+          }
+        }
         logger.info(`[ForwardDetect] add_message media postId=${editorPostId} messageId=${msg.message_id} originChat=${forwardMeta.originChatId} originMsg=${forwardMeta.originMessageId}`);
         await postMessageService.create(editorPostId, {
           messageType: 'forward',
