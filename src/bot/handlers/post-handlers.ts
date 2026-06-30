@@ -1448,23 +1448,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const { text, reply_markup } = renderButtonEditor(postId, buttons, listMode, selectedPos);
 
-    const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
-    if (!msgId && ctx.callbackQuery?.message?.message_id) {
-      cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, ctx.callbackQuery.message.message_id, 600);
-    }
-    const finalMsgId = msgId || cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
-
-    if (finalMsgId) {
-      try {
-        await ctx.telegram.editMessageText(ctx.chat.id, finalMsgId, null, text, { reply_markup });
-      } catch (_) {
-        const sent = await ctx.reply(text, { reply_markup });
-        if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
-      }
-    } else {
-      const sent = await ctx.reply(text, { reply_markup });
-      if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
-    }
+    const sent = await ctx.reply(text, { reply_markup });
+    if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
 
     if (removeReplyKeyboard) {
       try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
@@ -1497,6 +1482,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     clearMoveState(ctx.from.id);
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await ctx.reply('✅ جابه‌جایی لغو شد.');
+    await refreshButtonListView(ctx, postId, true);
+  });
+
+  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any) => {
+    const moveActive = cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'));
+    if (!moveActive) return;
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
+    if (!postId) return;
+    clearMoveState(ctx.from.id);
+    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await ctx.reply('✅ جابه‌جایی دکمه انجام شد.');
     await refreshButtonListView(ctx, postId, true);
   });
 
@@ -1772,12 +1771,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(pendingKey(ctx.from.id, 'button_color'));
       cache.del(pendingKey(ctx.from.id, 'button_type'));
       cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-      await refreshButtonListView(ctx, postId);
-      return;
-    }
-
-    if (ctx.message.text === '❌ لغو') {
-      cache.del(pendingKey(ctx.from.id, 'editor_state'));
+      await ctx.reply('✅ تغییرات دکمه انجام شد.');
       await refreshButtonListView(ctx, postId);
       return;
     }
@@ -1841,6 +1835,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'button_color'));
     cache.del(pendingKey(ctx.from.id, 'button_type'));
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    await ctx.reply('✅ تغییرات دکمه انجام شد.');
     await refreshButtonListView(ctx, postId);
   });
 
@@ -1891,6 +1886,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         cache.del(pendingKey(ctx.from.id, 'editor_row'));
         cache.del(pendingKey(ctx.from.id, 'editor_col'));
         cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+        await ctx.reply('✅ دکمه حذف شد.');
         await refreshButtonListView(ctx, postId);
       }
       return;
@@ -1929,10 +1925,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const freshPost = await postService.findById(postId);
     const freshButtons = extractButtonsForMessage(freshPost, messageIdx);
     const { text: editorText, reply_markup } = renderButtonEditor(postId, freshButtons, 'edit', { row: newRow, col: 0 });
-    const editMsgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
-    if (editMsgId) {
-      try { await ctx.telegram.editMessageText(ctx.chat.id, editMsgId, null, editorText, { reply_markup }); } catch {}
-    }
+    const sent = await ctx.reply(editorText, { reply_markup });
+    if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
     logger.info(`[ButtonEditor] sync complete postId=${postId}`);
     return;
   });
