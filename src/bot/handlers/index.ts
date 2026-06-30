@@ -1072,14 +1072,21 @@ export function registerHandlers(bot: Telegraf<Context>) {
       const msgKeys = Object.keys(raw.messages).sort((a, b) => Number(a) - Number(b));
       for (const key of msgKeys) {
         const msgBtns = raw.messages[key];
-        if (Array.isArray(msgBtns) && msgBtns[row]?.[col]?.type === 'POPUP') {
-          return msgBtns[row][col];
+        if (Array.isArray(msgBtns)) {
+          const btn = msgBtns[row]?.[col];
+          if (btn) {
+            logger.debug(`[PostPopup] findPopup key=${key} row=${row} col=${col} type=${btn.type} value=${(btn.value||'').substring(0,30)}`);
+            if (btn.type === 'POPUP') return btn;
+          }
         }
       }
     }
     if (Array.isArray(raw)) {
       const btn = raw[row]?.[col];
-      if (btn?.type === 'POPUP') return btn;
+      if (btn) {
+        logger.debug(`[PostPopup] findPopup array row=${row} col=${col} type=${btn.type}`);
+        if (btn.type === 'POPUP') return btn;
+      }
     }
     for (const msg of messages) {
       const rm = msg.replyMarkup;
@@ -1090,23 +1097,58 @@ export function registerHandlers(bot: Telegraf<Context>) {
     return null;
   }
 
+  // ─── Find ANY button at position (fail-safe fallback) ────
+  function findAnyButtonAtPosition(post: any, row: number, col: number, messages: any[]): any {
+    const raw = (post as any).buttons;
+    if (raw && typeof raw === 'object' && raw.messages) {
+      const msgKeys = Object.keys(raw.messages).sort((a, b) => Number(a) - Number(b));
+      for (const key of msgKeys) {
+        const msgBtns = raw.messages[key];
+        if (Array.isArray(msgBtns) && msgBtns[row]?.[col]) return msgBtns[row][col];
+      }
+    }
+    if (Array.isArray(raw) && raw[row]?.[col]) return raw[row][col];
+    for (const msg of messages) {
+      const rm = msg.replyMarkup;
+      if (Array.isArray(rm) && rm[row]?.[col]) return rm[row][col];
+    }
+    return null;
+  }
+
   // ─── Post POPUP Button routing ─────────────────────────
   bot.action(/^post:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    if (!(await settingsService.isFeatureEnabled('posts'))) return;
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
+    logger.info(`[PostPopup] HIT postId=${postId} row=${row} col=${col} callbackData=${ctx.callbackQuery?.data}`);
+    if (!(await settingsService.isFeatureEnabled('posts'))) {
+      logger.warn(`[PostPopup] BLOCKED: posts feature disabled`);
+      return ctx.answerCbQuery('⛔ سرویس پست غیرفعال است.', { show_alert: true });
+    }
     try {
       const post = await postService.findById(postId);
-      if (!post) return ctx.answerCbQuery('❌ پست یافت نشد.', { show_alert: true });
+      if (!post) {
+        logger.warn(`[PostPopup] postId=${postId} NOT_FOUND`);
+        return ctx.answerCbQuery('❌ پست یافت نشد.', { show_alert: true });
+      }
+      const rawButtons = (post as any).buttons;
+      logger.info(`[PostPopup] postId=${postId} buttonsType=${typeof rawButtons} hasMessages=${!!rawButtons?.messages} isArray=${Array.isArray(rawButtons)}`);
       const messages = (post as any).messages || [];
       const btn = findPopupButton(post, row, col, messages);
       if (!btn || btn.type !== 'POPUP') {
+        // Fail-safe: if button exists at position but isn't POPUP, show its value anyway
+        const anyBtn = findAnyButtonAtPosition(post, row, col, messages);
+        if (anyBtn) {
+          logger.warn(`[PostPopup] postId=${postId} row=${row} col=${col} type=${anyBtn.type} FALLBACK_SHOWING`);
+          return ctx.answerCbQuery(anyBtn.value || anyBtn.text || '✅', { show_alert: true });
+        }
+        logger.warn(`[PostPopup] postId=${postId} row=${row} col=${col} btn=${JSON.stringify(btn)} BUTTON_NOT_FOUND_OR_WRONG_TYPE`);
         return ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
       }
+      logger.info(`[PostPopup] postId=${postId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP`);
       await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
     } catch (err) {
-      logger.error(`[PostPopup] Failed:`, err);
+      logger.error(`[PostPopup] FAILED postId=${postId}:`, err);
       await ctx.answerCbQuery('❌ خطا', { show_alert: true });
     }
   });
