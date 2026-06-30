@@ -15,7 +15,13 @@ import type { LotteryWinner, WheelSegment } from "@/types";
 
 type SpinState = "idle" | "spinning" | "slowing" | "stopped" | "winner_reveal" | "celebrating";
 
-const ARROW_OFFSET_DEGREES = 90;
+const ARROW_ANGLE_DEG = 270;
+
+function getWinnerIndex(rotation: number, sectors: number, arrowAngle = ARROW_ANGLE_DEG, startOffset = 0): number {
+  const normalized = ((rotation % 360) + 360) % 360;
+  const corrected = (arrowAngle - normalized - startOffset + 360) % 360;
+  return Math.floor(corrected / (360 / sectors));
+}
 
 export default function LotteryExecutePage() {
   const id = Number(useParams<{ id: string }>().id);
@@ -27,6 +33,7 @@ export default function LotteryExecutePage() {
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [currentWinner, setCurrentWinner] = useState<LotteryWinner | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
   const finalRotationRef = useRef(0);
 
@@ -111,6 +118,7 @@ export default function LotteryExecutePage() {
     onError: (error) => {
       toast.error(getApiError(error));
       setSpinState("idle");
+      setDebugInfo(null);
     },
   });
 
@@ -125,16 +133,19 @@ export default function LotteryExecutePage() {
       return;
     }
 
-    const sectorAngle = 360 / totalSegments;
-    const normalized = ((finalDegrees % 360) + 360) % 360;
-    const winnerIndex = Math.floor(((360 - normalized + ARROW_OFFSET_DEGREES) % 360) / sectorAngle);
-    const clampedIndex = winnerIndex % totalSegments;
-    const winnerSegment = segments[clampedIndex];
+    const winnerIndex = getWinnerIndex(finalDegrees, totalSegments);
+    const winnerSegment = segments[winnerIndex];
 
     if (!winnerSegment) {
       setSpinState("idle");
       return;
     }
+
+    const normalized = ((finalDegrees % 360) + 360) % 360;
+    const sectorAngle = 360 / totalSegments;
+    const debugLine = `فلش: ${winnerSegment.firstName} | محاسبه: ${winnerSegment.firstName} | rotation=${finalDegrees.toFixed(2)}° normalized=${normalized.toFixed(2)}° sector=${sectorAngle.toFixed(1)}° index=${winnerIndex}`;
+    setDebugInfo(debugLine);
+    console.table({ rotation: finalDegrees, normalized, arrowAngle: ARROW_ANGLE_DEG, sectorAngle, winnerIndex, winnerName: winnerSegment.firstName });
 
     setSpinState("winner_reveal");
     await new Promise((r) => setTimeout(r, 50));
@@ -151,6 +162,7 @@ export default function LotteryExecutePage() {
     if (spinState === "spinning" || spinState === "slowing" || segments.length === 0) return;
     setShowWinnerModal(false);
     setCurrentWinner(null);
+    setDebugInfo(null);
     setSpinState("spinning");
   }, [spinState, segments.length]);
 
@@ -260,7 +272,12 @@ export default function LotteryExecutePage() {
                   disabled={isCompleted || noParticipants || isAnimating}
                 />
               </div>
-              <div className="mt-6 flex gap-3 shrink-0">
+              {debugInfo && (
+                <div className="mt-2 w-full max-w-lg rounded bg-muted/50 px-3 py-2 text-xs font-mono text-muted-foreground text-center">
+                  {debugInfo}
+                </div>
+              )}
+              <div className="mt-4 flex gap-3 shrink-0">
                 <Button
                   size="lg"
                   onClick={handleSpin}

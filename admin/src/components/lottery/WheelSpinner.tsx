@@ -39,14 +39,14 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
     const drawWheel = useCallback((currentRotation: number) => {
       const canvas = canvasRef.current;
       if (!canvas || segments.length === 0) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      const c = canvas.getContext("2d");
+      if (!c) return;
 
       const size = canvas.width;
       const center = size / 2;
       const radius = center - 12;
 
-      ctx.clearRect(0, 0, size, size);
+      c.clearRect(0, 0, size, size);
 
       const totalSegments = segments.length;
       const segmentAngle = (2 * Math.PI) / totalSegments;
@@ -55,51 +55,51 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
         const startAngle = currentRotation + index * segmentAngle;
         const endAngle = startAngle + segmentAngle;
 
-        ctx.beginPath();
-        ctx.moveTo(center, center);
-        ctx.arc(center, center, radius, startAngle, endAngle);
-        ctx.closePath();
-        ctx.fillStyle = COLORS[index % COLORS.length];
-        ctx.fill();
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        c.beginPath();
+        c.moveTo(center, center);
+        c.arc(center, center, radius, startAngle, endAngle);
+        c.closePath();
+        c.fillStyle = COLORS[index % COLORS.length];
+        c.fill();
+        c.strokeStyle = "#fff";
+        c.lineWidth = 2;
+        c.stroke();
 
         const midAngle = startAngle + segmentAngle / 2;
         const textRadius = radius * 0.62;
         const x = center + textRadius * Math.cos(midAngle);
         const y = center + textRadius * Math.sin(midAngle);
 
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(midAngle + Math.PI / 2);
-        ctx.fillStyle = "#000";
-        ctx.font = "bold 13px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
+        c.save();
+        c.translate(x, y);
+        c.rotate(midAngle + Math.PI / 2);
+        c.fillStyle = "#000";
+        c.font = "bold 13px Arial";
+        c.textAlign = "center";
+        c.textBaseline = "middle";
         const name = segment.firstName.length > 10
           ? segment.firstName.substring(0, 10) + "…"
           : segment.firstName;
-        ctx.fillText(name, 0, 0);
-        ctx.restore();
+        c.fillText(name, 0, 0);
+        c.restore();
       });
 
-      ctx.beginPath();
-      ctx.arc(center, center, radius, 0, 2 * Math.PI);
-      ctx.strokeStyle = "#333";
-      ctx.lineWidth = 4;
-      ctx.stroke();
+      c.beginPath();
+      c.arc(center, center, radius, 0, 2 * Math.PI);
+      c.strokeStyle = "#333";
+      c.lineWidth = 4;
+      c.stroke();
 
-      ctx.beginPath();
-      ctx.moveTo(center - 18, 8);
-      ctx.lineTo(center + 18, 8);
-      ctx.lineTo(center, 34);
-      ctx.closePath();
-      ctx.fillStyle = "#FF0000";
-      ctx.fill();
-      ctx.strokeStyle = "#800000";
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      c.beginPath();
+      c.moveTo(center - 18, 8);
+      c.lineTo(center + 18, 8);
+      c.lineTo(center, 34);
+      c.closePath();
+      c.fillStyle = "#FF0000";
+      c.fill();
+      c.strokeStyle = "#800000";
+      c.lineWidth = 2;
+      c.stroke();
     }, [segments]);
 
     useEffect(() => {
@@ -138,8 +138,8 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
           if (isDone) {
             rotationRef.current = finalRotation;
             drawWheel(finalRotation);
-            const finalDegrees = ((finalRotation * 180) / Math.PI) % 360;
-            onSpinComplete(finalDegrees < 0 ? finalDegrees + 360 : finalDegrees);
+            const finalDegrees = ((finalRotation * 180) / Math.PI % 360 + 360) % 360;
+            onSpinComplete(finalDegrees);
             return;
           }
 
