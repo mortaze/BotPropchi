@@ -208,32 +208,6 @@ export const lotteryService = {
   async spinWheel(lotteryId: number) {
     const result = await lotteryRepository.spinWheel(lotteryId);
 
-    if (result.winner) {
-      const lottery = await lotteryRepository.findById(lotteryId);
-      const winnerMessage = await lotteryRepository.getWinnerMessage(lotteryId);
-
-      try {
-        const notified = await notificationService.sendLotteryWinnerMessage(
-          result.winner.winnerTelegramId,
-          lottery?.title ?? 'قرعه‌کشی',
-          result.winner.prize
-        );
-
-        if (notified) {
-          await lotteryRepository.markWinnerNotified(result.winner.id);
-          await lotteryRepository.markNotificationSent(lotteryId, result.winner.userId);
-        }
-
-        await notificationService.sendAdminMessage(
-          `🏆 برنده دور ${result.winner.roundNumber}\n\nنام:\n${result.winner.winnerFirstName} ${result.winner.winnerLastName || ''}\n\nتلگرام:\n${
-            result.winner.winnerUsername ? `@${result.winner.winnerUsername}` : '-'
-          }\n\nآیدی تلگرام:\n${result.winner.winnerTelegramId}\n\nقرعه‌کشی:\n${lottery?.title}\n\nجایزه:\n${result.winner.prize}\n\nشرکت‌کنندگان باقیمانده: ${result.remainingParticipants}`
-        );
-      } catch (err) {
-        logger.error('wheel winner notification failed', err);
-      }
-    }
-
     if (result.isCompleted) {
       await lotteryRepository.completeLottery(lotteryId);
     }

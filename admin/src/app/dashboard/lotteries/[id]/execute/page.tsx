@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,20 +11,36 @@ import { getApiError, lotteriesApi } from "@/services/api";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
 import WheelSpinner from "@/components/lottery/WheelSpinner";
 import WinnerPanel from "@/components/lottery/WinnerPanel";
-import WinnerModal from "@/components/lottery/WinnerModal";
+import WinnerModal from "@/components/lottery/WheelWinnerModal";
 import type { LotteryWinner, WheelSegment } from "@/types";
 
 export default function LotteryExecutePage() {
   const id = Number(useParams<{ id: string }>().id);
   const router = useRouter();
   const qc = useQueryClient();
+  const prevSidebarRef = useRef<boolean | null>(null);
 
   const [segments, setSegments] = useState<WheelSegment[]>([]);
   const [winners, setWinners] = useState<LotteryWinner[]>([]);
   const [isSpinning, setIsSpinning] = useState(false);
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [currentWinner, setCurrentWinner] = useState<LotteryWinner | null>(null);
+  const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
+
+  useEffect(() => {
+    try {
+      const { sidebarOpen, setSidebarOpen } = require("@/store/ui.store").useUIStore.getState();
+      prevSidebarRef.current = sidebarOpen;
+      if (sidebarOpen) setSidebarOpen(false);
+    } catch {}
+    return () => {
+      try {
+        const { setSidebarOpen } = require("@/store/ui.store").useUIStore.getState();
+        if (prevSidebarRef.current !== null) setSidebarOpen(prevSidebarRef.current);
+      } catch {}
+    };
+  }, []);
 
   const lotteryQuery = useQuery({
     queryKey: ["lottery", id],
@@ -70,29 +86,45 @@ export default function LotteryExecutePage() {
     }
   }, [winnersQuery.data]);
 
+  const handleSpinComplete = useCallback(() => {
+    setIsSpinning(false);
+  }, []);
+
   const spinMutation = useMutation({
     mutationFn: () => lotteriesApi.spinWheel(id),
     onSuccess: (data) => {
       if (data.data.winner) {
-        setCurrentWinner(data.data.winner);
-        setShowWinnerModal(true);
-        setWinners((prev) => [data.data.winner!, ...prev]);
+        const winner = data.data.winner;
+        const winnerUserId = winner.userId;
+        let idx = -1;
+        for (let i = 0; i < segments.length; i++) {
+          if (segments[i].userId === winnerUserId) { idx = i; break; }
+        }
+        if (idx === -1) idx = Math.floor(Math.random() * segments.length);
+        setTargetIndex(idx);
+        setCurrentWinner(winner);
+        setWinners((prev) => [winner, ...prev]);
         setRoundNumber((prev) => prev + 1);
         qc.invalidateQueries({ queryKey: ["lottery", id, "participants"] });
         qc.invalidateQueries({ queryKey: ["lottery", id, "winners"] });
         qc.invalidateQueries({ queryKey: ["lottery", id] });
-
         if (data.data.isCompleted) {
-          toast.success("قرعه‌کشی پایان یافت!");
           lotteriesApi.completeLottery(id).catch(() => {});
-        } else {
-          toast.success(`برنده دور ${data.data.winner!.roundNumber} انتخاب شد!`);
         }
       }
     },
-    onError: (error) => toast.error(getApiError(error)),
-    onSettled: () => setIsSpinning(false),
+    onError: (error) => {
+      toast.error(getApiError(error));
+      setIsSpinning(false);
+    },
   });
+
+  const handleSpin = useCallback(() => {
+    if (isSpinning || segments.length === 0) return;
+    setIsSpinning(true);
+    setTargetIndex(null);
+    spinMutation.mutate();
+  }, [isSpinning, segments.length, spinMutation]);
 
   const sendNotificationsMutation = useMutation({
     mutationFn: () => lotteriesApi.sendNotifications(id),
@@ -103,29 +135,24 @@ export default function LotteryExecutePage() {
     onError: (error) => toast.error(getApiError(error)),
   });
 
-  const handleSpin = useCallback(() => {
-    if (isSpinning || segments.length === 0) return;
-    setIsSpinning(true);
-    spinMutation.mutate();
-  }, [isSpinning, segments.length, spinMutation]);
-
   const lottery = lotteryQuery.data?.lottery;
   const isCompleted = lottery?.isCompleted;
   const noParticipants = segments.length === 0 && !participantsQuery.isLoading;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="h-screen flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-3 border-b shrink-0">
         <div className="flex items-center gap-3">
           <Link href={`/dashboard/lotteries/${id}`}>
             <Button variant="ghost" size="sm">
               <ArrowRight className="h-4 w-4" />
+              <span className="mr-1">بازگشت</span>
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">{lottery?.title ?? "قرعه‌کشی"}</h1>
-            <p className="text-sm text-muted-foreground">
-              {isCompleted ? "قرعه‌کشی پایان یافته" : "اجرای گردونه شانس"}
+            <h1 className="text-xl font-bold">{lottery?.title ?? "قرعه‌کشی"}</h1>
+            <p className="text-xs text-muted-foreground">
+              {isCompleted ? "قرعه‌کشی پایان یافته" : `دور ${roundNumber}`}
             </p>
           </div>
         </div>
@@ -134,134 +161,20 @@ export default function LotteryExecutePage() {
         </Badge>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">گردونه شانس</h2>
-                <div className="text-sm text-muted-foreground">
-                  دور {roundNumber}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center">
-              {isCompleted ? (
-                <div className="text-center py-12">
-                  <Trophy className="h-16 w-16 mx-auto mb-4 text-yellow-500" />
-                  <h3 className="text-xl font-bold mb-2">قرعه‌کشی پایان یافت</h3>
-                  <p className="text-muted-foreground">
-                    {winners.length} برنده انتخاب شد
-                  </p>
-                </div>
-              ) : noParticipants ? (
-                <div className="text-center py-12">
-                  <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-xl font-bold mb-2">شرکت‌کننده‌ای وجود ندارد</h3>
-                  <p className="text-muted-foreground">
-                    ابتدا شرکت‌کنندگان را اضافه کنید
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <WheelSpinner
-                    segments={segments}
-                    onSpinComplete={() => setIsSpinning(false)}
-                    isSpinning={isSpinning}
-                    disabled={isCompleted || noParticipants}
-                  />
-                  <div className="mt-6 flex gap-3">
-                    <Button
-                      size="lg"
-                      onClick={handleSpin}
-                      disabled={isSpinning || isCompleted || noParticipants}
-                      loading={isSpinning}
-                    >
-                      <Play className="h-5 w-5 ml-2" />
-                      شروع چرخش
-                    </Button>
-                    {!isCompleted && winners.length > 0 && (
-                      <Button
-                        size="lg"
-                        variant="danger"
-                        onClick={() => {
-                          if (confirm("آیا می‌خواهید قرعه‌کشی را پایان دهید؟")) {
-                            lotteriesApi.completeLottery(id).then(() => {
-                              qc.invalidateQueries({ queryKey: ["lottery", id] });
-                              toast.success("قرعه‌کشی پایان یافت");
-                            });
-                          }
-                        }}
-                      >
-                        <Square className="h-5 w-5 ml-2" />
-                        پایان قرعه‌کشی
-                      </Button>
-                    )}
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">شرکت‌کنندگان</h2>
-                <Badge variant="default">
-                  {participantsQuery.data?.data?.length ?? 0} نفر
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {participantsQuery.isLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="skeleton h-12 rounded-lg" />
-                  ))}
-                </div>
-              ) : participantsQuery.data?.data?.length === 0 ? (
-                <EmptyState title="شرکت‌کننده‌ای وجود ندارد" />
-              ) : (
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {participantsQuery.data?.data?.map((p) => (
-                    <div
-                      key={p.userId}
-                      className="flex items-center justify-between rounded-lg bg-muted/40 p-3"
-                    >
-                      <div>
-                        <p className="font-medium">
-                          {p.user.firstName} {p.user.lastName || ""}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {p.user.username ? `@${p.user.username}` : "-"}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={p.isRemoved ? "outline" : "default"}>
-                          {p.chances} شانس
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
+      <div className="flex-1 flex overflow-hidden">
+        <div className="w-72 border-l overflow-y-auto p-4 space-y-4 shrink-0">
           <WinnerPanel winners={winners} isLoading={winnersQuery.isLoading} />
-
           <Card>
             <CardHeader>
-              <h2 className="font-semibold">ارسال پیام</h2>
+              <h2 className="font-semibold text-sm">ارسال پیام</h2>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
+              <p className="text-xs text-muted-foreground mb-3">
                 ارسال پیام تبریک به برندگانی که هنوز پیام دریافت نکرده‌اند.
               </p>
               <Button
                 className="w-full"
+                size="sm"
                 onClick={() => sendNotificationsMutation.mutate()}
                 disabled={sendNotificationsMutation.isPending || winners.length === 0}
                 loading={sendNotificationsMutation.isPending}
@@ -271,45 +184,92 @@ export default function LotteryExecutePage() {
               </Button>
             </CardContent>
           </Card>
-
           {lottery && (
             <Card>
               <CardHeader>
-                <h2 className="font-semibold">اطلاعات</h2>
+                <h2 className="font-semibold text-sm">اطلاعات</h2>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">جایزه</span>
                   <span className="font-medium">{lottery.prize}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">شرکت‌کنندگان</span>
-                  <span className="font-medium">
-                    {participantsQuery.data?.data?.length ?? 0}
-                  </span>
+                  <span className="font-medium">{segments.length}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">برندگان</span>
                   <span className="font-medium">{winners.length}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">وضعیت</span>
-                  <Badge variant={isCompleted ? "outline" : "success"}>
-                    {isCompleted ? "تکمیل" : "فعال"}
-                  </Badge>
-                </div>
               </CardContent>
             </Card>
+          )}
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center p-6 overflow-hidden">
+          {isCompleted ? (
+            <div className="text-center py-12">
+              <Trophy className="h-20 w-20 mx-auto mb-4 text-yellow-500" />
+              <h3 className="text-2xl font-bold mb-2">قرعه‌کشی پایان یافت</h3>
+              <p className="text-muted-foreground">{winners.length} برنده انتخاب شد</p>
+            </div>
+          ) : noParticipants ? (
+            <div className="text-center py-12">
+              <Users className="h-20 w-20 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-2xl font-bold mb-2">شرکت‌کننده‌ای وجود ندارد</h3>
+              <p className="text-muted-foreground">ابتدا شرکت‌کنندگان را اضافه کنید</p>
+            </div>
+          ) : (
+            <>
+              <WheelSpinner
+                segments={segments}
+                targetIndex={targetIndex}
+                onSpinComplete={handleSpinComplete}
+                isSpinning={isSpinning}
+                disabled={isCompleted || noParticipants}
+              />
+              <div className="mt-8 flex gap-3">
+                <Button
+                  size="lg"
+                  onClick={handleSpin}
+                  disabled={isSpinning || isCompleted || noParticipants}
+                  loading={isSpinning}
+                >
+                  <Play className="h-5 w-5 ml-2" />
+                  شروع چرخش
+                </Button>
+                {!isCompleted && winners.length > 0 && (
+                  <Button
+                    size="lg"
+                    variant="danger"
+                    onClick={() => {
+                      if (confirm("آیا می‌خواهید قرعه‌کشی را پایان دهید؟")) {
+                        lotteriesApi.completeLottery(id).then(() => {
+                          qc.invalidateQueries({ queryKey: ["lottery", id] });
+                          toast.success("قرعه‌کشی پایان یافت");
+                        });
+                      }
+                    }}
+                  >
+                    <Square className="h-5 w-5 ml-2" />
+                    پایان قرعه‌کشی
+                  </Button>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
 
       <WinnerModal
         winner={currentWinner}
+        show={showWinnerModal}
         onClose={() => {
           setShowWinnerModal(false);
           setCurrentWinner(null);
         }}
+        onShow={() => setShowWinnerModal(true)}
       />
     </div>
   );
