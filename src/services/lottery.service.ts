@@ -207,12 +207,14 @@ export const lotteryService = {
 
   async spinWheel(lotteryId: number) {
     const result = await lotteryRepository.spinWheel(lotteryId);
-
     if (result.isCompleted) {
       await lotteryRepository.completeLottery(lotteryId);
     }
-
     return result;
+  },
+
+  async recordWinner(lotteryId: number, winnerUserId: number) {
+    return lotteryRepository.recordWinner(lotteryId, winnerUserId);
   },
 
   async addParticipant(lotteryId: number, userId: number, chances = 1) {

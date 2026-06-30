@@ -12,8 +12,7 @@ export interface WheelSegment {
 
 interface WheelSpinnerProps {
   segments: WheelSegment[];
-  targetIndex: number | null;
-  onSpinComplete: () => void;
+  onSpinComplete: (finalRotationDegrees: number) => void;
   onSlowing?: () => void;
   isSpinning: boolean;
   disabled?: boolean;
@@ -30,7 +29,7 @@ function easeOutQuint(t: number): number {
 }
 
 const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
-  function WheelSpinner({ segments, targetIndex, onSpinComplete, onSlowing, isSpinning, disabled }, _ref) {
+  function WheelSpinner({ segments, onSpinComplete, onSlowing, isSpinning, disabled }, _ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const animFrameRef = useRef<number>(0);
     const rotationRef = useRef(0);
@@ -108,19 +107,16 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
     }, [drawWheel]);
 
     useEffect(() => {
-      if (isSpinning && targetIndex !== null && segments.length > 0) {
+      if (isSpinning && segments.length > 0) {
         hasCalledSlowing.current = false;
         prevRotationRef.current = rotationRef.current;
 
-        const totalSegments = segments.length;
-        const sectorAngle = (2 * Math.PI) / totalSegments;
-        const targetAngle = (2 * Math.PI) - (targetIndex * sectorAngle) - (sectorAngle / 2);
         const extraRotations = (6 + Math.random() * 3) * 2 * Math.PI;
-        const microOffset = (Math.random() - 0.5) * (sectorAngle * 0.15);
-        const finalRotation = rotationRef.current + extraRotations + targetAngle + microOffset;
+        const randomAngle = Math.random() * 2 * Math.PI;
+        const finalRotation = rotationRef.current + extraRotations + randomAngle;
         const startRotation = rotationRef.current;
         const totalDelta = finalRotation - startRotation;
-        const duration = 5000 + Math.random() * 1500;
+        const duration = 5000 + Math.random() * 2000;
         const startTime = performance.now();
 
         const animate = (now: number) => {
@@ -138,21 +134,12 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
             onSlowing?.();
           }
 
-          const isAnimationDone = rawProgress >= 1;
-          const isVelocityDone = velocity < 0.02;
-          const isCloseToTarget = Math.abs(currentRotation - finalRotation) < 0.1;
-
-          if (isAnimationDone && isVelocityDone && isCloseToTarget) {
+          const isDone = rawProgress >= 1;
+          if (isDone) {
             rotationRef.current = finalRotation;
             drawWheel(finalRotation);
-            onSpinComplete();
-            return;
-          }
-
-          if (isAnimationDone && !isVelocityDone) {
-            rotationRef.current = finalRotation;
-            drawWheel(finalRotation);
-            onSpinComplete();
+            const finalDegrees = ((finalRotation * 180) / Math.PI) % 360;
+            onSpinComplete(finalDegrees < 0 ? finalDegrees + 360 : finalDegrees);
             return;
           }
 
@@ -165,7 +152,7 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
       return () => {
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       };
-    }, [isSpinning, targetIndex, segments, drawWheel, onSpinComplete, onSlowing]);
+    }, [isSpinning, segments, drawWheel, onSpinComplete, onSlowing]);
 
     if (segments.length === 0) {
       return (

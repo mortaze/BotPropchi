@@ -140,6 +140,10 @@ export const lotteriesApi = {
     const { data } = await api.post(`/api/lotteries/${id}/wheel/spin`);
     return data;
   },
+  async recordWinner(id: number, winnerUserId: number): Promise<{ success: boolean; data: SpinResult }> {
+    const { data } = await api.post(`/api/lotteries/${id}/wheel/record-winner`, { winnerUserId });
+    return data;
+  },
   async completeLottery(id: number): Promise<{ success: boolean; message: string }> {
     const { data } = await api.post(`/api/lotteries/${id}/wheel/complete`);
     return data;

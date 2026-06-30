@@ -258,6 +258,52 @@ export const lotteryRepository = {
     });
   },
 
+  async recordWinner(lotteryId: number, winnerUserId: number) {
+    return prisma.$transaction(async (tx) => {
+      const lottery = await tx.lottery.findUnique({ where: { id: lotteryId } });
+      if (!lottery) throw new Error('قرعه‌کشی یافت نشد');
+      if (lottery.isCompleted) throw new Error('قرعه‌کشی قبلاً پایان یافته');
+
+      const entry = await tx.lotteryEntry.findFirst({
+        where: { lotteryId, userId: winnerUserId, ticketCount: { gt: 0 } },
+        include: { user: true },
+      });
+      if (!entry) throw new Error('شرکت‌کننده یافت نشد یا شانسی باقی نمانده');
+
+      const roundNumber = (await tx.lotteryWinner.count({ where: { lotteryId } })) + 1;
+
+      const winner = await tx.lotteryWinner.create({
+        data: {
+          lotteryId,
+          userId: entry.userId,
+          prize: lottery.prize,
+          winnerTelegramId: entry.user.telegramId,
+          winnerUsername: entry.user.username,
+          winnerFirstName: entry.user.firstName,
+          winnerLastName: entry.user.lastName,
+          roundNumber,
+        },
+        include: { user: true, lottery: true },
+      });
+
+      await tx.lotteryEntry.update({
+        where: { userId_lotteryId: { userId: entry.userId, lotteryId } },
+        data: { ticketCount: 0, chanceWeight: 0 },
+      });
+
+      const remaining = await tx.lotteryEntry.count({
+        where: { lotteryId, ticketCount: { gt: 0 } },
+      });
+
+      const isCompleted = remaining === 0;
+      if (isCompleted) {
+        await tx.lottery.update({ where: { id: lotteryId }, data: { isCompleted: true, isActive: false } });
+      }
+
+      return { winner, remainingParticipants: remaining, isCompleted };
+    });
+  },
+
   async completeLottery(lotteryId: number) {
     return prisma.lottery.update({
       where: { id: lotteryId },

@@ -15,6 +15,8 @@ import type { LotteryWinner, WheelSegment } from "@/types";
 
 type SpinState = "idle" | "spinning" | "slowing" | "stopped" | "winner_reveal" | "celebrating";
 
+const ARROW_OFFSET_DEGREES = 90;
+
 export default function LotteryExecutePage() {
   const id = Number(useParams<{ id: string }>().id);
   const qc = useQueryClient();
@@ -24,11 +26,9 @@ export default function LotteryExecutePage() {
   const [spinState, setSpinState] = useState<SpinState>("idle");
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [currentWinner, setCurrentWinner] = useState<LotteryWinner | null>(null);
-  const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
 
-  const selectedWinnerRef = useRef<LotteryWinner | null>(null);
-  const winnerUserIdRef = useRef<number | null>(null);
+  const finalRotationRef = useRef(0);
 
   useEffect(() => {
     const mainDiv = document.querySelector(".min-h-screen.md\\:mr-64") as HTMLElement | null;
@@ -95,66 +95,64 @@ export default function LotteryExecutePage() {
     }
   }, [winnersQuery.data]);
 
-  const handleWheelStopped = useCallback(async () => {
-    setSpinState("stopped");
-    await new Promise((r) => setTimeout(r, 500));
-    const winner = selectedWinnerRef.current;
-    if (!winner) {
-      setSpinState("idle");
-      return;
-    }
-    setCurrentWinner(winner);
-    setSpinState("winner_reveal");
-    await new Promise((r) => setTimeout(r, 50));
-    setShowWinnerModal(true);
-    setSpinState("celebrating");
-    setWinners((prev) => [winner, ...prev]);
-    setRoundNumber((prev) => prev + 1);
-    qc.invalidateQueries({ queryKey: ["lottery", id, "participants"] });
-    qc.invalidateQueries({ queryKey: ["lottery", id, "winners"] });
-    qc.invalidateQueries({ queryKey: ["lottery", id] });
-    if (lotteryQuery.data?.lottery?.isCompleted) {
-      lotteriesApi.completeLottery(id).catch(() => {});
-    }
-  }, [id, qc, lotteryQuery.data]);
-
-  const handleSlowing = useCallback(() => {
-    setSpinState("slowing");
-  }, []);
-
-  const spinMutation = useMutation({
-    mutationFn: () => lotteriesApi.spinWheel(id),
+  const recordWinnerMutation = useMutation({
+    mutationFn: (winnerUserId: number) => lotteriesApi.recordWinner(id, winnerUserId),
     onSuccess: (data) => {
       if (data.data.winner) {
         const winner = data.data.winner;
-        selectedWinnerRef.current = winner;
-        winnerUserIdRef.current = winner.userId;
-        let idx = -1;
-        for (let i = 0; i < segments.length; i++) {
-          if (segments[i].userId === winner.userId) { idx = i; break; }
-        }
-        if (idx === -1) idx = Math.floor(Math.random() * segments.length);
-        setTargetIndex(idx);
+        setCurrentWinner(winner);
+        setWinners((prev) => [winner, ...prev]);
+        setRoundNumber((prev) => prev + 1);
+        qc.invalidateQueries({ queryKey: ["lottery", id, "participants"] });
+        qc.invalidateQueries({ queryKey: ["lottery", id, "winners"] });
+        qc.invalidateQueries({ queryKey: ["lottery", id] });
       }
     },
     onError: (error) => {
       toast.error(getApiError(error));
       setSpinState("idle");
-      selectedWinnerRef.current = null;
-      winnerUserIdRef.current = null;
     },
   });
 
+  const handleWheelStopped = useCallback(async (finalDegrees: number) => {
+    setSpinState("stopped");
+    finalRotationRef.current = finalDegrees;
+    await new Promise((r) => setTimeout(r, 500));
+
+    const totalSegments = segments.length;
+    if (totalSegments === 0) {
+      setSpinState("idle");
+      return;
+    }
+
+    const sectorAngle = 360 / totalSegments;
+    const normalized = ((finalDegrees % 360) + 360) % 360;
+    const winnerIndex = Math.floor(((360 - normalized + ARROW_OFFSET_DEGREES) % 360) / sectorAngle);
+    const clampedIndex = winnerIndex % totalSegments;
+    const winnerSegment = segments[clampedIndex];
+
+    if (!winnerSegment) {
+      setSpinState("idle");
+      return;
+    }
+
+    setSpinState("winner_reveal");
+    await new Promise((r) => setTimeout(r, 50));
+    setShowWinnerModal(true);
+    setSpinState("celebrating");
+    recordWinnerMutation.mutate(winnerSegment.userId);
+  }, [segments, recordWinnerMutation]);
+
+  const handleSlowing = useCallback(() => {
+    setSpinState("slowing");
+  }, []);
+
   const handleSpin = useCallback(() => {
     if (spinState === "spinning" || spinState === "slowing" || segments.length === 0) return;
-    selectedWinnerRef.current = null;
-    winnerUserIdRef.current = null;
     setShowWinnerModal(false);
     setCurrentWinner(null);
     setSpinState("spinning");
-    setTargetIndex(null);
-    spinMutation.mutate();
-  }, [spinState, segments.length, spinMutation]);
+  }, [spinState, segments.length]);
 
   const sendNotificationsMutation = useMutation({
     mutationFn: () => lotteriesApi.sendNotifications(id),
@@ -256,7 +254,6 @@ export default function LotteryExecutePage() {
               <div className="flex-1 flex items-center justify-center w-full min-h-0">
                 <WheelSpinner
                   segments={segments}
-                  targetIndex={targetIndex}
                   onSpinComplete={handleWheelStopped}
                   onSlowing={handleSlowing}
                   isSpinning={spinState === "spinning" || spinState === "slowing"}
@@ -303,8 +300,6 @@ export default function LotteryExecutePage() {
         onClose={() => {
           setShowWinnerModal(false);
           setCurrentWinner(null);
-          selectedWinnerRef.current = null;
-          winnerUserIdRef.current = null;
           setSpinState("idle");
         }}
         onShow={() => setShowWinnerModal(true)}

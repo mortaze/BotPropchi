@@ -166,6 +166,20 @@ router.post('/:id/wheel/spin', async (req, res) => {
   }
 });
 
+router.post('/:id/wheel/record-winner', async (req, res) => {
+  try {
+    const { winnerUserId } = req.body;
+    if (!winnerUserId) {
+      return res.status(400).json({ success: false, error: 'winnerUserId الزامی است' });
+    }
+    const result = await lotteryService.recordWinner(Number(req.params.id), Number(winnerUserId));
+    return res.json({ success: true, data: serializeBigInts(result) });
+  } catch (error: any) {
+    logger.error('❌ RECORD WINNER ERROR', error);
+    return res.status(400).json({ success: false, error: error.message || 'خطا در ثبت برنده' });
+  }
+});
+
 router.post('/:id/wheel/complete', async (req, res) => {
   try {
     await lotteryService.updateLottery(Number(req.params.id), { isCompleted: true, isActive: false });
