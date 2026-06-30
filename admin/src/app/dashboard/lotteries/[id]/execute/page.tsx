@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Play, Square, Users, Trophy, Send } from "lucide-react";
@@ -13,7 +13,7 @@ import WinnerPanel from "@/components/lottery/WinnerPanel";
 import WinnerModal from "@/components/lottery/WheelWinnerModal";
 import type { LotteryWinner, WheelSegment } from "@/types";
 
-type SpinState = "idle" | "spinning" | "slowing" | "finished" | "celebrating";
+type SpinState = "idle" | "spinning" | "slowing" | "stopped" | "winner_reveal" | "celebrating";
 
 export default function LotteryExecutePage() {
   const id = Number(useParams<{ id: string }>().id);
@@ -27,10 +27,12 @@ export default function LotteryExecutePage() {
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
 
+  const selectedWinnerRef = useRef<LotteryWinner | null>(null);
+  const winnerUserIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     const mainDiv = document.querySelector(".min-h-screen.md\\:mr-64") as HTMLElement | null;
     const sidebarDesktop = document.querySelector(".fixed.inset-y-0.right-0.z-30.hidden.h-screen.w-64.md\\:block") as HTMLElement | null;
-
     if (mainDiv) {
       mainDiv.style.marginRight = "0";
       mainDiv.classList.remove("md:mr-64");
@@ -38,7 +40,6 @@ export default function LotteryExecutePage() {
     if (sidebarDesktop) {
       sidebarDesktop.style.display = "none";
     }
-
     return () => {
       if (mainDiv) {
         mainDiv.style.marginRight = "";
@@ -94,13 +95,28 @@ export default function LotteryExecutePage() {
     }
   }, [winnersQuery.data]);
 
-  const handleSpinComplete = useCallback(() => {
-    setSpinState("finished");
-    setTimeout(() => {
-      setShowWinnerModal(true);
-      setSpinState("celebrating");
-    }, 500);
-  }, []);
+  const handleWheelStopped = useCallback(async () => {
+    setSpinState("stopped");
+    await new Promise((r) => setTimeout(r, 500));
+    const winner = selectedWinnerRef.current;
+    if (!winner) {
+      setSpinState("idle");
+      return;
+    }
+    setCurrentWinner(winner);
+    setSpinState("winner_reveal");
+    await new Promise((r) => setTimeout(r, 50));
+    setShowWinnerModal(true);
+    setSpinState("celebrating");
+    setWinners((prev) => [winner, ...prev]);
+    setRoundNumber((prev) => prev + 1);
+    qc.invalidateQueries({ queryKey: ["lottery", id, "participants"] });
+    qc.invalidateQueries({ queryKey: ["lottery", id, "winners"] });
+    qc.invalidateQueries({ queryKey: ["lottery", id] });
+    if (lotteryQuery.data?.lottery?.isCompleted) {
+      lotteriesApi.completeLottery(id).catch(() => {});
+    }
+  }, [id, qc, lotteryQuery.data]);
 
   const handleSlowing = useCallback(() => {
     setSpinState("slowing");
@@ -111,32 +127,30 @@ export default function LotteryExecutePage() {
     onSuccess: (data) => {
       if (data.data.winner) {
         const winner = data.data.winner;
-        const winnerUserId = winner.userId;
+        selectedWinnerRef.current = winner;
+        winnerUserIdRef.current = winner.userId;
         let idx = -1;
         for (let i = 0; i < segments.length; i++) {
-          if (segments[i].userId === winnerUserId) { idx = i; break; }
+          if (segments[i].userId === winner.userId) { idx = i; break; }
         }
         if (idx === -1) idx = Math.floor(Math.random() * segments.length);
         setTargetIndex(idx);
-        setCurrentWinner(winner);
-        setWinners((prev) => [winner, ...prev]);
-        setRoundNumber((prev) => prev + 1);
-        qc.invalidateQueries({ queryKey: ["lottery", id, "participants"] });
-        qc.invalidateQueries({ queryKey: ["lottery", id, "winners"] });
-        qc.invalidateQueries({ queryKey: ["lottery", id] });
-        if (data.data.isCompleted) {
-          lotteriesApi.completeLottery(id).catch(() => {});
-        }
       }
     },
     onError: (error) => {
       toast.error(getApiError(error));
       setSpinState("idle");
+      selectedWinnerRef.current = null;
+      winnerUserIdRef.current = null;
     },
   });
 
   const handleSpin = useCallback(() => {
     if (spinState === "spinning" || spinState === "slowing" || segments.length === 0) return;
+    selectedWinnerRef.current = null;
+    winnerUserIdRef.current = null;
+    setShowWinnerModal(false);
+    setCurrentWinner(null);
     setSpinState("spinning");
     setTargetIndex(null);
     spinMutation.mutate();
@@ -154,7 +168,7 @@ export default function LotteryExecutePage() {
   const lottery = lotteryQuery.data?.lottery;
   const isCompleted = lottery?.isCompleted;
   const noParticipants = segments.length === 0 && !participantsQuery.isLoading;
-  const isAnimating = spinState === "spinning" || spinState === "slowing";
+  const isAnimating = spinState === "spinning" || spinState === "slowing" || spinState === "stopped";
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -243,10 +257,10 @@ export default function LotteryExecutePage() {
                 <WheelSpinner
                   segments={segments}
                   targetIndex={targetIndex}
-                  onSpinComplete={handleSpinComplete}
+                  onSpinComplete={handleWheelStopped}
                   onSlowing={handleSlowing}
-                  isSpinning={isAnimating}
-                  disabled={isCompleted || noParticipants}
+                  isSpinning={spinState === "spinning" || spinState === "slowing"}
+                  disabled={isCompleted || noParticipants || isAnimating}
                 />
               </div>
               <div className="mt-6 flex gap-3 shrink-0">
@@ -254,7 +268,7 @@ export default function LotteryExecutePage() {
                   size="lg"
                   onClick={handleSpin}
                   disabled={isAnimating || isCompleted || noParticipants}
-                  loading={isAnimating}
+                  loading={spinState === "spinning" || spinState === "slowing"}
                 >
                   <Play className="h-5 w-5 ml-2" />
                   شروع چرخش
@@ -289,6 +303,8 @@ export default function LotteryExecutePage() {
         onClose={() => {
           setShowWinnerModal(false);
           setCurrentWinner(null);
+          selectedWinnerRef.current = null;
+          winnerUserIdRef.current = null;
           setSpinState("idle");
         }}
         onShow={() => setShowWinnerModal(true)}

@@ -35,6 +35,7 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
     const animFrameRef = useRef<number>(0);
     const rotationRef = useRef(0);
     const hasCalledSlowing = useRef(false);
+    const prevRotationRef = useRef(0);
 
     const drawWheel = useCallback((currentRotation: number) => {
       const canvas = canvasRef.current;
@@ -109,6 +110,7 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
     useEffect(() => {
       if (isSpinning && targetIndex !== null && segments.length > 0) {
         hasCalledSlowing.current = false;
+        prevRotationRef.current = rotationRef.current;
 
         const totalSegments = segments.length;
         const sectorAngle = (2 * Math.PI) / totalSegments;
@@ -126,6 +128,8 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
           const rawProgress = Math.min(elapsed / duration, 1);
           const eased = easeOutQuint(rawProgress);
           const currentRotation = startRotation + totalDelta * eased;
+          const velocity = Math.abs(currentRotation - prevRotationRef.current);
+          prevRotationRef.current = currentRotation;
           rotationRef.current = currentRotation;
           drawWheel(currentRotation);
 
@@ -134,13 +138,25 @@ const WheelSpinner = forwardRef<HTMLDivElement, WheelSpinnerProps>(
             onSlowing?.();
           }
 
-          if (rawProgress < 1) {
-            animFrameRef.current = requestAnimationFrame(animate);
-          } else {
+          const isAnimationDone = rawProgress >= 1;
+          const isVelocityDone = velocity < 0.02;
+          const isCloseToTarget = Math.abs(currentRotation - finalRotation) < 0.1;
+
+          if (isAnimationDone && isVelocityDone && isCloseToTarget) {
             rotationRef.current = finalRotation;
             drawWheel(finalRotation);
             onSpinComplete();
+            return;
           }
+
+          if (isAnimationDone && !isVelocityDone) {
+            rotationRef.current = finalRotation;
+            drawWheel(finalRotation);
+            onSpinComplete();
+            return;
+          }
+
+          animFrameRef.current = requestAnimationFrame(animate);
         };
 
         animFrameRef.current = requestAnimationFrame(animate);
