@@ -1071,42 +1071,37 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   // ─── Post Command Button routing ─────────────────────────
   bot.action(/^post:user:cmd:(.+)$/, async (ctx: any) => {
+    const t0 = Date.now();
+    logger.info(`[CMD_BTN] t=${t0} ▶ CALLBACK RECEIVED callback_data="${ctx.callbackData}" from user=${ctx.from?.id}`);
     await ctx.answerCbQuery();
-    if (!(await settingsService.isFeatureEnabled('posts'))) return;
+    logger.info(`[CMD_BTN] t=${Date.now()} answerCbQuery done`);
+    if (!(await settingsService.isFeatureEnabled('posts'))) {
+      logger.warn(`[CMD_BTN] t=${Date.now()} BLOCKED: posts feature disabled`);
+      return;
+    }
     const raw = ctx.match[1].trim().replace(/\s+/g, ' ');
     const normalized = raw.startsWith('/') ? raw : `/${raw}`;
     const cmdName = normalized.slice(1).toLowerCase();
-    const btnText = ctx.callbackQuery?.message?.reply_markup?.inline_keyboard
-      ?.flat()
-      ?.find((b: any) => b.callback_data?.includes(ctx.match[1]))
-      ?.text || 'unknown';
-
-    logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    logger.info(`[ButtonCommand] callback_data="${ctx.callbackData}"`);
-    logger.info(`[ButtonCommand] raw="${raw}" → normalized="${normalized}" → cmdName="${cmdName}"`);
-    logger.info(`[ButtonCommand] buttonText="${btnText}" userId=${ctx.from?.id}`);
-    logger.info(`[ButtonCommand] Calling resolveCommand("${cmdName}")...`);
+    logger.info(`[CMD_BTN] t=${Date.now()} parsed: raw="${raw}" normalized="${normalized}" cmdName="${cmdName}"`);
 
     try {
+      logger.info(`[CMD_BTN] t=${Date.now()} BEFORE resolveCommand("${cmdName}")`);
       const post = await postService.resolveCommand(cmdName);
+      logger.info(`[CMD_BTN] t=${Date.now()} AFTER resolveCommand: ${post ? `HIT post#${post.id} "${post.title}" status=${post.status} isPublished=${post.isPublished}` : 'NULL'}`);
+
       if (post && post.status === 'PUBLISHED' && post.isPublished) {
-        logger.info(`[ButtonCommand] ✅ RESOLVED: post #${post.id} "${post.title}" — sending...`);
+        logger.info(`[CMD_BTN] t=${Date.now()} SENDING post#${post.id}...`);
         await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
         await sendPostToUser(ctx, post);
-        logger.info(`[ButtonCommand] ✅ SENT post #${post.id}`);
-        await systemLogService.log({
-          eventType: SystemEventType.ADMIN_ACTION,
-          message: `ButtonCommand Executed: ${normalized} -> "${post.title}"`,
-          telegramId: ctx.from.id,
-          metadata: { postId: post.id, command: cmdName, buttonText: btnText } as any,
-        });
+        logger.info(`[CMD_BTN] t=${Date.now()} ✅ SENT post#${post.id} totalMs=${Date.now()-t0}`);
+      } else if (post) {
+        logger.warn(`[CMD_BTN] t=${Date.now()} ❌ POST NOT PUBLISHED: postId=${post.id} status=${post.status} isPublished=${post.isPublished}`);
       } else {
-        logger.warn(`[ButtonCommand] ❌ NOT RESOLVED: cmdName="${cmdName}" — post not found or not published`);
+        logger.warn(`[CMD_BTN] t=${Date.now()} ❌ COMMAND NOT FOUND: cmdName="${cmdName}" totalMs=${Date.now()-t0}`);
       }
-    } catch (err) {
-      logger.error(`[ButtonCommand] ❌ ERROR executing command "${cmdName}":`, err);
+    } catch (err: any) {
+      logger.error(`[CMD_BTN] t=${Date.now()} ❌ ERROR: ${err.message}`, err);
     }
-    logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   });
 
   // ─── Popup button lookup: single source of truth ─────────

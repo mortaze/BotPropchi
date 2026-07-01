@@ -823,9 +823,14 @@ export const postService = {
   },
 
   async setCommand(postId: number, command: string) {
+    const t0 = Date.now();
+    logger.info(`[SetCmd] t=${t0} ▶ postId=${postId} command="${command}"`);
     await commandRepository.deleteByPostId(postId);
+    logger.info(`[SetCmd] t=${Date.now()} deleteByPostId done`);
     await commandRepository.create(postId, command);
+    logger.info(`[SetCmd] t=${Date.now()} create done`);
     eventBus.emit(Events.COMMAND_ADDED, { postId, command });
+    logger.info(`[SetCmd] t=${Date.now()} ✅ COMPLETE totalMs=${Date.now()-t0}`);
   },
 
   async removeCommandByPostId(postId: number) {
@@ -836,13 +841,24 @@ export const postService = {
   },
 
   async resolveCommand(command: string): Promise<any | null> {
+    const t0 = Date.now();
+    logger.info(`[ResolveCmd] t=${t0} ▶ START command="${command}"`);
     const record = await commandRepository.resolve(command);
-    if (!record) return null;
-    const post = await this.getPostMeta(record.postId);
-    if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
-      logger.warn(`[ResolveCommand] Command "${command}" resolved to post #${record.postId} but post not published (status=${post?.status} isPublished=${post?.isPublished})`);
+    if (!record) {
+      logger.warn(`[ResolveCmd] t=${Date.now()} ❌ commandRepository.resolve returned NULL for "${command}" ms=${Date.now()-t0}`);
       return null;
     }
+    logger.info(`[ResolveCmd] t=${Date.now()} commandRepository.resolve returned postId=${record.postId}. Fetching post...`);
+    const post = await this.getPostMeta(record.postId);
+    if (!post) {
+      logger.warn(`[ResolveCmd] t=${Date.now()} ❌ Post #${record.postId} NOT FOUND in DB`);
+      return null;
+    }
+    if (post.status !== 'PUBLISHED' || !post.isPublished) {
+      logger.warn(`[ResolveCmd] t=${Date.now()} ❌ Post #${record.postId} NOT PUBLISHED status=${post.status} isPublished=${post.isPublished}`);
+      return null;
+    }
+    logger.info(`[ResolveCmd] t=${Date.now()} ✅ RESOLVED command="${command}" → post #${post.id} "${post.title}" ms=${Date.now()-t0}`);
     return post;
   },
 
