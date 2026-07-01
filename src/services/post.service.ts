@@ -287,7 +287,10 @@ export const postService = {
             const msgBtns = (messagesFormat && typeof messagesFormat === 'object')
               ? (messagesFormat as any)[String(msg.id)]
               : (Array.isArray(rawButtons) && msg === existingMessages[existingMessages.length - 1] ? rawButtons : null);
-            if (!Array.isArray(msgBtns) || msgBtns.length === 0) continue;
+            if (!Array.isArray(msgBtns) || msgBtns.length === 0) {
+              await prisma.postKeyboard.deleteMany({ where: { messageId: msg.id } });
+              continue;
+            }
             // TRACE: log what buttons are about to be synced
             for (const [ri, row] of msgBtns.entries()) {
               for (const [ci, btn] of (Array.isArray(row) ? row : [row]).entries()) {
