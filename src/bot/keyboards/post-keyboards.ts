@@ -485,6 +485,7 @@ function buildButtonEditorInlineKeyboard(
   buttons: any[][],
   mode: 'create' | 'edit' | 'delete' | 'move',
   selectedPos?: { row: number; col: number },
+  pendingDelete?: { row: number; col: number } | null,
 ): any[][] {
   const rows: any[][] = [];
   const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
@@ -501,7 +502,8 @@ function buildButtonEditorInlineKeyboard(
         const label = btn.text || 'بدون عنوان';
         const safe = graphemeTruncate(sanitizeTelegramText(label), 13);
         const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
-        const icon = isSelected ? '{✅}' : mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : mode === 'move' ? '{🔀}' : '{＋}';
+        const isConfirmDelete = mode === 'delete' && pendingDelete && pendingDelete.row === r && pendingDelete.col === c;
+        const icon = isSelected ? '{✅}' : isConfirmDelete ? '{❌}' : mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : mode === 'move' ? '{🔀}' : '{＋}';
         rowButtons.push(
           Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
         );
@@ -509,7 +511,6 @@ function buildButtonEditorInlineKeyboard(
       if (rowButtons.length > 0) rows.push(rowButtons);
     }
   } else if (mode === 'create') {
-    // Empty state: single {＋} placeholder
     rows.push([Markup.button.callback('{＋}', `pbedit:click:${postId}:0:0`)]);
   }
 
@@ -559,9 +560,10 @@ export function renderButtonEditor(
   buttons: any[][],
   mode?: 'create' | 'edit' | 'delete' | 'move',
   selectedPos?: { row: number; col: number },
+  pendingDelete?: { row: number; col: number } | null,
 ): { text: string; reply_markup: any } {
   const effectiveMode = mode || 'create';
-  const rows = buildButtonEditorInlineKeyboard(postId, buttons, effectiveMode, selectedPos);
+  const rows = buildButtonEditorInlineKeyboard(postId, buttons, effectiveMode, selectedPos, pendingDelete);
   return {
     text: '⌨️ ویرایشگر دکمه‌ها',
     reply_markup: { inline_keyboard: rows },

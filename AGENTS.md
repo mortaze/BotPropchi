@@ -20,7 +20,7 @@ npm start                # node dist/index.js
 # Database (requires PostgreSQL)
 npm run db:push          # push schema to DB
 npm run db:generate      # regenerate Prisma client only
-npm run db:seed          # seed initial data (admin: admin/admin123)
+npm run db:seed          # seed initial data via tsx (admin: admin/admin123)
 npm run db:studio        # Prisma Studio UI
 
 # Testing (pure unit tests, no DB/Redis needed)
@@ -48,7 +48,7 @@ Middleware stack (applied in order):
 
 Background workers: `src/workers/` (membership, leaderboard) use BullMQ with Redis. Queue definitions live in `src/queue/`.
 
-One-off migration/repair scripts in `src/scripts/` (not run automatically).
+One-off migration/repair scripts in `src/scripts/` and `scripts/` (not run automatically).
 
 AI responses go through WordPress plugin (`wordpress-plugin/`), not direct Gemini calls.
 

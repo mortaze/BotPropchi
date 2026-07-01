@@ -452,7 +452,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const btnText = button?.text || button?.label || button?.title || button?.ref || 'دکمه';
     try {
       await ctx.editMessageText(`ویرایش دکمه: ${btnText}`, buildMenuItemEditKeyboard(newPos.row, newPos.col, button, layout));
-    } catch {}
+    } catch (e: any) {
+      logger.debug(`[MenuEditor] editMessageText failed in updateAfterItemAction: ${e?.description || e?.message}`);
+    }
     await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
   }
 
@@ -633,7 +635,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
           return;
         }
       }
-    } catch {}
+    } catch (e: any) {
+      logger.debug(`[DynamicPostButton] lookup failed for text="${text}": ${e?.message}`);
+    }
     return next();
   });
 
@@ -836,7 +840,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
     ]);
     try {
       await ctx.editMessageReplyMarkup({ inline_keyboard: ticketRows });
-    } catch (_) {}
+    } catch (e: any) {
+      logger.debug(`[AdminToggle] editMessageReplyMarkup failed: ${e?.description || e?.message}`);
+    }
   });
 
   bot.command('debug_post_render', async (ctx: any) => {
@@ -1001,7 +1007,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
         });
         return;
       }
-    } catch {}
+    } catch (e: any) {
+      logger.debug(`[PostCmdRoute] command resolution failed for /${cmd}: ${e?.message}`);
+    }
     return next();
   });
 
@@ -1016,7 +1024,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
         buttonText: data.text,
         buttonType: data.type,
       });
-    } catch {}
+    } catch (e: any) {
+      logger.debug(`[PostClick] logClick failed: ${e?.message}`);
+    }
   });
 
   // ─── Post INTERNAL_NAV routing ──────────────────────────

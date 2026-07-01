@@ -41,6 +41,29 @@ async function bootstrap() {
   // ساخت ربات
   const bot = new Telegraf(config.bot.token);
 
+  // ─── Global callback debug logger (BEFORE all middleware) ────
+  // This MUST be the very first handler to confirm callbacks arrive.
+  const callbackTraceLog = new Map<number, number>();
+  bot.on('callback_query', (ctx, next) => {
+    const cq = ctx.callbackQuery;
+    const data = 'data' in cq ? cq.data : 'N/A';
+    const userId = ctx.from?.id;
+    const chatId = ctx.chat?.id;
+    const messageId = 'message' in cq && cq.message ? (cq.message as any).message_id : 'N/A';
+    const username = ctx.from?.username || ctx.from?.first_name || 'unknown';
+    const ts = Date.now();
+    callbackTraceLog.set(userId || 0, ts);
+    logger.info(`[CALLBACK_TRACE] ▶ START user=${userId}(@${username}) chat=${chatId} msg=${messageId} data="${data}" ts=${ts}`);
+    return (next as any)().then(() => {
+      const elapsed = Date.now() - ts;
+      logger.info(`[CALLBACK_TRACE] ▶ END   user=${userId} data="${data}" elapsed=${elapsed}ms`);
+    }).catch((err) => {
+      const elapsed = Date.now() - ts;
+      logger.error(`[CALLBACK_TRACE] ▶ ERROR user=${userId} data="${data}" elapsed=${elapsed}ms error=${err.message}`);
+      throw err;
+    });
+  });
+
   // تنظیم نمونه ربات برای سرویس‌ها
   membershipService.setBot(bot);
 
@@ -78,13 +101,31 @@ async function bootstrap() {
   // ثبت هندلرها
   registerHandlers(bot);
 
-  // مدیریت خطا
+  // مدیریت خطا — CRITICAL: must answerCbQuery for callback_query errors
   bot.catch((err, ctx) => {
-    logger.error(`خطا برای کاربر ${ctx.from?.id}:`, err);
+    const userId = ctx.from?.id;
+    const updateType = (ctx as any).updateType;
+    logger.error(`[BOT_CATCH] Error for user=${userId} updateType=${updateType}:`, err);
 
-    ctx.reply(
-      '❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.'
-    ).catch(() => {});
+    if (ctx.callbackQuery) {
+      ctx.answerCbQuery('❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.', { show_alert: true })
+        .catch(() => {
+          logger.error(`[BOT_CATCH] Failed to answerCbQuery for user=${userId}`);
+        });
+    } else {
+      ctx.reply('❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.').catch(() => {});
+    }
+  });
+
+  // ─── Catch-all: unmatched callback_data ────────────────────
+  // If a callback reaches here, no bot.action() matched its data.
+  // Answer it so the user doesn't see a stuck loading indicator.
+  bot.on('callback_query', (ctx) => {
+    const cq = ctx.callbackQuery;
+    const data = 'data' in cq ? cq.data : 'N/A';
+    const userId = ctx.from?.id;
+    logger.warn(`[UNMATCHED_CALLBACK] user=${userId} data="${data}" — no handler matched`);
+    ctx.answerCbQuery('⚠️ این دکمه در دسترس نیست.', { show_alert: true }).catch(() => {});
   });
 
   // اجرای API

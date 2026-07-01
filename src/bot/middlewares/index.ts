@@ -203,7 +203,11 @@ export function rateLimitMiddleware(maxRequests = 20, windowMs = 60_000) {
     }
 
     if (record.count >= maxRequests) {
-      await ctx.reply('⏳ درخواست‌های زیادی ارسال کردید. لطفاً کمی صبر کنید.');
+      if (ctx.callbackQuery) {
+        await ctx.answerCbQuery('⏳ درخواست‌های زیادی ارسال کردید. لطفاً کمی صبر کنید.', { show_alert: true }).catch(() => {});
+      } else {
+        await ctx.reply('⏳ درخواست‌های زیادی ارسال کردید. لطفاً کمی صبر کنید.');
+      }
       return;
     }
 

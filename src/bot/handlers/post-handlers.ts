@@ -1489,18 +1489,22 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (sr !== undefined && sc !== undefined) selectedPos = { row: sr, col: sc };
     }
 
-    const { text, reply_markup } = renderButtonEditor(postId, buttons, listMode, selectedPos);
+    const pendingDelete = cache.get<{ row: number; col: number } | null>(pendingKey(ctx.from.id, 'pending_delete'));
+    const { text, reply_markup } = renderButtonEditor(postId, buttons, listMode, selectedPos, pendingDelete);
 
     const existingMsgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
     if (existingMsgId) {
       try {
         await ctx.telegram.editMessageText(ctx.chat.id, existingMsgId, null, text, { reply_markup });
-        return;
-      } catch {}
+      } catch (err: any) {
+        logger.warn(`[ButtonEditor] editMessageText failed, sending new message: ${err?.message}`);
+        const sent = await ctx.reply(text, { reply_markup });
+        if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+      }
+    } else {
+      const sent = await ctx.reply(text, { reply_markup });
+      if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
     }
-
-    const sent = await ctx.reply(text, { reply_markup });
-    if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
 
     if (removeReplyKeyboard) {
       try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
@@ -3382,6 +3386,205 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     } catch (e: any) {
       logger.error(`[MsgAdd] media create failed postId=${editorPostId}: ${e.message}`);
       await ctx.reply('❌ خطا در ذخیره رسانه. لطفاً دوباره تلاش کنید.');
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // ─── DEAD CALLBACK FIX: Missing handlers for orphaned callback_data ──
+  // ═══════════════════════════════════════════════════════════
+
+  // ─── post:cmd:add — Add command to post ──────────────────
+  bot.action(/^post:cmd:add:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
+    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    const existingCmd = await postService.getCommandByPostId(postId);
+    const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
+    await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
+      ...postCommandSubMenuKeyboard(!!existingCmd),
+    });
+  });
+
+  // ─── post:version:list — Version history ──────────────────
+  bot.action(/^post:version:list:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    try {
+      const versions = await prisma.postVersion.findMany({
+        where: { postId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+      if (versions.length === 0) {
+        return safeEdit(ctx, '📜 هنوز نسخه‌ای ذخیره نشده است.', {
+          reply_markup: Markup.inlineKeyboard([[Markup.button.callback('« بازگشت', `post:edit:${postId}:full`)]]).reply_markup,
+        });
+      }
+      await safeEdit(ctx, `📜 تاریخچه نسخه‌های پست (${versions.length} نسخه اخیر):`, postVersionHistoryKeyboard(versions, postId));
+    } catch (err: any) {
+      logger.error(`[PostVersion] list error postId=${postId}: ${err.message}`);
+      await safeEdit(ctx, '❌ خطا در بارگذاری تاریخچه نسخه‌ها.');
+    }
+  });
+
+  // ─── post:version:restore — Restore a version ─────────────
+  bot.action(/^post:version:restore:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const versionId = parseInt(ctx.match[1]);
+    try {
+      const version = await prisma.postVersion.findUnique({ where: { id: versionId } });
+      if (!version) return ctx.reply('❌ نسخه یافت نشد.');
+      const data = version.snapshot as any;
+      if (!data) return ctx.reply('❌ داده نسخه خالی است.');
+      await postService.update(version.postId, {
+        title: data.title,
+        content: data.content,
+        contentText: data.contentText,
+        contentEntities: data.contentEntities,
+        buttons: data.buttons,
+        mediaFileId: data.mediaFileId,
+        mediaType: data.mediaType,
+        status: data.status,
+        isPublished: data.isPublished,
+        updatedBy: BigInt(ctx.from.id),
+      } as any);
+      postService.invalidateCache();
+      await ctx.reply(`✅ نسخه ${versionId} بازیابی شد.`);
+      const post = await postService.findById(version.postId);
+      if (post) await showPostEditor(ctx, post.id);
+    } catch (err: any) {
+      logger.error(`[PostVersion] restore error versionId=${versionId}: ${err.message}`);
+      await ctx.reply('❌ خطا در بازیابی نسخه.');
+    }
+  });
+
+  // ─── post:integrity:run — Run integrity check ─────────────
+  bot.action('post:integrity:run', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    try {
+      const posts = await postService.findAll({ page: 1, limit: 1000 });
+      const issues: string[] = [];
+      for (const post of posts.items) {
+        if (!post.slug) issues.push(`Post #${post.id}: missing slug`);
+        if (!post.title) issues.push(`Post #${post.id}: missing title`);
+        if (post.status === 'PUBLISHED' && !post.isPublished) issues.push(`Post #${post.id}: status=PUBLISHED but isPublished=false`);
+      }
+      const text = issues.length === 0
+        ? '✅ سلامت سیستم: هیچ مشکلی یافت نشد.'
+        : `🔍 ${issues.length} مشکل یافت شد:\n\n${issues.slice(0, 20).join('\n')}`;
+      await safeEdit(ctx, text, Markup.inlineKeyboard([[Markup.button.callback('🔄 اجرای مجدد', 'post:integrity:run')], [Markup.button.callback('« بازگشت به منوی پست', 'post:menu')]]));
+    } catch (err: any) {
+      logger.error(`[PostIntegrity] run error: ${err.message}`);
+      await safeEdit(ctx, '❌ خطا در اجرای بررسی سلامت.');
+    }
+  });
+
+  // ─── post:menu — Back to post management menu ─────────────
+  bot.action('post:menu', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    clearEditorKeyState(ctx.from.id);
+    cache.del(`post_mgmt_mode:${ctx.from.id}`);
+    await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+  });
+
+  // ─── post:analytics:${postId} — Post analytics ────────────
+  bot.action(/^post:analytics:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    try {
+      const post = await postService.findById(postId);
+      if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
+      const analytics = await postService.getAnalytics(postId);
+      const text = [
+        `📊 *آمار: ${post.title}*`,
+        '',
+        `👁 بازدید کل: ${analytics.totalViews}`,
+        `👆 کلیک کل: ${analytics.totalClicks}`,
+        `👤 کاربران منحصربه‌فرد: ${analytics.uniqueUsers}`,
+        '',
+        '📈 بازدید روزانه (۳۰ روز اخیر):',
+        ...analytics.dailyViews.slice(-7).map((d: any) => `  ${d.date}: ${d.count} بازدید`),
+      ].join('\n');
+      await safeEdit(ctx, text, {
+        parse_mode: 'Markdown' as any,
+        link_preview_options: { is_disabled: true } as any,
+        ...postAnalyticsKeyboard(postId),
+      });
+    } catch (err: any) {
+      logger.error(`[PostAnalytics] error postId=${postId}: ${err.message}`);
+      await safeEdit(ctx, '❌ خطا در بارگذاری آمار.');
+    }
+  });
+
+  // ─── post:analytics:global — Global analytics ─────────────
+  bot.action('post:analytics:global', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    try {
+      const allPosts = await postService.findAll({ page: 1, limit: 1000 });
+      let totalViews = 0;
+      let totalClicks = 0;
+      for (const p of allPosts.items) {
+        const a = await postService.getAnalytics(p.id);
+        totalViews += a.totalViews;
+        totalClicks += a.totalClicks;
+      }
+      const text = [
+        '📊 *آمار کلی پست‌ها*',
+        '',
+        `📄 تعداد پست‌ها: ${allPosts.total}`,
+        `👁 مجموع بازدید: ${totalViews}`,
+        `👆 مجموع کلیک: ${totalClicks}`,
+      ].join('\n');
+      await safeEdit(ctx, text, {
+        parse_mode: 'Markdown' as any,
+        ...postGlobalAnalyticsKeyboard(),
+      });
+    } catch (err: any) {
+      logger.error(`[PostAnalyticsGlobal] error: ${err.message}`);
+      await safeEdit(ctx, '❌ خطا در بارگذاری آمار کلی.');
+    }
+  });
+
+  // ─── post:analytics:top — Top posts ───────────────────────
+  bot.action('post:analytics:top', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    try {
+      const allPosts = await postService.findAll({ page: 1, limit: 1000 });
+      const stats: { id: number; title: string; views: number; clicks: number }[] = [];
+      for (const p of allPosts.items) {
+        const a = await postService.getAnalytics(p.id);
+        stats.push({ id: p.id, title: p.title, views: a.totalViews, clicks: a.totalClicks });
+      }
+      stats.sort((a, b) => b.views - a.views);
+      const top10 = stats.slice(0, 10);
+      const text = top10.length === 0
+        ? '🏆 هنوز آماری ثبت نشده.'
+        : '🏆 *پست‌های برتر (بیشترین بازدید):*\n\n' +
+          top10.map((s, i) => `${i + 1}. ${s.title} — 👁 ${s.views} بازدید, 👆 ${s.clicks} کلیک`).join('\n');
+      await safeEdit(ctx, text, {
+        parse_mode: 'Markdown' as any,
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تازه‌سازی', 'post:analytics:top')], [Markup.button.callback('« بازگشت', 'post:analytics:global')]]),
+      });
+    } catch (err: any) {
+      logger.error(`[PostAnalyticsTop] error: ${err.message}`);
+      await safeEdit(ctx, '❌ خطا در بارگذاری پست‌های برتر.');
     }
   });
 }
