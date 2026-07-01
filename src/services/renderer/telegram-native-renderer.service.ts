@@ -66,7 +66,12 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number)
   let result: any;
   switch (btn?.type) {
     case 'URL': result = Markup.button.url(text, value); break;
-    case 'CALLBACK': result = Markup.button.callback(text, btn.callback_data || value || `post:user:click:${JSON.stringify({ postId, text, type: btn.type })}`); break;
+    case 'CALLBACK': {
+      const cbData = btn.callback_data
+        || `post:user:click:${postId}:${row}:${col}`;
+      result = Markup.button.callback(text, cbData);
+      break;
+    }
     case 'WEB_APP':
     case 'OPEN_MINI_APP': result = Markup.button.webApp(text, value); break;
     case 'LOGIN_URL': result = { text, login_url: btn.login_url || btn.payload?.login_url || { url: value } }; break;
@@ -76,8 +81,8 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number)
     case 'SWITCH_INLINE_CURRENT_CHAT': result = Markup.button.switchToCurrentChat(text, value); break;
     case 'POPUP': result = Markup.button.callback(text, `post:user:popup:${postId}:${row}:${col}`); break;
     case 'COMMAND': result = Markup.button.callback(text, `post:user:cmd:${value}`); break;
-    case 'INTERNAL_NAV': result = Markup.button.callback(text, `post:user:nav:${sanitizeTelegramText(value || 'noop', 64)}`); break;
-    default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, value || 'noop'); break;
+    case 'INTERNAL_NAV': result = Markup.button.callback(text, `post:user:nav:${postId}:${row}:${col}`); break;
+    default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, `post:user:click:${postId}:${row}:${col}`); break;
   }
   // Preserve all extra properties from original button (e.g. style)
   if (result && btn) {

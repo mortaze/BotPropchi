@@ -1017,13 +1017,29 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.action(/^post:user:click:(.+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     try {
-      const data = JSON.parse(ctx.match[1]);
-      await postService.logClick({
-        postId: data.postId,
-        telegramId: BigInt(ctx.from.id),
-        buttonText: data.text,
-        buttonType: data.type,
-      });
+      const raw = ctx.match[1];
+      let postId: number | undefined;
+      let buttonText: string | undefined;
+      let buttonType: string | undefined;
+
+      if (raw.startsWith('{')) {
+        const data = JSON.parse(raw);
+        postId = data.postId;
+        buttonText = data.text;
+        buttonType = data.type;
+      } else {
+        const parts = raw.split(':');
+        postId = parseInt(parts[0]);
+      }
+
+      if (postId) {
+        await postService.logClick({
+          postId,
+          telegramId: BigInt(ctx.from.id),
+          buttonText: buttonText || 'unknown',
+          buttonType: buttonType || 'CALLBACK',
+        });
+      }
     } catch (e: any) {
       logger.debug(`[PostClick] logClick failed: ${e?.message}`);
     }
@@ -1031,6 +1047,18 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   // ─── Post INTERNAL_NAV routing ──────────────────────────
   bot.action(/^post:nav:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    if (!(await settingsService.isFeatureEnabled('posts'))) return;
+    const postId = parseInt(ctx.match[1]);
+    const post = await postService.getPostMeta(postId);
+    if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
+      return ctx.reply('❌ Post not found.');
+    }
+    await sendPostToUser(ctx, post);
+  });
+
+  // ─── Post INTERNAL_NAV routing (from renderer) ───────────
+  bot.action(/^post:user:nav:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     if (!(await settingsService.isFeatureEnabled('posts'))) return;
     const postId = parseInt(ctx.match[1]);
