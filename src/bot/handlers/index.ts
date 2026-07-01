@@ -1018,8 +1018,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
   // original button was COMMAND type — if so, dispatches via resolveCommand.
   bot.action(/^post:user:click:(.+)$/, async (ctx: any) => {
     const t0 = Date.now();
-    console.log(`[CALLBACK_RECEIVED] callback_data="${ctx.callbackData}" from=${ctx.from?.id} → matched post:user:click handler`);
-    console.log(`[CALLBACK_PARSED] type=CLICK raw="${ctx.match[1]}"`);
     await ctx.answerCbQuery();
     try {
       const raw = ctx.match[1];
@@ -1129,9 +1127,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
   // ─── Post Command Button routing ─────────────────────────
   bot.action(/^post:user:cmd:(.+)$/, async (ctx: any) => {
     const t0 = Date.now();
-    console.log(`[CALLBACK_RECEIVED] callback_data="${ctx.callbackData}" chatId=${ctx.chat?.id} from=${ctx.from?.id}`);
-    console.log(`[CALLBACK_PARSED] type=COMMAND raw_cmd="${ctx.match[1]}"`);
-    console.log(`[HANDLER_SELECTED] handler=post:user:cmd`);
     logger.info(`[CMD_BTN] t=${t0} ▶ CALLBACK RECEIVED callback_data="${ctx.callbackData}" from user=${ctx.from?.id}`);
     await ctx.answerCbQuery();
     logger.info(`[CMD_BTN] t=${Date.now()} answerCbQuery done`);
@@ -1146,13 +1141,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
     try {
       logger.info(`[CMD_BTN] t=${Date.now()} BEFORE resolveCommand("${cmdName}")`);
-      console.log(`[COMMAND_EXECUTE] commandId="${cmdName}"`);
       const post = await postService.resolveCommand(cmdName);
-      if (post) {
-        console.log(`[COMMAND_SUCCESS] commandId="${cmdName}" postId=${post.id} title="${post.title}" status=${post.status} isPublished=${post.isPublished}`);
-      } else {
-        console.log(`[COMMAND_FAILED] commandId="${cmdName}" error="resolveCommand returned NULL"`);
-      }
       logger.info(`[CMD_BTN] t=${Date.now()} AFTER resolveCommand: ${post ? `HIT post#${post.id} "${post.title}" status=${post.status} isPublished=${post.isPublished}` : 'NULL'}`);
 
       if (post && post.status === 'PUBLISHED' && post.isPublished) {

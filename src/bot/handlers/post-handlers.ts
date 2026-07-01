@@ -239,10 +239,10 @@ function extractButtonsForMessage(post: any, messageId: number): any[][] {
       if (!grouped[kb.row]) grouped[kb.row] = [];
       const baseStyle = kb.payload?.style;
       const rawType = kb.type;
-      const normalizedType = kb.type === 'URL' ? 'URL' : kb.type === 'CALLBACK' ? 'CALLBACK' : 'NATIVE';
+      const reconstructedType = kb.payload?.type || (kb.type === 'URL' ? 'URL' : kb.type === 'CALLBACK' ? 'CALLBACK' : 'NATIVE');
       const reconstructed = kb.payload
-        ? { ...kb.payload, text: kb.text, type: normalizedType, value: kb.value }
-        : { text: kb.text, type: normalizedType, value: kb.value, style: baseStyle || undefined };
+        ? { ...kb.payload, text: kb.text, type: reconstructedType, value: kb.value }
+        : { text: kb.text, type: reconstructedType, value: kb.value, style: baseStyle || undefined };
       logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} row=${kb.row} col=${kb.col} db_type="${rawType}" → reconstructed_type="${reconstructed.type}" text="${kb.text}" value="${kb.value}" payload_type="${kb.payload?.type || 'none'}"`);
       grouped[kb.row][kb.col || 0] = reconstructed;
     }
@@ -1885,15 +1885,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const btn: any = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value };
       if (buttonColor && buttonColor !== 'default') btn.style = buttonColor;
       buttons.push([btn]);
-      const newIdx = buttons.length - 1;
-      const cbData = btn.type === 'COMMAND' ? `post:user:cmd:${btn.value}` : btn.type === 'POPUP' ? `post:user:popup:${postId}:${newIdx}:0` : `post:user:click:${postId}:${newIdx}:0`;
-      console.log(`[BUTTON_CREATE] postId=${postId} messageIdx=${messageIdx} index=${newIdx} row=${newIdx} col=0 type="${btn.type}" text="${btn.text}" value="${btn.value}" callback_data="${cbData}" allButtons=${JSON.stringify(buttons.map((r: any[]) => r.map((b: any) => ({ type: b.type, value: b.value, text: b.text }))))}`);
     } else if (mode === 'edit' && row !== undefined && col !== undefined) {
       // Edit existing button
       if (buttons[row] && buttons[row][col]) {
         buttons[row][col] = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value, style: buttons[row][col].style };
       }
-      console.log(`[BUTTON_EDIT] postId=${postId} messageIdx=${messageIdx} row=${row} col=${col} type="${buttons[row]?.[col]?.type}" value="${buttons[row]?.[col]?.value}"`);
     }
 
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
