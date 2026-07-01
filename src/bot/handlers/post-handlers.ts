@@ -1941,16 +1941,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     if (mode === 'delete') {
       if (buttons[row] && buttons[row][col] !== undefined) {
-        const totalButtons = buttons.reduce((sum: number, r: any[]) => sum + (Array.isArray(r) ? r.length : 0), 0);
-        const pendingDelete = cache.get<{ row: number; col: number } | null>(pendingKey(ctx.from.id, 'pending_delete'));
-        const isPending = pendingDelete && pendingDelete.row === row && pendingDelete.col === col;
-
-        if (totalButtons <= 1 && !isPending) {
-          cache.set(pendingKey(ctx.from.id, 'pending_delete'), { row, col }, 600);
-          await refreshButtonListView(ctx, postId);
-          return;
-        }
-
         cache.del(pendingKey(ctx.from.id, 'pending_delete'));
         const deletedText = buttons[row][col].text || '';
         buttons[row].splice(col, 1);
