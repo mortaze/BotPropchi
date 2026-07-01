@@ -186,7 +186,21 @@ export const postService = {
     if (typeof data.title === 'string') data.title = validateDbInput(data.title, 'post.title');
     if (typeof data.content === 'string') data.content = sanitizeTelegramText(data.content);
     if (typeof data.caption === 'string') data.caption = sanitizeTelegramText(data.caption);
-    if (data.buttons) data.buttons = sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons)));
+    if (data.buttons) {
+      // TRACE: log button types BEFORE sanitization
+      const rawBtns = data.buttons as any;
+      const rawFlat = rawBtns?.messages ? Object.values(rawBtns.messages).flat().flat() : (Array.isArray(rawBtns) ? rawBtns.flat() : []);
+      for (const b of rawFlat.slice(0, 5)) {
+        logger.info(`[BTN_TRACE] UPDATE_ENTRY postId=${id} BEFORE_SANITIZE type="${b?.type}" value="${b?.value}" text="${b?.text}" hasUrl=${!!b?.url} hasCb=${!!b?.callback_data}`);
+      }
+      data.buttons = sanitizeJsonStrings(JSON.parse(JSON.stringify(data.buttons)));
+      // TRACE: log button types AFTER sanitization
+      const sanBtns = data.buttons as any;
+      const sanFlat = sanBtns?.messages ? Object.values(sanBtns.messages).flat().flat() : (Array.isArray(sanBtns) ? sanBtns.flat() : []);
+      for (const b of sanFlat.slice(0, 5)) {
+        logger.info(`[BTN_TRACE] UPDATE_ENTRY postId=${id} AFTER_SANITIZE type="${b?.type}" value="${b?.value}" text="${b?.text}"`);
+      }
+    }
     if ((data as any).entities) (data as any).entities = sanitizeJsonStrings(JSON.parse(JSON.stringify((data as any).entities)));
     let clonedMessages: any[] | undefined;
     if (Array.isArray((data as any).messages)) {
@@ -274,11 +288,17 @@ export const postService = {
               ? (messagesFormat as any)[String(msg.id)]
               : (Array.isArray(rawButtons) && msg === existingMessages[existingMessages.length - 1] ? rawButtons : null);
             if (!Array.isArray(msgBtns) || msgBtns.length === 0) continue;
+            // TRACE: log what buttons are about to be synced
+            for (const [ri, row] of msgBtns.entries()) {
+              for (const [ci, btn] of (Array.isArray(row) ? row : [row]).entries()) {
+                logger.info(`[BTN_TRACE] KEYBOARD_SYNC postId=${post.id} msgId=${msg.id} row=${ri} col=${ci} btn_type="${btn?.type}" btn_value="${btn?.value}" btn_text="${btn?.text}"`);
+              }
+            }
             const newRows = msgBtns.flatMap((row: any[], r: number) =>
               row.map((btn: any, c: number) => {
                 const dbType = btn.url ? 'URL' : btn.callback_data ? 'CALLBACK' : btn.type || 'NATIVE';
                 const dbValue = btn.url || btn.callback_data || btn.value || null;
-                logger.info(`[BTN_SYNC] postId=${post.id} msgId=${msg.id} row=${r} col=${c} input_type="${btn.type}" input_value="${btn.value}" → db_type="${dbType}" db_value="${dbValue}"`);
+                logger.info(`[BTN_SYNC] postId=${post.id} msgId=${msg.id} row=${r} col=${c} input_type="${btn.type}" input_value="${btn.value}" → db_type="${dbType}" db_value="${dbValue}" payload_type="${btn.type}"`);
                 return {
                   postId: post.id,
                   messageId: msg.id,
