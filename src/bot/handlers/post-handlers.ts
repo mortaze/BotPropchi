@@ -1900,6 +1900,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'button_type'));
     cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
     await ctx.reply('✅ تغییرات دکمه انجام شد.', { reply_markup: { remove_keyboard: true } });
+    await ctx.reply('✏️ ویرایشگر پست:', postEditMessageReplyKeyboard());
     await refreshButtonListView(ctx, postId);
   });
 
