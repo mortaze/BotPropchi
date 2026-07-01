@@ -717,31 +717,29 @@ export const postService = {
   async getCommandMap(): Promise<Map<string, any>> {
     const cached = cache.get<Map<string, any>>(CACHE_KEY_COMMANDS);
     if (cached) {
-      logger.debug(`[CommandMap] Using cache (${cached.size} entries)`);
+      logger.info(`[CommandMap] 📦 Using cache (${cached.size} entries): [${Array.from(cached.keys()).join(', ')}]`);
       return cached;
     }
+    logger.info(`[CommandMap] Cache MISS — rebuilding from DB...`);
     const posts = await postRepository.getPublished();
     const map = new Map<string, any>();
     for (const post of posts) {
       if (post.command) {
         map.set(post.command, post);
-        logger.debug(`[CommandMap] Post.command: /${post.command} -> "${post.title}"`);
       }
       const cmds = (post as any).commands;
       if (cmds && Array.isArray(cmds) && cmds.length > 0) {
         for (const cmd of cmds) {
           map.set(cmd.command, post);
-          logger.debug(`[CommandMap] PostCommand: /${cmd.command} -> "${post.title}"`);
           if (cmd.aliases && Array.isArray(cmd.aliases)) {
             for (const alias of cmd.aliases) {
               map.set(alias, post);
-              logger.debug(`[CommandMap] Alias: /${alias} -> "${post.title}"`);
             }
           }
         }
       }
     }
-    logger.info(`[CommandMap] Built map with ${map.size} command entries from ${posts.length} published posts`);
+    logger.info(`[CommandMap] 🔄 Built map: ${map.size} entries from ${posts.length} published posts → [${Array.from(map.keys()).join(', ')}]`);
     cache.set(CACHE_KEY_COMMANDS, map, 300);
     return map;
   },
@@ -779,6 +777,7 @@ export const postService = {
   },
 
   async addCommand(postId: number, command: string, aliases?: string[]) {
+    logger.info(`[AddCommand] Creating command "${command}" for post #${postId} aliases=${JSON.stringify(aliases)}`);
     const existing = await prisma.postCommand.findUnique({ where: { command } });
     if (existing) throw new Error(`❌ Command /${command} already exists`);
     const aliasConflicts = await prisma.postCommand.findMany({
@@ -799,6 +798,7 @@ export const postService = {
     const result = await prisma.postCommand.create({
       data: { postId, command, aliases: aliases ?? undefined },
     });
+    logger.info(`[AddCommand] ✅ Created PostCommand id=${result.id} command="${command}" postId=${postId}`);
     this.invalidateCache();
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
@@ -806,7 +806,7 @@ export const postService = {
       metadata: { postId, command } as any,
     });
     eventBus.emit(Events.COMMAND_ADDED, { postId, command });
-    logger.info(`[Post] Command added: /${command} -> post ${postId}`);
+    logger.info(`[AddCommand] Cache invalidated, event emitted`);
     return result;
   },
 
@@ -891,6 +891,7 @@ export const postService = {
   },
 
   async setCommand(postId: number, command: string) {
+    logger.info(`[SetCommand] Creating command "${command}" for post #${postId}`);
     const conflict = await prisma.postCommand.findFirst({
       where: { command, NOT: { postId } },
     });
@@ -899,9 +900,10 @@ export const postService = {
     const result = await prisma.postCommand.create({
       data: { postId, command },
     });
+    logger.info(`[SetCommand] ✅ Created PostCommand id=${result.id} command="${command}" postId=${postId}`);
     this.invalidateCache();
     eventBus.emit(Events.COMMAND_ADDED, { postId, command });
-    logger.info(`[Post] Command set: /${command} -> post ${postId}`);
+    logger.info(`[SetCommand] Cache invalidated, event emitted`);
     return result;
   },
 
@@ -915,23 +917,26 @@ export const postService = {
   },
 
   async resolveCommand(command: string): Promise<any | null> {
-    logger.debug(`[CommandResolve] Resolving /${command}`);
+    logger.info(`[CommandResolve] ▶ START requested="${command}"`);
     const map = await this.getCommandMap();
+    const mapKeys = Array.from(map.keys());
+    logger.info(`[CommandResolve] Map has ${map.size} entries: [${mapKeys.join(', ')}]`);
     const found = map.get(command);
     if (found) {
-      logger.debug(`[CommandResolve] Found /${command} -> "${found.title}" (id: ${found.id})`);
+      logger.info(`[CommandResolve] ✅ Map HIT: "${command}" → post #${found.id} "${found.title}"`);
       return found;
     }
-    // Fallback: direct DB query in case cache is stale or command was added to unpublished post
-    logger.debug(`[CommandResolve] /${command} not in map, querying DB...`);
+    logger.info(`[CommandResolve] Map MISS for "${command}". Falling back to DB...`);
     const dbPost = await postRepository.findByCommand(command);
     if (dbPost && dbPost.status === 'PUBLISHED' && dbPost.isPublished) {
-      logger.info(`[CommandResolve] DB fallback found /${command} -> "${dbPost.title}" (id: ${dbPost.id})`);
-      // Invalidate cache so next lookup uses fresh data
+      logger.info(`[CommandResolve] ✅ DB HIT: "${command}" → post #${dbPost.id} "${dbPost.title}"`);
       this.invalidateCache();
       return normalizePost(dbPost);
     }
-    logger.warn(`[CommandResolve] /${command} not found`);
+    if (dbPost) {
+      logger.warn(`[CommandResolve] DB found post #${dbPost.id} but status=${dbPost.status} isPublished=${dbPost.isPublished} — NOT returning`);
+    }
+    logger.warn(`[CommandResolve] ❌ NOT FOUND: "${command}" (checked map with ${map.size} entries + DB fallback)`);
     return null;
   },
 
@@ -973,6 +978,7 @@ export const postService = {
   },
 
   invalidateCache() {
+    logger.info(`[CacheInvalidate] Clearing published, commands, menu, title caches`);
     cache.del(CACHE_KEY_PUBLISHED);
     cache.del(CACHE_KEY_COMMANDS);
     cache.del(CACHE_KEY_MENU);

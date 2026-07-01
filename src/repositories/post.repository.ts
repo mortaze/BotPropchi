@@ -1,5 +1,6 @@
 import { Prisma, PostStatus } from '@prisma/client';
 import { prisma } from '../prisma/client';
+import { logger } from '../utils/logger';
 
 export const postRepository = {
   async create(data: Prisma.PostUncheckedCreateInput) {
@@ -42,11 +43,16 @@ export const postRepository = {
   },
 
   async findByCommand(command: string) {
+    logger.info(`[findByCommand] Querying DB for command="${command}"`);
     const post = await prisma.post.findFirst({
       where: { OR: [{ command }, { commands: { some: { command } } }] },
       include: { messages: { orderBy: { order: 'asc' } }, commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true, clickLogs: true } } },
     });
-    if (post) return post;
+    if (post) {
+      logger.info(`[findByCommand] ✅ Found post #${post.id} "${post.title}" (status=${post.status} isPublished=${post.isPublished})`);
+      return post;
+    }
+    logger.info(`[findByCommand] Direct match failed. Scanning all postCommand records for aliases...`);
     const allPosts = await prisma.post.findMany({
       where: { commands: { some: {} } },
       include: { messages: { orderBy: { order: 'asc' } }, commands: true, richMedia: { orderBy: { order: 'asc' } }, richEntities: true, keyboards: { orderBy: [{ row: 'asc' }, { col: 'asc' }] }, _count: { select: { views: true, clickLogs: true } } },
@@ -54,9 +60,13 @@ export const postRepository = {
     for (const p of allPosts) {
       for (const cmd of p.commands) {
         const aliases = cmd.aliases as string[] | null;
-        if (aliases && Array.isArray(aliases) && aliases.includes(command)) return p;
+        if (aliases && Array.isArray(aliases) && aliases.includes(command)) {
+          logger.info(`[findByCommand] ✅ Found via alias: command="${command}" matched alias in cmd="${cmd.command}" on post #${p.id} "${p.title}"`);
+          return p;
+        }
       }
     }
+    logger.info(`[findByCommand] ❌ No post found for command="${command}"`);
     return null;
   },
 

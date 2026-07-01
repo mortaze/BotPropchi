@@ -1080,15 +1080,20 @@ export function registerHandlers(bot: Telegraf<Context>) {
       ?.flat()
       ?.find((b: any) => b.callback_data?.includes(ctx.match[1]))
       ?.text || 'unknown';
-    logger.info(`[ButtonCommand] button="${btnText}" raw=${raw} normalized=${normalized}`);
-    logger.info(`[CommandResolve] lookup=${normalized}`);
+
+    logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    logger.info(`[ButtonCommand] callback_data="${ctx.callbackData}"`);
+    logger.info(`[ButtonCommand] raw="${raw}" → normalized="${normalized}" → cmdName="${cmdName}"`);
+    logger.info(`[ButtonCommand] buttonText="${btnText}" userId=${ctx.from?.id}`);
+    logger.info(`[ButtonCommand] Calling resolveCommand("${cmdName}")...`);
+
     try {
       const post = await postService.resolveCommand(cmdName);
       if (post && post.status === 'PUBLISHED' && post.isPublished) {
-        logger.info(`[CommandResolve] found post=${post.id}`);
-        logger.info(`[Pipeline] sending post=${post.id}`);
+        logger.info(`[ButtonCommand] ✅ RESOLVED: post #${post.id} "${post.title}" — sending...`);
         await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
         await sendPostToUser(ctx, post);
+        logger.info(`[ButtonCommand] ✅ SENT post #${post.id}`);
         await systemLogService.log({
           eventType: SystemEventType.ADMIN_ACTION,
           message: `ButtonCommand Executed: ${normalized} -> "${post.title}"`,
@@ -1096,11 +1101,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
           metadata: { postId: post.id, command: cmdName, buttonText: btnText } as any,
         });
       } else {
-        logger.info(`[CommandResolve] NOT_FOUND lookup=${normalized}`);
+        logger.warn(`[ButtonCommand] ❌ NOT RESOLVED: cmdName="${cmdName}" — post not found or not published`);
       }
     } catch (err) {
-      logger.error(`[PostCmdBtn] Failed to execute command "${cmdName}":`, err);
+      logger.error(`[ButtonCommand] ❌ ERROR executing command "${cmdName}":`, err);
     }
+    logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   });
 
   // ─── Popup button lookup: single source of truth ─────────
