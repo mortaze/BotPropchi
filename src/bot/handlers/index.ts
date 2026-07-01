@@ -1013,12 +1013,17 @@ export function registerHandlers(bot: Telegraf<Context>) {
     return next();
   });
 
-  // ─── Post Button Click Logging ───────────────────────────
+  // ─── Post Button Click Dispatch ────────────────────────────
+  // Handles post:user:click callbacks. Logs analytics, then checks if the
+  // original button was COMMAND type — if so, dispatches via resolveCommand.
   bot.action(/^post:user:click:(.+)$/, async (ctx: any) => {
+    const t0 = Date.now();
     await ctx.answerCbQuery();
     try {
       const raw = ctx.match[1];
       let postId: number | undefined;
+      let row: number | undefined;
+      let col: number | undefined;
       let buttonText: string | undefined;
       let buttonType: string | undefined;
 
@@ -1030,8 +1035,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
       } else {
         const parts = raw.split(':');
         postId = parseInt(parts[0]);
+        row = parts.length >= 3 ? parseInt(parts[1]) : undefined;
+        col = parts.length >= 3 ? parseInt(parts[2]) : undefined;
       }
 
+      logger.info(`[PostClick] t=${t0} postId=${postId} row=${row} col=${col} text="${buttonText}" type="${buttonType}"`);
+
+      // ── Analytics: log the click ──
       if (postId) {
         await postService.logClick({
           postId,
@@ -1040,6 +1050,51 @@ export function registerHandlers(bot: Telegraf<Context>) {
           buttonType: buttonType || 'CALLBACK',
         });
       }
+
+      // ── Resolve button type from post_keyboards ──
+      let resolvedType: string | null = null;
+      let resolvedValue: string | null = null;
+
+      if (postId && row !== undefined && col !== undefined) {
+        // Look up the button in post_keyboards to find its original type
+        const keyboard = await prisma.postKeyboard.findFirst({
+          where: { postId, row, col },
+          select: { type: true, value: true, payload: true },
+        });
+        if (keyboard) {
+          // Check payload.type first (stored during button creation), fallback to db type
+          resolvedType = (keyboard.payload as any)?.type || keyboard.type;
+          resolvedValue = keyboard.value;
+          logger.info(`[PostClick] t=${Date.now()} keyboard lookup: dbType="${keyboard.type}" payloadType="${(keyboard.payload as any)?.type}" resolvedType="${resolvedType}" value="${resolvedValue}"`);
+        } else {
+          logger.info(`[PostClick] t=${Date.now()} no keyboard entry found for postId=${postId} row=${row} col=${col}`);
+        }
+      } else if (buttonType) {
+        // Fallback: use type from callback_data (old format)
+        resolvedType = buttonType;
+      }
+
+      // ── COMMAND dispatch: route to command resolver ──
+      if (resolvedType === 'COMMAND' && resolvedValue) {
+        logger.info(`[PostClick] t=${Date.now()} COMMAND dispatch: value="${resolvedValue}" → resolveCommand...`);
+        try {
+          const post = await postService.resolveCommand(resolvedValue);
+          if (post && post.status === 'PUBLISHED' && post.isPublished) {
+            logger.info(`[PostClick] t=${Date.now()} ✅ COMMAND resolved: post #${post.id} "${post.title}"`);
+            await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+            await sendPostToUser(ctx, post);
+            logger.info(`[PostClick] t=${Date.now()} ✅ COMMAND dispatched totalMs=${Date.now()-t0}`);
+          } else {
+            logger.warn(`[PostClick] t=${Date.now()} ❌ COMMAND not resolved: value="${resolvedValue}"`);
+          }
+        } catch (cmdErr: any) {
+          logger.error(`[PostClick] t=${Date.now()} ❌ COMMAND dispatch error: ${cmdErr.message}`);
+        }
+        return;
+      }
+
+      // ── URL / CALLBACK / other types: analytics only, no dispatch ──
+      logger.info(`[PostClick] t=${Date.now()} type="${resolvedType}" — no dispatch needed (analytics only)`);
     } catch (e: any) {
       logger.debug(`[PostClick] logClick failed: ${e?.message}`);
     }
