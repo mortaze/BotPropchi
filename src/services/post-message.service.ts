@@ -237,6 +237,15 @@ async function getPostMessageRows(postId: number): Promise<any[]> {
 
 export function buildTelegramPayload(msg: NormalizedMessage): TelegramPayload {
   const buttons = Array.isArray(msg.replyMarkup) ? msg.replyMarkup : msg.replyMarkup?.inline_keyboard;
+  console.log(`[BUILD_PAYLOAD] postId=${msg.postId} order=${msg.order} replyMarkup_type=${typeof msg.replyMarkup} isArray=${Array.isArray(msg.replyMarkup)} hasButtons=${!!buttons} btnCount=${buttons?.length ?? 0}`);
+  if (buttons) {
+    for (const [ri, row] of (Array.isArray(buttons) ? buttons : []).entries()) {
+      const rowArr = Array.isArray(row) ? row : [row];
+      for (const [ci, btn] of rowArr.entries()) {
+        console.log(`[BUILD_PAYLOAD_BTN] postId=${msg.postId} row=${ri} col=${ci} type="${(btn as any)?.type}" text="${(btn as any)?.text}" value="${(btn as any)?.value}"`);
+      }
+    }
+  }
   const reply_markup = buttons?.length ? { inline_keyboard: buildTelegramKeyboard(cloneJson(buttons), msg.postId) } : undefined;
 
   if (msg.messageType === 'forward') {
@@ -562,11 +571,16 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
 
     const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
     if (payload.reply_markup?.inline_keyboard) {
+      console.log(`[KEYBOARD_TO_TELEGRAM] postId=${msg.postId} order=${msg.order} rows=${payload.reply_markup.inline_keyboard.length} totalBtns=${payload.reply_markup.inline_keyboard.flat().length}`);
       for (const [r, row] of payload.reply_markup.inline_keyboard.entries()) {
         for (const [c, btn] of row.entries()) {
+          const cbData = btn.callback_data || btn.url || btn.copy_text?.text || '(none)';
+          console.log(`[KEYBOARD_BTN] postId=${msg.postId} row=${r} col=${c} text="${btn.text}" callback_data="${cbData}"`);
           logger.info(`[SEND_KB] postId=${msg.postId} order=${msg.order} row=${r} col=${c} text="${btn.text}" callback_data="${btn.callback_data || ''}" url="${btn.url || ''}" type_hint="${btn.login_url ? 'LOGIN_URL' : btn.web_app ? 'WEB_APP' : btn.copy_text ? 'COPY_TEXT' : btn.callback_data ? 'CALLBACK' : btn.url ? 'URL' : 'other'}"`);
         }
       }
+    } else {
+      console.log(`[KEYBOARD_TO_TELEGRAM] postId=${msg.postId} order=${msg.order} NO_KEYBOARD replyMarkup_type=${typeof msg.replyMarkup} replyMarkup_isArray=${Array.isArray(msg.replyMarkup)} replyMarkup_value=${JSON.stringify(msg.replyMarkup).substring(0, 200)}`);
     }
     // ── FINAL ALIGNMENT: recalibrate entity offsets against the exact text being sent ──
     if (Array.isArray((payload as any).entities) && (payload as any).entities.length > 0) {

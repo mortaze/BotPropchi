@@ -1885,11 +1885,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const btn: any = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value };
       if (buttonColor && buttonColor !== 'default') btn.style = buttonColor;
       buttons.push([btn]);
+      const newIdx = buttons.length - 1;
+      const cbData = btn.type === 'COMMAND' ? `post:user:cmd:${btn.value}` : btn.type === 'POPUP' ? `post:user:popup:${postId}:${newIdx}:0` : `post:user:click:${postId}:${newIdx}:0`;
+      console.log(`[BUTTON_CREATE] postId=${postId} messageIdx=${messageIdx} index=${newIdx} row=${newIdx} col=0 type="${btn.type}" text="${btn.text}" value="${btn.value}" callback_data="${cbData}" allButtons=${JSON.stringify(buttons.map((r: any[]) => r.map((b: any) => ({ type: b.type, value: b.value, text: b.text }))))}`);
     } else if (mode === 'edit' && row !== undefined && col !== undefined) {
       // Edit existing button
       if (buttons[row] && buttons[row][col]) {
         buttons[row][col] = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value, style: buttons[row][col].style };
       }
+      console.log(`[BUTTON_EDIT] postId=${postId} messageIdx=${messageIdx} row=${row} col=${col} type="${buttons[row]?.[col]?.type}" value="${buttons[row]?.[col]?.value}"`);
     }
 
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);

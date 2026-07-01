@@ -105,6 +105,8 @@ async function bootstrap() {
   bot.catch((err, ctx) => {
     const userId = ctx.from?.id;
     const updateType = (ctx as any).updateType;
+    const cbData = ctx.callbackQuery && 'data' in ctx.callbackQuery ? (ctx.callbackQuery as any).data : 'N/A';
+    console.log(`[BOT_ERROR] user=${userId} updateType=${updateType} callback_data="${cbData}" error="${(err as any).message}"`);
     logger.error(`[BOT_CATCH] Error for user=${userId} updateType=${updateType}:`, err);
 
     if (ctx.callbackQuery) {
@@ -124,6 +126,7 @@ async function bootstrap() {
     const cq = ctx.callbackQuery;
     const data = 'data' in cq ? cq.data : 'N/A';
     const userId = ctx.from?.id;
+    console.log(`[UNMATCHED_CALLBACK] user=${userId} data="${data}" — NO HANDLER MATCHED THIS CALLBACK`);
     logger.warn(`[UNMATCHED_CALLBACK] user=${userId} data="${data}" — no handler matched`);
     ctx.answerCbQuery('⚠️ این دکمه در دسترس نیست.', { show_alert: true }).catch(() => {});
   });

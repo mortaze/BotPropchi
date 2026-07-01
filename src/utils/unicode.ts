@@ -205,7 +205,11 @@ export function sanitizeTelegramExtra(extra: any): any {
                 btn.text = sanitizeTelegramText(btn.text, TELEGRAM_BUTTON_TEXT_MAX);
               }
               if (btn.callback_data && typeof btn.callback_data === 'string') {
+                const before = btn.callback_data;
                 btn.callback_data = sanitizeTelegramText(btn.callback_data, TELEGRAM_CALLBACK_DATA_MAX);
+                if (before !== btn.callback_data) {
+                  console.log(`[SANITIZE_CB] TRUNCATED! before="${before}" after="${btn.callback_data}" len=${before.length} max=${TELEGRAM_CALLBACK_DATA_MAX}`);
+                }
               }
             }
           }

@@ -260,6 +260,9 @@ export const postService = {
           if (existingMessages.length > 0) {
           const messagesFormat = (rawButtons as any)?.messages;
           if (messagesFormat && typeof messagesFormat === 'object') {
+            const msgFormatKeys = Object.keys(messagesFormat);
+            const existingMsgIds = existingMessages.map(m => String(m.id));
+            console.log(`[DB_SAVE_DEBUG] postId=${post.id} messagesFormat_keys=${JSON.stringify(msgFormatKeys)} existingMsgIds=${JSON.stringify(existingMsgIds)} MATCH=${msgFormatKeys.some(k => existingMsgIds.includes(k))}`);
             let syncedCount = 0;
             for (const msg of existingMessages) {
               const idx = String(msg.id);
@@ -267,6 +270,7 @@ export const postService = {
               const btnCount = Array.isArray(perMsgButtons) ? perMsgButtons.flat().length : 0;
               const sampleTypes = Array.isArray(perMsgButtons) ? perMsgButtons.flat().slice(0, 3).map((b: any) => `${b?.type}:${b?.value?.substring(0, 20)}`) : [];
               logger.info(`[REPLYMARKUP_SYNC] postId=${post.id} msgId=${msg.id} msgIdx=${idx} buttonCount=${btnCount} sampleTypes=[${sampleTypes.join(', ')}]`);
+              console.log(`[DB_SAVE_REPLYMARKUP] postId=${post.id} msgId=${msg.id} lookupKey="${idx}" found=${perMsgButtons !== undefined && perMsgButtons !== null} saving=${perMsgButtons !== undefined && perMsgButtons !== null ? JSON.stringify(perMsgButtons).substring(0, 200) : 'null'}`);
               await prisma.postMessage.update({
                 where: { id: msg.id },
                 data: { replyMarkup: perMsgButtons !== undefined && perMsgButtons !== null ? perMsgButtons : null } as any,
