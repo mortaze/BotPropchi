@@ -7,7 +7,7 @@ Telegram bot for prop firm discount codes with lottery, scoring, and referral sy
 - **Root** (`src/`): Main Telegram bot + Express API (TypeScript, Telegraf, Prisma)
 - **Admin** (`admin/`): Next.js 15 admin panel (calls root API via `NEXT_PUBLIC_API_URL`)
 
-Note: WordPress plugin (`wordpress-plugin/`) is referenced in docs but does NOT exist in this repo — deploy separately or remove references.
+Note: WordPress plugin was removed from this repo. `config/index.ts:60-65` and `index.ts:32-34` still reference WordPress config — stale, can be cleaned up.
 
 ## Quick Commands
 
@@ -18,7 +18,7 @@ npm run build            # tsc
 npm start                # node dist/index.js
 
 # Database (requires PostgreSQL)
-npm run db:push          # push schema to DB
+npm run db:push          # push schema to DB (NOT migration-based)
 npm run db:generate      # regenerate Prisma client only
 npm run db:seed          # seed initial data via tsx (admin: admin/admin123)
 npm run db:studio        # Prisma Studio UI
@@ -31,6 +31,8 @@ cd admin && npm run dev  # Next.js dev server
 cd admin && npm run build
 cd admin && npm run lint # next lint
 ```
+
+No lint or typecheck script exists in root `package.json`. Only the admin panel has `next lint`.
 
 ## Architecture
 
@@ -50,7 +52,49 @@ Background workers: `src/workers/` (membership, leaderboard) use BullMQ with Red
 
 One-off migration/repair scripts in `src/scripts/` and `scripts/` (not run automatically).
 
-AI responses go through WordPress plugin (`wordpress-plugin/`), not direct Gemini calls.
+AI responses go through WordPress plugin (removed from repo), not direct Gemini calls.
+
+## Handler Registration Order (CRITICAL)
+
+The order handlers are registered in `index.ts` determines which handler processes a message/callback. **Do not change this order.**
+
+```
+callback trace logger (BEFORE all middleware)
+→ middleware chain (logging→rateLimit→user→chatMember→membership→featureToggle→groupAccess)
+→ bot.start
+→ admin panel handlers
+→ menu editor
+→ dynamic post button routing (L600)
+→ various admin/user handlers
+→ lottery
+→ points/leaderboard/referral
+→ membership check
+→ ticket handlers
+→ post-handlers (LAST, registered at L1728 via registerPostHandlers())
+→ catch-all [UNMATCHED_CALLBACK] handler
+```
+
+Key implications:
+- `index.ts` handlers run BEFORE `post-handlers.ts`. The Dynamic Post Button Routing at L600 intercepts text messages before post-handlers sees them. It only skips when `post_mgmt_mode`, `menu:edit_mode`, or `post:editor:{userId}:active` is set.
+- `bot.on('text')` in `post-handlers.ts:610` has 12+ early returns that CONSUME messages without `next()`. Any `bot.hears` registered after L610 is unreachable if a state check matches.
+- `src/bot/handlers/index.ts` is a 1700+ line monolith — all bot handlers in one file; shared helpers live in `src/bot/shared.ts`. `post-handlers.ts` is 3600+ lines.
+
+## Callback Rules (Production Bugs)
+
+- **`ctx.reply()` is NOT acceptable as fallback for editMessage failures** — fix the cause of editMessage failure, never send a new message
+- **answerCbQuery is REQUIRED for ALL callback error paths**: `bot.catch()`, `rateLimitMiddleware`, and catch-all handlers MUST call `ctx.answerCbQuery()`. The Telegram loading spinner only dismisses when answerCbQuery is called.
+- **Every keyboard button needs a matching `bot.action()` handler**: orphaned callback_data patterns cause infinite loading spinner with zero logs. Use the catch-all `[UNMATCHED_CALLBACK]` log to detect orphaned patterns.
+- **Cache invalidation required after message delete**: both bot handler and API route must call `postService.invalidateCache()` after deleting a message.
+- **`safeEdit` in `shared.ts:17`** falls back to `ctx.reply()` on editMessageText failure — violates the rule above. Fix the root cause, not the fallback.
+
+## Bug Verification Protocol
+
+After fixing a bug:
+1. Create NEW command
+2. Immediately click — must work on FIRST click
+3. Repeat 10+ consecutive times
+4. If one single first click fails, bug is NOT fixed
+5. Run TS check + tests + commit + push
 
 ## Key Environment Variables
 
@@ -102,8 +146,7 @@ Admin (`admin/tsconfig.json`):
 ## Gotchas
 
 - `docker-compose.yml` is mostly commented out — the active config only runs PostgreSQL 16 and Redis 7 (ports 5432, 6379). The bot service is NOT in docker-compose — deploy via the Dockerfile which runs `npx prisma db push && node dist/index.js` at container start.
-- No linter or typecheck configured in root project; admin uses `next lint`
-- No CI/CD workflows in repo
+- **No CI/CD workflows in repo**
 - Prisma client wrapper is at `src/prisma/client.ts` (singleton PrismaClient with dev query logging); the generated client lives in `node_modules/.prisma/client`
 - All user-facing strings are in Persian (Farsi)
 - `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` are legacy/dead code — the real admin app is the Next.js frontend. Admin also has legacy bot scripts (`dev:bot`, `build:bot`, `start:bot`) in its package.json.
@@ -113,5 +156,6 @@ Admin (`admin/tsconfig.json`):
 - `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — must be set for admin to function (currently set to production Railway URL; override for local dev)
 - Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (separate directory, same Telegraf interface)
 - The Post system (`Post`, `PostMessage`, `PostButton`, `PostEntity`, `PostMedia`, `PostKeyboard`, `PostVersion`) is the richest model — posts support multi-message sequences, rich Telegram entities, inline keyboards, and version snapshots
-- `src/bot/handlers/index.ts` is a 1600+ line monolith — all bot handlers in one file; shared helpers live in `src/bot/shared.ts`
+- **BigInt serialization in post code**: Any `JSON.stringify` path touching Post data MUST use BigInt replacer `(_, v) => typeof v === 'bigint' ? v.toString() : v`. Post model has BigInt columns.
+- **Do NOT refactor command architecture**: The user explicitly rejected `command.repository.ts` creation and `post.service.ts` command method refactoring. Command button bugs are RUNTIME issues, not architectural. Do NOT create new repositories, do NOT redesign command resolution, do NOT change APIs.
 - Admin uses shadcn/ui components (Radix UI primitives + Tailwind CSS + class-variance-authority)
