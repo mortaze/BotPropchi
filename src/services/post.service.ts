@@ -1,6 +1,7 @@
 import { PostStatus, Prisma, SystemEventType } from '@prisma/client';
 import { prisma } from '../prisma/client';
 import { postRepository } from '../repositories/post.repository';
+import { commandRepository } from '../repositories/command.repository';
 import { cache, cacheKey } from '../utils/cache';
 import { redisClient } from '../utils/redis';
 import { systemLogService } from './system-log.service';
@@ -723,33 +724,13 @@ export const postService = {
   },
 
   async getCommandMap(): Promise<Map<string, any>> {
-    const cached = cache.get<Map<string, any>>(CACHE_KEY_COMMANDS);
-    if (cached) {
-      logger.info(`[CommandMap] 📦 Using cache (${cached.size} entries): [${Array.from(cached.keys()).join(', ')}]`);
-      return cached;
+    const cmdMap = await commandRepository.load();
+    const postMap = new Map<string, any>();
+    for (const [key, record] of cmdMap) {
+      const post = await this.getPostMeta(record.postId);
+      if (post) postMap.set(key, post);
     }
-    logger.info(`[CommandMap] Cache MISS — rebuilding from DB...`);
-    const posts = await postRepository.getPublished();
-    const map = new Map<string, any>();
-    for (const post of posts) {
-      if (post.command) {
-        map.set(post.command, post);
-      }
-      const cmds = (post as any).commands;
-      if (cmds && Array.isArray(cmds) && cmds.length > 0) {
-        for (const cmd of cmds) {
-          map.set(cmd.command, post);
-          if (cmd.aliases && Array.isArray(cmd.aliases)) {
-            for (const alias of cmd.aliases) {
-              map.set(alias, post);
-            }
-          }
-        }
-      }
-    }
-    logger.info(`[CommandMap] 🔄 Built map: ${map.size} entries from ${posts.length} published posts → [${Array.from(map.keys()).join(', ')}]`);
-    cache.set(CACHE_KEY_COMMANDS, map, 300);
-    return map;
+    return postMap;
   },
 
   async reorder(id: number, sortOrder: number) {
@@ -785,109 +766,52 @@ export const postService = {
   },
 
   async addCommand(postId: number, command: string, aliases?: string[]) {
-    logger.info(`[AddCommand] Creating command "${command}" for post #${postId} aliases=${JSON.stringify(aliases)}`);
-    const existing = await prisma.postCommand.findUnique({ where: { command } });
-    if (existing) throw new Error(`❌ Command /${command} already exists`);
-    const aliasConflicts = await prisma.postCommand.findMany({
-      where: { OR: [{ command }, { aliases: { array_contains: command } }] },
-    });
-    if (aliases && aliases.length > 0) {
-      const allCommands = await prisma.postCommand.findMany({
-        select: { command: true, aliases: true },
-      });
-      for (const alias of aliases) {
-        for (const cmd of allCommands) {
-          if (cmd.command === alias || ((cmd.aliases as string[]) || []).includes(alias)) {
-            throw new Error(`❌ Alias /${alias} conflicts with existing command /${cmd.command}`);
-          }
-        }
-      }
-    }
-    const result = await prisma.postCommand.create({
-      data: { postId, command, aliases: aliases ?? undefined },
-    });
-    logger.info(`[AddCommand] ✅ Created PostCommand id=${result.id} command="${command}" postId=${postId}`);
-    this.invalidateCache();
+    await commandRepository.create(postId, command, aliases);
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
       message: `Post Command Added: /${command}`,
       metadata: { postId, command } as any,
     });
     eventBus.emit(Events.COMMAND_ADDED, { postId, command });
-    logger.info(`[AddCommand] Cache invalidated, event emitted`);
-    return result;
+    return await prisma.postCommand.findFirst({ where: { postId, command } });
   },
 
   async removeCommand(commandId: number) {
     const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
     if (!cmd) throw new Error('Command not found');
-    await prisma.postCommand.delete({ where: { id: commandId } });
-    this.invalidateCache();
+    await commandRepository.delete(commandId);
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
       message: `Post Command Removed: /${cmd.command}`,
       metadata: { postId: cmd.postId, command: cmd.command } as any,
     });
     eventBus.emit(Events.COMMAND_REMOVED, { postId: cmd.postId, command: cmd.command });
-    logger.info(`[Post] Command removed: /${cmd.command}`);
   },
 
   async updateCommand(commandId: number, data: { command?: string; aliases?: string[] }) {
-    const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
-    if (!cmd) throw new Error('Command not found');
-    // Check conflict if command name is changing
-    if (data.command && data.command !== cmd.command) {
-      const conflict = await prisma.postCommand.findFirst({
-        where: { command: data.command, NOT: { id: commandId } },
-      });
-      if (conflict) throw new Error(`Command /${data.command} already exists`);
-    }
-    const updated = await prisma.postCommand.update({
-      where: { id: commandId },
-      data: { ...(data.command && { command: data.command }), ...(data.aliases && { aliases: data.aliases }) },
-    });
-    this.invalidateCache();
+    await commandRepository.update(commandId, data);
+    const updated = await prisma.postCommand.findUnique({ where: { id: commandId } });
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
-      message: `Post Command Updated: /${updated.command}`,
+      message: `Post Command Updated: /${updated?.command}`,
       metadata: { commandId, changes: Object.keys(data) } as any,
     });
-    eventBus.emit(Events.COMMAND_UPDATED, { commandId, command: updated.command });
-    logger.info(`[Post] Command updated: /${updated.command} (id: ${commandId})`);
+    eventBus.emit(Events.COMMAND_UPDATED, { commandId, command: updated?.command });
     return updated;
   },
 
   async addCommandAlias(commandId: number, alias: string) {
+    await commandRepository.addAlias(commandId, alias);
     const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
-    if (!cmd) throw new Error('Command not found');
-    const conflict = await prisma.postCommand.findFirst({
-      where: {
-        NOT: { id: commandId },
-        OR: [{ command: alias }, { aliases: { array_contains: alias } }],
-      },
-    });
-    if (conflict) throw new Error(`❌ Alias /${alias} conflicts with command /${conflict.command}`);
-    const aliases = (cmd.aliases as string[]) || [];
-    if (aliases.includes(alias)) throw new Error(`Alias /${alias} already exists on this command`);
-    aliases.push(alias);
-    await prisma.postCommand.update({ where: { id: commandId }, data: { aliases } });
-    this.invalidateCache();
     await systemLogService.log({
       eventType: SystemEventType.ADMIN_ACTION,
-      message: `Post Command Alias Added: /${alias} -> /${cmd.command}`,
-      metadata: { postId: cmd.postId, command: cmd.command, alias } as any,
+      message: `Post Command Alias Added: /${alias} -> /${cmd?.command}`,
+      metadata: { postId: cmd?.postId, command: cmd?.command, alias } as any,
     });
-    logger.info(`[Post] Command alias added: /${alias} -> /${cmd.command}`);
   },
 
   async removeCommandAlias(commandId: number, alias: string) {
-    const cmd = await prisma.postCommand.findUnique({ where: { id: commandId } });
-    if (!cmd) throw new Error('Command not found');
-    const aliases = (cmd.aliases as string[]) || [];
-    const filtered = aliases.filter((a: string) => a !== alias);
-    await prisma.postCommand.update({ where: { id: commandId }, data: { aliases: filtered } });
-    this.invalidateCache();
-    logger.info(`[Post] Command alias removed: /${alias}`);
+    await commandRepository.removeAlias(commandId, alias);
   },
 
   async getCommands(postId: number) {
@@ -895,57 +819,31 @@ export const postService = {
   },
 
   async getCommandByPostId(postId: number) {
-    return prisma.postCommand.findFirst({ where: { postId } });
+    return commandRepository.getByPostId(postId);
   },
 
   async setCommand(postId: number, command: string) {
-    logger.info(`[SetCommand] Creating command "${command}" for post #${postId}`);
-    const conflict = await prisma.postCommand.findFirst({
-      where: { command, NOT: { postId } },
-    });
-    if (conflict) throw new Error(`دستور /${command} قبلاً برای پست دیگری ثبت شده است`);
-    await prisma.postCommand.deleteMany({ where: { postId } });
-    const result = await prisma.postCommand.create({
-      data: { postId, command },
-    });
-    logger.info(`[SetCommand] ✅ Created PostCommand id=${result.id} command="${command}" postId=${postId}`);
-    this.invalidateCache();
+    await commandRepository.deleteByPostId(postId);
+    await commandRepository.create(postId, command);
     eventBus.emit(Events.COMMAND_ADDED, { postId, command });
-    logger.info(`[SetCommand] Cache invalidated, event emitted`);
-    return result;
   },
 
   async removeCommandByPostId(postId: number) {
-    const cmd = await prisma.postCommand.findFirst({ where: { postId } });
-    if (!cmd) throw new Error('دستوری برای این پست ثبت نشده است');
-    await prisma.postCommand.deleteMany({ where: { postId } });
-    this.invalidateCache();
-    eventBus.emit(Events.COMMAND_REMOVED, { postId, command: cmd.command });
-    logger.info(`[Post] Command removed for post ${postId}: /${cmd.command}`);
+    const existing = await commandRepository.getByPostId(postId);
+    if (!existing) throw new Error('No command for this post');
+    await commandRepository.deleteByPostId(postId);
+    eventBus.emit(Events.COMMAND_REMOVED, { postId, command: existing.command });
   },
 
   async resolveCommand(command: string): Promise<any | null> {
-    logger.info(`[CommandResolve] ▶ START requested="${command}"`);
-    const map = await this.getCommandMap();
-    const mapKeys = Array.from(map.keys());
-    logger.info(`[CommandResolve] Map has ${map.size} entries: [${mapKeys.join(', ')}]`);
-    const found = map.get(command);
-    if (found) {
-      logger.info(`[CommandResolve] ✅ Map HIT: "${command}" → post #${found.id} "${found.title}"`);
-      return found;
+    const record = await commandRepository.resolve(command);
+    if (!record) return null;
+    const post = await this.getPostMeta(record.postId);
+    if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
+      logger.warn(`[ResolveCommand] Command "${command}" resolved to post #${record.postId} but post not published (status=${post?.status} isPublished=${post?.isPublished})`);
+      return null;
     }
-    logger.info(`[CommandResolve] Map MISS for "${command}". Falling back to DB...`);
-    const dbPost = await postRepository.findByCommand(command);
-    if (dbPost && dbPost.status === 'PUBLISHED' && dbPost.isPublished) {
-      logger.info(`[CommandResolve] ✅ DB HIT: "${command}" → post #${dbPost.id} "${dbPost.title}"`);
-      this.invalidateCache();
-      return normalizePost(dbPost);
-    }
-    if (dbPost) {
-      logger.warn(`[CommandResolve] DB found post #${dbPost.id} but status=${dbPost.status} isPublished=${dbPost.isPublished} — NOT returning`);
-    }
-    logger.warn(`[CommandResolve] ❌ NOT FOUND: "${command}" (checked map with ${map.size} entries + DB fallback)`);
-    return null;
+    return post;
   },
 
   async saveVersion(postId: number) {
@@ -986,11 +884,11 @@ export const postService = {
   },
 
   invalidateCache() {
-    logger.info(`[CacheInvalidate] Clearing published, commands, menu, title caches`);
     cache.del(CACHE_KEY_PUBLISHED);
     cache.del(CACHE_KEY_COMMANDS);
     cache.del(CACHE_KEY_MENU);
     cache.delByPrefix(CACHE_KEY_TITLE);
+    commandRepository.invalidate();
   },
 
   setupCacheListeners() {
