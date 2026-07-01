@@ -238,9 +238,13 @@ function extractButtonsForMessage(post: any, messageId: number): any[][] {
       if (kb.row === undefined) continue;
       if (!grouped[kb.row]) grouped[kb.row] = [];
       const baseStyle = kb.payload?.style;
-      grouped[kb.row][kb.col || 0] = kb.payload
-        ? { ...kb.payload, text: kb.text, type: kb.type === 'URL' ? 'URL' : kb.type === 'CALLBACK' ? 'CALLBACK' : 'NATIVE', value: kb.value }
-        : { text: kb.text, type: kb.type === 'URL' ? 'URL' : kb.type === 'CALLBACK' ? 'CALLBACK' : 'NATIVE', value: kb.value, style: baseStyle || undefined };
+      const rawType = kb.type;
+      const normalizedType = kb.type === 'URL' ? 'URL' : kb.type === 'CALLBACK' ? 'CALLBACK' : 'NATIVE';
+      const reconstructed = kb.payload
+        ? { ...kb.payload, text: kb.text, type: normalizedType, value: kb.value }
+        : { text: kb.text, type: normalizedType, value: kb.value, style: baseStyle || undefined };
+      logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} row=${kb.row} col=${kb.col} db_type="${rawType}" → reconstructed_type="${reconstructed.type}" text="${kb.text}" value="${kb.value}" payload_type="${kb.payload?.type || 'none'}"`);
+      grouped[kb.row][kb.col || 0] = reconstructed;
     }
     const rows = Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(k => grouped[Number(k)].filter(Boolean));
     if (rows.some(r => r.length > 0)) return rows;
@@ -249,11 +253,14 @@ function extractButtonsForMessage(post: any, messageId: number): any[][] {
   if (post.messages && Array.isArray(post.messages)) {
     const msg = post.messages.find((m: any) => m.id === messageId);
     if (msg && msg.replyMarkup && Array.isArray(msg.replyMarkup)) {
+      logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} using replyMarkup (${msg.replyMarkup.length} rows)`);
       return msg.replyMarkup;
     }
   }
 
-  return getMessageButtons((post as any).buttons, messageId);
+  const fallbackBtns = getMessageButtons((post as any).buttons, messageId);
+  logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} fallback to post.buttons (${fallbackBtns.length} rows)`);
+  return fallbackBtns;
 }
 
 function setMessageButtons(raw: any, messageIdx: number, buttons: any[][]): any {

@@ -561,6 +561,13 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
     }
 
     const payload = sanitizeEntities(buildTelegramPayload(msg), msg.id);
+    if (payload.reply_markup?.inline_keyboard) {
+      for (const [r, row] of payload.reply_markup.inline_keyboard.entries()) {
+        for (const [c, btn] of row.entries()) {
+          logger.info(`[SEND_KB] postId=${msg.postId} order=${msg.order} row=${r} col=${c} text="${btn.text}" callback_data="${btn.callback_data || ''}" url="${btn.url || ''}" type_hint="${btn.login_url ? 'LOGIN_URL' : btn.web_app ? 'WEB_APP' : btn.copy_text ? 'COPY_TEXT' : btn.callback_data ? 'CALLBACK' : btn.url ? 'URL' : 'other'}"`);
+        }
+      }
+    }
     // ── FINAL ALIGNMENT: recalibrate entity offsets against the exact text being sent ──
     if (Array.isArray((payload as any).entities) && (payload as any).entities.length > 0) {
       (payload as any).entities = normalizeFinalEntities((payload as any).text ?? '', (payload as any).entities);

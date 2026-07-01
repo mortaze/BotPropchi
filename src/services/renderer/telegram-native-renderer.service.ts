@@ -63,6 +63,7 @@ function telegramLength(text: string) {
 function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number) {
   const text = sanitizeTelegramText(btn?.text || 'Link', 128);
   const value = btn?.value || btn?.url || btn?.callback_data || '';
+  const btnType = btn?.type || 'UNKNOWN';
   let result: any;
   switch (btn?.type) {
     case 'URL': result = Markup.button.url(text, value); break;
@@ -84,6 +85,8 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number)
     case 'INTERNAL_NAV': result = Markup.button.callback(text, `post:user:nav:${postId}:${row}:${col}`); break;
     default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, `post:user:click:${postId}:${row}:${col}`); break;
   }
+  const finalCb = result?.callback_data || result?.url || '(no callback)';
+  logger.info(`[BTN_RENDER] postId=${postId} row=${row} col=${col} type="${btnType}" text="${text}" value="${value}" → callback_data="${finalCb}"`);
   // Preserve all extra properties from original button (e.g. style)
   if (result && btn) {
     for (const key of Object.keys(btn)) {

@@ -249,6 +249,9 @@ export const postService = {
             for (const msg of existingMessages) {
               const idx = String(msg.id);
               const perMsgButtons = (messagesFormat as any)[idx];
+              const btnCount = Array.isArray(perMsgButtons) ? perMsgButtons.flat().length : 0;
+              const sampleTypes = Array.isArray(perMsgButtons) ? perMsgButtons.flat().slice(0, 3).map((b: any) => `${b?.type}:${b?.value?.substring(0, 20)}`) : [];
+              logger.info(`[REPLYMARKUP_SYNC] postId=${post.id} msgId=${msg.id} msgIdx=${idx} buttonCount=${btnCount} sampleTypes=[${sampleTypes.join(', ')}]`);
               await prisma.postMessage.update({
                 where: { id: msg.id },
                 data: { replyMarkup: perMsgButtons !== undefined && perMsgButtons !== null ? perMsgButtons : null } as any,
@@ -271,16 +274,21 @@ export const postService = {
               : (Array.isArray(rawButtons) && msg === existingMessages[existingMessages.length - 1] ? rawButtons : null);
             if (!Array.isArray(msgBtns) || msgBtns.length === 0) continue;
             const newRows = msgBtns.flatMap((row: any[], r: number) =>
-              row.map((btn: any, c: number) => ({
-                postId: post.id,
-                messageId: msg.id,
-                row: r,
-                col: c,
-                text: btn.text || btn.label || '',
-                type: btn.url ? 'URL' : btn.callback_data ? 'CALLBACK' : btn.type || 'NATIVE',
-                value: btn.url || btn.callback_data || btn.value || null,
-                payload: btn,
-              }))
+              row.map((btn: any, c: number) => {
+                const dbType = btn.url ? 'URL' : btn.callback_data ? 'CALLBACK' : btn.type || 'NATIVE';
+                const dbValue = btn.url || btn.callback_data || btn.value || null;
+                logger.info(`[BTN_SYNC] postId=${post.id} msgId=${msg.id} row=${r} col=${c} input_type="${btn.type}" input_value="${btn.value}" → db_type="${dbType}" db_value="${dbValue}"`);
+                return {
+                  postId: post.id,
+                  messageId: msg.id,
+                  row: r,
+                  col: c,
+                  text: btn.text || btn.label || '',
+                  type: dbType,
+                  value: dbValue,
+                  payload: btn,
+                };
+              })
             );
             await prisma.$transaction([
               prisma.postKeyboard.deleteMany({ where: { messageId: msg.id } }),
