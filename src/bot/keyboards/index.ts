@@ -85,12 +85,10 @@ export function buildMiniAppProfileKeyboard() {
 export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   const rows: string[][] = [];
   if (canBroadcast) rows.push(['📢 پیام همگانی']);
-  rows.push(['📝 پست‌ها']);
-  rows.push(['🎛 ویرایش منو']);
+  rows.push(['📝 پست‌ها', '🎛 ویرایش منو']);
   rows.push(['👥 مدیریت ادمین‌ها']);
-  rows.push(['📊 گزارشات']);
-  rows.push(['🎫 تیکت‌ها']);
-  rows.push(['⚙️ تنظیمات', '↩️ بازگشت به منوی اصلی']);
+  rows.push(['📊 گزارشات', '🎫 تیکت‌ها']);
+  rows.push(['↩️ بازگشت به منوی اصلی']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
