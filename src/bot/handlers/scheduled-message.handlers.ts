@@ -325,25 +325,42 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       ...logs.map((l: any) => `  ${new Date(l.sentAt).toLocaleString('fa-IR')} — ${l.status === 'SUCCESS' ? '✅' : '❌'}`),
     ].join('\n');
     await ctx.reply(text);
+  });
 
-    // Diagnostic: show raw DB state
-    const raw = await prisma.scheduledMessage.findUnique({ where: { id: msgId } });
-    if (raw) {
-      const diag = [
-        '🔍 **وضعیت دیتابیس:**',
-        `ID: ${raw.id}`,
-        `isPublished: ${raw.isPublished}`,
-        `status: ${raw.status}`,
-        `intervalMinutes: ${raw.intervalMinutes}`,
-        `startTime: ${raw.startTime}`,
-        `targetChatId: ${raw.targetChatId}`,
-        `targetTopicId: ${raw.targetTopicId}`,
-        `nextSendAt: ${raw.nextSendAt?.toISOString() ?? 'NULL'}`,
-        `sendCount: ${raw.sendCount}`,
-        `lastSentAt: ${raw.lastSentAt?.toISOString() ?? 'NULL'}`,
-      ].join('\n');
-      await ctx.reply(diag, { parse_mode: 'Markdown' });
+  // ─── Debug: Scheduler Status ──
+  bot.hears('📊 وضعیت Scheduler', async (ctx: any) => {
+    const msgId = scheduledMessageState.getEditMode(ctx.from.id);
+    if (!msgId) {
+      await ctx.reply('❌ پستی انتخاب نشده.');
+      return;
     }
+    const status = await scheduledMessageService.getSchedulerStatus(msgId);
+    if (!status) {
+      await ctx.reply('❌ پست یافت نشد.');
+      return;
+    }
+    const diffText = status.diffMinutes != null
+      ? (status.diffMinutes > 0 ? `${status.diffMinutes} دقیقه دیگر` : 'الان!')
+      : '—';
+    const text = [
+      '📊 **وضعیت Scheduler**',
+      '',
+      `ID: ${status.id}`,
+      `عنوان: ${status.title}`,
+      `⏰ ساعت شروع: ${status.startTime ?? '—'}`,
+      `⏱ بازه: ${status.intervalMinutes ?? '—'} دقیقه`,
+      `🕐 آخرین ارسال: ${status.lastSentAt}`,
+      `📍 nextSendAt (DB): ${status.nextSendAtDB}`,
+      `📍 nextDue (محاسبه): ${status.nextDueCalculated}`,
+      `⏳ اختلاف: ${diffText}`,
+      `📊 تعداد ارسال: ${status.sendCount}`,
+      `👥 گروه: ${status.targetChatId}`,
+      `📌 تاپیک: ${status.targetTopicId}`,
+      '',
+      `🔘 IS_DUE: ${status.isDue ? '✅ YES' : '❌ NO'}`,
+      `📝 علت: ${status.reason}`,
+    ].join('\n');
+    await ctx.reply(text, { parse_mode: 'Markdown' });
   });
 
   bot.hears('🗑 حذف پست', async (ctx: any) => {
@@ -380,7 +397,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       '➕ ایجاد پست جدید', '📋 لیست پست‌ها', '📊 گزارش ارسال',
       '🔙 بازگشت به پنل ادمین', '➕ افزودن پیام', '⏰ تنظیم زمان‌بندی',
       '👥 انتخاب گروه', '📖 دستور', '✅ انتشار', '📊 آمار',
-      '🧪 ارسال تستی',
+      '🧪 ارسال تستی', '📊 وضعیت Scheduler',
       '🗑 حذف پست', '🔙 بازگشت', '🔙 بازگشت به لیست', '❌ لغو',
       '❌ حذف دستور',
     ];

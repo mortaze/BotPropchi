@@ -7,46 +7,69 @@ import { sanitizeTelegramText, sanitizeTelegramExtra, validateDbInput } from '..
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// ─── Core Scheduling Logic ────────────────────────────────
+
 /**
- * Calculate the first occurrence of a recurring schedule.
- *
- * Algorithm:
- *   1. Take today's date at the given HH:MM (in UTC)
- *   2. If that moment is still in the future → that's the answer
- *   3. Otherwise keep adding `intervalMinutes` until we land in the future
- *
- * This is the ONLY function that computes a first-send time.
- * After the first send, nextSendAt is always: previousNextSendAt + interval.
+ * Compute the first send time from startTime on today's date.
+ * If today's slot passed, advance by interval until we land in the future.
  */
-export function calculateFirstOccurrence(intervalMinutes: number, startTime: string): Date {
+function firstOccurrence(intervalMinutes: number, startTime: string): Date {
   const [h, m] = startTime.split(':').map(Number);
   const now = new Date();
-  const first = new Date(Date.UTC(
-    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
-    h, m, 0, 0,
-  ));
-
-  while (first.getTime() <= now.getTime()) {
-    first.setTime(first.getTime() + intervalMinutes * 60_000);
+  const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h, m, 0, 0));
+  while (t.getTime() <= now.getTime()) {
+    t.setTime(t.getTime() + intervalMinutes * 60_000);
   }
-
-  return first;
+  return t;
 }
 
 /**
- * Advance to the next send slot.
- * Called ONLY after a successful send — never from publish, edit, or open-editor.
+ * Compute the next due time for a scheduled message.
+ * This is the SINGLE source of truth — used by scheduler, display, and test send.
+ *
+ * Rules:
+ *   - lastSentAt is null  → firstOccurrence(startTime)
+ *   - lastSentAt exists   → lastSentAt + intervalMinutes
  */
-function advanceNextSendAt(previousNextSendAt: Date, intervalMinutes: number): Date {
-  return new Date(previousNextSendAt.getTime() + intervalMinutes * 60_000);
+export function computeNextDue(intervalMinutes: number, startTime: string, lastSentAt: Date | null): Date {
+  if (!lastSentAt) {
+    return firstOccurrence(intervalMinutes, startTime);
+  }
+  return new Date(lastSentAt.getTime() + intervalMinutes * 60_000);
 }
+
+/**
+ * Decide whether a message should be sent NOW.
+ * Single implementation — used by scheduler AND display.
+ */
+function isDue(msg: {
+  isPublished: boolean;
+  status: string;
+  intervalMinutes: number | null;
+  startTime: string | null;
+  targetChatId: any;
+  lastSentAt: Date | null;
+}, now: Date): { due: boolean; reason: string } {
+  if (!msg.isPublished) return { due: false, reason: 'isPublished=false' };
+  if (msg.status !== PostStatus.PUBLISHED) return { due: false, reason: `status=${msg.status}` };
+  if (msg.intervalMinutes == null || msg.intervalMinutes <= 0) return { due: false, reason: 'INVALID_INTERVAL' };
+  if (!msg.startTime) return { due: false, reason: 'MISSING_START_TIME' };
+  if (msg.targetChatId == null) return { due: false, reason: 'MISSING_CHAT' };
+
+  const nextDue = computeNextDue(msg.intervalMinutes, msg.startTime, msg.lastSentAt);
+  if (nextDue.getTime() > now.getTime()) {
+    return { due: false, reason: `WAITING_UNTIL ${nextDue.toISOString()}` };
+  }
+
+  return { due: true, reason: 'OK' };
+}
+
+// ─── Service ──────────────────────────────────────────────
 
 class ScheduledMessageService {
   private bot?: Telegraf;
 
-  setBot(bot: Telegraf) {
-    this.bot = bot;
-  }
+  setBot(bot: Telegraf) { this.bot = bot; }
 
   // ─── CRUD ────────────────────────────────────────────────
 
@@ -65,9 +88,6 @@ class ScheduledMessageService {
     return scheduledMessageRepository.delete(id);
   }
 
-  /**
-   * Publish — the ONLY place that computes nextSendAt for the first time.
-   */
   async publish(id: number) {
     const msg = await scheduledMessageRepository.findById(id);
     if (!msg) throw new Error('Post not found');
@@ -76,29 +96,27 @@ class ScheduledMessageService {
     if (!msg.startTime) throw new Error('startTime is missing');
     if ((msg.messages?.length || 0) === 0) throw new Error('No messages to send');
 
-    const nextSendAt = calculateFirstOccurrence(msg.intervalMinutes, msg.startTime);
+    // Compute first occurrence for display — scheduler will recompute from lastSentAt
+    const nextSendAt = firstOccurrence(msg.intervalMinutes, msg.startTime);
 
     logger.info(
       `[SchedMsg] PUBLISH msg=${id} | interval=${msg.intervalMinutes}min | start=${msg.startTime} | ` +
-      `chatId=${msg.targetChatId} | topicId=${msg.targetTopicId ?? 'null'} | ` +
-      `nextSendAt=${nextSendAt.toISOString()} | now=${new Date().toISOString()}`
+      `chatId=${msg.targetChatId} | topicId=${msg.targetTopicId ?? 'null'} | nextSendAt=${nextSendAt.toISOString()}`
     );
 
     await scheduledMessageRepository.update(id, {
       status: PostStatus.PUBLISHED,
       isPublished: true,
-      nextSendAt,
+      nextSendAt, // display-only cache
     });
 
     const verify = await scheduledMessageRepository.findById(id);
-    logger.info(`[SchedMsg] PERSIST VERIFY: nextSendAt=${verify?.nextSendAt?.toISOString() ?? 'NULL'}`);
+    logger.info(`[SchedMsg] PERSIST VERIFY: isPublished=${verify?.isPublished} status=${verify?.status} nextSendAt=${verify?.nextSendAt?.toISOString() ?? 'NULL'}`);
   }
 
   async unpublish(id: number) {
     return scheduledMessageRepository.update(id, {
-      status: PostStatus.DRAFT,
-      isPublished: false,
-      nextSendAt: null,
+      status: PostStatus.DRAFT, isPublished: false, nextSendAt: null,
     });
   }
 
@@ -139,9 +157,7 @@ class ScheduledMessageService {
   }
 
   async listMessages(scheduledMessageId: number) {
-    return prisma.scheduledMessageMessage.findMany({
-      where: { scheduledMessageId }, orderBy: { order: 'asc' },
-    });
+    return prisma.scheduledMessageMessage.findMany({ where: { scheduledMessageId }, orderBy: { order: 'asc' } });
   }
 
   // ─── Button Management ───────────────────────────────────
@@ -161,12 +177,10 @@ class ScheduledMessageService {
   }
 
   async listButtons(scheduledMessageId: number) {
-    return prisma.scheduledMessageButton.findMany({
-      where: { scheduledMessageId }, orderBy: [{ row: 'asc' }, { col: 'asc' }],
-    });
+    return prisma.scheduledMessageButton.findMany({ where: { scheduledMessageId }, orderBy: [{ row: 'asc' }, { col: 'asc' }] });
   }
 
-  // ─── Scheduler ───────────────────────────────────────────
+  // ─── Scheduler (new architecture) ────────────────────────
 
   async processDueScheduled() {
     const now = new Date();
@@ -176,47 +190,47 @@ class ScheduledMessageService {
       where: { isPublished: true, status: PostStatus.PUBLISHED },
       select: {
         id: true, title: true, intervalMinutes: true, startTime: true,
-        nextSendAt: true, lastSentAt: true, sendCount: true,
+        lastSentAt: true, sendCount: true, nextSendAt: true,
         targetChatId: true, targetTopicId: true, isPublished: true, status: true,
       },
     });
 
     logger.info(`[SchedMsg] Published count: ${allPublished.length}`);
 
+    const dueIds: number[] = [];
+
     for (const m of allPublished) {
-      const isDue = m.nextSendAt != null && m.nextSendAt.getTime() <= now.getTime();
-      const reasons: string[] = [];
-      if (m.nextSendAt == null) reasons.push('nextSendAt=null');
-      if (m.nextSendAt && m.nextSendAt.getTime() > now.getTime()) reasons.push(`nextSendAt=${m.nextSendAt.toISOString()} > NOW`);
-      if (m.intervalMinutes == null) reasons.push('intervalMinutes=null');
-      if (m.targetChatId == null) reasons.push('targetChatId=null');
-      if (!m.isPublished) reasons.push('isPublished=false');
-      if (m.status !== PostStatus.PUBLISHED) reasons.push(`status=${m.status}`);
+      const { due, reason } = isDue(m, now);
+      const nextDue = (m.intervalMinutes && m.startTime)
+        ? computeNextDue(m.intervalMinutes, m.startTime, m.lastSentAt)
+        : null;
 
       logger.info(
         `[SchedMsg] #${m.id} "${m.title}" | NOW=${now.toISOString()} | ` +
         `START=${m.startTime} | INTERVAL=${m.intervalMinutes}min | ` +
         `LAST_SENT=${m.lastSentAt?.toISOString() ?? 'never'} | ` +
-        `NEXT_SEND=${m.nextSendAt?.toISOString() ?? 'NULL'} | ` +
+        `NEXT_DUE=${nextDue?.toISOString() ?? 'NULL'} | ` +
+        `NEXT_SEND_DB=${m.nextSendAt?.toISOString() ?? 'NULL'} | ` +
         `CHAT=${m.targetChatId ?? 'NULL'} | TOPIC=${m.targetTopicId ?? 'NULL'} | ` +
         `COUNT=${m.sendCount} | ` +
-        `IS_DUE=${isDue ? 'YES' : 'NO'} ${reasons.length ? '(' + reasons.join(', ') + ')' : ''}`
+        `IS_DUE=${due ? 'YES' : 'NO'} | WHY=${reason}`
       );
+
+      if (due) dueIds.push(m.id);
     }
 
-    const due = await scheduledMessageRepository.findDueForSending();
-    logger.info(`[SchedMsg] Due count: ${due.length}`);
+    logger.info(`[SchedMsg] Due count: ${dueIds.length}`);
 
-    for (const msg of due) {
-      await this.sendToGroup(msg);
+    // Load full records (with messages + buttons) only for due items
+    for (const id of dueIds) {
+      const full = await scheduledMessageRepository.findById(id);
+      if (full) {
+        logger.info(`[SchedMsg] ▶ SEND_START #${id} "${full.title}"`);
+        await this.sendToGroup(full);
+      }
     }
   }
 
-  /**
-   * Send a post to its target group.
-   * After success: nextSendAt = previousNextSendAt + interval.
-   * NEVER recalculates from current time.
-   */
   async sendToGroup(msg: any) {
     if (!this.bot || !msg.targetChatId) {
       logger.warn(`[SchedMsg] SKIP msg=${msg.id}: bot=${!!this.bot} chatId=${msg.targetChatId}`);
@@ -257,9 +271,9 @@ class ScheduledMessageService {
         if (messages.length > 1) await sleep(100);
       }
 
-      // ─── After successful send: advance nextSendAt ───────
-      const nextSendAt = msg.intervalMinutes && msg.nextSendAt
-        ? advanceNextSendAt(msg.nextSendAt, msg.intervalMinutes)
+      // ─── After successful send: lastSentAt=now, nextSendAt=computeNextDue ───
+      const nextSendAt = (msg.intervalMinutes && msg.startTime)
+        ? computeNextDue(msg.intervalMinutes, msg.startTime, new Date())
         : null;
 
       await prisma.scheduledMessage.update({
@@ -268,16 +282,12 @@ class ScheduledMessageService {
       });
 
       logger.info(
-        `[SchedMsg] SEND_OK msg=${msg.id} | ` +
-        `lastSentAt=NOW | sendCount=${(msg.sendCount || 0) + 1} | ` +
-        `nextSendAt=${nextSendAt?.toISOString() ?? 'NULL'}`
+        `[SchedMsg] SEND_OK msg=${msg.id} | lastSentAt=NOW | ` +
+        `sendCount=${(msg.sendCount || 0) + 1} | nextSendAt=${nextSendAt?.toISOString() ?? 'NULL'}`
       );
 
       await scheduledMessageRepository.logDelivery({
-        scheduledMessageId: msg.id,
-        targetChatId: msg.targetChatId,
-        targetTopicId: msg.targetTopicId,
-        status: 'SUCCESS',
+        scheduledMessageId: msg.id, targetChatId: msg.targetChatId, targetTopicId: msg.targetTopicId, status: 'SUCCESS',
       });
     } catch (error: any) {
       const errMsg = error?.message || String(error);
@@ -287,22 +297,17 @@ class ScheduledMessageService {
         const waitSec = error.response.parameters.retry_after;
         logger.warn(`[SchedMsg] FLOOD_WAIT msg=${msg.id} retryAfter=${waitSec}s`);
         await prisma.scheduledMessage.update({
-          where: { id: msg.id },
-          data: { nextSendAt: new Date(Date.now() + waitSec * 1000) },
+          where: { id: msg.id }, data: { nextSendAt: new Date(Date.now() + waitSec * 1000) },
         });
       }
 
       await scheduledMessageRepository.logDelivery({
-        scheduledMessageId: msg.id,
-        targetChatId: msg.targetChatId,
-        targetTopicId: msg.targetTopicId,
-        status: 'FAILED',
-        errorMessage: errMsg.slice(0, 900),
+        scheduledMessageId: msg.id, targetChatId: msg.targetChatId, targetTopicId: msg.targetTopicId, status: 'FAILED', errorMessage: errMsg.slice(0, 900),
       });
     }
   }
 
-  // ─── Test Send (same pipeline as scheduler) ─────────────
+  // ─── Test Send (same pipeline) ──────────────────────────
 
   async testSend(id: number) {
     const msg = await scheduledMessageRepository.findById(id);
@@ -310,10 +315,39 @@ class ScheduledMessageService {
     if (!msg.targetChatId) throw new Error('targetChatId is missing');
     if ((msg.messages?.length || 0) === 0) throw new Error('No messages');
 
-    logger.info(`[SchedMsg] TEST_SEND msg=${id} — running same pipeline as scheduler`);
-
-    // Same validation + send as processDueScheduled
+    logger.info(`[SchedMsg] TEST_SEND msg=${id}`);
     await this.sendToGroup(msg);
+  }
+
+  // ─── Debug / Status ─────────────────────────────────────
+
+  async getSchedulerStatus(id: number) {
+    const msg = await scheduledMessageRepository.findById(id);
+    if (!msg) return null;
+
+    const now = new Date();
+    const nextDue = (msg.intervalMinutes && msg.startTime)
+      ? computeNextDue(msg.intervalMinutes, msg.startTime, msg.lastSentAt)
+      : null;
+    const { due, reason } = isDue(msg, now);
+    const diffMs = nextDue ? nextDue.getTime() - now.getTime() : null;
+    const diffMin = diffMs != null ? Math.round(diffMs / 60000) : null;
+
+    return {
+      id: msg.id,
+      title: msg.title,
+      startTime: msg.startTime,
+      intervalMinutes: msg.intervalMinutes,
+      lastSentAt: msg.lastSentAt?.toISOString() ?? 'never',
+      nextSendAtDB: msg.nextSendAt?.toISOString() ?? 'NULL',
+      nextDueCalculated: nextDue?.toISOString() ?? 'NULL',
+      diffMinutes: diffMin,
+      isDue: due,
+      reason,
+      sendCount: msg.sendCount,
+      targetChatId: msg.targetChatId?.toString() ?? 'NULL',
+      targetTopicId: msg.targetTopicId?.toString() ?? 'NULL',
+    };
   }
 
   // ─── Emergency Stop ──────────────────────────────────────
@@ -321,8 +355,6 @@ class ScheduledMessageService {
   async emergencyStop() {
     return scheduledMessageRepository.disableAll();
   }
-
-  // ─── Stats ───────────────────────────────────────────────
 
   async getStats() {
     return scheduledMessageRepository.getStats();
