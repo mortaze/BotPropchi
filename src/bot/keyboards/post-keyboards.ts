@@ -338,9 +338,6 @@ export const buildMenuItemEditKeyboard = (row: number, col: number, button: any,
     Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `menu:item:toggle:${row}:${col}`),
     Markup.button.callback('✏️ تغییر نام', `menu:item:rename:${row}:${col}`),
   ]);
-  rows.push([
-    Markup.button.callback('🔙 بازگشت', 'menu:item:back'),
-  ]);
   return Markup.inlineKeyboard(rows);
 };
 

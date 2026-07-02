@@ -20,7 +20,7 @@ npm start                # node dist/index.js
 # Database (requires PostgreSQL)
 npm run db:push          # push schema to DB (NOT migration-based)
 npm run db:generate      # regenerate Prisma client only
-npm run db:seed          # seed initial data via tsx (admin: admin/admin123)
+npm run db:seed          # seed initial data (admin: admin/admin123)
 npm run db:studio        # Prisma Studio UI
 
 # Testing (pure unit tests, no DB/Redis needed)
@@ -85,7 +85,7 @@ Key implications:
 - **answerCbQuery is REQUIRED for ALL callback error paths**: `bot.catch()`, `rateLimitMiddleware`, and catch-all handlers MUST call `ctx.answerCbQuery()`. The Telegram loading spinner only dismisses when answerCbQuery is called.
 - **Every keyboard button needs a matching `bot.action()` handler**: orphaned callback_data patterns cause infinite loading spinner with zero logs. Use the catch-all `[UNMATCHED_CALLBACK]` log to detect orphaned patterns.
 - **Cache invalidation required after message delete**: both bot handler and API route must call `postService.invalidateCache()` after deleting a message.
-- **`safeEdit` in `shared.ts:17`** falls back to `ctx.reply()` on editMessageText failure — violates the rule above. Fix the root cause, not the fallback.
+- **`safeEdit` in `shared.ts:6`** falls back to `ctx.reply()` on editMessageText failure — violates the rule above. Fix the root cause, not the fallback.
 
 ## Bug Verification Protocol
 
@@ -156,6 +156,6 @@ Admin (`admin/tsconfig.json`):
 - `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — must be set for admin to function (currently set to production Railway URL; override for local dev)
 - Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (separate directory, same Telegraf interface)
 - The Post system (`Post`, `PostMessage`, `PostButton`, `PostEntity`, `PostMedia`, `PostKeyboard`, `PostVersion`) is the richest model — posts support multi-message sequences, rich Telegram entities, inline keyboards, and version snapshots
-- **BigInt serialization in post code**: Any `JSON.stringify` path touching Post data MUST use BigInt replacer `(_, v) => typeof v === 'bigint' ? v.toString() : v`. Post model has BigInt columns.
+- **BigInt serialization**: Any `JSON.stringify` path touching Prisma data MUST use BigInt replacer `(_, v) => typeof v === 'bigint' ? v.toString() : v`. BigInt columns are used across many models (User, Post, Lottery, Ticket, etc.). Helper: `src/utils/serialize.ts`.
 - **Do NOT refactor command architecture**: The user explicitly rejected `command.repository.ts` creation and `post.service.ts` command method refactoring. Command button bugs are RUNTIME issues, not architectural. Do NOT create new repositories, do NOT redesign command resolution, do NOT change APIs.
 - Admin uses shadcn/ui components (Radix UI primitives + Tailwind CSS + class-variance-authority)
