@@ -282,7 +282,6 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       await ctx.reply('❌ پستی انتخاب نشده.');
       return;
     }
-    // Read from DB — same as scheduler
     const msg = await scheduledMessageRepository.findById(msgId);
     if (!msg) {
       await ctx.reply('❌ پست یافت نشد.');
@@ -297,13 +296,16 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return;
     }
 
-    logger.info(`[SchedMsg] TEST SEND msg=${msgId} chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'null'} messages=${msg.messages?.length}`);
-    await ctx.reply('🧪 در حال ارسال تستی...');
+    await ctx.reply('🧪 در حال ارسال تستی (دقیقاً مانند Scheduler)...');
 
-    // Use the EXACT same pipeline as scheduler
-    await scheduledMessageService.sendToGroup(msg);
+    // Same pipeline as scheduler: sendToGroup → update nextSendAt + sendCount
+    try {
+      await scheduledMessageService.testSend(msgId);
+      await ctx.reply('✅ ارسال تستی انجام شد. نتیجه را در لاگ بررسی کنید.');
+    } catch (err: any) {
+      await ctx.reply(`❌ خطا در ارسال تستی: ${err.message}`);
+    }
 
-    await ctx.reply('✅ ارسال تستی انجام شد. نتیجه را در لاگ بررسی کنید.');
     await showPostEditor(ctx, msgId);
   });
 
