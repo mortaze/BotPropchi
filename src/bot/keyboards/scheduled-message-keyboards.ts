@@ -74,7 +74,7 @@ export function scheduledMessageAddMessageKeyboard() {
 export function scheduledMessageEditMessageReplyKeyboard() {
   return Markup.keyboard([
     ['✏️ ویرایش محتوا', '📝 ویرایش عنوان'],
-    ['🔘 ویرایش دکمه‌ها'],
+    ['🔘 مدیریت دکمه‌ها'],
     ['🔙 بازگشت'],
   ]).resize().persistent();
 }
@@ -93,6 +93,7 @@ export function scheduledMessageSingleMessageInlineKeyboard(
     [
       Markup.button.callback('✏️ ویرایش پیام', `sched:msg:edit:${msgId}`),
       Markup.button.callback('🗑 حذف پیام', `sched:msg:delete:${msgId}`),
+      Markup.button.callback('🔘 ویرایش دکمه‌ها', `sched:msg:btnedit:${msgId}`),
     ],
   ];
   const moveRow: any[] = [];

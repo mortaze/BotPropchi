@@ -409,7 +409,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       '👥 انتخاب گروه', '📖 دستور', '✅ انتشار', '📊 آمار',
       '🧪 ارسال تستی', '📊 وضعیت Scheduler',
       '🗑 حذف پست', '🔙 بازگشت', '🔙 بازگشت به لیست', '❌ لغو',
-      '❌ حذف دستور', '🔘 ویرایش دکمه‌ها',
+      '❌ حذف دستور', '🔘 مدیریت دکمه‌ها',
       '✏️ ویرایش محتوا', '📝 ویرایش عنوان',
     ];
     if (scheduleStep && knownButtons.includes(text)) {
@@ -815,15 +815,75 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     );
   });
 
-  bot.hears('🔘 ویرایش دکمه‌ها', async (ctx: any) => {
-    const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
-    if (!msgId) return;
+  // ─── Button Editor: Enter via Reply Keyboard ──
+  bot.hears('🔘 مدیریت دکمه‌ها', async (ctx: any) => {
+    const userId = ctx.from.id;
+    logger.info(`[ButtonEditor] Reply Button Clicked userId=${userId}`);
+
+    let msgId = scheduledMessageState.getEditingMessage(userId);
+    logger.info(`[ButtonEditor] editingMessage=${msgId}`);
+
+    if (!msgId || msgId <= 0) {
+      const editMode = scheduledMessageState.getEditMode(userId);
+      logger.info(`[ButtonEditor] editMode fallback=${editMode}`);
+      if (editMode) {
+        const msgs = await scheduledMessageService.listMessages(editMode);
+        if (msgs.length > 0) {
+          msgId = msgs[0].id;
+          scheduledMessageState.setEditingMessage(userId, msgId);
+        }
+      }
+    }
+
+    if (!msgId || msgId <= 0) {
+      logger.warn(`[ButtonEditor] No message to edit buttons for userId=${userId}`);
+      await ctx.reply('❌ ابتدا یک پیام انتخاب کنید.');
+      return;
+    }
+
+    logger.info(`[ButtonEditor] Scheduled Message Loaded, Loading buttons for messageId=${msgId}`);
     const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    logger.info(`[ButtonEditor] Buttons Loaded: ${buttons.length}`);
+
     const grid = buttonsToGrid(buttons);
     const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, 'create');
+    logger.info(`[ButtonEditor] Render Inline Keyboard`);
+
     const sent = await ctx.reply(text, { reply_markup });
-    if (sent) scheduledMessageState.setButtonEditorMsgId(ctx.from.id, sent.message_id);
-    scheduledMessageState.setButtonMode(ctx.from.id, 'create');
+    if (sent) {
+      scheduledMessageState.setButtonEditorMsgId(userId, sent.message_id);
+      logger.info(`[ButtonEditor] Editor Sent Successfully, editorMsgId=${sent.message_id}`);
+    } else {
+      logger.error(`[ButtonEditor] Failed to send editor message`);
+    }
+    scheduledMessageState.setButtonMode(userId, 'create');
+  });
+
+  // ─── Button Editor: Enter via inline callback ──
+  bot.action(/^sched:msg:btnedit:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = parseInt(ctx.match[1]);
+    logger.info(`[ButtonEditor] Inline Button Clicked msgId=${msgId}`);
+
+    scheduledMessageState.setEditingMessage(userId, msgId);
+
+    logger.info(`[ButtonEditor] Loading buttons for messageId=${msgId}`);
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    logger.info(`[ButtonEditor] Buttons Loaded: ${buttons.length}`);
+
+    const grid = buttonsToGrid(buttons);
+    const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, 'create');
+    logger.info(`[ButtonEditor] Render Inline Keyboard`);
+
+    const sent = await ctx.reply(text, { reply_markup });
+    if (sent) {
+      scheduledMessageState.setButtonEditorMsgId(userId, sent.message_id);
+      logger.info(`[ButtonEditor] Editor Sent Successfully, editorMsgId=${sent.message_id}`);
+    } else {
+      logger.error(`[ButtonEditor] Failed to send editor message`);
+    }
+    scheduledMessageState.setButtonMode(userId, 'create');
   });
 
   // ─── Callback: Message delete ───────────────────────────
