@@ -139,6 +139,25 @@ export function scheduleTopicKeyboard(topics: any[]) {
   return Markup.inlineKeyboard(rows);
 }
 
+// ─── Group Selection (Reply Keyboard — Bug #4) ───────────
+
+export function scheduleGroupReplyKeyboard(groups: any[]) {
+  const rows: string[][] = groups.map((g) => [g.title]);
+  rows.push(['🔙 بازگشت']);
+  return Markup.keyboard(rows).resize().persistent();
+}
+
+// ─── Topic Selection (Reply Keyboard — Bug #5) ───────────
+
+export function scheduleTopicReplyKeyboard(topics: any[]) {
+  const rows: string[][] = [['📌 همه تاپیک‌ها']];
+  for (const t of topics) {
+    rows.push([t.name]);
+  }
+  rows.push(['🔙 بازگشت']);
+  return Markup.keyboard(rows).resize().persistent();
+}
+
 // ─── Publish Validation Keyboard ──────────────────────────
 
 export function scheduledMessagePublishValidationKeyboard(missingFields: { key: string; label: string }[]) {
