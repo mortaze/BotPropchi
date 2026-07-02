@@ -1265,3 +1265,21 @@ model ScheduledPostLog {
   @@index([sentAt])
   @@map("scheduled_post_logs")
 }
+
+// ─── Forum Topics (discovered from Telegram updates) ──────
+
+model ForumTopic {
+  id            Int      @id @default(autoincrement())
+  chatId        BigInt
+  topicId       Int
+  name          String
+  isClosed      Boolean  @default(false)
+  isHidden      Boolean  @default(false)
+  lastSeenAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([chatId, topicId])
+  @@index([chatId])
+  @@map("forum_topics")
+}

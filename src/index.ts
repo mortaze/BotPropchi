@@ -26,6 +26,7 @@ import { startMembershipWorker } from './workers/membership.worker';
 import { startLeaderboardWorker } from './workers/leaderboard.worker';
 import { postService } from './services/post.service';
 import { scheduledMessageService } from './services/scheduled-message.service';
+import { forumTopicService } from './services/forum-topic.service';
 import { registerScheduledMessageHandlers } from './bot/handlers/scheduled-message.handlers';
 
 async function bootstrap() {
@@ -106,6 +107,46 @@ async function bootstrap() {
 
   // ─── Scheduled message service ──────────────────────────
   scheduledMessageService.setBot(bot);
+  forumTopicService.setBot(bot);
+
+  // ─── Forum topic discovery from group messages ──────────
+  bot.on('message', async (ctx: any, next) => {
+    const chat = ctx.chat;
+    if (!chat || (chat.type !== 'group' && chat.type !== 'supergroup')) return next();
+    const msg = ctx.message;
+    if (!msg) return next();
+
+    // Forum topic discovery from regular messages
+    const msgThreadId = msg.message_thread_id;
+    if (msgThreadId) {
+      const topicName = msg.reply_to_message?.forum_topic_created?.name;
+      forumTopicService.discoverFromMessage(chat.id, msgThreadId, topicName).catch(() => {});
+    }
+
+    // Forum topic service messages
+    if ('service' in msg && msg.service) {
+      const service = msg.service;
+      const chatId = chat.id;
+
+      if (service === 'forum_topic_created') {
+        const topicId = msg.message_thread_id;
+        const name = (msg as any).forum_topic_created?.name || `Topic ${topicId}`;
+        if (topicId) forumTopicService.onTopicCreated(chatId, topicId, name).catch(() => {});
+      } else if (service === 'forum_topic_edited') {
+        const topicId = msg.message_thread_id;
+        const name = (msg as any).forum_topic_edited?.name;
+        if (topicId && name) forumTopicService.onTopicEdited(chatId, topicId, name).catch(() => {});
+      } else if (service === 'forum_topic_closed') {
+        const topicId = msg.message_thread_id;
+        if (topicId) forumTopicService.onTopicClosed(chatId, topicId).catch(() => {});
+      } else if (service === 'forum_topic_reopened') {
+        const topicId = msg.message_thread_id;
+        if (topicId) forumTopicService.onTopicReopened(chatId, topicId).catch(() => {});
+      }
+    }
+
+    return next();
+  });
 
   // مدیریت خطا — CRITICAL: must answerCbQuery for callback_query errors
   bot.catch((err, ctx) => {

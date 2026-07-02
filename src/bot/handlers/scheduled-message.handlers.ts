@@ -4,6 +4,7 @@ import { scheduledMessageService } from '../../services/scheduled-message.servic
 import { scheduledMessageState } from '../../services/scheduled-message-state.service';
 import { scheduledMessageRepository } from '../../repositories/scheduled-message.repository';
 import { botAdminService } from '../../services/bot-admin.service';
+import { forumTopicService } from '../../services/forum-topic.service';
 import { prisma } from '../../prisma/client';
 import { logger } from '../../utils/logger';
 import { cache } from '../../utils/cache';
@@ -437,14 +438,12 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
         scheduledMessageState.setTargetGroup(userId, chatId);
         scheduledMessageState.setScheduleStep(userId, null as any);
 
-        // Check forum topics
-        if (matched.isForum && matched.forumTopics) {
-          const topics = matched.forumTopics as any[];
-          if (topics.length > 0) {
-            scheduledMessageState.setScheduleStep(userId, 'select_topic');
-            await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
-            return;
-          }
+        // Check forum topics from ForumTopic table (not JSON field)
+        const topics = await forumTopicService.getTopicsForChat(chatId);
+        if (topics.length > 0) {
+          scheduledMessageState.setScheduleStep(userId, 'select_topic');
+          await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
+          return;
         }
 
         // No topics — save group and show editor
@@ -469,19 +468,13 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       if (text === '📌 همه تاپیک‌ها') {
         scheduledMessageState.setTargetTopic(userId, null);
       } else {
-        // Find topic by name from cached topics
-        const msgId = scheduledMessageState.getEditMode(userId);
-        if (msgId) {
-          const msg = await scheduledMessageRepository.findById(msgId);
-          if (msg?.targetChatId) {
-            const group = await prisma.telegramGroup.findUnique({ where: { chatId: msg.targetChatId } });
-            if (group?.forumTopics) {
-              const topics = group.forumTopics as any[];
-              const topic = topics.find((t: any) => t.name === text);
-              if (topic) {
-                scheduledMessageState.setTargetTopic(userId, topic.id);
-              }
-            }
+        // Find topic by name from ForumTopic table
+        const targetGroup = scheduledMessageState.getTargetGroup(userId);
+        if (targetGroup) {
+          const topics = await forumTopicService.getTopicsForChat(targetGroup);
+          const topic = topics.find((t) => t.name === text);
+          if (topic) {
+            scheduledMessageState.setTargetTopic(userId, topic.topicId);
           }
         }
       }
@@ -594,15 +587,12 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const userId = ctx.from.id;
     scheduledMessageState.setTargetGroup(userId, chatId);
 
-    const group = await prisma.telegramGroup.findUnique({ where: { chatId: BigInt(chatId) } });
-    if (group?.isForum && group.forumTopics) {
-      const topics = group.forumTopics as any[];
-      if (topics.length > 0) {
-        scheduledMessageState.setScheduleStep(userId, 'select_topic');
-        // Bug #5: Use Reply Keyboard for topic selection
-        await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
-        return;
-      }
+    // Check forum topics from ForumTopic table
+    const topics = await forumTopicService.getTopicsForChat(chatId);
+    if (topics.length > 0) {
+      scheduledMessageState.setScheduleStep(userId, 'select_topic');
+      await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
+      return;
     }
 
     const msgId = scheduledMessageState.getEditMode(userId);
