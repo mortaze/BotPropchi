@@ -170,24 +170,32 @@ class ScheduledMessageService {
   async processDueScheduled() {
     try {
       const now = new Date();
-      logger.info(`[ScheduledMsg] Scheduler tick at ${now.toISOString()}`);
+      logger.info(`[ScheduledMsg] ═══ Scheduler tick at ${now.toISOString()} ═══`);
 
       // Log ALL published messages for debugging
       const allPublished = await prisma.scheduledMessage.findMany({
         where: { isPublished: true, status: PostStatus.PUBLISHED },
-        select: { id: true, title: true, intervalHours: true, startTime: true, nextSendAt: true, targetChatId: true, targetTopicId: true, sendCount: true },
+        select: { id: true, title: true, intervalHours: true, startTime: true, nextSendAt: true, targetChatId: true, targetTopicId: true, sendCount: true, lastSentAt: true, isPublished: true, status: true },
       });
-      logger.info(`[ScheduledMsg] Total published messages: ${allPublished.length}`);
+      logger.info(`[ScheduledMsg] Total published: ${allPublished.length}`);
+
       for (const m of allPublished) {
-        const isDue = m.nextSendAt && m.nextSendAt.getTime() <= now.getTime();
-        const hasRequiredFields = m.intervalHours != null && m.targetChatId != null;
-        logger.info(`[ScheduledMsg] msg=${m.id} title="${m.title}" interval=${m.intervalHours}h start=${m.startTime} nextSendAt=${m.nextSendAt?.toISOString() ?? 'NULL'} chatId=${m.targetChatId ?? 'NULL'} topicId=${m.targetTopicId ?? 'NULL'} sendCount=${m.sendCount} DUE=${isDue} HAS_REQUIRED=${hasRequiredFields}`);
+        const reasons: string[] = [];
+        if (m.nextSendAt == null) reasons.push('nextSendAt is null');
+        if (m.nextSendAt && m.nextSendAt.getTime() > now.getTime()) reasons.push(`nextSendAt > now (${m.nextSendAt.toISOString()} > ${now.toISOString()})`);
+        if (m.intervalHours == null) reasons.push('intervalHours is null');
+        if (m.targetChatId == null) reasons.push('targetChatId is null');
+        if (!m.isPublished) reasons.push('isPublished=false');
+        if (m.status !== PostStatus.PUBLISHED) reasons.push(`status=${m.status}`);
+
+        const eligible = reasons.length === 0;
+        logger.info(`[ScheduledMsg] msg=${m.id} "${m.title}" status=${m.status} isPub=${m.isPublished} interval=${m.intervalHours}h start=${m.startTime} nextSend=${m.nextSendAt?.toISOString() ?? 'NULL'} chatId=${m.targetChatId ?? 'NULL'} topicId=${m.targetTopicId ?? 'NULL'} sendCount=${m.sendCount} lastSent=${m.lastSentAt?.toISOString() ?? 'NULL'} → ${eligible ? '✅ DUE' : '❌ NOT DUE: ' + reasons.join(', ')}`);
       }
 
       const due = await scheduledMessageRepository.findDueForSending();
-      logger.info(`[ScheduledMsg] Found ${due.length} due message(s)`);
+      logger.info(`[ScheduledMsg] Due messages: ${due.length}`);
       for (const msg of due) {
-        logger.info(`[ScheduledMsg] Processing msg=${msg.id} title="${msg.title}" chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'null'} interval=${msg.intervalHours}h start=${msg.startTime}`);
+        logger.info(`[ScheduledMsg] ▶ Sending msg=${msg.id} "${msg.title}" to chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'none'}`);
         await this.sendToGroup(msg);
       }
     } catch (error) {

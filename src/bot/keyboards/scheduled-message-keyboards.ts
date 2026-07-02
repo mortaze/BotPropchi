@@ -51,6 +51,7 @@ export function scheduledMessageEditorReplyKeyboard(isPublished: boolean) {
     ['👥 انتخاب گروه', '⏰ تنظیم زمان‌بندی'],
     ['📖 دستور'],
     ['✅ انتشار', '📊 آمار'],
+    ['🧪 ارسال تستی'],
     ['🗑 حذف پست'],
     ['🔙 بازگشت به لیست'],
   ]).resize().persistent();
