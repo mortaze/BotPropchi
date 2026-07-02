@@ -384,7 +384,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return;
     }
 
-    // ── Custom interval input (Bug #6: save immediately) ──
+    // ── Custom interval input ──
     if (scheduleStep === 'custom_interval') {
       const hours = parseInt(text, 10);
       if (isNaN(hours) || hours < 1) {
@@ -393,11 +393,17 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       }
       scheduledMessageState.setIntervalHours(userId, hours);
       scheduledMessageState.setScheduleStep(userId, 'start_time');
+      // Save intervalHours to DB immediately
+      const msgId = scheduledMessageState.getSchedulingMode(userId) || scheduledMessageState.getEditMode(userId);
+      if (msgId) {
+        await scheduledMessageRepository.update(msgId, { intervalHours: hours });
+        logger.info(`[SchedMsg] Saved intervalHours=${hours} to msg=${msgId}`);
+      }
       await ctx.reply(`✅ بازه: هر ${hours} ساعت\n\n⏰ ساعت شروع ارسال را وارد کنید.\nمثال:\n09:00\n14:30\n22:15`);
       return;
     }
 
-    // ── Start time input (Bug #6: save to DB immediately) ──
+    // ── Start time input — save to DB, don't clear all state ──
     if (scheduleStep === 'start_time') {
       const timeRegex = /^([01]?\d|2[0-3]):([0-5]\d)$/;
       if (!timeRegex.test(text)) {
@@ -407,25 +413,26 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       scheduledMessageState.setStartTime(userId, text);
       scheduledMessageState.setScheduleStep(userId, null as any);
 
-      // Bug #6: Save to DB immediately
+      // Save startTime + intervalHours to DB individually (don't call setSchedule yet)
       const msgId = scheduledMessageState.getSchedulingMode(userId) || scheduledMessageState.getEditMode(userId);
       if (msgId) {
-        const intervalHours = scheduledMessageState.getIntervalHours(userId) || 24;
-        const targetGroup = scheduledMessageState.getTargetGroup(userId);
-        const targetTopic = scheduledMessageState.getTargetTopic(userId);
-        await scheduledMessageService.setSchedule(msgId, intervalHours, text, targetGroup || 0, targetTopic);
+        const intervalHours = scheduledMessageState.getIntervalHours(userId);
+        await scheduledMessageRepository.update(msgId, {
+          startTime: text,
+          ...(intervalHours ? { intervalHours } : {}),
+        });
+        logger.info(`[SchedMsg] Saved startTime=${text} interval=${intervalHours} to msg=${msgId}`);
       }
-      scheduledMessageState.clearAll(userId);
+      // DON'T clearAll — preserve editMode, schedulingMode, targetGroup etc.
       if (msgId) {
-        await ctx.reply('✅ زمان‌بندی ذخیره شد.');
+        await ctx.reply('✅ ساعت شروع ذخیره شد.');
         await showPostEditor(ctx, msgId);
       }
       return;
     }
 
-    // ── Group selection via Reply Keyboard (Bug #4) ──
+    // ── Group selection via Reply Keyboard ──
     if (scheduleStep === 'select_group') {
-      // Text could be a group title
       const groups = await prisma.telegramGroup.findMany({
         where: { status: 'APPROVED', botIsAdmin: true },
         orderBy: { addedAt: 'desc' },
@@ -435,52 +442,37 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
         const chatId = Number(matched.chatId);
         scheduledMessageState.setTargetGroup(userId, chatId);
 
-        // Check forum topics from ForumTopic table (not JSON field)
+        // Save group to DB immediately
+        const msgId = scheduledMessageState.getEditMode(userId);
+        if (msgId) {
+          await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
+          logger.info(`[SchedMsg] Saved targetChatId=${chatId} to msg=${msgId}`);
+        }
+
+        // Check forum topics from ForumTopic table
         const topics = await forumTopicService.getTopicsForChat(chatId);
         if (topics.length > 0) {
-          // Save group to DB immediately (don't wait for topic selection)
-          const msgId = scheduledMessageState.getEditMode(userId);
-          if (msgId) {
-            const intervalHours = scheduledMessageState.getIntervalHours(userId);
-            const startTime = scheduledMessageState.getStartTime(userId);
-            if (intervalHours && startTime) {
-              await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, chatId);
-            } else {
-              // Save at least the group even if schedule isn't complete yet
-              await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
-            }
-          }
           scheduledMessageState.setScheduleStep(userId, 'select_topic');
           await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
           return;
         }
 
-        // No topics — save group and show editor
-        const msgId = scheduledMessageState.getEditMode(userId);
+        // No topics — show editor with saved group
         if (msgId) {
-          const intervalHours = scheduledMessageState.getIntervalHours(userId);
-          const startTime = scheduledMessageState.getStartTime(userId);
-          if (intervalHours && startTime) {
-            await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, chatId);
-          } else {
-            await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
-          }
           await ctx.reply(`✅ گروه "${matched.title}" انتخاب شد.`);
           await showPostEditor(ctx, msgId);
         }
         return;
       }
-      // Not a match — let it fall through
       return next();
     }
 
-    // ── Topic selection via Reply Keyboard (Bug #5) ──
+    // ── Topic selection via Reply Keyboard ──
     if (scheduleStep === 'select_topic') {
       let topicId: number | null = null;
       if (text === '📌 همه تاپیک‌ها') {
-        topicId = null; // null = all topics (no thread ID)
+        topicId = null;
       } else {
-        // Find topic by name from ForumTopic table
         const targetGroup = scheduledMessageState.getTargetGroup(userId);
         if (targetGroup) {
           const topics = await forumTopicService.getTopicsForChat(targetGroup);
@@ -493,20 +485,13 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       scheduledMessageState.setTargetTopic(userId, topicId);
       scheduledMessageState.setScheduleStep(userId, null as any);
 
-      // Save to DB
+      // Save topic to DB individually
       const msgId = scheduledMessageState.getEditMode(userId);
       if (msgId) {
-        const targetGroup = scheduledMessageState.getTargetGroup(userId);
-        const intervalHours = scheduledMessageState.getIntervalHours(userId);
-        const startTime = scheduledMessageState.getStartTime(userId);
-        if (targetGroup && intervalHours && startTime) {
-          await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, targetGroup, topicId);
-        } else if (targetGroup) {
-          // At least save the topic — group already saved
-          await scheduledMessageRepository.update(msgId, {
-            targetTopicId: topicId != null ? BigInt(topicId) : null,
-          });
-        }
+        await scheduledMessageRepository.update(msgId, {
+          targetTopicId: topicId != null ? BigInt(topicId) : null,
+        });
+        logger.info(`[SchedMsg] Saved targetTopicId=${topicId} to msg=${msgId}`);
         const topicText = text === '📌 همه تاپیک‌ها' ? 'همه تاپیک‌ها' : text;
         await ctx.reply(`✅ تاپیک "${topicText}" انتخاب شد.`);
         await showPostEditor(ctx, msgId);
@@ -579,7 +564,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await ctx.reply('⏰ بازه زمانی ارسال را انتخاب کنید:', scheduleIntervalKeyboard());
   });
 
-  // ─── Callback: Interval selection (Bug #7: show start time prompt) ──
+  // ─── Callback: Interval selection — save to DB immediately ──
   bot.action(/^sched:interval:(\d+|custom)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const value = ctx.match[1];
@@ -594,7 +579,14 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const hours = parseInt(value);
     scheduledMessageState.setIntervalHours(userId, hours);
     scheduledMessageState.setScheduleStep(userId, 'start_time');
-    // Bug #7: Show proper start time prompt
+
+    // Save intervalHours to DB immediately
+    const msgId = scheduledMessageState.getSchedulingMode(userId) || scheduledMessageState.getEditMode(userId);
+    if (msgId) {
+      await scheduledMessageRepository.update(msgId, { intervalHours: hours });
+      logger.info(`[SchedMsg] Saved intervalHours=${hours} to msg=${msgId}`);
+    }
+
     await ctx.reply(`✅ بازه: هر ${hours} ساعت\n\n⏰ ساعت شروع ارسال را وارد کنید.\nمثال:\n09:00\n14:30\n22:15`);
   });
 
@@ -605,34 +597,22 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const userId = ctx.from.id;
     scheduledMessageState.setTargetGroup(userId, chatId);
 
+    // Save group to DB immediately
+    const msgId = scheduledMessageState.getEditMode(userId);
+    if (msgId) {
+      await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
+      logger.info(`[SchedMsg] Saved targetChatId=${chatId} to msg=${msgId}`);
+    }
+
     // Check forum topics from ForumTopic table
     const topics = await forumTopicService.getTopicsForChat(chatId);
     if (topics.length > 0) {
-      // Save group to DB immediately
-      const msgId = scheduledMessageState.getEditMode(userId);
-      if (msgId) {
-        const intervalHours = scheduledMessageState.getIntervalHours(userId);
-        const startTime = scheduledMessageState.getStartTime(userId);
-        if (intervalHours && startTime) {
-          await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, chatId);
-        } else {
-          await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
-        }
-      }
       scheduledMessageState.setScheduleStep(userId, 'select_topic');
       await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
       return;
     }
 
-    const msgId = scheduledMessageState.getEditMode(userId);
     if (msgId) {
-      const intervalHours = scheduledMessageState.getIntervalHours(userId);
-      const startTime = scheduledMessageState.getStartTime(userId);
-      if (intervalHours && startTime) {
-        await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, chatId);
-      } else {
-        await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
-      }
       await ctx.reply(`✅ گروه انتخاب شد.`);
       await showPostEditor(ctx, msgId);
     }

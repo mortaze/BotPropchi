@@ -41,6 +41,7 @@ class ScheduledMessageService {
       throw new Error('پیام هنوز کامل نشده است (زمان‌بندی و گروه تعیین نشده)');
     }
     const nextSendAt = this.calculateNextSend(msg.intervalHours, msg.startTime);
+    logger.info(`[SchedMsg] Publishing msg=${id} interval=${msg.intervalHours}h start=${msg.startTime} chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'null'} nextSendAt=${nextSendAt.toISOString()} now=${new Date().toISOString()}`);
     return scheduledMessageRepository.update(id, {
       status: PostStatus.PUBLISHED,
       isPublished: true,
@@ -148,14 +149,19 @@ class ScheduledMessageService {
 
   calculateNextSend(intervalHours: number, startTime: string): Date {
     const [hours, mins] = startTime.split(':').map(Number);
+    // Use UTC to avoid timezone mismatches with PostgreSQL
     const now = new Date();
-    const next = new Date(now);
-    next.setHours(hours, mins, 0, 0);
+    const next = new Date(Date.UTC(
+      now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+      hours, mins, 0, 0
+    ));
 
-    if (next <= now) {
+    // If that time today has passed, move to the next interval
+    if (next.getTime() <= now.getTime()) {
       next.setTime(next.getTime() + intervalHours * 60 * 60 * 1000);
     }
 
+    logger.info(`[SchedMsg] calculateNextSend: interval=${intervalHours}h start=${startTime} now=${now.toISOString()} nextSendAt=${next.toISOString()}`);
     return next;
   }
 
@@ -165,10 +171,23 @@ class ScheduledMessageService {
     try {
       const now = new Date();
       logger.info(`[ScheduledMsg] Scheduler tick at ${now.toISOString()}`);
+
+      // Log ALL published messages for debugging
+      const allPublished = await prisma.scheduledMessage.findMany({
+        where: { isPublished: true, status: PostStatus.PUBLISHED },
+        select: { id: true, title: true, intervalHours: true, startTime: true, nextSendAt: true, targetChatId: true, targetTopicId: true, sendCount: true },
+      });
+      logger.info(`[ScheduledMsg] Total published messages: ${allPublished.length}`);
+      for (const m of allPublished) {
+        const isDue = m.nextSendAt && m.nextSendAt.getTime() <= now.getTime();
+        const hasRequiredFields = m.intervalHours != null && m.targetChatId != null;
+        logger.info(`[ScheduledMsg] msg=${m.id} title="${m.title}" interval=${m.intervalHours}h start=${m.startTime} nextSendAt=${m.nextSendAt?.toISOString() ?? 'NULL'} chatId=${m.targetChatId ?? 'NULL'} topicId=${m.targetTopicId ?? 'NULL'} sendCount=${m.sendCount} DUE=${isDue} HAS_REQUIRED=${hasRequiredFields}`);
+      }
+
       const due = await scheduledMessageRepository.findDueForSending();
       logger.info(`[ScheduledMsg] Found ${due.length} due message(s)`);
       for (const msg of due) {
-        logger.info(`[ScheduledMsg] Processing msg=${msg.id} title="${msg.title}" chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'null'} interval=${msg.intervalHours}h start=${msg.startTime} nextSend=${msg.nextSendAt?.toISOString()} sendCount=${msg.sendCount}`);
+        logger.info(`[ScheduledMsg] Processing msg=${msg.id} title="${msg.title}" chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'null'} interval=${msg.intervalHours}h start=${msg.startTime}`);
         await this.sendToGroup(msg);
       }
     } catch (error) {
