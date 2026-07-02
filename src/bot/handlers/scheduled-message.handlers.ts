@@ -409,7 +409,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       '👥 انتخاب گروه', '📖 دستور', '✅ انتشار', '📊 آمار',
       '🧪 ارسال تستی', '📊 وضعیت Scheduler',
       '🗑 حذف پست', '🔙 بازگشت', '🔙 بازگشت به لیست', '❌ لغو',
-      '❌ حذف دستور',
+      '❌ حذف دستور', '🔘 ویرایش دکمه‌ها',
+      '✏️ ویرایش محتوا', '📝 ویرایش عنوان',
     ];
     if (scheduleStep && knownButtons.includes(text)) {
       // Let the hears handlers process it
