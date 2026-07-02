@@ -396,6 +396,12 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return next();
     }
 
+    // Button editor has priority — if wait_text, let button handler process it
+    const btnState = scheduledMessageState.getButtonState(userId);
+    if (btnState === 'wait_text') {
+      return next();
+    }
+
     // Bug #8: If scheduleStep is set but text matches a known button, don't consume it
     const knownButtons = [
       '➕ ایجاد پست جدید', '📋 لیست پست‌ها', '📊 گزارش ارسال',
@@ -933,18 +939,6 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await ctx.reply('📢 سامانه مدیریت پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
   });
 
-  // ─── Button Editor: Enter button editor mode ──
-  bot.hears('🔘 ویرایش دکمه‌ها', async (ctx: any) => {
-    const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
-    if (!msgId) return;
-    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
-    const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, 'create');
-    const sent = await ctx.reply(text, { reply_markup });
-    if (sent) scheduledMessageState.setButtonEditorMsgId(ctx.from.id, sent.message_id);
-    scheduledMessageState.setButtonMode(ctx.from.id, 'create');
-  });
-
   // ─── Button Editor: Click on a button slot ──
   bot.action(/^smbtn:click:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
@@ -953,6 +947,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
     const mode = scheduledMessageState.getButtonMode(userId) || 'create';
+    logger.info(`[ButtonEditor] Click msgId=${msgId} row=${row} col=${col} mode=${mode}`);
 
     const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
@@ -1019,6 +1014,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const userId = ctx.from.id;
     const mode = ctx.match[1];
     const msgId = parseInt(ctx.match[2]);
+    logger.info(`[ButtonEditor] Mode change mode=${mode} msgId=${msgId}`);
     scheduledMessageState.setButtonMode(userId, mode);
     scheduledMessageState.setButtonState(userId, '');
     scheduledMessageState.setButtonRow(userId, 0);
@@ -1037,6 +1033,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const msgId = parseInt(ctx.match[2]);
     const row = parseInt(ctx.match[3]);
     const col = parseInt(ctx.match[4]);
+    logger.info(`[ButtonEditor] Type select type=${btnType} msgId=${msgId} row=${row} col=${col}`);
     const currentMode = scheduledMessageState.getButtonMode(userId) || 'edit';
     scheduledMessageState.setButtonPreviousView(userId, currentMode);
     scheduledMessageState.setButtonType(userId, btnType);
@@ -1100,6 +1097,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const userId = ctx.from.id;
     const btnState = scheduledMessageState.getButtonState(userId);
     if (btnState !== 'wait_text') return next();
+    logger.info(`[ButtonEditor] Text input received for button, state=wait_text`);
 
     const text = ctx.message.text;
     const msgId = scheduledMessageState.getEditingMessage(userId);
