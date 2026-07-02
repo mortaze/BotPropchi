@@ -132,7 +132,7 @@ class ScheduledMessageService {
     });
   }
 
-  async updateMessage(messageId: number, data: { text?: string; type?: PostMessageType; mediaFileId?: string; entities?: any; replyMarkup?: any }) {
+  async updateMessage(messageId: number, data: { text?: string; type?: PostMessageType; mediaFileId?: string; entities?: any; captionEntities?: any; caption?: string; replyMarkup?: any }) {
     return prisma.scheduledMessageMessage.update({ where: { id: messageId }, data });
   }
 
@@ -246,32 +246,54 @@ class ScheduledMessageService {
       const messages = msg.messages || [];
       for (let i = 0; i < messages.length; i++) {
         const message = messages[i];
-        const text = sanitizeTelegramText(message.text || '', 4096);
+        logger.info(`[SchedMsg] SEND msg=${msg.id} [${i + 1}/${messages.length}] type=${message.type} textLen=${(message.text || '').length} entities=${(message.entities as any[])?.length || 0}`);
+
+        // Load buttons for this specific message from DB
+        const buttonsFromDb = await prisma.scheduledMessageButton.findMany({
+          where: { messageId: message.id },
+          orderBy: [{ row: 'asc' }, { col: 'asc' }],
+        });
+        const inlineKeyboard = buttonsFromDb.length > 0
+          ? { inline_keyboard: this.buildInlineKeyboard(buttonsFromDb) }
+          : undefined;
+
+        // Build extra with thread, entities, reply_markup — pass directly to Telegram
         const extra: any = {};
         if (threadId) extra.message_thread_id = threadId;
-        if (message.replyMarkup) extra.reply_markup = message.replyMarkup;
+        if (inlineKeyboard) extra.reply_markup = inlineKeyboard;
 
-        logger.info(`[SchedMsg] SEND msg=${msg.id} [${i + 1}/${messages.length}] type=${message.type} threadId=${threadId ?? 'none'}`);
+        // Pass entities directly — do NOT sanitize (entities are stored as-is)
+        if (message.entities && Array.isArray(message.entities) && message.entities.length > 0) {
+          extra.entities = message.entities;
+        }
 
         if (message.mediaFileId) {
+          // Media message — pass caption_entities
+          const captionExtra: any = { ...extra };
+          if (message.captionEntities && Array.isArray(message.captionEntities) && message.captionEntities.length > 0) {
+            captionExtra.caption_entities = message.captionEntities;
+          }
+          captionExtra.caption = message.text || '';
+
           switch (message.type) {
-            case 'PHOTO': await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, { ...extra, caption: text }); break;
-            case 'VIDEO': await this.bot.telegram.sendVideo(chatId, message.mediaFileId, { ...extra, caption: text }); break;
-            case 'DOCUMENT': await this.bot.telegram.sendDocument(chatId, message.mediaFileId, { ...extra, caption: text }); break;
-            case 'VOICE': await this.bot.telegram.sendVoice(chatId, message.mediaFileId, { ...extra, caption: text }); break;
-            case 'AUDIO': await this.bot.telegram.sendAudio(chatId, message.mediaFileId, { ...extra, caption: text }); break;
-            case 'ANIMATION': await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, { ...extra, caption: text }); break;
+            case 'PHOTO': await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, captionExtra); break;
+            case 'VIDEO': await this.bot.telegram.sendVideo(chatId, message.mediaFileId, captionExtra); break;
+            case 'DOCUMENT': await this.bot.telegram.sendDocument(chatId, message.mediaFileId, captionExtra); break;
+            case 'VOICE': await this.bot.telegram.sendVoice(chatId, message.mediaFileId, captionExtra); break;
+            case 'AUDIO': await this.bot.telegram.sendAudio(chatId, message.mediaFileId, captionExtra); break;
+            case 'ANIMATION': await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, captionExtra); break;
             case 'STICKER': await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra); break;
-            default: await this.bot.telegram.sendMessage(chatId, text || '(empty)', extra);
+            default: await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
           }
         } else {
-          await this.bot.telegram.sendMessage(chatId, text || '(empty)', extra);
+          // Text message — pass entities directly
+          await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
         }
 
         if (messages.length > 1) await sleep(100);
       }
 
-      // ─── After successful send: lastSentAt=now, nextSendAt=computeNextDue ───
+      // After successful send
       const nextSendAt = (msg.intervalMinutes && msg.startTime)
         ? computeNextDue(msg.intervalMinutes, msg.startTime, new Date())
         : null;
@@ -281,10 +303,7 @@ class ScheduledMessageService {
         data: { lastSentAt: new Date(), nextSendAt, sendCount: { increment: 1 } },
       });
 
-      logger.info(
-        `[SchedMsg] SEND_OK msg=${msg.id} | lastSentAt=NOW | ` +
-        `sendCount=${(msg.sendCount || 0) + 1} | nextSendAt=${nextSendAt?.toISOString() ?? 'NULL'}`
-      );
+      logger.info(`[SchedMsg] SEND_OK msg=${msg.id} | lastSentAt=NOW | sendCount=${(msg.sendCount || 0) + 1} | nextSendAt=${nextSendAt?.toISOString() ?? 'NULL'}`);
 
       await scheduledMessageRepository.logDelivery({
         scheduledMessageId: msg.id, targetChatId: msg.targetChatId, targetTopicId: msg.targetTopicId, status: 'SUCCESS',
@@ -297,7 +316,8 @@ class ScheduledMessageService {
         const waitSec = error.response.parameters.retry_after;
         logger.warn(`[SchedMsg] FLOOD_WAIT msg=${msg.id} retryAfter=${waitSec}s`);
         await prisma.scheduledMessage.update({
-          where: { id: msg.id }, data: { nextSendAt: new Date(Date.now() + waitSec * 1000) },
+          where: { id: msg.id },
+          data: { nextSendAt: new Date(Date.now() + waitSec * 1000) },
         });
       }
 
@@ -305,6 +325,59 @@ class ScheduledMessageService {
         scheduledMessageId: msg.id, targetChatId: msg.targetChatId, targetTopicId: msg.targetTopicId, status: 'FAILED', errorMessage: errMsg.slice(0, 900),
       });
     }
+  }
+
+  /**
+   * Convert DB buttons to Telegram inline_keyboard format.
+   * Mirrors Post system's buildTelegramKeyboard from renderer.
+   */
+  private buildInlineKeyboard(buttons: any[]): any[][] {
+    const grid: any[][] = [];
+    for (const btn of buttons) {
+      const row = btn.row ?? 0;
+      const col = btn.col ?? 0;
+      if (!grid[row]) grid[row] = [];
+      grid[row][col] = btn;
+    }
+
+    return grid.filter(Boolean).map((row) =>
+      row.filter(Boolean).map((btn) => {
+        const type = (btn.type || 'URL').toUpperCase();
+        const text = btn.text || '';
+        const value = btn.value || '';
+        const style = btn.style;
+
+        // Apply color style
+        let styledText = text;
+        if (style === 'primary') styledText = `🔵 ${text}`;
+        else if (style === 'success') styledText = `🟢 ${text}`;
+        else if (style === 'danger') styledText = `🔴 ${text}`;
+
+        switch (type) {
+          case 'URL':
+            return { text: styledText, url: value || 'https://t.me' };
+          case 'CALLBACK':
+            return { text: styledText, callback_data: value || 'noop' };
+          case 'WEB_APP':
+          case 'OPEN_MINI_APP':
+            return { text: styledText, web_app: { url: value } };
+          case 'LOGIN_URL':
+            return { text: styledText, login_url: { url: value } };
+          case 'COPY_TEXT':
+            return { text: styledText, copy_text: { text: value } };
+          case 'SWITCH_INLINE':
+            return { text: styledText, switch_inline_query: value };
+          case 'SWITCH_INLINE_CURRENT_CHAT':
+            return { text: styledText, switch_inline_query_current_chat: value };
+          case 'COMMAND':
+            return { text: styledText, callback_data: value || 'noop' };
+          case 'POPUP':
+            return { text: styledText, callback_data: value || 'noop' };
+          default:
+            return { text: styledText, url: value || 'https://t.me' };
+        }
+      })
+    ).filter(row => row.length > 0);
   }
 
   // ─── Test Send (same pipeline) ──────────────────────────

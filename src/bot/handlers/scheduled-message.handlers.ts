@@ -445,27 +445,41 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return;
     }
 
-    // ── Content input — save, close state, show editor ──
+    // ── Content input — save ALL fields from the message ──
     if (isEditingContent) {
       const editMsgId = scheduledMessageState.getEditingMessage(userId);
       const msgId = scheduledMessageState.getEditMode(userId);
       if (!msgId) return next();
 
-      if (editMsgId === -1) {
-        // New message: create it with content
-        const newMsg = await scheduledMessageService.addMessage(msgId);
-        await scheduledMessageService.updateMessage(newMsg.id, { text });
-      } else if (editMsgId) {
-        // Existing message: update it
-        await scheduledMessageService.updateMessage(editMsgId, { text });
+      // Extract all Telegram message data
+      const entities = ctx.message.entities?.map((e: any) => ({
+        type: e.type, offset: e.offset, length: e.length,
+        url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id,
+      })) || [];
+      const replyMarkup = ctx.message.reply_markup || null;
+
+      const updateData: any = { text };
+
+      // Save entities if present
+      if (entities.length > 0) {
+        updateData.entities = entities;
       }
 
-      // Close ALL content editing state
+      // Save inline keyboard if present
+      if (replyMarkup?.inline_keyboard) {
+        updateData.replyMarkup = replyMarkup;
+      }
+
+      if (editMsgId === -1) {
+        const newMsg = await scheduledMessageService.addMessage(msgId);
+        await scheduledMessageService.updateMessage(newMsg.id, updateData);
+      } else if (editMsgId) {
+        await scheduledMessageService.updateMessage(editMsgId, updateData);
+      }
+
       scheduledMessageState.setEditingContent(userId, false);
       scheduledMessageState.setEditingMessage(userId, 0);
-      // Success feedback
       await ctx.reply('✅ پیام ذخیره شد.');
-      // Refresh editor from DB
       await showPostEditor(ctx, msgId);
       return;
     }
@@ -605,7 +619,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     return next();
   });
 
-  // ─── Media handler ──
+  // ─── Media handler — save ALL media data ──
   bot.on(['photo', 'video', 'document', 'voice', 'audio', 'animation', 'sticker'], async (ctx: any) => {
     const userId = ctx.from.id;
     const isEditingContent = scheduledMessageState.isEditingContent(userId);
@@ -615,29 +629,37 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const msgId = scheduledMessageState.getEditMode(userId);
     if (!msgId) return;
 
-    const media = (ctx.message as any).photo?.pop() || (ctx.message as any).video || (ctx.message as any).document ||
-      (ctx.message as any).voice || (ctx.message as any).audio || (ctx.message as any).animation || (ctx.message as any).sticker;
+    const msg = ctx.message as any;
+    const media = msg.photo?.pop() || msg.video || msg.document || msg.voice || msg.audio || msg.animation || msg.sticker;
 
     if (media?.file_id) {
-      const type = (ctx.message as any).photo ? 'photo' :
-        (ctx.message as any).video ? 'video' :
-        (ctx.message as any).document ? 'document' :
-        (ctx.message as any).voice ? 'voice' :
-        (ctx.message as any).audio ? 'audio' :
-        (ctx.message as any).animation ? 'animation' : 'sticker';
+      const type = msg.photo ? 'photo' : msg.video ? 'video' : msg.document ? 'document' :
+        msg.voice ? 'voice' : msg.audio ? 'audio' : msg.animation ? 'animation' : 'sticker';
+
+      // Save ALL fields from the Telegram message
+      const caption = msg.caption || '';
+      const captionEntities = msg.caption_entities || [];
+      const replyMarkup = msg.reply_markup || null;
+      const entities = msg.entities || [];
 
       let targetMsgId = editMsgId;
       if (editMsgId === -1) {
-        // New message: create it
         const newMsg = await scheduledMessageService.addMessage(msgId);
         targetMsgId = newMsg.id;
       }
 
       if (targetMsgId && targetMsgId > 0) {
-        await scheduledMessageService.updateMessage(targetMsgId, { mediaFileId: media.file_id, type: type as any });
+        await scheduledMessageService.updateMessage(targetMsgId, {
+          mediaFileId: media.file_id,
+          type: type as any,
+          text: caption,
+          caption: caption,
+          captionEntities: captionEntities.length > 0 ? captionEntities : undefined,
+          entities: entities.length > 0 ? entities : undefined,
+          replyMarkup: replyMarkup,
+        });
       }
 
-      // Close state
       scheduledMessageState.setEditingContent(userId, false);
       scheduledMessageState.setEditingMessage(userId, 0);
       await ctx.reply('✅ رسانه ذخیره شد.');
