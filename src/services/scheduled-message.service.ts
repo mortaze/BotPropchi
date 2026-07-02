@@ -21,7 +21,6 @@ class ScheduledMessageService {
     return scheduledMessageRepository.create({
       title,
       createdBy: data.createdBy,
-      messages: [{ text: '', type: PostMessageType.text, order: 0 }],
     });
   }
 

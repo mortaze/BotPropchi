@@ -118,7 +118,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       await ctx.reply('❌ ایجاد پست لغو شد.', scheduledMessageMainMenuKeyboard());
       return;
     }
-    // Bug #8: Close editing content state
+    // Close editing content state
     if (scheduledMessageState.isEditingContent(userId)) {
       scheduledMessageState.setEditingContent(userId, false);
       scheduledMessageState.setEditingMessage(userId, 0);
@@ -128,10 +128,20 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       }
       return;
     }
-    // Bug #3: Close editing title state
+    // Close editing title state
     if (scheduledMessageState.isEditingTitle(userId)) {
       scheduledMessageState.setEditingTitle(userId, false);
-      const msgId = scheduledMessageState.getEditingMessage(userId);
+      scheduledMessageState.setEditingMessage(userId, 0);
+      const msgId = scheduledMessageState.getEditMode(userId);
+      if (msgId) {
+        await showPostEditor(ctx, msgId);
+      }
+      return;
+    }
+    // Close scheduling states
+    if (scheduledMessageState.getScheduleStep(userId)) {
+      scheduledMessageState.setScheduleStep(userId, null as any);
+      const msgId = scheduledMessageState.getEditMode(userId);
       if (msgId) {
         await showPostEditor(ctx, msgId);
       }
@@ -140,17 +150,19 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     return next();
   });
 
-  // ─── Back buttons ───────────────────────────────────────
+  // ─── Back buttons ──
   bot.hears('🔙 بازگشت', async (ctx: any, next) => {
     if (!ctx.from) return next();
     const userId = ctx.from.id;
-    // Bug #3: Close all editing states on back
+    // Close all editing states
     scheduledMessageState.setEditingContent(userId, false);
     scheduledMessageState.setEditingTitle(userId, false);
     const editMsgId = scheduledMessageState.getEditingMessage(userId);
     if (editMsgId) {
       scheduledMessageState.setEditingMessage(userId, 0);
     }
+    // Also close scheduling states
+    scheduledMessageState.setScheduleStep(userId, null as any);
     const msgId = scheduledMessageState.getEditMode(userId);
     if (msgId) {
       await showPostEditor(ctx, msgId);
@@ -166,12 +178,12 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
   // ─── Editor actions (Reply Keyboard) ────────────────────
 
-  // Bug #1: After adding message, show editor with correct keyboard
+  // ─── Add message — only set state, message created on content delivery ──
   bot.hears('➕ افزودن پیام', async (ctx: any) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
     if (!msgId) return;
-    const newMsg = await scheduledMessageService.addMessage(msgId);
-    scheduledMessageState.setEditingMessage(ctx.from.id, newMsg.id);
+    // Don't create message yet — just set state to expect content
+    scheduledMessageState.setEditingMessage(ctx.from.id, -1); // -1 = new message pending
     scheduledMessageState.setEditingContent(ctx.from.id, true);
     await ctx.reply(
       'پیام جدید را ارسال کنید.\nمی‌توانید متن، عکس، ویدیو، فایل، گیف، پیام فوروارد شده یا هر نوع پیام پشتیبانی‌شده توسط سیستم Post را ارسال کنید.',
@@ -403,37 +415,28 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return;
     }
 
-    // ── Content input (Bug #1: after save, show editor with correct keyboard) ──
+    // ── Content input — save, close state, show editor ──
     if (isEditingContent) {
       const editMsgId = scheduledMessageState.getEditingMessage(userId);
-      if (!editMsgId) return next();
-      const msg = await scheduledMessageRepository.findById(editMsgId);
-      if (!msg) return next();
-      const firstMsg = msg.messages[0];
-      if (firstMsg) {
-        await scheduledMessageService.updateMessage(firstMsg.id, { text });
+      const msgId = scheduledMessageState.getEditMode(userId);
+      if (!msgId) return next();
+
+      if (editMsgId === -1) {
+        // New message: create it with content
+        const newMsg = await scheduledMessageService.addMessage(msgId);
+        await scheduledMessageService.updateMessage(newMsg.id, { text });
+      } else if (editMsgId) {
+        // Existing message: update it
+        await scheduledMessageService.updateMessage(editMsgId, { text });
       }
-      // Bug #3: Close state
+
+      // Close ALL content editing state
       scheduledMessageState.setEditingContent(userId, false);
       scheduledMessageState.setEditingMessage(userId, 0);
-      // Bug #1: Show the message itself, then editor
-      const updatedMessages = await scheduledMessageService.listMessages(editMsgId);
-      for (let i = 0; i < updatedMessages.length; i++) {
-        const m = updatedMessages[i];
-        const msgText = m.text || '(رسانه)';
-        const label = `📨 پیام ${i + 1} از ${updatedMessages.length}`;
-        const keyboard = scheduledMessageSingleMessageInlineKeyboard(editMsgId, m, i, updatedMessages.length);
-        await ctx.reply(`${label}\n\n${graphemeTruncate(msgText, 500)}`, { reply_markup: keyboard.reply_markup });
-      }
-      // Bug #1: Show post info with editor keyboard (NOT cancel keyboard)
-      const updatedMsg = await scheduledMessageRepository.findById(editMsgId);
-      if (updatedMsg) {
-        await ctx.reply(formatScheduledMessageInfo(updatedMsg), {
-          parse_mode: 'Markdown',
-          link_preview_options: { is_disabled: true },
-          ...scheduledMessageEditorReplyKeyboard(updatedMsg.isPublished),
-        });
-      }
+      // Success feedback
+      await ctx.reply('✅ پیام ذخیره شد.');
+      // Refresh editor from DB
+      await showPostEditor(ctx, msgId);
       return;
     }
 
@@ -571,23 +574,20 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     return next();
   });
 
-  // ─── Media handler ──────────────────────────────────────
+  // ─── Media handler ──
   bot.on(['photo', 'video', 'document', 'voice', 'audio', 'animation', 'sticker'], async (ctx: any) => {
     const userId = ctx.from.id;
     const isEditingContent = scheduledMessageState.isEditingContent(userId);
     if (!isEditingContent) return;
 
     const editMsgId = scheduledMessageState.getEditingMessage(userId);
-    if (!editMsgId) return;
-
-    const msg = await scheduledMessageRepository.findById(editMsgId);
-    if (!msg) return;
+    const msgId = scheduledMessageState.getEditMode(userId);
+    if (!msgId) return;
 
     const media = (ctx.message as any).photo?.pop() || (ctx.message as any).video || (ctx.message as any).document ||
       (ctx.message as any).voice || (ctx.message as any).audio || (ctx.message as any).animation || (ctx.message as any).sticker;
 
     if (media?.file_id) {
-      const firstMsg = msg.messages[0];
       const type = (ctx.message as any).photo ? 'photo' :
         (ctx.message as any).video ? 'video' :
         (ctx.message as any).document ? 'document' :
@@ -595,16 +595,22 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
         (ctx.message as any).audio ? 'audio' :
         (ctx.message as any).animation ? 'animation' : 'sticker';
 
-      if (firstMsg) {
-        await scheduledMessageService.updateMessage(firstMsg.id, { mediaFileId: media.file_id, type: type as any });
+      let targetMsgId = editMsgId;
+      if (editMsgId === -1) {
+        // New message: create it
+        const newMsg = await scheduledMessageService.addMessage(msgId);
+        targetMsgId = newMsg.id;
       }
 
-      // Bug #3: Close state
+      if (targetMsgId && targetMsgId > 0) {
+        await scheduledMessageService.updateMessage(targetMsgId, { mediaFileId: media.file_id, type: type as any });
+      }
+
+      // Close state
       scheduledMessageState.setEditingContent(userId, false);
       scheduledMessageState.setEditingMessage(userId, 0);
       await ctx.reply('✅ رسانه ذخیره شد.');
-      // Bug #9: Show updated post info
-      await showPostEditor(ctx, editMsgId);
+      await showPostEditor(ctx, msgId);
     }
   });
 
@@ -740,13 +746,13 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await sendList(ctx, 1);
   });
 
-  // ─── Callback: Message edit (Bug #2: show editor first) ──
+  // ─── Callback: Message edit — show editor keyboard first ──
   bot.action(/^sched:msg:edit:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const msgId = parseInt(ctx.match[1]);
-    // Bug #2: Set editing message but NOT editing content yet
+    // Set editing message but NOT editing content yet
     scheduledMessageState.setEditingMessage(ctx.from.id, msgId);
-    // Show the message edit reply keyboard
+    // Show the message edit reply keyboard (NOT content editing)
     const msg = await prisma.scheduledMessageMessage.findUnique({ where: { id: msgId } });
     await ctx.reply(
       `📝 پیام ${msg?.order !== undefined ? msg.order + 1 : ''}\n\nمحتوای فعلی:\n${msg?.text || '(خالی)'}`,
@@ -754,7 +760,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     );
   });
 
-  // Bug #2: Content editing action (separate from msg:edit)
+  // Content editing — set state to receive new content
   bot.hears('✏️ ویرایش محتوا', async (ctx: any) => {
     const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
     if (!msgId) return;
@@ -825,12 +831,11 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await showPostEditor(ctx, schedMsgId);
   });
 
-  // ─── Callback: Message add ──────────────────────────────
+  // ─── Callback: Message add — set state, create on delivery ──
   bot.action(/^sched:msg:add:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
-    const schedMsgId = parseInt(ctx.match[1]);
-    const newMsg = await scheduledMessageService.addMessage(schedMsgId);
-    scheduledMessageState.setEditingMessage(ctx.from.id, newMsg.id);
+    // Don't create message yet — just set state
+    scheduledMessageState.setEditingMessage(ctx.from.id, -1);
     scheduledMessageState.setEditingContent(ctx.from.id, true);
     await ctx.reply(
       'پیام جدید را ارسال کنید.\nمی‌توانید متن، عکس، ویدیو، فایل، گیف، پیام فوروارد شده یا هر نوع پیام پشتیبانی‌شده توسط سیستم Post را ارسال کنید.',
@@ -863,8 +868,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       // Bug #4: Use Reply Keyboard for group selection
       await ctx.reply('👥 گروه مقصد را انتخاب کنید:', scheduleGroupReplyKeyboard(groups));
     } else if (field === 'messages') {
-      const newMsg = await scheduledMessageService.addMessage(msgId);
-      scheduledMessageState.setEditingMessage(userId, newMsg.id);
+      // Don't create message yet — set state for content delivery
+      scheduledMessageState.setEditingMessage(userId, -1);
       scheduledMessageState.setEditingContent(userId, true);
       await ctx.reply(
         'پیام جدید را ارسال کنید.\nمی‌توانید متن، عکس، ویدیو، فایل، گیف، پیام فوروارد شده یا هر نوع پیام پشتیبانی‌شده توسط سیستم Post را ارسال کنید.',
