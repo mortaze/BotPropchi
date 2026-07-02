@@ -135,6 +135,100 @@ export const scheduledMessageState = {
     return cache.get<boolean>(schedKey(userId, 'mgmt_mode'));
   },
 
+  // Button editor state (mirrors Post system pbedit: pattern)
+  setButtonEditorMsgId(userId: number, msgId: number) {
+    cache.setPermanent(schedKey(userId, 'pbedit_editor_msg_id'), msgId);
+  },
+  getButtonEditorMsgId(userId: number) {
+    return cache.get<number>(schedKey(userId, 'pbedit_editor_msg_id'));
+  },
+  clearButtonEditorMsgId(userId: number) {
+    cache.del(schedKey(userId, 'pbedit_editor_msg_id'));
+  },
+
+  setButtonMode(userId: number, mode: string) {
+    cache.setPermanent(schedKey(userId, 'btn_mode'), mode);
+  },
+  getButtonMode(userId: number) {
+    return cache.get<string>(schedKey(userId, 'btn_mode'));
+  },
+
+  setButtonState(userId: number, state: string) {
+    cache.setPermanent(schedKey(userId, 'btn_state'), state);
+  },
+  getButtonState(userId: number) {
+    return cache.get<string>(schedKey(userId, 'btn_state'));
+  },
+
+  setButtonRow(userId: number, row: number) {
+    cache.setPermanent(schedKey(userId, 'btn_row'), row);
+  },
+  getButtonRow(userId: number) {
+    return cache.get<number>(schedKey(userId, 'btn_row'));
+  },
+
+  setButtonCol(userId: number, col: number) {
+    cache.setPermanent(schedKey(userId, 'btn_col'), col);
+  },
+  getButtonCol(userId: number) {
+    return cache.get<number>(schedKey(userId, 'btn_col'));
+  },
+
+  setButtonType(userId: number, type: string) {
+    cache.setPermanent(schedKey(userId, 'btn_type'), type);
+  },
+  getButtonType(userId: number) {
+    return cache.get<string>(schedKey(userId, 'btn_type'));
+  },
+
+  setButtonColor(userId: number, color: string) {
+    cache.setPermanent(schedKey(userId, 'btn_color'), color);
+  },
+  getButtonColor(userId: number) {
+    return cache.get<string>(schedKey(userId, 'btn_color'));
+  },
+
+  setButtonPreviousView(userId: number, view: string) {
+    cache.setPermanent(schedKey(userId, 'btn_previous_view'), view);
+  },
+  getButtonPreviousView(userId: number) {
+    return cache.get<string>(schedKey(userId, 'btn_previous_view'));
+  },
+
+  setButtonMoveActive(userId: number, active: boolean) {
+    cache.setPermanent(schedKey(userId, 'btn_move_active'), active);
+  },
+  isButtonMoveActive(userId: number) {
+    return cache.get<boolean>(schedKey(userId, 'btn_move_active'));
+  },
+
+  setButtonMoveSelected(userId: number, row: number, col: number) {
+    cache.setPermanent(schedKey(userId, 'btn_move_row'), row);
+    cache.setPermanent(schedKey(userId, 'btn_move_col'), col);
+  },
+  getButtonMoveSelected(userId: number) {
+    return { row: cache.get<number>(schedKey(userId, 'btn_move_row')), col: cache.get<number>(schedKey(userId, 'btn_move_col')) };
+  },
+
+  setButtonPendingDelete(userId: number, row: number, col: number) {
+    cache.setPermanent(schedKey(userId, 'btn_pending_delete'), JSON.stringify({ row, col }));
+  },
+  getButtonPendingDelete(userId: number) {
+    const raw = cache.get<string>(schedKey(userId, 'btn_pending_delete'));
+    return raw ? JSON.parse(raw) : null;
+  },
+
+  clearButtonEditorState(userId: number) {
+    const fields = [
+      'pbedit_editor_msg_id', 'btn_mode', 'btn_state', 'btn_row', 'btn_col',
+      'btn_type', 'btn_color', 'btn_previous_view', 'btn_move_active',
+      'btn_move_row', 'btn_move_col', 'btn_pending_delete',
+    ];
+    for (const field of fields) {
+      cache.del(schedKey(userId, field));
+    }
+  },
+
   // Clear all state for a user
   clearAll(userId: number) {
     const fields = [

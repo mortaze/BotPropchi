@@ -132,4 +132,70 @@ export const scheduledMessageRepository = {
       data: { isPublished: false, status: PostStatus.DRAFT, nextSendAt: null },
     });
   },
+
+  // ─── Button CRUD ─────────────────────────────────────────
+
+  async createButton(data: {
+    scheduledMessageId: number;
+    messageId?: number;
+    row: number;
+    col: number;
+    text: string;
+    type?: string;
+    value?: string;
+    style?: string;
+    payload?: any;
+  }) {
+    return prisma.scheduledMessageButton.create({
+      data: {
+        scheduledMessageId: data.scheduledMessageId,
+        messageId: data.messageId,
+        row: data.row,
+        col: data.col,
+        text: data.text,
+        type: data.type ?? 'URL',
+        value: data.value,
+        style: data.style,
+        payload: data.payload,
+      },
+    });
+  },
+
+  async updateButton(id: number, data: {
+    text?: string;
+    type?: string;
+    value?: string;
+    style?: string;
+    row?: number;
+    col?: number;
+    payload?: any;
+  }) {
+    return prisma.scheduledMessageButton.update({ where: { id }, data });
+  },
+
+  async deleteButton(id: number) {
+    return prisma.scheduledMessageButton.delete({ where: { id } });
+  },
+
+  async findButtonsByMessage(messageId: number) {
+    return prisma.scheduledMessageButton.findMany({
+      where: { messageId },
+      orderBy: [{ row: 'asc' }, { col: 'asc' }],
+    });
+  },
+
+  async findButtonsByScheduledMessage(scheduledMessageId: number) {
+    return prisma.scheduledMessageButton.findMany({
+      where: { scheduledMessageId },
+      orderBy: [{ row: 'asc' }, { col: 'asc' }],
+    });
+  },
+
+  async deleteButtonsByMessage(messageId: number) {
+    return prisma.scheduledMessageButton.deleteMany({ where: { messageId } });
+  },
+
+  async deleteButtonsByScheduledMessage(scheduledMessageId: number) {
+    return prisma.scheduledMessageButton.deleteMany({ where: { scheduledMessageId } });
+  },
 };

@@ -186,3 +186,97 @@ export function scheduledMessageDashboardKeyboard() {
     [Markup.button.callback('↩️ بازگشت', 'sched:menu')],
   ]);
 }
+
+// ─── Button Editor (mirrors Post system renderButtonEditor) ──
+
+const colorIndicator = (style?: string) => {
+  if (style === 'primary') return '🔵';
+  if (style === 'success') return '🟢';
+  if (style === 'danger') return '🔴';
+  return '';
+};
+
+function buildButtonEditorInlineKeyboard(
+  messageId: number,
+  buttons: any[][],
+  mode: 'create' | 'edit' | 'delete' | 'move',
+  selectedPos?: { row: number; col: number },
+): any[][] {
+  const rows: any[][] = [];
+  const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
+
+  if (hasButtons) {
+    for (let r = 0; r < buttons.length; r++) {
+      const row = buttons[r];
+      if (!Array.isArray(row)) continue;
+      const rowButtons: any[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const btn = row[c];
+        if (!btn) continue;
+        const label = (btn.text || 'بدون عنوان').substring(0, 13);
+        const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
+        const icon = isSelected ? '✅' : mode === 'edit' ? '✏️' : mode === 'delete' ? '✖' : mode === 'move' ? '🔀' : '＋';
+        rowButtons.push(
+          Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${label}`, `smbtn:click:${messageId}:${r}:${c}`),
+        );
+      }
+      if (rowButtons.length > 0) rows.push(rowButtons);
+    }
+  } else if (mode === 'create') {
+    rows.push([Markup.button.callback('＋', `smbtn:click:${messageId}:0:0`)]);
+  }
+
+  if (mode !== 'move') {
+    rows.push([
+      Markup.button.callback('➕ ایجاد', `smbtn:mode:create:${messageId}`),
+      Markup.button.callback('✏️ ویرایش', `smbtn:mode:edit:${messageId}`),
+      Markup.button.callback('🗑 حذف', `smbtn:mode:delete:${messageId}`),
+      Markup.button.callback('🔀 جابجایی', `smbtn:mode:move:${messageId}`),
+    ]);
+  }
+
+  return rows;
+}
+
+export function renderScheduledButtonEditor(
+  messageId: number,
+  buttons: any[][],
+  mode?: 'create' | 'edit' | 'delete' | 'move',
+  selectedPos?: { row: number; col: number },
+): { text: string; reply_markup: any } {
+  const effectiveMode = mode || 'create';
+  const rows = buildButtonEditorInlineKeyboard(messageId, buttons, effectiveMode, selectedPos);
+  return {
+    text: '⌨️ ویرایشگر دکمه‌ها',
+    reply_markup: { inline_keyboard: rows },
+  };
+}
+
+export function buildSmbtnEditTypeKeyboard(messageId: number, row: number, col: number, currentColor?: string) {
+  const colorLabel = currentColor ? `🎨 رنگ (${colorIndicator(currentColor)})` : '🎨 رنگ';
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔗 لینک یا اشتراک', `smbtn:type:url:${messageId}:${row}:${col}`)],
+    [Markup.button.callback('🪟 POP-UP', `smbtn:type:popup:${messageId}:${row}:${col}`)],
+    [Markup.button.callback('⌨️ دستور', `smbtn:type:command:${messageId}:${row}:${col}`)],
+    [Markup.button.callback(colorLabel, `smbtn:color:${messageId}:${row}:${col}`)],
+    [Markup.button.callback('❌ لغو', `smbtn:type:cancel:${messageId}`)],
+  ]);
+}
+
+export function buildSmbtnMoveKeyboard() {
+  return Markup.keyboard([
+    ['⬆️ بالا', '⬇️ پایین'],
+    ['⬅️ چپ', '➡️ راست'],
+    ['✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی'],
+  ]).resize().persistent();
+}
+
+export function buildSmbtnColorKeyboard(messageId: number, row: number, col: number) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔵 Primary (آبی)', `smbtn:color:set:${messageId}:${row}:${col}:primary`)],
+    [Markup.button.callback('🟢 Success (سبز)', `smbtn:color:set:${messageId}:${row}:${col}:success`)],
+    [Markup.button.callback('🔴 Danger (قرمز)', `smbtn:color:set:${messageId}:${row}:${col}:danger`)],
+    [Markup.button.callback('⚪ بدون رنگ', `smbtn:color:set:${messageId}:${row}:${col}:default`)],
+    [Markup.button.callback('❌ لغو', `smbtn:type:cancel:${messageId}`)],
+  ]);
+}

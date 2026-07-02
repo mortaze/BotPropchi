@@ -1,4 +1,4 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import { PostStatus, PostMessageType } from '@prisma/client';
 import { scheduledMessageService } from '../../services/scheduled-message.service';
 import { scheduledMessageState } from '../../services/scheduled-message-state.service';
@@ -25,6 +25,10 @@ import {
   scheduledMessagePublishValidationKeyboard,
   scheduledMessageDeleteConfirmKeyboard,
   scheduledMessageDashboardKeyboard,
+  renderScheduledButtonEditor,
+  buildSmbtnEditTypeKeyboard,
+  buildSmbtnMoveKeyboard,
+  buildSmbtnColorKeyboard,
 } from '../keyboards/scheduled-message-keyboards';
 
 function formatScheduledMessageInfo(msg: any): string {
@@ -805,7 +809,14 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   });
 
   bot.hears('🔘 ویرایش دکمه‌ها', async (ctx: any) => {
-    await ctx.reply('🔘 مدیریت دکمه‌ها از اینجا قابل انجام است.\nمتن دکمه را ارسال کنید.');
+    const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
+    if (!msgId) return;
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, 'create');
+    const sent = await ctx.reply(text, { reply_markup });
+    if (sent) scheduledMessageState.setButtonEditorMsgId(ctx.from.id, sent.message_id);
+    scheduledMessageState.setButtonMode(ctx.from.id, 'create');
   });
 
   // ─── Callback: Message delete ───────────────────────────
@@ -921,6 +932,282 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     scheduledMessageState.clearAll(ctx.from.id);
     await ctx.reply('📢 سامانه مدیریت پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
   });
+
+  // ─── Button Editor: Enter button editor mode ──
+  bot.hears('🔘 ویرایش دکمه‌ها', async (ctx: any) => {
+    const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
+    if (!msgId) return;
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, 'create');
+    const sent = await ctx.reply(text, { reply_markup });
+    if (sent) scheduledMessageState.setButtonEditorMsgId(ctx.from.id, sent.message_id);
+    scheduledMessageState.setButtonMode(ctx.from.id, 'create');
+  });
+
+  // ─── Button Editor: Click on a button slot ──
+  bot.action(/^smbtn:click:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    const mode = scheduledMessageState.getButtonMode(userId) || 'create';
+
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+
+    if (mode === 'move') {
+      scheduledMessageState.setButtonMoveSelected(userId, row, col);
+      scheduledMessageState.setButtonMoveActive(userId, true);
+      const editorMsgId = scheduledMessageState.getButtonEditorMsgId(userId);
+      if (editorMsgId) {
+        const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, 'move', { row, col });
+        try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
+      }
+      await ctx.reply(`🔀 "${grid[row]?.[col]?.text || ''}" انتخاب شد. جهت را انتخاب کنید:`, buildSmbtnMoveKeyboard());
+      return;
+    }
+
+    if (mode === 'delete') {
+      if (grid[row] && grid[row][col]) {
+        const btn = grid[row][col];
+        if (btn.id) {
+          await scheduledMessageRepository.deleteButton(btn.id);
+        }
+        scheduledMessageState.setButtonMode(userId, 'create');
+        await refreshButtonEditor(ctx, msgId);
+      }
+      return;
+    }
+
+    if (mode === 'edit') {
+      const btn = grid[row]?.[col];
+      if (!btn) return;
+      scheduledMessageState.setButtonRow(userId, row);
+      scheduledMessageState.setButtonCol(userId, col);
+      scheduledMessageState.setButtonMode(userId, 'edit');
+      const typeLabel = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : '🔗 لینک';
+      const colorText = btn.style ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
+      await ctx.editMessageText(
+        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n${btn.text}: ${btn.value || ''}\n${colorText}`,
+        buildSmbtnEditTypeKeyboard(msgId, row, col, btn.style),
+      );
+      return;
+    }
+
+    // Create mode — add placeholder button, then enter edit mode
+    const msgRecord = await prisma.scheduledMessageMessage.findUnique({ where: { id: msgId } });
+    const newBtn = await scheduledMessageRepository.createButton({
+      scheduledMessageId: msgRecord?.scheduledMessageId || 0,
+      messageId: msgId,
+      row: row + 1,
+      col: 0,
+      text: 'دکمه جدید',
+      type: 'URL',
+      value: '',
+    });
+    scheduledMessageState.setButtonRow(userId, row + 1);
+    scheduledMessageState.setButtonCol(userId, 0);
+    scheduledMessageState.setButtonMode(userId, 'edit');
+    await refreshButtonEditor(ctx, msgId);
+  });
+
+  // ─── Button Editor: Set mode (create/edit/delete/move) ──
+  bot.action(/^smbtn:mode:(create|edit|delete|move):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const mode = ctx.match[1];
+    const msgId = parseInt(ctx.match[2]);
+    scheduledMessageState.setButtonMode(userId, mode);
+    scheduledMessageState.setButtonState(userId, '');
+    scheduledMessageState.setButtonRow(userId, 0);
+    scheduledMessageState.setButtonCol(userId, 0);
+    if (mode === 'move') {
+      scheduledMessageState.setButtonMoveActive(userId, false);
+    }
+    await refreshButtonEditor(ctx, msgId);
+  });
+
+  // ─── Button Editor: Select type (url/popup/command) ──
+  bot.action(/^smbtn:type:(url|popup|command):(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const btnType = ctx.match[1];
+    const msgId = parseInt(ctx.match[2]);
+    const row = parseInt(ctx.match[3]);
+    const col = parseInt(ctx.match[4]);
+    const currentMode = scheduledMessageState.getButtonMode(userId) || 'edit';
+    scheduledMessageState.setButtonPreviousView(userId, currentMode);
+    scheduledMessageState.setButtonType(userId, btnType);
+    scheduledMessageState.setButtonState(userId, 'wait_text');
+    scheduledMessageState.setButtonRow(userId, row);
+    scheduledMessageState.setButtonCol(userId, col);
+
+    const typeLabel = btnType === 'popup' ? '🪟 POP-UP' : btnType === 'command' ? '⌨️ دستور' : '🔗 لینک';
+    await ctx.editMessageText(`📝 متن دکمه (${typeLabel}) را وارد کنید:`, {
+      reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `smbtn:type:cancel:${msgId}`)]] },
+    });
+  });
+
+  // ─── Button Editor: Cancel type selection ──
+  bot.action(/^smbtn:type:cancel:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = parseInt(ctx.match[1]);
+    scheduledMessageState.setButtonState(userId, '');
+    scheduledMessageState.setButtonType(userId, '');
+    const prevMode = scheduledMessageState.getButtonPreviousView(userId) || 'edit';
+    scheduledMessageState.setButtonMode(userId, prevMode);
+    await refreshButtonEditor(ctx, msgId);
+  });
+
+  // ─── Button Editor: Select color ──
+  bot.action(/^smbtn:color:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    const currentMode = scheduledMessageState.getButtonMode(userId) || 'edit';
+    scheduledMessageState.setButtonPreviousView(userId, currentMode);
+    scheduledMessageState.setButtonState(userId, 'wait_color');
+    await ctx.editMessageText('🎨 رنگ دکمه را انتخاب کنید:', buildSmbtnColorKeyboard(msgId, row, col));
+  });
+
+  // ─── Button Editor: Set color ──
+  bot.action(/^smbtn:color:set:(\d+):(\d+):(\d+):(\w+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    const color = ctx.match[4] === 'default' ? undefined : ctx.match[4];
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const btn = grid[row]?.[col];
+    if (btn?.id) {
+      await scheduledMessageRepository.updateButton(btn.id, { style: color || undefined });
+    }
+    scheduledMessageState.setButtonState(userId, '');
+    const prevMode = scheduledMessageState.getButtonPreviousView(userId) || 'edit';
+    scheduledMessageState.setButtonMode(userId, prevMode);
+    await refreshButtonEditor(ctx, msgId);
+  });
+
+  // ─── Button Editor: Text input for button name/value ──
+  bot.on('text', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const btnState = scheduledMessageState.getButtonState(userId);
+    if (btnState !== 'wait_text') return next();
+
+    const text = ctx.message.text;
+    const msgId = scheduledMessageState.getEditingMessage(userId);
+    const row = scheduledMessageState.getButtonRow(userId);
+    const col = scheduledMessageState.getButtonCol(userId);
+    const btnType = scheduledMessageState.getButtonType(userId);
+    if (!msgId || row === undefined || col === undefined) return next();
+
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const existingBtn = grid[row]?.[col];
+
+    if (existingBtn?.id) {
+      // Update existing button
+      const updateData: any = { text };
+      if (btnType === 'url' || btnType === 'command') {
+        // For URL/command, user enters the value in next step — but for simplicity, treat text as both name and value
+        updateData.value = text;
+        updateData.type = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : 'CALLBACK';
+      } else if (btnType === 'popup') {
+        updateData.type = 'CALLBACK';
+        updateData.value = text;
+      }
+      await scheduledMessageRepository.updateButton(existingBtn.id, updateData);
+    } else {
+      // Create new button
+      const type = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : btnType === 'popup' ? 'CALLBACK' : 'URL';
+      await scheduledMessageRepository.createButton({
+        scheduledMessageId: msgId,
+        messageId: msgId,
+        row,
+        col,
+        text,
+        type,
+        value: text,
+      });
+    }
+
+    scheduledMessageState.setButtonState(userId, '');
+    scheduledMessageState.setButtonType(userId, '');
+    scheduledMessageState.setButtonMode(userId, 'create');
+    await ctx.reply('✅ دکمه ذخیره شد.');
+    await refreshButtonEditor(ctx, msgId);
+  });
+
+  // ─── Button Editor: Move confirm/cancel ──
+  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any) => {
+    const userId = ctx.from.id;
+    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+    const msgId = scheduledMessageState.getEditingMessage(userId);
+    if (!msgId) return;
+
+    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
+    const btnRow = scheduledMessageState.getButtonRow(userId);
+    const btnCol = scheduledMessageState.getButtonCol(userId);
+    if (moveSel.row === undefined || moveSel.col === undefined || btnRow === undefined || btnCol === undefined) return;
+
+    // Swap buttons in DB
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const btnA = grid[btnRow]?.[btnCol];
+    const btnB = grid[moveSel.row]?.[moveSel.col];
+    if (btnA?.id && btnB?.id) {
+      const tmpRow = btnA.row, tmpCol = btnA.col;
+      await scheduledMessageRepository.updateButton(btnA.id, { row: btnB.row, col: btnB.col });
+      await scheduledMessageRepository.updateButton(btnB.id, { row: tmpRow, col: tmpCol });
+    }
+
+    scheduledMessageState.setButtonMoveActive(userId, false);
+    scheduledMessageState.setButtonMode(userId, 'create');
+    await ctx.reply('✅ جابه‌جایی انجام شد.');
+    await refreshButtonEditor(ctx, msgId!);
+  });
+
+  bot.hears('❌ لغو جابجایی', async (ctx: any) => {
+    const userId = ctx.from.id;
+    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+    const msgId = scheduledMessageState.getEditingMessage(userId);
+    scheduledMessageState.setButtonMoveActive(userId, false);
+    scheduledMessageState.setButtonMode(userId, 'create');
+    await ctx.reply('❌ جابه‌جایی لغو شد.');
+    if (msgId) await refreshButtonEditor(ctx, msgId);
+  });
+}
+
+// ─── Helper: Convert DB buttons to 2D grid ──
+function buttonsToGrid(buttons: any[]): any[][] {
+  const grid: any[][] = [];
+  for (const btn of buttons) {
+    if (!grid[btn.row]) grid[btn.row] = [];
+    grid[btn.row][btn.col] = btn;
+  }
+  return grid;
+}
+
+// ─── Helper: Refresh button editor inline keyboard ──
+async function refreshButtonEditor(ctx: any, msgId: number) {
+  const userId = ctx.from.id;
+  const editorMsgId = scheduledMessageState.getButtonEditorMsgId(userId);
+  if (!editorMsgId) return;
+  const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+  const grid = buttonsToGrid(buttons);
+  const mode = scheduledMessageState.getButtonMode(userId) || 'create';
+  const moveActive = scheduledMessageState.isButtonMoveActive(userId);
+  const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, moveActive ? 'move' : mode as any);
+  try {
+    await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup });
+  } catch {}
 }
 
 // ─── Helper: Show post editor (always read from DB) ──

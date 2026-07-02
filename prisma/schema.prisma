@@ -1228,25 +1228,30 @@ model ScheduledMessageMessage {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   scheduledMessage   ScheduledMessage  @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
+  buttons            ScheduledMessageButton[]
 
   @@index([scheduledMessageId, order])
   @@map("scheduled_message_messages")
 }
 
 model ScheduledMessageButton {
-  id                 Int               @id @default(autoincrement())
+  id                 Int                  @id @default(autoincrement())
   scheduledMessageId Int
   messageId          Int?
-  row                Int               @default(0)
-  col                Int               @default(0)
+  row                Int                  @default(0)
+  col                Int                  @default(0)
   text               String
-  type               String            @default("URL")
+  type               String               @default("URL")
   value              String?
+  style              String?
   payload            Json?
-  createdAt          DateTime          @default(now())
-  scheduledMessage   ScheduledMessage  @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  scheduledMessage   ScheduledMessage     @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
+  message            ScheduledMessageMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([scheduledMessageId])
+  @@index([messageId])
   @@map("scheduled_message_buttons")
 }
 
