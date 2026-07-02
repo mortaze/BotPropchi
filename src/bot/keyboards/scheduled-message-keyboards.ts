@@ -1,82 +1,105 @@
 import { Markup } from 'telegraf';
+import { sanitizeTelegramText } from '../../utils/unicode';
+import { graphemeTruncate } from '../../utils/grapheme';
 
 // ─── Main Menu ────────────────────────────────────────────
 
 export function scheduledMessageMainMenuKeyboard() {
   return Markup.keyboard([
     ['➕ ایجاد پست جدید'],
-    ['📄 لیست پیام‌ها', '👥 مدیریت گروه‌ها'],
-    ['📊 گزارش ارسال', '⚙️ تنظیمات'],
-    ['↩️ بازگشت به پنل ادمین'],
+    ['📋 لیست پست‌ها'],
+    ['📊 گزارش ارسال'],
+    ['🔙 بازگشت به پنل ادمین'],
   ]).resize().persistent();
 }
 
-// ─── Post List ─────────────────────────────────────────────
+// ─── Post List (Inline — after clicking 📋 لیست پست‌ها) ────
 
-export function scheduledMessageListKeyboard(messages: any[], page: number, totalPages: number) {
-  const rows: any[][] = [];
-
-  for (const msg of messages) {
-    const statusIcon = msg.isPublished ? '🟢' : '⚪';
-    rows.push([Markup.button.callback(`${statusIcon} ${msg.title}`, `sched:view:${msg.id}`)]);
-  }
-
-  const navRow: any[] = [];
-  if (page > 1) navRow.push(Markup.button.callback('◀️ قبلی', `sched:list:${page - 1}`));
-  navRow.push(Markup.button.callback(`${page} از ${totalPages}`, 'noop'));
-  if (page < totalPages) navRow.push(Markup.button.callback('بعدی ▶️', `sched:list:${page + 1}`));
-  rows.push(navRow);
-
-  rows.push([Markup.button.callback('↩️ بازگشت', 'sched:menu')]);
-
+export function scheduledMessageListInlineKeyboard(messages: any[], page: number, totalPages: number) {
+  const rows: any[][] = messages.map((p: any) => [
+    Markup.button.callback(
+      `${p.isPublished ? '✅' : '📝'} ${graphemeTruncate(sanitizeTelegramText(p.title) || 'بدون عنوان', 28)}`,
+      `sched:view:${p.id}`,
+    ),
+  ]);
+  const nav: any[] = [];
+  if (page > 1) nav.push(Markup.button.callback('◀️ قبلی', `sched:list:${page - 1}`));
+  nav.push(Markup.button.callback(`${page}/${totalPages}`, 'noop'));
+  if (page < totalPages) nav.push(Markup.button.callback('بعدی ▶️', `sched:list:${page + 1}`));
+  if (nav.length > 1) rows.push(nav);
+  rows.push([Markup.button.callback('« بازگشت به منوی پست', 'sched:menu')]);
   return Markup.inlineKeyboard(rows);
 }
 
-// ─── Post Editor (management view) ────────────────────────
+// ─── New Post Manager Reply Keyboard (after creating post) ─
 
-export function scheduledMessageEditorKeyboard(id: number, isPublished: boolean) {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('📝 ویرایش عنوان', `sched:edit:${id}:title`)],
-    [Markup.button.callback('📋 مدیریت پیام‌ها', `sched:msgs:${id}`)],
-    [Markup.button.callback('🔘 مدیریت دکمه‌ها', `sched:btns:${id}`)],
-    [Markup.button.callback('⏰ تنظیم زمان‌بندی', `sched:schedule:${id}`)],
-    [
-      isPublished
-        ? Markup.button.callback('📤 لغو انتشار', `sched:unpublish:${id}`)
-        : Markup.button.callback('🚀 انتشار', `sched:publish:${id}`),
-    ],
-    [Markup.button.callback('🗑 حذف', `sched:delete:${id}`)],
-    [Markup.button.callback('↩️ بازگشت به لیست', 'sched:list:1')],
-  ]);
-}
-
-// ─── Reply Keyboards ──────────────────────────────────────
-
-export function scheduledMessageManagerReplyKeyboard() {
+export function scheduledMessageNewPostManagerReplyKeyboard() {
   return Markup.keyboard([
-    ['📝 ویرایش محتوا', '🏷 ویرایش عنوان'],
-    ['🔘 ویرایش دکمه‌ها'],
-    ['🚀 تغییر وضعیت انتشار'],
-    ['🗑 حذف پست', '🔙 بازگشت'],
+    ['➕ افزودن پیام', '⏰ تنظیم زمان‌بندی'],
+    ['📖 دستور', '👥 انتخاب گروه'],
+    ['✅ انتشار'],
+    ['🗑 حذف پست'],
+    ['🔙 بازگشت'],
   ]).resize().persistent();
 }
 
-export function scheduledMessageEditReplyKeyboard() {
+// ─── Post Editor Reply Keyboard (after selecting a post) ───
+
+export function scheduledMessageEditorReplyKeyboard(isPublished: boolean) {
   return Markup.keyboard([
-    ['📝 ویرایش محتوا', '🏷 ویرایش عنوان'],
     ['➕ افزودن پیام'],
-    ['🔘 ویرایش دکمه‌ها'],
-    ['🚀 تغییر وضعیت انتشار'],
-    ['🗑 حذف پست', '🔙 بازگشت'],
+    ['👥 انتخاب گروه', '⏰ تنظیم زمان‌بندی'],
+    ['📖 دستور'],
+    ['✅ انتشار', '📊 آمار'],
+    ['🗑 حذف پست'],
+    ['🔙 بازگشت به لیست'],
   ]).resize().persistent();
 }
+
+// ─── Cancel Only ──────────────────────────────────────────
 
 export function scheduledMessageCancelOnlyKeyboard() {
   return Markup.keyboard([['❌ لغو']]).resize().persistent();
 }
 
-export function scheduledMessageBackKeyboard() {
-  return Markup.keyboard([['🔙 بازگشت']]).resize().persistent();
+// ─── Add Message Prompt ───────────────────────────────────
+
+export function scheduledMessageAddMessageKeyboard() {
+  return Markup.keyboard([['❌ لغو']]).resize().persistent();
+}
+
+// ─── Message Edit Reply Keyboard ──────────────────────────
+
+export function scheduledMessageEditMessageReplyKeyboard() {
+  return Markup.keyboard([
+    ['✏️ ویرایش محتوا', '📝 ویرایش عنوان'],
+    ['🔘 ویرایش دکمه‌ها'],
+    ['🔙 بازگشت'],
+  ]).resize().persistent();
+}
+
+// ─── Single Message Inline Keyboard ───────────────────────
+// Per-message: edit/delete/move/add — mirrors postSingleMessageInlineKeyboard
+
+export function scheduledMessageSingleMessageInlineKeyboard(
+  scheduledMessageId: number,
+  msg: any,
+  msgIndex: number,
+  totalMsgs: number,
+) {
+  const msgId = msg.id;
+  const rows: any[][] = [
+    [
+      Markup.button.callback('✏️ ویرایش پیام', `sched:msg:edit:${msgId}`),
+      Markup.button.callback('🗑 حذف پیام', `sched:msg:delete:${msgId}`),
+    ],
+  ];
+  const moveRow: any[] = [];
+  if (msgIndex > 0) moveRow.push(Markup.button.callback('⬆️ بالا', `sched:msg:up:${scheduledMessageId}:${msgId}`));
+  if (msgIndex < totalMsgs - 1) moveRow.push(Markup.button.callback('⬇️ پایین', `sched:msg:down:${scheduledMessageId}:${msgId}`));
+  if (moveRow.length > 0) rows.push(moveRow);
+  rows.push([Markup.button.callback('➕ افزودن پیام', `sched:msg:add:${scheduledMessageId}:${msgId}`)]);
+  return Markup.inlineKeyboard(rows);
 }
 
 // ─── Schedule Interval Selection ──────────────────────────
@@ -106,11 +129,9 @@ export function scheduleGroupKeyboard(groups: any[]) {
 
 // ─── Topic Selection ──────────────────────────────────────
 
-export function scheduleTopicKeyboard(topics: any[], hasAllOption = true) {
+export function scheduleTopicKeyboard(topics: any[]) {
   const rows: any[][] = [];
-  if (hasAllOption) {
-    rows.push([Markup.button.callback('📌 همه تاپیک‌ها', 'sched:topic:all')]);
-  }
+  rows.push([Markup.button.callback('📌 همه تاپیک‌ها', 'sched:topic:all')]);
   for (const t of topics) {
     rows.push([Markup.button.callback(`${t.name}`, `sched:topic:${t.id}`)]);
   }
@@ -118,19 +139,12 @@ export function scheduleTopicKeyboard(topics: any[], hasAllOption = true) {
   return Markup.inlineKeyboard(rows);
 }
 
-// ─── Message Management ───────────────────────────────────
+// ─── Publish Validation Keyboard ──────────────────────────
 
-export function scheduledMessageListInlineKeyboard(messages: any[], scheduledMessageId: number) {
-  const rows: any[][] = [];
-  for (const msg of messages) {
-    const preview = (msg.text || '(رسانه)').slice(0, 30);
-    rows.push([
-      Markup.button.callback(`${msg.order + 1}. ${preview}`, `sched:msg:edit:${msg.id}`),
-      Markup.button.callback('🗑', `sched:msg:del:${msg.id}`),
-    ]);
-  }
-  rows.push([Markup.button.callback('➕ افزودن پیام', `sched:msg:add:${scheduledMessageId}`)]);
-  rows.push([Markup.button.callback('↩️ بازگشت', `sched:view:${scheduledMessageId}`)]);
+export function scheduledMessagePublishValidationKeyboard(missingFields: { key: string; label: string }[]) {
+  const rows: any[][] = missingFields.map((f) => [
+    Markup.button.callback(f.label, `sched:goto:${f.key}`),
+  ]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -140,33 +154,6 @@ export function scheduledMessageDeleteConfirmKeyboard(id: number) {
   return Markup.inlineKeyboard([
     [Markup.button.callback('✅ تایید حذف', `sched:delete:confirm:${id}`)],
     [Markup.button.callback('❌ انصراف', `sched:view:${id}`)],
-  ]);
-}
-
-// ─── Publish Options ──────────────────────────────────────
-
-export function scheduledMessagePublishKeyboard(id: number) {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🚀 انتشار', `sched:publish:${id}`)],
-    [Markup.button.callback('↩️ بازگشت', `sched:view:${id}`)],
-  ]);
-}
-
-// ─── Settings ─────────────────────────────────────────────
-
-export function scheduledMessageSettingsKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('⛔ توقف همه ارسال‌ها', 'sched:emergency_stop')],
-    [Markup.button.callback('↩️ بازگشت', 'sched:menu')],
-  ]);
-}
-
-// ─── Confirm Emergency Stop ───────────────────────────────
-
-export function scheduledMessageEmergencyStopConfirmKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('✅ بله، متوقف کن', 'sched:emergency_stop:confirm')],
-    [Markup.button.callback('❌ انصراف', 'sched:settings')],
   ]);
 }
 

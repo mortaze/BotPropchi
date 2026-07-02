@@ -4,28 +4,59 @@ import { scheduledMessageService } from '../../services/scheduled-message.servic
 import { scheduledMessageState } from '../../services/scheduled-message-state.service';
 import { scheduledMessageRepository } from '../../repositories/scheduled-message.repository';
 import { botAdminService } from '../../services/bot-admin.service';
-import { groupService } from '../../services/group.service';
 import { prisma } from '../../prisma/client';
 import { logger } from '../../utils/logger';
+import { cache } from '../../utils/cache';
 import { sanitizeTelegramText, validateDbInput } from '../../utils/unicode';
+import { graphemeTruncate } from '../../utils/grapheme';
 import {
   scheduledMessageMainMenuKeyboard,
-  scheduledMessageListKeyboard,
-  scheduledMessageEditorKeyboard,
-  scheduledMessageManagerReplyKeyboard,
-  scheduledMessageEditReplyKeyboard,
+  scheduledMessageListInlineKeyboard,
+  scheduledMessageNewPostManagerReplyKeyboard,
+  scheduledMessageEditorReplyKeyboard,
   scheduledMessageCancelOnlyKeyboard,
-  scheduledMessageBackKeyboard,
+  scheduledMessageAddMessageKeyboard,
+  scheduledMessageEditMessageReplyKeyboard,
+  scheduledMessageSingleMessageInlineKeyboard,
   scheduleIntervalKeyboard,
   scheduleGroupKeyboard,
   scheduleTopicKeyboard,
-  scheduledMessageListInlineKeyboard,
+  scheduledMessagePublishValidationKeyboard,
   scheduledMessageDeleteConfirmKeyboard,
-  scheduledMessagePublishKeyboard,
-  scheduledMessageSettingsKeyboard,
-  scheduledMessageEmergencyStopConfirmKeyboard,
   scheduledMessageDashboardKeyboard,
 } from '../keyboards/scheduled-message-keyboards';
+
+function formatScheduledMessageInfo(msg: any): string {
+  const status = msg.isPublished ? '🟢 فعال' : '⚪ غیرفعال';
+  const interval = msg.intervalHours ? `هر ${msg.intervalHours} ساعت` : 'تعریف نشده';
+  const startTime = msg.startTime || 'تعریف نشده';
+  const targetGroup = msg.targetChatId ? String(msg.targetChatId) : 'تعریف نشده';
+  const topic = msg.targetTopicId ? `تاپیک ${msg.targetTopicId}` : 'همه تاپیک‌ها';
+  const msgCount = msg.messages?.length || 0;
+  const sendCount = msg.sendCount || 0;
+
+  return [
+    `📝 *${msg.title}*`,
+    '',
+    `📨 پیام‌ها: ${msgCount}`,
+    `📤 وضعیت: ${status}`,
+    `⏰ زمان‌بندی: ${interval}`,
+    `🕐 ساعت شروع: ${startTime}`,
+    `👥 گروه: ${targetGroup}`,
+    `📌 تاپیک: ${topic}`,
+    `🔢 دفعات ارسال: ${sendCount}`,
+  ].join('\n');
+}
+
+function validatePublishReadiness(msg: any): { ready: boolean; missing: { key: string; label: string }[] } {
+  const missing: { key: string; label: string }[] = [];
+  if (!msg.intervalHours) missing.push({ key: 'schedule', label: '⏰ تنظیم زمان‌بندی' });
+  if (!msg.targetChatId) missing.push({ key: 'group', label: '👥 انتخاب گروه' });
+  if (!msg.startTime) missing.push({ key: 'schedule', label: '⏰ تنظیم ساعت شروع' });
+  const msgCount = msg.messages?.length || 0;
+  if (msgCount === 0) missing.push({ key: 'messages', label: '➕ افزودن پیام' });
+  return { ready: missing.length === 0, missing };
+}
 
 export function registerScheduledMessageHandlers(bot: Telegraf) {
 
@@ -34,11 +65,11 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     scheduledMessageState.clearAll(ctx.from.id);
-    await ctx.reply('📢 پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
+    await ctx.reply('📢 سامانه مدیریت پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
   });
 
-  // ─── Back to main menu ──────────────────────────────────
-  bot.hears('↩️ بازگشت به پنل ادمین', async (ctx: any) => {
+  // ─── Back to admin panel ────────────────────────────────
+  bot.hears('🔙 بازگشت به پنل ادمین', async (ctx: any) => {
     if (!scheduledMessageState.isManagementMode(ctx.from.id)) return;
     scheduledMessageState.clearAll(ctx.from.id);
   });
@@ -49,38 +80,15 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     if (!admin) return;
     scheduledMessageState.clearAll(ctx.from.id);
     scheduledMessageState.setCreating(ctx.from.id);
-
-    const msg = await scheduledMessageService.create({ title: 'جدید', createdBy: BigInt(ctx.from.id) });
-    scheduledMessageState.setEditingMessage(ctx.from.id, msg.id);
-    scheduledMessageState.setEditingTitle(ctx.from.id, true);
-
-    await ctx.reply(
-      `📝 عنوان پست را وارد کنید:\n\nعنوان فعلی: *${msg.title}*`,
-      { parse_mode: 'Markdown', ...scheduledMessageCancelOnlyKeyboard() }
-    );
+    await ctx.reply('📝 عنوان پست را وارد کنید:', scheduledMessageCancelOnlyKeyboard());
   });
 
-  // ─── List scheduled messages ────────────────────────────
-  bot.hears('📄 لیست پیام‌ها', async (ctx: any) => {
+  // ─── List posts ─────────────────────────────────────────
+  bot.hears('📋 لیست پست‌ها', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     scheduledMessageState.clearAll(ctx.from.id);
     await sendList(ctx, 1);
-  });
-
-  // ─── Group management ───────────────────────────────────
-  bot.hears('👥 مدیریت گروه‌ها', async (ctx: any) => {
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const groups = await prisma.telegramGroup.findMany({
-      where: { status: 'APPROVED' },
-      orderBy: { addedAt: 'desc' },
-    });
-    if (!groups.length) {
-      await ctx.reply('گروه تأییدشده‌ای وجود ندارد.', scheduledMessageMainMenuKeyboard());
-      return;
-    }
-    await ctx.reply('👥 یک گروه را انتخاب کنید:', scheduleGroupKeyboard(groups));
   });
 
   // ─── Reports ────────────────────────────────────────────
@@ -100,79 +108,37 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await ctx.reply(text, scheduledMessageDashboardKeyboard());
   });
 
-  // ─── Settings ───────────────────────────────────────────
-  bot.hears('⚙️ تنظیمات', async (ctx: any) => {
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    await ctx.reply('⚙️ تنظیمات پیام‌های خودکار:', scheduledMessageSettingsKeyboard());
-  });
-
-  // ─── Emergency stop ─────────────────────────────────────
-  bot.hears('⛔ توقف همه ارسال‌ها', async (ctx: any) => {
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    await ctx.reply('آیا مطمئن هستید؟ تمام ارسال‌ها متوقف خواهند شد.', scheduledMessageEmergencyStopConfirmKeyboard());
-  });
-
-  // ─── Cancel ─────────────────────────────────────────────
-  bot.hears('❌ لغو', async (ctx: any) => {
-    if (!scheduledMessageState.isCreating(ctx.from.id)) return;
-    const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
-    if (msgId) {
-      await scheduledMessageService.delete(msgId).catch(() => {});
-    }
-    scheduledMessageState.clearAll(ctx.from.id);
-    await ctx.reply('❌ ایجاد لغو شد.', scheduledMessageMainMenuKeyboard());
-  });
-
-  // ─── Back from editing ──────────────────────────────────
-  bot.hears('🔙 بازگشت', async (ctx: any) => {
-    if (scheduledMessageState.isCreating(ctx.from.id)) {
+  // ─── Cancel creation ────────────────────────────────────
+  bot.hears('❌ لغو', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const creating = scheduledMessageState.isCreating(ctx.from.id);
+    if (creating) {
       const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
-      if (msgId) {
-        await sendEditor(ctx, msgId);
-      }
+      if (msgId) await scheduledMessageService.delete(msgId).catch(() => {});
       scheduledMessageState.clearAll(ctx.from.id);
+      await ctx.reply('❌ ایجاد پست لغو شد.', scheduledMessageMainMenuKeyboard());
       return;
     }
-    if (scheduledMessageState.isManagementMode(ctx.from.id)) {
-      const msgId = scheduledMessageState.getEditMode(ctx.from.id);
-      if (msgId) {
-        await sendEditor(ctx, msgId);
-      }
-    }
+    return next();
   });
 
-  // ─── Edit title ─────────────────────────────────────────
-  bot.hears('🏷 ویرایش عنوان', async (ctx: any) => {
-    const msgId = scheduledMessageState.getEditMode(ctx.from.id);
-    if (!msgId) return;
-    scheduledMessageState.setEditingTitle(ctx.from.id, true);
-    const msg = await scheduledMessageRepository.findById(msgId);
-    await ctx.reply(
-      `📝 عنوان جدید را وارد کنید:\n\nعنوان فعلی: *${msg?.title || ''}*`,
-      { parse_mode: 'Markdown', ...scheduledMessageCancelOnlyKeyboard() }
-    );
-  });
-
-  // ─── Edit content ───────────────────────────────────────
-  bot.hears('📝 ویرایش محتوا', async (ctx: any) => {
-    const msgId = scheduledMessageState.getEditMode(ctx.from.id);
-    if (!msgId) return;
-    const messages = await scheduledMessageService.listMessages(msgId);
-    if (!messages.length) {
-      await ctx.reply('پیامی وجود ندارد. ابتدا پیام اضافه کنید.');
+  // ─── Back buttons ───────────────────────────────────────
+  bot.hears('🔙 بازگشت', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    const editingMsgId = scheduledMessageState.getEditMode(ctx.from.id);
+    if (editingMsgId) {
+      await showPostEditor(ctx, editingMsgId);
       return;
     }
-    scheduledMessageState.setEditingMessage(ctx.from.id, messages[0].id);
-    scheduledMessageState.setEditingContent(ctx.from.id, true);
-    await ctx.reply(
-      `📝 محتوای پیام را وارد کنید:\n\nمحتوای فعلی:\n${messages[0].text || '(خالی)'}`,
-      scheduledMessageCancelOnlyKeyboard()
-    );
+    return next();
   });
 
-  // ─── Add message ────────────────────────────────────────
+  bot.hears('🔙 بازگشت به لیست', async (ctx: any) => {
+    scheduledMessageState.clearAll(ctx.from.id);
+    await sendList(ctx, 1);
+  });
+
+  // ─── Editor actions (Reply Keyboard) ────────────────────
   bot.hears('➕ افزودن پیام', async (ctx: any) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
     if (!msgId) return;
@@ -180,70 +146,95 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     scheduledMessageState.setEditingMessage(ctx.from.id, newMsg.id);
     scheduledMessageState.setEditingContent(ctx.from.id, true);
     await ctx.reply(
-      `📝 محتوای پیام جدید را وارد کنید:\n(متن، عکس، ویدیو یا هر نوع رسانه‌ای)`,
-      scheduledMessageCancelOnlyKeyboard()
+      'پیام جدید را ارسال کنید.\nمی‌توانید متن، عکس، ویدیو، فایل، گیف، پیام فوروارد شده یا هر نوع پیام پشتیبانی‌شده توسط سیستم Post را ارسال کنید.',
+      scheduledMessageAddMessageKeyboard(),
     );
   });
 
-  // ─── Manage messages ────────────────────────────────────
-  bot.hears('📋 مدیریت پیام‌ها', async (ctx: any) => {
+  bot.hears('⏰ تنظیم زمان‌بندی', async (ctx: any) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
     if (!msgId) return;
-    const messages = await scheduledMessageService.listMessages(msgId);
-    if (!messages.length) {
-      await ctx.reply('پیامی وجود ندارد.');
+    scheduledMessageState.setSchedulingMode(ctx.from.id, msgId);
+    scheduledMessageState.setScheduleStep(ctx.from.id, 'interval');
+    await ctx.reply('⏰ بازه زمانی ارسال را انتخاب کنید:', scheduleIntervalKeyboard());
+  });
+
+  bot.hears('👥 انتخاب گروه', async (ctx: any) => {
+    const msgId = scheduledMessageState.getEditMode(ctx.from.id);
+    if (!msgId) return;
+    const groups = await prisma.telegramGroup.findMany({
+      where: { status: 'APPROVED', botIsAdmin: true },
+      orderBy: { addedAt: 'desc' },
+    });
+    if (!groups.length) {
+      await ctx.reply('گروه تأییدشده‌ای که ربات در آن ادمین باشد وجود ندارد.');
       return;
     }
-    await ctx.reply('📋 پیام‌ها:', scheduledMessageListInlineKeyboard(messages, msgId));
+    scheduledMessageState.setScheduleStep(ctx.from.id, 'select_group');
+    await ctx.reply('👥 گروه مقصد را انتخاب کنید:', scheduleGroupKeyboard(groups));
   });
 
-  // ─── Manage buttons ─────────────────────────────────────
-  bot.hears('🔘 ویرایش دکمه‌ها', async (ctx: any) => {
+  bot.hears('📖 دستور', async (ctx: any) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
     if (!msgId) return;
-    await ctx.reply('🔘 مدیریت دکمه‌ها از اینجا قابل انجام است.\nبرای افزودن دکمه، متن دکمه را ارسال کنید.');
-    scheduledMessageState.setButtonEditorMode(ctx.from.id, 'waiting_for_button');
+    await ctx.reply('🔗 نام دستور را ارسال کنید (بدون /):\nمثال: schedule/my-post');
   });
 
-  // ─── Publish toggle ─────────────────────────────────────
-  bot.hears('🚀 تغییر وضعیت انتشار', async (ctx: any) => {
+  bot.hears('✅ انتشار', async (ctx: any) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const msg = await scheduledMessageRepository.findById(msgId);
     if (!msg) return;
 
-    if (msg.isPublished) {
-      await scheduledMessageService.unpublish(msgId);
-      await ctx.reply('📤 ارسال متوقف شد.', scheduledMessageMainMenuKeyboard());
-    } else {
-      if (!msg.targetChatId || !msg.intervalHours || !msg.startTime) {
-        await ctx.reply('⚠️ ابتدا زمان‌بندی و گروه مقصد را تنظیم کنید.');
-        return;
-      }
-      await scheduledMessageService.publish(msgId);
-      await ctx.reply('🚀 ارسال فعال شد!', scheduledMessageMainMenuKeyboard());
+    const { ready, missing } = validatePublishReadiness(msg);
+    if (!ready) {
+      const missingList = missing.map((m) => `❌ ${m.label.replace(/^[^\s]+ /, '')}`).join('\n');
+      await ctx.reply(
+        `این پست هنوز آماده انتشار نیست.\nبخش‌های تکمیل‌نشده:\n${missingList}`,
+        scheduledMessagePublishValidationKeyboard(missing),
+      );
+      return;
     }
-    scheduledMessageState.clearAll(ctx.from.id);
+
+    await scheduledMessageService.publish(msgId);
+    await ctx.reply('✅ پست منتشر شد و ارسال خودکار فعال شد!');
+    await showPostEditor(ctx, msgId);
   });
 
-  // ─── Delete post ────────────────────────────────────────
+  bot.hears('📊 آمار', async (ctx: any) => {
+    const msgId = scheduledMessageState.getEditMode(ctx.from.id);
+    if (!msgId) return;
+    const msg = await scheduledMessageRepository.findById(msgId);
+    if (!msg) return;
+    const logs = await scheduledMessageService.getLogs(msgId, 5);
+    const text = [
+      `📊 آمار پست: ${msg.title}`,
+      '',
+      `🔢 دفعات ارسال: ${msg.sendCount || 0}`,
+      `🕐 آخرین ارسال: ${msg.lastSentAt ? new Date(msg.lastSentAt).toLocaleString('fa-IR') : 'هرگز'}`,
+      '',
+      '📤 آخرین ارسال‌ها:',
+      ...logs.map((l: any) => `  ${new Date(l.sentAt).toLocaleString('fa-IR')} — ${l.status === 'SUCCESS' ? '✅' : '❌'}`),
+    ].join('\n');
+    await ctx.reply(text);
+  });
+
   bot.hears('🗑 حذف پست', async (ctx: any) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const msg = await scheduledMessageRepository.findById(msgId);
     await ctx.reply(
       `⚠️ آیا از حذف "${msg?.title}" مطمئن هستید؟\n\nاین عملیات غیرقابل بازگشت است.`,
-      scheduledMessageDeleteConfirmKeyboard(msgId)
+      scheduledMessageDeleteConfirmKeyboard(msgId),
     );
   });
 
-  // ─── Text input handler (title, content, custom interval, start time) ───
+  // ─── Text input handler ─────────────────────────────────
   bot.on('text', async (ctx: any, next) => {
     if (!ctx.from || ctx.chat?.type !== 'private') return next();
     const text = ctx.message.text;
     const userId = ctx.from.id;
 
-    // Check if in scheduled message flow
     const isCreating = scheduledMessageState.isCreating(userId);
     const isEditingTitle = scheduledMessageState.isEditingTitle(userId);
     const isEditingContent = scheduledMessageState.isEditingContent(userId);
@@ -256,7 +247,22 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const admin = await botAdminService.getActive(userId);
     if (!admin) return next();
 
-    // ── Title input ──
+    // ── Title input (creating) ──
+    if (isCreating) {
+      const title = validateDbInput(text, 'title');
+      const msg = await scheduledMessageService.create({ title, createdBy: BigInt(userId) });
+      cache.del(`sched:${userId}:creating`);
+      scheduledMessageState.setEditingMessage(userId, msg.id);
+      scheduledMessageState.setEditMode(userId, msg.id);
+      scheduledMessageState.setManagementMode(userId, true);
+      await ctx.reply(
+        `✅ پست ساخته شد!\n\nعنوان: ${title}\nشناسه: ${msg.id}`,
+        scheduledMessageNewPostManagerReplyKeyboard(),
+      );
+      return;
+    }
+
+    // ── Title input (editing) ──
     if (isEditingTitle) {
       const msgId = scheduledMessageState.getEditingMessage(userId);
       if (!msgId) return next();
@@ -264,7 +270,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       await scheduledMessageService.update(msgId, { title });
       scheduledMessageState.setEditingTitle(userId, false);
       await ctx.reply(`✅ عنوان به "${title}" تغییر کرد.`);
-      await sendEditor(ctx, msgId);
+      await showPostEditor(ctx, msgId);
       return;
     }
 
@@ -274,18 +280,14 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       if (!msgId) return next();
       const msg = await scheduledMessageRepository.findById(msgId);
       if (!msg) return next();
-      // Update first message's text
       const firstMsg = msg.messages[0];
       if (firstMsg) {
         await scheduledMessageService.updateMessage(firstMsg.id, { text });
-      } else {
-        await scheduledMessageService.addMessage(msgId);
-        const msgs = await scheduledMessageService.listMessages(msgId);
-        if (msgs[0]) await scheduledMessageService.updateMessage(msgs[0].id, { text });
       }
       scheduledMessageState.setEditingContent(userId, false);
       await ctx.reply('✅ محتوا ذخیره شد.');
-      await sendEditor(ctx, msgId);
+      const messages = await scheduledMessageService.listMessages(msgId);
+      await showPostEditorWithMessages(ctx, msgId, messages);
       return;
     }
 
@@ -298,9 +300,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       }
       scheduledMessageState.setIntervalHours(userId, hours);
       scheduledMessageState.setScheduleStep(userId, 'start_time');
-      await ctx.reply(
-        `✅ بازه: هر ${hours} ساعت\n\n⏰ ساعت شروع ارسال را وارد کنید:\nمثال: 09:00`
-      );
+      await ctx.reply(`✅ بازه: هر ${hours} ساعت\n\n⏰ ساعت شروع ارسال را وارد کنید:\nمثال: 09:00`);
       return;
     }
 
@@ -312,28 +312,20 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
         return;
       }
       scheduledMessageState.setStartTime(userId, text);
-      scheduledMessageState.setScheduleStep(userId, 'select_group');
+      scheduledMessageState.setScheduleStep(userId, null as any);
 
-      const groups = await prisma.telegramGroup.findMany({
-        where: { status: 'APPROVED' },
-        orderBy: { addedAt: 'desc' },
-      });
-      if (!groups.length) {
-        await ctx.reply('گروه تأییدشده‌ای وجود ندارد.', scheduledMessageMainMenuKeyboard());
-        scheduledMessageState.clearAll(userId);
-        return;
+      const msgId = scheduledMessageState.getSchedulingMode(userId);
+      if (msgId) {
+        const intervalHours = scheduledMessageState.getIntervalHours(userId);
+        const targetGroup = scheduledMessageState.getTargetGroup(userId);
+        const targetTopic = scheduledMessageState.getTargetTopic(userId);
+        if (intervalHours && targetGroup) {
+          await scheduledMessageService.setSchedule(msgId, intervalHours, text, targetGroup, targetTopic);
+          await ctx.reply(`✅ زمان‌بندی ذخیره شد.\n⏰ بازه: هر ${intervalHours} ساعت\n🕐 شروع: ${text}`);
+        }
       }
-      await ctx.reply('👥 گروه مقصد را انتخاب کنید:', scheduleGroupKeyboard(groups));
-      return;
-    }
-
-    // ── Button name input (in button editor mode) ──
-    const btnMode = scheduledMessageState.getButtonEditorMode(userId);
-    if (btnMode === 'waiting_for_button') {
-      const msgId = scheduledMessageState.getEditMode(userId);
-      if (!msgId) return next();
-      await scheduledMessageService.addButton(msgId, { text, type: 'URL' });
-      await ctx.reply(`✅ دکمه "${text}" اضافه شد.`);
+      scheduledMessageState.clearAll(userId);
+      if (msgId) await showPostEditor(ctx, msgId);
       return;
     }
 
@@ -357,88 +349,41 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
     if (media?.file_id) {
       const firstMsg = msg.messages[0];
-      const type = (ctx.message as any).photo ? 'PHOTO' :
-        (ctx.message as any).video ? 'VIDEO' :
-        (ctx.message as any).document ? 'DOCUMENT' :
-        (ctx.message as any).voice ? 'VOICE' :
-        (ctx.message as any).audio ? 'AUDIO' :
-        (ctx.message as any).animation ? 'ANIMATION' : 'STICKER';
+      const type = (ctx.message as any).photo ? 'photo' :
+        (ctx.message as any).video ? 'video' :
+        (ctx.message as any).document ? 'document' :
+        (ctx.message as any).voice ? 'voice' :
+        (ctx.message as any).audio ? 'audio' :
+        (ctx.message as any).animation ? 'animation' : 'sticker';
 
       if (firstMsg) {
         await scheduledMessageService.updateMessage(firstMsg.id, { mediaFileId: media.file_id, type: type as any });
-      } else {
-        const newMsg = await scheduledMessageService.addMessage(msgId);
-        await scheduledMessageService.updateMessage(newMsg.id, { mediaFileId: media.file_id, type: type as any });
       }
 
       scheduledMessageState.setEditingContent(userId, false);
       await ctx.reply('✅ رسانه ذخیره شد.');
-      await sendEditor(ctx, msgId);
+      const messages = await scheduledMessageService.listMessages(msgId);
+      await showPostEditorWithMessages(ctx, msgId, messages);
     }
   });
 
-  // ─── Callback actions ───────────────────────────────────
-
-  // View a scheduled message
+  // ─── Callback: View post ────────────────────────────────
   bot.action(/^sched:view:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const id = parseInt(ctx.match[1]);
-    await sendEditor(ctx, id);
+    scheduledMessageState.setEditMode(ctx.from.id, id);
+    scheduledMessageState.setManagementMode(ctx.from.id, true);
+    await showPostEditor(ctx, id);
   });
 
-  // List with pagination
+  // ─── Callback: List with pagination ─────────────────────
   bot.action(/^sched:list:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const page = parseInt(ctx.match[1]);
     await sendList(ctx, page);
   });
 
-  // Edit title
-  bot.action(/^sched:edit:(\d+):title$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const id = parseInt(ctx.match[1]);
-    scheduledMessageState.setEditingTitle(ctx.from.id, true);
-    scheduledMessageState.setEditingMessage(ctx.from.id, id);
-    const msg = await scheduledMessageRepository.findById(id);
-    await ctx.reply(
-      `📝 عنوان جدید را وارد کنید:\n\nعنوان فعلی: *${msg?.title || ''}*`,
-      { parse_mode: 'Markdown', ...scheduledMessageCancelOnlyKeyboard() }
-    );
-  });
-
-  // Messages list
-  bot.action(/^sched:msgs:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const id = parseInt(ctx.match[1]);
-    scheduledMessageState.setEditMode(ctx.from.id, id);
-    const messages = await scheduledMessageService.listMessages(id);
-    if (!messages.length) {
-      await ctx.reply('پیامی وجود ندارد.');
-      return;
-    }
-    await ctx.reply('📋 پیام‌ها:', scheduledMessageListInlineKeyboard(messages, id));
-  });
-
-  // Buttons management
-  bot.action(/^sched:btns:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const id = parseInt(ctx.match[1]);
-    scheduledMessageState.setEditMode(ctx.from.id, id);
-    const buttons = await scheduledMessageService.listButtons(id);
-    if (!buttons.length) {
-      await ctx.reply('🔘 دکمه‌ای وجود ندارد.\nمتن دکمه را ارسال کنید تا اضافه شود.');
-      scheduledMessageState.setButtonEditorMode(ctx.from.id, 'waiting_for_button');
-      return;
-    }
-    const rows: any[][] = buttons.map((b: any) => [
-      Markup.button.callback(`${b.text}`, `sched:btn:edit:${b.id}`),
-      Markup.button.callback('🗑', `sched:btn:del:${b.id}`),
-    ]);
-    rows.push([Markup.button.callback('↩️ بازگشت', `sched:view:${id}`)]);
-    await ctx.reply('🔘 دکمه‌ها:', Markup.inlineKeyboard(rows));
-  });
-
-  // Schedule configuration
+  // ─── Callback: Schedule config ──────────────────────────
   bot.action(/^sched:schedule:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const id = parseInt(ctx.match[1]);
@@ -447,7 +392,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await ctx.reply('⏰ بازه زمانی ارسال را انتخاب کنید:', scheduleIntervalKeyboard());
   });
 
-  // Interval selection
+  // ─── Callback: Interval selection ───────────────────────
   bot.action(/^sched:interval:(\d+|custom)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const value = ctx.match[1];
@@ -455,28 +400,23 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
     if (value === 'custom') {
       scheduledMessageState.setScheduleStep(userId, 'custom_interval');
-      await ctx.reply(
-        '⏰ زمان سفارشی برحسب ساعت وارد شود.\n\nلطفاً تعداد ساعت موردنظر را ارسال کنید:\nمثال: 1, 5, 12, 48, 72'
-      );
+      await ctx.reply('⏰ زمان سفارشی برحسب ساعت وارد شود.\n\nلطفاً تعداد ساعت موردنظر را ارسال کنید:\nمثال: 1, 5, 12, 48, 72');
       return;
     }
 
     const hours = parseInt(value);
     scheduledMessageState.setIntervalHours(userId, hours);
     scheduledMessageState.setScheduleStep(userId, 'start_time');
-    await ctx.reply(
-      `✅ بازه: هر ${hours} ساعت\n\n⏰ ساعت شروع ارسال را وارد کنید:\nمثال: 09:00`
-    );
+    await ctx.reply(`✅ بازه: هر ${hours} ساعت\n\n⏰ ساعت شروع ارسال را وارد کنید:\nمثال: 09:00`);
   });
 
-  // Group selection
+  // ─── Callback: Group selection ──────────────────────────
   bot.action(/^sched:group:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const chatId = parseInt(ctx.match[1]);
     const userId = ctx.from.id;
     scheduledMessageState.setTargetGroup(userId, chatId);
 
-    // Check if forum
     const group = await prisma.telegramGroup.findUnique({ where: { chatId: BigInt(chatId) } });
     if (group?.isForum && group.forumTopics) {
       const topics = group.forumTopics as any[];
@@ -487,55 +427,71 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       }
     }
 
-    // No topics — save schedule and confirm
-    await saveScheduleAndConfirm(ctx, userId);
+    const msgId = scheduledMessageState.getEditMode(userId) || scheduledMessageState.getSchedulingMode(userId);
+    if (msgId) {
+      await scheduledMessageService.setSchedule(msgId, scheduledMessageState.getIntervalHours(userId) || 24, scheduledMessageState.getStartTime(userId) || '09:00', chatId);
+      await ctx.reply(`✅ گروه انتخاب شد.`);
+      await showPostEditor(ctx, msgId);
+    }
+    scheduledMessageState.clearAll(userId);
   });
 
-  // Topic selection
+  // ─── Callback: Topic selection ──────────────────────────
   bot.action(/^sched:topic:(all|\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const value = ctx.match[1];
     const userId = ctx.from.id;
 
-    if (value === 'all') {
-      scheduledMessageState.setTargetTopic(userId, null);
-    } else {
-      scheduledMessageState.setTargetTopic(userId, parseInt(value));
-    }
+    scheduledMessageState.setTargetTopic(userId, value === 'all' ? null : parseInt(value));
 
-    await saveScheduleAndConfirm(ctx, userId);
+    const msgId = scheduledMessageState.getEditMode(userId) || scheduledMessageState.getSchedulingMode(userId);
+    if (msgId) {
+      const topicText = value === 'all' ? 'همه تاپیک‌ها' : `تاپیک ${value}`;
+      await ctx.reply(`✅ تاپیک انتخاب شد: ${topicText}`);
+      await showPostEditor(ctx, msgId);
+    }
+    scheduledMessageState.clearAll(userId);
   });
 
-  // Publish
+  // ─── Callback: Publish ──────────────────────────────────
   bot.action(/^sched:publish:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const id = parseInt(ctx.match[1]);
-    try {
-      await scheduledMessageService.publish(id);
-      await ctx.reply('🚀 ارسال فعال شد!');
-      await sendEditor(ctx, id);
-    } catch (error: any) {
-      await ctx.reply(`❌ ${error.message}`);
+    const msg = await scheduledMessageRepository.findById(id);
+    if (!msg) return;
+
+    const { ready, missing } = validatePublishReadiness(msg);
+    if (!ready) {
+      const missingList = missing.map((m) => `❌ ${m.label.replace(/^[^\s]+ /, '')}`).join('\n');
+      await ctx.reply(
+        `این پست هنوز آماده انتشار نیست.\nبخش‌های تکمیل‌نشده:\n${missingList}`,
+        scheduledMessagePublishValidationKeyboard(missing),
+      );
+      return;
     }
+
+    await scheduledMessageService.publish(id);
+    await ctx.reply('✅ پست منتشر شد!');
+    await showPostEditor(ctx, id);
   });
 
-  // Unpublish
+  // ─── Callback: Unpublish ────────────────────────────────
   bot.action(/^sched:unpublish:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const id = parseInt(ctx.match[1]);
     await scheduledMessageService.unpublish(id);
     await ctx.reply('📤 ارسال متوقف شد.');
-    await sendEditor(ctx, id);
+    await showPostEditor(ctx, id);
   });
 
-  // Delete confirmation
+  // ─── Callback: Delete ───────────────────────────────────
   bot.action(/^sched:delete:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const id = parseInt(ctx.match[1]);
     const msg = await scheduledMessageRepository.findById(id);
     await ctx.reply(
       `⚠️ آیا از حذف "${msg?.title}" مطمئن هستید؟`,
-      scheduledMessageDeleteConfirmKeyboard(id)
+      scheduledMessageDeleteConfirmKeyboard(id),
     );
   });
 
@@ -544,10 +500,11 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const id = parseInt(ctx.match[1]);
     await scheduledMessageService.delete(id);
     await ctx.reply('🗑 حذف شد.');
+    scheduledMessageState.clearAll(ctx.from.id);
     await sendList(ctx, 1);
   });
 
-  // Message actions
+  // ─── Callback: Message edit ─────────────────────────────
   bot.action(/^sched:msg:edit:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const msgId = parseInt(ctx.match[1]);
@@ -556,11 +513,12 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const msg = await prisma.scheduledMessageMessage.findUnique({ where: { id: msgId } });
     await ctx.reply(
       `📝 محتوای پیام را ویرایش کنید:\n\nمحتوای فعلی:\n${msg?.text || '(خالی)'}`,
-      scheduledMessageCancelOnlyKeyboard()
+      scheduledMessageEditMessageReplyKeyboard(),
     );
   });
 
-  bot.action(/^sched:msg:del:(\d+)$/, async (ctx: any) => {
+  // ─── Callback: Message delete ───────────────────────────
+  bot.action(/^sched:msg:delete:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const msgId = parseInt(ctx.match[1]);
     const msg = await prisma.scheduledMessageMessage.findUnique({ where: { id: msgId } });
@@ -568,61 +526,89 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       await scheduledMessageService.deleteMessage(msgId);
       await ctx.reply('🗑 پیام حذف شد.');
       if (msg.scheduledMessageId) {
-        const messages = await scheduledMessageService.listMessages(msg.scheduledMessageId);
-        if (messages.length) {
-          await ctx.reply('📋 پیام‌ها:', scheduledMessageListInlineKeyboard(messages, msg.scheduledMessageId));
-        }
+        await showPostEditor(ctx, msg.scheduledMessageId);
       }
     }
   });
 
-  bot.action(/^sched:msg:add:(\d+)$/, async (ctx: any) => {
+  // ─── Callback: Message move up ──────────────────────────
+  bot.action(/^sched:msg:up:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const schedMsgId = parseInt(ctx.match[1]);
+    const msgId = parseInt(ctx.match[2]);
+    const messages = await scheduledMessageService.listMessages(schedMsgId);
+    const idx = messages.findIndex((m: any) => m.id === msgId);
+    if (idx > 0) {
+      const ids = messages.map((m: any) => m.id);
+      [ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]];
+      await scheduledMessageService.reorderMessages(schedMsgId, ids);
+    }
+    await showPostEditor(ctx, schedMsgId);
+  });
+
+  // ─── Callback: Message move down ────────────────────────
+  bot.action(/^sched:msg:down:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const schedMsgId = parseInt(ctx.match[1]);
+    const msgId = parseInt(ctx.match[2]);
+    const messages = await scheduledMessageService.listMessages(schedMsgId);
+    const idx = messages.findIndex((m: any) => m.id === msgId);
+    if (idx < messages.length - 1) {
+      const ids = messages.map((m: any) => m.id);
+      [ids[idx], ids[idx + 1]] = [ids[idx + 1], ids[idx]];
+      await scheduledMessageService.reorderMessages(schedMsgId, ids);
+    }
+    await showPostEditor(ctx, schedMsgId);
+  });
+
+  // ─── Callback: Message add ──────────────────────────────
+  bot.action(/^sched:msg:add:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const schedMsgId = parseInt(ctx.match[1]);
     const newMsg = await scheduledMessageService.addMessage(schedMsgId);
     scheduledMessageState.setEditingMessage(ctx.from.id, newMsg.id);
     scheduledMessageState.setEditingContent(ctx.from.id, true);
     await ctx.reply(
-      '📝 محتوای پیام جدید را وارد کنید:\n(متن، عکس، ویدیو یا هر نوع رسانه‌ای)',
-      scheduledMessageCancelOnlyKeyboard()
+      'پیام جدید را ارسال کنید.\nمی‌توانید متن، عکس، ویدیو، فایل، گیف، پیام فوروارد شده یا هر نوع پیام پشتیبانی‌شده توسط سیستم Post را ارسال کنید.',
+      scheduledMessageAddMessageKeyboard(),
     );
   });
 
-  // Button actions
-  bot.action(/^sched:btn:edit:(\d+)$/, async (ctx: any) => {
+  // ─── Callback: Publish validation goto ──────────────────
+  bot.action(/^sched:goto:(\w+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
-    const btnId = parseInt(ctx.match[1]);
-    await ctx.reply(`📝 متن جدید دکمه را وارد کنید:`);
-    // TODO: implement button text editing flow
+    const field = ctx.match[1];
+    const userId = ctx.from.id;
+    const msgId = scheduledMessageState.getEditMode(userId);
+    if (!msgId) return;
+
+    if (field === 'schedule') {
+      scheduledMessageState.setSchedulingMode(userId, msgId);
+      scheduledMessageState.setScheduleStep(userId, 'interval');
+      await ctx.reply('⏰ بازه زمانی ارسال را انتخاب کنید:', scheduleIntervalKeyboard());
+    } else if (field === 'group') {
+      const groups = await prisma.telegramGroup.findMany({
+        where: { status: 'APPROVED', botIsAdmin: true },
+        orderBy: { addedAt: 'desc' },
+      });
+      if (!groups.length) {
+        await ctx.reply('گروه تأییدشده‌ای وجود ندارد.');
+        return;
+      }
+      scheduledMessageState.setScheduleStep(userId, 'select_group');
+      await ctx.reply('👥 گروه مقصد را انتخاب کنید:', scheduleGroupKeyboard(groups));
+    } else if (field === 'messages') {
+      const newMsg = await scheduledMessageService.addMessage(msgId);
+      scheduledMessageState.setEditingMessage(userId, newMsg.id);
+      scheduledMessageState.setEditingContent(userId, true);
+      await ctx.reply(
+        'پیام جدید را ارسال کنید.\nمی‌توانید متن، عکس، ویدیو، فایل، گیف، پیام فوروارد شده یا هر نوع پیام پشتیبانی‌شده توسط سیستم Post را ارسال کنید.',
+        scheduledMessageAddMessageKeyboard(),
+      );
+    }
   });
 
-  bot.action(/^sched:btn:del:(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const btnId = parseInt(ctx.match[1]);
-    await scheduledMessageService.deleteButton(btnId);
-    await ctx.reply('🗑 دکمه حذف شد.');
-  });
-
-  // Settings
-  bot.action('sched:settings', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    await ctx.reply('⚙️ تنظیمات پیام‌های خودکار:', scheduledMessageSettingsKeyboard());
-  });
-
-  // Emergency stop
-  bot.action('sched:emergency_stop', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    await ctx.reply('آیا مطمئن هستید؟ تمام ارسال‌ها متوقف خواهند شد.', scheduledMessageEmergencyStopConfirmKeyboard());
-  });
-
-  bot.action('sched:emergency_stop:confirm', async (ctx: any) => {
-    await ctx.answerCbQuery();
-    await scheduledMessageService.emergencyStop();
-    await ctx.reply('⛔ تمام ارسال‌ها متوقف شد.');
-    await ctx.reply('📢 پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
-  });
-
-  // Dashboard refresh
+  // ─── Callback: Dashboard refresh ────────────────────────
   bot.action('sched:dashboard:refresh', async (ctx: any) => {
     await ctx.answerCbQuery();
     const stats = await scheduledMessageService.getStats();
@@ -638,49 +624,66 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await ctx.reply(text, scheduledMessageDashboardKeyboard());
   });
 
-  // Menu
+  // ─── Callback: Menu ─────────────────────────────────────
   bot.action('sched:menu', async (ctx: any) => {
     await ctx.answerCbQuery();
     scheduledMessageState.clearAll(ctx.from.id);
-    await ctx.reply('📢 پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
+    await ctx.reply('📢 سامانه مدیریت پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
   });
 }
 
-// ─── Helper: Send editor view ─────────────────────────────
+// ─── Helper: Show post editor (inline info + reply keyboard) ──
 
-import { Markup } from 'telegraf';
-
-async function sendEditor(ctx: any, id: number) {
+async function showPostEditor(ctx: any, id: number) {
   const msg = await scheduledMessageRepository.findById(id);
   if (!msg) {
-    await ctx.reply('❌ پیام یافت نشد.');
+    await ctx.reply('❌ پست یافت نشد.');
     return;
   }
 
-  const status = msg.isPublished ? '🟢 فعال' : '⚪ غیرفعال';
-  const interval = msg.intervalHours ? `هر ${msg.intervalHours} ساعت` : 'تعریف نشده';
-  const startTime = msg.startTime || 'تعریف نشده';
-  const targetGroup = msg.targetChatId ? String(msg.targetChatId) : 'تعریف نشده';
-  const msgCount = msg.messages?.length || 0;
-  const btnCount = msg.buttons?.length || 0;
-  const sendCount = msg.sendCount || 0;
-
-  const text = [
-    `📝 *${msg.title}*`,
-    '',
-    `وضعیت: ${status}`,
-    `زمان‌بندی: ${interval}`,
-    `ساعت شروع: ${startTime}`,
-    `گروه مقصد: ${targetGroup}`,
-    `پیام‌ها: ${msgCount}`,
-    `دکمه‌ها: ${btnCount}`,
-    `دفعات ارسال: ${sendCount}`,
-  ].join('\n');
-
   scheduledMessageState.setEditMode(ctx.from.id, id);
+  scheduledMessageState.setManagementMode(ctx.from.id, true);
+
+  const text = formatScheduledMessageInfo(msg);
+  const messages = msg.messages || [];
+
+  // Show each message with inline keyboard
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    const msgText = message.text || '(رسانه)';
+    const label = `📨 پیام ${i + 1} از ${messages.length}`;
+    const keyboard = scheduledMessageSingleMessageInlineKeyboard(id, message, i, messages.length);
+    await ctx.reply(`${label}\n\n${graphemeTruncate(msgText, 500)}`, { reply_markup: keyboard.reply_markup });
+  }
+
+  // Final info message with reply keyboard
   await ctx.reply(text, {
     parse_mode: 'Markdown',
-    ...scheduledMessageEditorKeyboard(id, msg.isPublished),
+    link_preview_options: { is_disabled: true },
+    ...scheduledMessageEditorReplyKeyboard(msg.isPublished),
+  });
+}
+
+// ─── Helper: Show post editor with messages ───────────────
+
+async function showPostEditorWithMessages(ctx: any, id: number, messages: any[]) {
+  const msg = await scheduledMessageRepository.findById(id);
+  if (!msg) return;
+
+  // Show each message with inline keyboard
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    const msgText = message.text || '(رسانه)';
+    const label = `📨 پیام ${i + 1} از ${messages.length}`;
+    const keyboard = scheduledMessageSingleMessageInlineKeyboard(id, message, i, messages.length);
+    await ctx.reply(`${label}\n\n${graphemeTruncate(msgText, 500)}`, { reply_markup: keyboard.reply_markup });
+  }
+
+  const text = formatScheduledMessageInfo(msg);
+  await ctx.reply(text, {
+    parse_mode: 'Markdown',
+    link_preview_options: { is_disabled: true },
+    ...scheduledMessageEditorReplyKeyboard(msg.isPublished),
   });
 }
 
@@ -689,38 +692,11 @@ async function sendEditor(ctx: any, id: number) {
 async function sendList(ctx: any, page: number) {
   const result = await scheduledMessageRepository.findAll({ page, limit: 10 });
   if (!result.items.length) {
-    await ctx.reply('📋 پیام خودکاری وجود ندارد.', scheduledMessageMainMenuKeyboard());
+    await ctx.reply('📋 پست خودکاری وجود ندارد.', scheduledMessageMainMenuKeyboard());
     return;
   }
   await ctx.reply(
-    `📋 لیست پیام‌ها (${result.total} مورد):`,
-    scheduledMessageListKeyboard(result.items, result.page, result.pages)
+    `📋 لیست پست‌ها (${result.total} مورد):`,
+    scheduledMessageListInlineKeyboard(result.items, result.page, result.pages),
   );
-}
-
-// ─── Helper: Save schedule and confirm ────────────────────
-
-async function saveScheduleAndConfirm(ctx: any, userId: number) {
-  const msgId = scheduledMessageState.getSchedulingMode(userId);
-  if (!msgId) return;
-
-  const intervalHours = scheduledMessageState.getIntervalHours(userId);
-  const startTime = scheduledMessageState.getStartTime(userId);
-  const targetGroup = scheduledMessageState.getTargetGroup(userId);
-  const targetTopic = scheduledMessageState.getTargetTopic(userId);
-
-  if (!intervalHours || !startTime || !targetGroup) {
-    await ctx.reply('❌ اطلاعات ناقص است.');
-    return;
-  }
-
-  await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, targetGroup, targetTopic);
-
-  const topicText = targetTopic ? `تاپیک ${targetTopic}` : 'همه تاپیک‌ها';
-  await ctx.reply(
-    `✅ زمان‌بندی ذخیره شد:\n\n⏰ بازه: هر ${intervalHours} ساعت\n🕐 شروع: ${startTime}\n👥 گروه: ${targetGroup}\n📌 تاپیک: ${topicText}`,
-    scheduledMessageMainMenuKeyboard()
-  );
-
-  scheduledMessageState.clearAll(userId);
 }
