@@ -36,6 +36,7 @@ export function startScheduler() {
     }
 
     try {
+      logger.info(`[Scheduler] Scheduled message tick at ${now.toISOString()}`);
       await scheduledMessageService.processDueScheduled();
     } catch (err) {
       logger.error('❌ Scheduled message scheduler error', err);

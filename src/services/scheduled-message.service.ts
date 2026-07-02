@@ -141,7 +141,7 @@ class ScheduledMessageService {
       intervalHours,
       startTime,
       targetChatId: BigInt(targetChatId),
-      targetTopicId: targetTopicId ? BigInt(targetTopicId) : null,
+      targetTopicId: targetTopicId != null ? BigInt(targetTopicId) : undefined,
       nextSendAt,
     });
   }
@@ -163,28 +163,40 @@ class ScheduledMessageService {
 
   async processDueScheduled() {
     try {
+      const now = new Date();
+      logger.info(`[ScheduledMsg] Scheduler tick at ${now.toISOString()}`);
       const due = await scheduledMessageRepository.findDueForSending();
+      logger.info(`[ScheduledMsg] Found ${due.length} due message(s)`);
       for (const msg of due) {
+        logger.info(`[ScheduledMsg] Processing msg=${msg.id} title="${msg.title}" chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'null'} interval=${msg.intervalHours}h start=${msg.startTime} nextSend=${msg.nextSendAt?.toISOString()} sendCount=${msg.sendCount}`);
         await this.sendToGroup(msg);
       }
     } catch (error) {
-      logger.error('[ScheduledMessage] processDueScheduled failed:', error);
+      logger.error('[ScheduledMsg] processDueScheduled failed:', error);
     }
   }
 
   async sendToGroup(msg: any) {
-    if (!this.bot || !msg.targetChatId) return;
+    if (!this.bot || !msg.targetChatId) {
+      logger.warn(`[ScheduledMsg] Skipping msg=${msg.id}: bot=${!!this.bot} chatId=${msg.targetChatId}`);
+      return;
+    }
 
     const chatId = Number(msg.targetChatId);
     const threadId = msg.targetTopicId ? Number(msg.targetTopicId) : undefined;
 
+    logger.info(`[ScheduledMsg] Sending msg=${msg.id} to chatId=${chatId} threadId=${threadId ?? 'none'} messages=${msg.messages?.length || 0}`);
+
     try {
       const messages = msg.messages || [];
-      for (const message of messages) {
+      for (let i = 0; i < messages.length; i++) {
+        const message = messages[i];
         const text = sanitizeTelegramText(message.text || '', 4096);
         const extra: any = {};
         if (threadId) extra.message_thread_id = threadId;
         if (message.replyMarkup) extra.reply_markup = message.replyMarkup;
+
+        logger.info(`[ScheduledMsg] msg=${msg.id} sending message ${i + 1}/${messages.length} type=${message.type} text="${text.substring(0, 50)}..." threadId=${threadId ?? 'none'}`);
 
         if (message.mediaFileId) {
           switch (message.type) {
@@ -225,6 +237,8 @@ class ScheduledMessageService {
         data: { lastSentAt: new Date(), nextSendAt, sendCount: { increment: 1 } },
       });
 
+      logger.info(`[ScheduledMsg] SUCCESS msg=${msg.id} nextSend=${nextSendAt?.toISOString()}`);
+
       await scheduledMessageRepository.logDelivery({
         scheduledMessageId: msg.id,
         targetChatId: msg.targetChatId,
@@ -233,10 +247,11 @@ class ScheduledMessageService {
       });
     } catch (error: any) {
       const errMsg = error?.message || String(error);
+      logger.error(`[ScheduledMsg] FAILED msg=${msg.id} error="${errMsg}"`, error);
 
       if (error?.response?.parameters?.retry_after) {
         const waitSeconds = error.response.parameters.retry_after;
-        logger.warn(`[ScheduledMsg] FloodWait for ${msg.id}, waiting ${waitSeconds}s`);
+        logger.warn(`[ScheduledMsg] FloodWait for msg=${msg.id}, waiting ${waitSeconds}s`);
         await prisma.scheduledMessage.update({
           where: { id: msg.id },
           data: { nextSendAt: new Date(Date.now() + waitSeconds * 1000) },
@@ -250,8 +265,6 @@ class ScheduledMessageService {
         status: 'FAILED',
         errorMessage: errMsg.slice(0, 900),
       });
-
-      logger.error(`[ScheduledMsg] Send failed for ${msg.id}: ${errMsg}`);
     }
   }
 

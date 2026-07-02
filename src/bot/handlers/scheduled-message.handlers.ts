@@ -31,8 +31,6 @@ function formatScheduledMessageInfo(msg: any): string {
   const status = msg.isPublished ? '🟢 فعال' : '⚪ غیرفعال';
   const interval = msg.intervalHours ? `هر ${msg.intervalHours} ساعت` : '—';
   const startTime = msg.startTime || '—';
-  const targetGroup = msg.targetChatId ? String(msg.targetChatId) : '—';
-  const topic = msg.targetTopicId ? `تاپیک ${msg.targetTopicId}` : (msg.targetChatId ? 'همه تاپیک‌ها' : '—');
   const msgCount = msg.messages?.length || 0;
   const sendCount = msg.sendCount || 0;
 
@@ -43,8 +41,8 @@ function formatScheduledMessageInfo(msg: any): string {
     `📤 وضعیت: ${status}`,
     `⏰ زمان‌بندی: ${interval}`,
     `🕐 ساعت شروع: ${startTime}`,
-    `👥 گروه: ${targetGroup}`,
-    `📌 تاپیک: ${topic}`,
+    `👥 گروه: ${msg._groupName || (msg.targetChatId ? String(msg.targetChatId) : '—')}`,
+    `📌 تاپیک: ${msg._topicName || (msg.targetTopicId ? `تاپیک ${msg.targetTopicId}` : (msg.targetChatId ? 'همه تاپیک‌ها' : '—'))}`,
     `🔢 دفعات ارسال: ${sendCount}`,
   ].join('\n');
 }
@@ -436,11 +434,22 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       if (matched) {
         const chatId = Number(matched.chatId);
         scheduledMessageState.setTargetGroup(userId, chatId);
-        scheduledMessageState.setScheduleStep(userId, null as any);
 
         // Check forum topics from ForumTopic table (not JSON field)
         const topics = await forumTopicService.getTopicsForChat(chatId);
         if (topics.length > 0) {
+          // Save group to DB immediately (don't wait for topic selection)
+          const msgId = scheduledMessageState.getEditMode(userId);
+          if (msgId) {
+            const intervalHours = scheduledMessageState.getIntervalHours(userId);
+            const startTime = scheduledMessageState.getStartTime(userId);
+            if (intervalHours && startTime) {
+              await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, chatId);
+            } else {
+              // Save at least the group even if schedule isn't complete yet
+              await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
+            }
+          }
           scheduledMessageState.setScheduleStep(userId, 'select_topic');
           await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
           return;
@@ -453,6 +462,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
           const startTime = scheduledMessageState.getStartTime(userId);
           if (intervalHours && startTime) {
             await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, chatId);
+          } else {
+            await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
           }
           await ctx.reply(`✅ گروه "${matched.title}" انتخاب شد.`);
           await showPostEditor(ctx, msgId);
@@ -465,8 +476,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
     // ── Topic selection via Reply Keyboard (Bug #5) ──
     if (scheduleStep === 'select_topic') {
+      let topicId: number | null = null;
       if (text === '📌 همه تاپیک‌ها') {
-        scheduledMessageState.setTargetTopic(userId, null);
+        topicId = null; // null = all topics (no thread ID)
       } else {
         // Find topic by name from ForumTopic table
         const targetGroup = scheduledMessageState.getTargetGroup(userId);
@@ -474,20 +486,26 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
           const topics = await forumTopicService.getTopicsForChat(targetGroup);
           const topic = topics.find((t) => t.name === text);
           if (topic) {
-            scheduledMessageState.setTargetTopic(userId, topic.topicId);
+            topicId = topic.topicId;
           }
         }
       }
+      scheduledMessageState.setTargetTopic(userId, topicId);
       scheduledMessageState.setScheduleStep(userId, null as any);
 
+      // Save to DB
       const msgId = scheduledMessageState.getEditMode(userId);
       if (msgId) {
         const targetGroup = scheduledMessageState.getTargetGroup(userId);
-        const targetTopic = scheduledMessageState.getTargetTopic(userId);
         const intervalHours = scheduledMessageState.getIntervalHours(userId);
         const startTime = scheduledMessageState.getStartTime(userId);
         if (targetGroup && intervalHours && startTime) {
-          await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, targetGroup, targetTopic);
+          await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, targetGroup, topicId);
+        } else if (targetGroup) {
+          // At least save the topic — group already saved
+          await scheduledMessageRepository.update(msgId, {
+            targetTopicId: topicId != null ? BigInt(topicId) : null,
+          });
         }
         const topicText = text === '📌 همه تاپیک‌ها' ? 'همه تاپیک‌ها' : text;
         await ctx.reply(`✅ تاپیک "${topicText}" انتخاب شد.`);
@@ -590,6 +608,17 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     // Check forum topics from ForumTopic table
     const topics = await forumTopicService.getTopicsForChat(chatId);
     if (topics.length > 0) {
+      // Save group to DB immediately
+      const msgId = scheduledMessageState.getEditMode(userId);
+      if (msgId) {
+        const intervalHours = scheduledMessageState.getIntervalHours(userId);
+        const startTime = scheduledMessageState.getStartTime(userId);
+        if (intervalHours && startTime) {
+          await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, chatId);
+        } else {
+          await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
+        }
+      }
       scheduledMessageState.setScheduleStep(userId, 'select_topic');
       await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
       return;
@@ -601,6 +630,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       const startTime = scheduledMessageState.getStartTime(userId);
       if (intervalHours && startTime) {
         await scheduledMessageService.setSchedule(msgId, intervalHours, startTime, chatId);
+      } else {
+        await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
       }
       await ctx.reply(`✅ گروه انتخاب شد.`);
       await showPostEditor(ctx, msgId);
@@ -817,7 +848,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   });
 }
 
-// ─── Helper: Show post editor (Bug #9: always read from DB) ──
+// ─── Helper: Show post editor (always read from DB) ──
 
 async function showPostEditor(ctx: any, id: number) {
   const msg = await scheduledMessageRepository.findById(id);
@@ -828,6 +859,24 @@ async function showPostEditor(ctx: any, id: number) {
 
   scheduledMessageState.setEditMode(ctx.from.id, id);
   scheduledMessageState.setManagementMode(ctx.from.id, true);
+
+  // Resolve group name from DB
+  let groupName = '';
+  if (msg.targetChatId) {
+    const group = await prisma.telegramGroup.findUnique({ where: { chatId: msg.targetChatId } });
+    groupName = group?.title || String(msg.targetChatId);
+  }
+  (msg as any)._groupName = groupName || '—';
+
+  // Resolve topic name from DB
+  let topicName = '';
+  if (msg.targetTopicId && msg.targetChatId) {
+    const topic = await prisma.forumTopic.findUnique({
+      where: { chatId_topicId: { chatId: msg.targetChatId, topicId: Number(msg.targetTopicId) } },
+    });
+    topicName = topic?.name || `Topic ${msg.targetTopicId}`;
+  }
+  (msg as any)._topicName = msg.targetTopicId ? topicName : (msg.targetChatId ? 'همه تاپیک‌ها' : '—');
 
   const text = formatScheduledMessageInfo(msg);
   const messages = msg.messages || [];
