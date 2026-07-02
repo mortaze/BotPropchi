@@ -158,7 +158,7 @@ async function showBroadcastPreview(ctx: any, messageIds: number[]) {
     deliveryMethod,
     createdBy: `telegram:${ctx.from.id}`,
   };
-  cache.set(pendingBroadcastKey(ctx.from.id), pending, 600);
+  cache.setPermanent(pendingBroadcastKey(ctx.from.id), pending);
   cache.del(`admin_broadcast:${ctx.from.id}`);
 
   await ctx.reply('👁 پیش‌نمایش پیام همگانی:');
@@ -395,7 +395,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const injected = injectServiceButtons(draftLayout, features);
     settingsService.updateDraftLayout(ctx.from.id, injected);
     const resolvedDraft = await settingsService.getResolvedEditableLayout(ctx.from.id, false);
-    cache.set(`menu:edit_mode:${ctx.from.id}`, true, 300);
+    cache.setPermanent(`menu:edit_mode:${ctx.from.id}`, true);
     await ctx.reply('🎛 ویرایشگر منوی اصلی\nروی دکمه ضربه بزنید:', buildMenuEditorReplyKeyboard(resolvedDraft));
   });
 
@@ -447,7 +447,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
       return;
     }
-    cache.set(`menu:selected:${ctx.from.id}`, newPos, 300);
+    cache.setPermanent(`menu:selected:${ctx.from.id}`, newPos);
     const button = layout[newPos.row]?.[newPos.col];
     const btnText = button?.text || button?.label || button?.title || button?.ref || 'دکمه';
     try {
@@ -587,7 +587,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const layout = settingsService.getEditableLayout(ctx.from.id);
     const button = layout[row]?.[col];
     if (!button) return;
-    cache.set(`menu:renaming:${ctx.from.id}`, { row, col }, 300);
+    cache.setPermanent(`menu:renaming:${ctx.from.id}`, { row, col });
     const btnText = button.text || button.label || button.title || button.ref || 'دکمه';
     try {
       await ctx.editMessageText(`✏️ لطفاً نام جدید را برای "${btnText}" وارد کنید:`, { reply_markup: undefined });
@@ -691,7 +691,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       if (buttonId) {
         const newPos = findButtonNewPosition(newLayout, buttonId);
         if (newPos) {
-          cache.set(`menu:selected:${ctx.from.id}`, newPos, 300);
+          cache.setPermanent(`menu:selected:${ctx.from.id}`, newPos);
           const btn = newLayout[newPos.row][newPos.col];
           await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
           await ctx.reply(`ویرایش دکمه: ${text}`, buildMenuItemEditKeyboard(newPos.row, newPos.col, btn, newLayout));
@@ -748,7 +748,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
           const displayText = `${prefix}${btnText}`;
           if (displayText === matchText) {
             const rawButton = rawLayout[r]?.[c];
-            cache.set(`menu:selected:${ctx.from.id}`, { row: r, col: c }, 300);
+            cache.setPermanent(`menu:selected:${ctx.from.id}`, { row: r, col: c });
             await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, { row: r, col: c }));
             await ctx.reply(`ویرایش دکمه: ${btnText}`, buildMenuItemEditKeyboard(r, c, rawButton || btn, rawLayout));
             matched = true;
@@ -787,7 +787,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('📢 پیام همگانی', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || (admin.role !== BotAdminRole.OWNER && admin.role !== BotAdminRole.ADMIN)) return;
-    cache.set(`admin_broadcast:${ctx.from.id}`, true, 600);
+    cache.setPermanent(`admin_broadcast:${ctx.from.id}`, true);
     await ctx.reply([
       'پیام مورد نظر خود را ارسال کنید.',
       'می‌توانید متن، عکس، ویدیو، فایل، گیف، استیکر یا پیام فورواردی ارسال نمایید.',

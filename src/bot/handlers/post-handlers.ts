@@ -401,7 +401,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (postButtons.length === 0 && drafts.length === 0) {
       return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
-    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    cache.setPermanent(`post_mgmt_mode:${ctx.from.id}`, true);
     await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout, drafts));
   });
 
@@ -417,7 +417,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
     // Set flag so the menu button handler in index.ts skips this user's next text
-    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    cache.setPermanent(`post_mgmt_mode:${ctx.from.id}`, true);
     await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout, drafts));
   });
 
@@ -460,7 +460,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (text === '🚀 پیام Start') {
       const startPost = await postService.getOrCreateStartPost();
       if (!startPost) return ctx.reply('❌ خطا در بارگذاری پیام Start.');
-      cache.set(pendingKey(ctx.from.id, 'selected_post'), startPost.id, 300);
+      cache.setPermanent(pendingKey(ctx.from.id, 'selected_post'), startPost.id);
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
       cache.del(pendingKey(ctx.from.id, 'edit_mode'));
       await enterPostEditor(ctx, startPost);
@@ -471,7 +471,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (text === '📩 پیام ناشناس') {
       const anonPost = await postService.getOrCreateAnonymousPost();
       if (!anonPost) return ctx.reply('❌ خطا در بارگذاری پیام ناشناس.');
-      cache.set(pendingKey(ctx.from.id, 'selected_post'), anonPost.id, 300);
+      cache.setPermanent(pendingKey(ctx.from.id, 'selected_post'), anonPost.id);
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
       cache.del(pendingKey(ctx.from.id, 'edit_mode'));
       await enterPostEditor(ctx, anonPost);
@@ -488,7 +488,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (matched) {
       const post = await postService.findById(matched.id);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
-      cache.set(pendingKey(ctx.from.id, 'selected_post'), matched.id, 300);
+      cache.setPermanent(pendingKey(ctx.from.id, 'selected_post'), matched.id);
       cache.del(`post_mgmt_mode:${ctx.from.id}`);
       cache.del(pendingKey(ctx.from.id, 'edit_mode'));
 
@@ -505,8 +505,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    cache.set(pendingKey(ctx.from.id, 'editing_field'), 'add_content', 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_field'), 'add_content');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
     await safeEdit(ctx, '➕ پیام جدید را ارسال کنید تا به این پست اضافه شود.\nبه عنوان یک بلاک مجزا ذخیره خواهد شد.');
   });
 
@@ -578,7 +578,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     clearEditorKeyState(ctx.from.id);
-    cache.set(pendingKey(ctx.from.id, 'import_title'), true, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'import_title'), true);
     await ctx.reply('📥 عنوان پست جدید را ارسال کنید، سپس پیام تلگرام اصلی را فوروارد کنید.');
   });
 
@@ -586,7 +586,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     clearEditorKeyState(ctx.from.id);
-    cache.set(pendingKey(ctx.from.id, 'creating'), true, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'creating'), true);
     await ctx.reply('📝 عنوان پست را وارد کنید:', {
       ...postCancelOnlyReplyKeyboard(),
     });
@@ -629,8 +629,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         cache.del(pendingKey(ctx.from.id, 'import_post'));
         cache.del(pendingKey(ctx.from.id, 'creating'));
 
-        cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
-        cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+        cache.setPermanent(pendingKey(ctx.from.id, 'editing_cmd'), true);
+        cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
         const existingCmd = await postService.getCommandByPostId(postId);
         const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
         await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
@@ -653,7 +653,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const title = ctx.message.text;
       const slug = slugify(title);
       const post = await postService.create({ title, slug, content: '', contentFormat: 'telegram_entities', contentVersion: 2, createdBy: BigInt(ctx.from.id) } as any);
-      cache.set(pendingKey(ctx.from.id, 'import_post'), post.id, 300);
+      cache.setPermanent(pendingKey(ctx.from.id, 'import_post'), post.id);
       await ctx.reply(`✅ پیش‌نویس ساخته شد (شناسه ${post.id}). حالا پیام اصلی را از تلگرام فوروارد کنید یا همینجا ارسال کنید.`);
       return;
     }
@@ -672,8 +672,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const slug = slugify(title);
       try {
         const post = await postService.create({ title, slug, createdBy: BigInt(ctx.from.id) });
-        cache.set(editorKey(ctx.from.id, 'active'), post.id, 600);
-        cache.set(editorKey(ctx.from.id, 'mode'), 'new_post_manager', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'active'), post.id);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'new_post_manager');
         await ctx.reply(`✅ پست ساخته شد!\n\nعنوان: ${title}\nاسلاگ: ${slug}`, {
           ...postNewPostManagerReplyKeyboard(),
         });
@@ -783,8 +783,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       // Stay in button editor — refresh with latest buttons
       const updatedPost = await postService.findById(editingPostId);
       const updatedButtons = (updatedPost as any).buttons || [];
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), editingPostId, 600);
-      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), editingPostId);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'edit');
       cache.del(pendingKey(ctx.from.id, 'editor_state'));
       const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
       if (msgId) {
@@ -1070,32 +1070,32 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       return showPostEditor(ctx, postId);
     }
     if (action === 'title') {
-      cache.set(pendingKey(ctx.from.id, 'editing_field'), 'title', 300);
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_field'), 'title');
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
       return safeEdit(ctx, `✏ عنوان فعلی: *${post.title}*\n\nعنوان جدید را ارسال کنید:`, { parse_mode: 'Markdown' });
     }
     if (action === 'content') {
-      cache.set(pendingKey(ctx.from.id, 'editing_field'), 'content', 300);
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_field'), 'content');
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
       const firstMsg = post.messages?.[0]?.text || '';
       const current = firstMsg ? `محتوا فعلی:\n${graphemeTruncate(firstMsg, 200)}` : '(بدون محتوا)';
       return safeEdit(ctx, `📝 ${current}\n\nمحتوای جدید را ارسال کنید (Markdown پشتیبانی می‌شود):`);
     }
     if (action === 'media') {
-      cache.set(pendingKey(ctx.from.id, 'editing_field'), 'media', 300);
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_field'), 'media');
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
       return safeEdit(ctx, '🖼 فایل رسانه ارسال کنید (عکس، ویدیو، گیف، سند، صدا، ویس):');
     }
     if (action === 'buttons') {
       const buttons = (post as any).buttons || [];
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
-      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
       cache.del(pendingKey(ctx.from.id, 'editor_state'));
       cache.del(pendingKey(ctx.from.id, 'editor_row'));
       cache.del(pendingKey(ctx.from.id, 'editor_col'));
       const { text, reply_markup } = renderButtonEditor(postId, buttons, 'create');
       const sent = await ctx.reply(text, { reply_markup });
-      if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+      if (sent) cache.setPermanent(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id);
       return;
     }
   });
@@ -1166,7 +1166,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.hears('🔎 جستجو', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    cache.set(pendingKey(ctx.from.id, 'searching'), true, 120);
+    cache.setPermanent(pendingKey(ctx.from.id, 'searching'), true);
     await ctx.reply('🔎 جستجوی پست‌ها بر اساس عنوان، محتوا یا اسلاگ:');
   });
 
@@ -1193,7 +1193,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.hears('👁 پیش‌نمایش', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    cache.set(pendingKey(ctx.from.id, 'preview_id'), true, 120);
+    cache.setPermanent(pendingKey(ctx.from.id, 'preview_id'), true);
     await ctx.reply('👁 شناسه پست را برای پیش‌نمایش وارد کنید:');
   });
 
@@ -1221,7 +1221,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   bot.hears('📤 انتشار', async (ctx: any) => {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
-    cache.set(pendingKey(ctx.from.id, 'publish_id'), true, 120);
+    cache.setPermanent(pendingKey(ctx.from.id, 'publish_id'), true);
     await ctx.reply('📤 شناسه پست را برای انتشار وارد کنید:');
   });
 
@@ -1316,7 +1316,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    cache.set(pendingKey(ctx.from.id, 'schedule_publish'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'schedule_publish'), postId);
     await safeEdit(ctx, '📅 تاریخ/زمان را به فرمت ISO ارسال کنید:\nmثلاً `2026-06-15T14:30:00.000Z`', { parse_mode: 'Markdown' });
   });
 
@@ -1325,7 +1325,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    cache.set(pendingKey(ctx.from.id, 'schedule_unpublish'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'schedule_unpublish'), postId);
     await safeEdit(ctx, '⏰ تاریخ/زمان لغو انتشار خودکار را به فرمت ISO ارسال کنید:\nmثلاً `2026-06-20T14:30:00.000Z`', { parse_mode: 'Markdown' });
   });
 
@@ -1387,8 +1387,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const commandId = parseInt(ctx.match[2]);
-    cache.set(pendingKey(ctx.from.id, 'alias_cmd_id'), commandId, 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'alias_cmd_id'), commandId);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
     await safeEdit(ctx, '➕ نام مستعار را ارسال کنید (بدون /):');
   });
 
@@ -1451,17 +1451,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     clearButtonEditorState(ctx.from.id);
     cache.del(pendingKey(ctx.from.id, 'previous_view'));
     if (savedView === 'select_type') {
-      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-      cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'select_type');
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
       await ctx.reply('❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
     } else if (savedView && ['create', 'edit', 'delete', 'move'].includes(savedView)) {
-      cache.set(pendingKey(ctx.from.id, 'editor_mode'), savedView, 600);
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), savedView);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
       await refreshButtonListView(ctx, postId);
     } else {
-      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-      cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
+      cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
       await refreshButtonListView(ctx, postId);
     }
   });
@@ -1506,11 +1506,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       } catch (err: any) {
         logger.warn(`[ButtonEditor] editMessageText failed, sending new message: ${err?.message}`);
         const sent = await ctx.reply(text, { reply_markup });
-        if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+        if (sent) cache.setPermanent(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id);
       }
     } else {
       const sent = await ctx.reply(text, { reply_markup });
-      if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+      if (sent) cache.setPermanent(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id);
     }
 
     if (removeReplyKeyboard) {
@@ -1543,7 +1543,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
     if (!postId) return;
     clearMoveState(ctx.from.id);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     await ctx.reply('✅ جابه‌جایی لغو شد.');
     await refreshButtonListView(ctx, postId, true);
   });
@@ -1556,7 +1556,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
     if (!postId) return;
     clearMoveState(ctx.from.id);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     await ctx.reply('✅ جابه‌جایی دکمه انجام شد.');
     await refreshButtonListView(ctx, postId, true);
   });
@@ -1640,9 +1640,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }
     }
 
-    cache.set(pendingKey(ctx.from.id, 'move_selected_row'), newRow, 600);
-    cache.set(pendingKey(ctx.from.id, 'move_selected_col'), newCol, 600);
-    cache.set(pendingKey(ctx.from.id, 'move_active'), true, 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'move_selected_row'), newRow);
+    cache.setPermanent(pendingKey(ctx.from.id, 'move_selected_col'), newCol);
+    cache.setPermanent(pendingKey(ctx.from.id, 'move_active'), true);
 
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
 
@@ -1663,7 +1663,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
     if (!postId) return;
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'select_type');
     await ctx.reply('❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
   });
 
@@ -1675,10 +1675,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
-    cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
-    cache.set(pendingKey(ctx.from.id, 'button_type'), 'url', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'previous_view'), state);
+    cache.setPermanent(pendingKey(ctx.from.id, 'button_type'), 'url');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'wait_color');
     await ctx.reply(
       '🎨 رنگ دکمه را انتخاب کنید:',
       buildButtonColorSelectionKeyboard(),
@@ -1692,10 +1692,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
-    cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
-    cache.set(pendingKey(ctx.from.id, 'button_type'), 'popup', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'previous_view'), state);
+    cache.setPermanent(pendingKey(ctx.from.id, 'button_type'), 'popup');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'wait_color');
     await ctx.reply(
       '🎨 رنگ دکمه را انتخاب کنید:',
       buildButtonColorSelectionKeyboard(),
@@ -1709,10 +1709,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     const state = cache.get<string>(pendingKey(ctx.from.id, 'editor_state'));
     if (state !== 'select_type') return;
-    cache.set(pendingKey(ctx.from.id, 'previous_view'), state, 600);
-    cache.set(pendingKey(ctx.from.id, 'button_type'), 'command', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'previous_view'), state);
+    cache.setPermanent(pendingKey(ctx.from.id, 'button_type'), 'command');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'wait_color');
     await ctx.reply(
       '🎨 رنگ دکمه را انتخاب کنید:',
       buildButtonColorSelectionKeyboard(),
@@ -1763,10 +1763,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
       if (mode === 'create') {
         // Store color and proceed to value entry
-        cache.set(pendingKey(ctx.from.id, 'button_color'), color, 600);
+        cache.setPermanent(pendingKey(ctx.from.id, 'button_color'), color);
         const btnType = cache.get<string>(pendingKey(ctx.from.id, 'button_type'));
         if (btnType === 'url') {
-          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_url', 600);
+          cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'wait_url');
           return await ctx.reply(
             '🔗 ❇️ داده ها را برای URL / دکمه اشتراک گذاری وارد کنید.\n\n' +
             'مثال:\n' +
@@ -1779,7 +1779,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           );
         }
         if (btnType === 'popup') {
-          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_popup', 600);
+          cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'wait_popup');
           return await ctx.reply(
             '🪟 ❇️ داده های دکمه را با پنجره POP-UP وارد کنید.\n\n' +
             '⚠️ محدودیت تلگرام برای این نوع پیام‌ها 200 کاراکتر است.\n' +
@@ -1791,7 +1791,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           );
         }
         if (btnType === 'command') {
-          cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_command', 600);
+          cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'wait_command');
           return await ctx.reply(
             '⌨️ ❇️ داده های دکمه را وارد کنید.\n' +
             'فرمان نباید با "/" شروع شود.\n' +
@@ -1834,7 +1834,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       cache.del(pendingKey(ctx.from.id, 'editor_col'));
       cache.del(pendingKey(ctx.from.id, 'button_color'));
       cache.del(pendingKey(ctx.from.id, 'button_type'));
-      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
       await ctx.reply('✅ رنگ دکمه تغییر کرد.');
       await ctx.reply('✏️ حالت ویرایش:', postEditMessageReplyKeyboard());
       return;
@@ -1898,7 +1898,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
     cache.del(pendingKey(ctx.from.id, 'button_color'));
     cache.del(pendingKey(ctx.from.id, 'button_type'));
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     await ctx.reply('✅ تغییرات دکمه انجام شد.', { reply_markup: { remove_keyboard: true } });
     await ctx.reply('✏️ ویرایشگر پست:', postEditMessageReplyKeyboard());
     await refreshButtonListView(ctx, postId);
@@ -1925,9 +1925,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const mode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode')) || 'create';
 
     if (mode === 'move') {
-      cache.set(pendingKey(ctx.from.id, 'move_selected_row'), row, 600);
-      cache.set(pendingKey(ctx.from.id, 'move_selected_col'), col, 600);
-      cache.set(pendingKey(ctx.from.id, 'move_active'), true, 600);
+      cache.setPermanent(pendingKey(ctx.from.id, 'move_selected_row'), row);
+      cache.setPermanent(pendingKey(ctx.from.id, 'move_selected_col'), col);
+      cache.setPermanent(pendingKey(ctx.from.id, 'move_active'), true);
 
       const msgId = cache.get<number>(`pbedit:editor_msg_id:${ctx.from.id}`);
       if (msgId) {
@@ -1950,7 +1950,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
         cache.del(pendingKey(ctx.from.id, 'editor_row'));
         cache.del(pendingKey(ctx.from.id, 'editor_col'));
-        cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+        cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
         await refreshButtonListView(ctx, postId);
       }
       return;
@@ -1960,9 +1960,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       // Show edit type selection for the clicked button
       const btn = buttons[row]?.[col];
       if (!btn) return safeEdit(ctx, '❌ دکمه یافت نشد.');
-      cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
-      cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
-      cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), row);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), col);
+      cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'edit');
       const currentType = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : '🔗 لینک';
       const colorText = btn.style && btn.style !== 'default' ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
       await safeEdit(ctx,
@@ -1983,14 +1983,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       await ctx.reply('❌ خطا در ذخیره دکمه.');
       return;
     }
-    cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_col'), 0, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), newRow);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), 0);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'edit');
     const freshPost = await postService.findById(postId);
     const freshButtons = extractButtonsForMessage(freshPost, messageIdx);
     const { text: editorText, reply_markup } = renderButtonEditor(postId, freshButtons, 'edit', { row: newRow, col: 0 });
     const sent = await ctx.reply(editorText, { reply_markup });
-    if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+    if (sent) cache.setPermanent(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id);
     logger.info(`[ButtonEditor] sync complete postId=${postId}`);
     return;
   });
@@ -2008,7 +2008,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
     const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
 
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), mode, 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), mode);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     cache.del(pendingKey(ctx.from.id, 'editor_row'));
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
@@ -2029,11 +2029,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const row = parseInt(ctx.match[3]);
     const col = parseInt(ctx.match[4]);
     const currentMode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode')) || 'edit';
-    cache.set(pendingKey(ctx.from.id, 'previous_view'), currentMode, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), `wait_${btnType}`, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'edit', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'previous_view'), currentMode);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), `wait_${btnType}`);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'edit');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), row);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), col);
 
     const messages: Record<string, string> = {
       url: '🔗 داده های جدید را برای URL / دکمه اشتراک گذاری وارد کنید:\n\n🏷 عنوان دکمه\n🌐 آدرس جدید',
@@ -2050,7 +2050,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     if (!requireButtonEditSession(ctx)) return;
     const prevMode = cache.get<string>(pendingKey(ctx.from.id, 'previous_view')) || 'create';
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), prevMode, 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), prevMode);
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     cache.del(pendingKey(ctx.from.id, 'editor_row'));
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
@@ -2067,9 +2067,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!requireButtonEditSession(ctx)) return;
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'wait_color', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_row'), row, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_col'), col, 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'wait_color');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), row);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), col);
     await ctx.reply('🎨 رنگ دکمه را انتخاب کنید:', buildButtonColorSelectionKeyboard());
   });
 
@@ -2087,14 +2087,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
     buttons.push([{ text: 'دکمه جدید', type: 'URL', value: '' }]);
     await postService.update(realPostId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     cache.del(pendingKey(ctx.from.id, 'editor_row'));
     cache.del(pendingKey(ctx.from.id, 'editor_col'));
     await refreshButtonListView(ctx, realPostId);
-    cache.set(pendingKey(ctx.from.id, 'editor_state'), 'select_type', 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_row'), buttons.length - 1, 600);
-    cache.set(pendingKey(ctx.from.id, 'editor_col'), 0, 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'select_type');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), buttons.length - 1);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), 0);
     await ctx.reply('✅ ردیف جدید اضافه شد.\n❇️ نوع دکمه را انتخاب کنید:', buildButtonTypeSelectionKeyboard());
   });
 
@@ -2149,7 +2149,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    cache.set(pendingKey(ctx.from.id, 'edit_mode'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'edit_mode'), postId);
     const text = formatPostInfoPersian(post) + '\n\n✏️ در حالت ویرایش. گزینه مورد نظر را انتخاب کنید:';
     try {
       await ctx.editMessageText(text, {
@@ -2174,7 +2174,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       await ctx.reply('❌ پست یافت نشد.');
       return;
     }
-    cache.set(pendingKey(ctx.from.id, 'edit_mode'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'edit_mode'), postId);
     await ctx.reply(formatPostInfoPersian(post), {
       parse_mode: 'Markdown' as any,
       link_preview_options: { is_disabled: true } as any,
@@ -2190,8 +2190,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    cache.set(pendingKey(ctx.from.id, 'editing_field'), 'content', 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_field'), 'content');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
     const firstMsg = post.messages?.[0]?.text || '';
     const current = firstMsg ? `محتوا فعلی:\n${graphemeTruncate(firstMsg, 200)}` : '(بدون محتوا)';
     await ctx.reply(`📝 ${current}\n\nمحتوای جدید را ارسال کنید (Markdown پشتیبانی می‌شود):`);
@@ -2205,8 +2205,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return;
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    cache.set(pendingKey(ctx.from.id, 'editing_field'), 'title', 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_field'), 'title');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
     await ctx.reply(`✏ عنوان فعلی: *${post.title}*\n\nعنوان جدید را ارسال کنید:`, { parse_mode: 'Markdown' as any });
   });
 
@@ -2220,15 +2220,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     cache.del(pendingKey(ctx.from.id, 'edit_mode'));
     clearButtonEditorState(ctx.from.id);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 600);
-    cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), 0, 600);
-    cache.set(pendingKey(ctx.from.id, 'edit_mode'), postId, 300);
-    cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_message_idx'), 0);
+    cache.setPermanent(pendingKey(ctx.from.id, 'edit_mode'), postId);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     cache.del(pendingKey(ctx.from.id, 'editor_state'));
     const buttons = extractButtonsForMessage(post, 0);
     const { text: editorText, reply_markup } = renderButtonEditor(postId, buttons, 'create');
     const sent = await ctx.reply(editorText, { reply_markup });
-    if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+    if (sent) cache.setPermanent(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id);
   });
 
   // 🖼 ویرایش رسانه
@@ -2237,8 +2237,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'edit_mode'));
     if (!postId) return;
-    cache.set(pendingKey(ctx.from.id, 'editing_field'), 'media', 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_field'), 'media');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
     await ctx.reply('🖼 فایل رسانه ارسال کنید (عکس، ویدیو، گیف، سند، صدا، ویس):');
   });
 
@@ -2269,7 +2269,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return next();
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    cache.set(pendingKey(ctx.from.id, 'delete_post_id'), postId, 600);
+    cache.setPermanent(pendingKey(ctx.from.id, 'delete_post_id'), postId);
     await ctx.reply(
       '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +
       'این عملیات غیرقابل بازگشت است.\n\n' +
@@ -2353,7 +2353,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }
 
       if (mode === 'add_message' || mode === 'add_command' || mode === 'edit_message' || mode === 'edit_content' || mode === 'edit_title') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
         cache.del(editorKey(ctx.from.id, 'msg_idx'));
         try {
           const post = await postService.findById(editorPostId);
@@ -2582,7 +2582,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (postButtons.length === 0 && drafts.length === 0) {
       return ctx.reply('📋 پستی در منو وجود ندارد. ابتدا پست را در ویرایش منو اضافه کنید.', postMainMenuKeyboard());
     }
-    cache.set(`post_mgmt_mode:${ctx.from.id}`, true, 300);
+    cache.setPermanent(`post_mgmt_mode:${ctx.from.id}`, true);
     await ctx.reply('📋 روی عنوان پست مورد نظر ضربه بزنید:', buildPostListFromMenuLayout(layout, drafts));
   }
 
@@ -2603,8 +2603,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     trace.info(`enterPostEditor postId=${postId} userId=${ctx.from?.id}`);
 
     clearAllWaitingStates(ctx.from.id);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
     cache.del(editorKey(ctx.from.id, 'message_ids'));
 
@@ -2713,7 +2713,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         }
       }
     }
-    cache.set(editorKey(ctx.from.id, 'message_ids'), newMsgIds, 600);
+    cache.setPermanent(editorKey(ctx.from.id, 'message_ids'), newMsgIds);
   }
 
   async function deleteAllEditorMessages(ctx: any) {
@@ -2728,7 +2728,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   }
 
   async function openEditorAfterMessageCreate(ctx: any, postId: number, isForwarded?: boolean) {
-    cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
     postService.invalidateCache();
     await ctx.reply(isForwarded ? '✅ پیام فورواردی اضافه شد' : '✅ پیام اضافه شد');
@@ -2749,9 +2749,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
     const messageId = parseInt(ctx.match[2]);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
-    cache.set(editorKey(ctx.from.id, 'msg_idx'), messageId, 600);
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'edit_message');
+    cache.setPermanent(editorKey(ctx.from.id, 'msg_idx'), messageId);
     try {
       const post = await postService.findById(postId);
       if (!post) return ctx.reply('❌ پست یافت نشد.');
@@ -2764,7 +2764,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       });
     } catch (e: any) {
       logger.error(`[MsgEdit] Failed postId=${postId} messageId=${messageId}: ${e.message}`, { postId, messageId, userId: ctx.from?.id });
-      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       try { await ctx.reply('❌ خطا در ویرایش پیام. لطفاً دوباره تلاش کنید.'); } catch (_) {}
     }
@@ -2838,8 +2838,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    cache.set(editorKey(ctx.from.id, 'active'), postId, 600);
-    cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'add_message');
     cache.del(editorKey(ctx.from.id, 'msg_idx'));
     try {
       await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
@@ -2847,7 +2847,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       });
     } catch (e: any) {
       logger.error(`[MsgAdd] Failed postId=${postId}: ${e.message}`, { postId, userId: ctx.from?.id });
-      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       try { await ctx.reply('❌ خطا. لطفاً دوباره تلاش کنید.'); } catch (_) {}
     }
@@ -2871,7 +2871,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (!post) { clearEditorKeyState(ctx.from.id); return next(); }
       switch (text) {
         case '➕ افزودن پیام': {
-          cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
+          cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'add_message');
           cache.del(editorKey(ctx.from.id, 'msg_idx'));
           await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
             ...postAddMessageReplyKeyboard(),
@@ -2879,7 +2879,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           return;
         }
         case '🔗 دستور': {
-          cache.set(editorKey(ctx.from.id, 'mode'), 'add_command', 600);
+          cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'add_command');
           const existingCmd = await postService.getCommandByPostId(editorPostId);
           const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
           await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
@@ -2894,7 +2894,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           } catch (err: any) {
             await ctx.reply(`❌ ${err.message || 'حذف دستور ناموفق بود.'}`);
           }
-          cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+          cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
           const updatedPost = await postService.findById(editorPostId);
           if (updatedPost) await refreshEditorMessages(ctx, updatedPost);
           return;
@@ -2918,7 +2918,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         }
         case '🗑 حذف پست': {
           if (post.slug === '__start__' || post.slug === '__anonymous__') return ctx.reply('❌ پیام سیستمی قابل حذف نیست.');
-          cache.set(pendingKey(ctx.from.id, 'delete_post_id'), editorPostId, 600);
+          cache.setPermanent(pendingKey(ctx.from.id, 'delete_post_id'), editorPostId);
           await ctx.reply(
             '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +
             'این عملیات غیرقابل بازگشت است.\n\n' +
@@ -2949,7 +2949,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         case '➕ افزودن پیام': {
           const post = await postService.findById(editorPostId);
           if (!post) return ctx.reply('❌ پست یافت نشد.');
-          cache.set(editorKey(ctx.from.id, 'mode'), 'add_message', 600);
+          cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'add_message');
           cache.del(editorKey(ctx.from.id, 'msg_idx'));
           await ctx.reply('🔧 افزودن پیام جدید\n\n❇️ پیام جدید را وارد کنید.\nهمچنین می‌توانید متن را از چت یا کانال دیگری «باز ارسال» کنید.', {
             ...postAddMessageReplyKeyboard(),
@@ -2957,7 +2957,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           return;
         }
         case '🔗 دستور': {
-          cache.set(editorKey(ctx.from.id, 'mode'), 'add_command', 600);
+          cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'add_command');
           const existingCmd = await postService.getCommandByPostId(editorPostId);
           const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
           await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {
@@ -2972,7 +2972,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           } catch (err: any) {
             await ctx.reply(`❌ ${err.message || 'حذف دستور ناموفق بود.'}`);
           }
-          cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+          cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
           const updatedPost = await postService.findById(editorPostId);
           if (updatedPost) await refreshEditorMessages(ctx, updatedPost);
           return;
@@ -3021,7 +3021,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         case '🗑 حذف پست': {
           const post = await postService.findById(editorPostId);
           if (!post) return ctx.reply('❌ پست یافت نشد.');
-          cache.set(pendingKey(ctx.from.id, 'delete_post_id'), editorPostId, 600);
+          cache.setPermanent(pendingKey(ctx.from.id, 'delete_post_id'), editorPostId);
           await ctx.reply(
             '⚠️ آیا از حذف کامل این پست مطمئن هستید؟\n' +
             'این عملیات غیرقابل بازگشت است.\n\n' +
@@ -3087,8 +3087,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         const { newRow, newCol } = moveButtonInLayout(buttons, row, col, text === '⬆️ بالا' ? 'up' : 'down');
 
         await postService.update(editorPostId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-        cache.set(pendingKey(ctx.from.id, 'editor_row'), newRow, 600);
-        cache.set(pendingKey(ctx.from.id, 'editor_col'), newCol, 600);
+        cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), newRow);
+        cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), newCol);
         const updated = await postService.findById(editorPostId);
         if (updated) await refreshEditorMessages(ctx, updated);
         await ctx.reply(`✅ دکمه به ${text === '⬆️ بالا' ? 'بالا' : 'پایین'} منتقل شد.`);
@@ -3098,7 +3098,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         cache.del(pendingKey(ctx.from.id, 'editor_row'));
         cache.del(pendingKey(ctx.from.id, 'editor_col'));
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
-        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
         const post = await postService.findById(editorPostId);
         if (post) await refreshEditorMessages(ctx, post);
         return;
@@ -3109,7 +3109,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     // ─── ADD MESSAGE MODE ────────────────────────────────
     if (mode === 'add_message') {
       if (text === '❌ لغو') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
         cache.del(editorKey(ctx.from.id, 'msg_idx'));
         const post = await postService.findById(editorPostId);
         if (post) await refreshEditorMessages(ctx, post);
@@ -3165,7 +3165,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     // ─── ADD COMMAND MODE ────────────────────────────────
     if (mode === 'add_command') {
       if (text === '↩️ لغو' || text === '❌ لغو') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
         const post = await postService.findById(editorPostId);
         if (post) await refreshEditorMessages(ctx, post);
         return;
@@ -3188,7 +3188,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         await ctx.reply(`❌ ${err.message || 'ثبت دستور ناموفق بود.'}`);
         return;
       }
-      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
       const updated = await postService.findById(editorPostId);
       if (updated) await refreshEditorMessages(ctx, updated);
       return;
@@ -3201,7 +3201,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const messages = post?.messages || [];
       const targetMsg = messages.find((m: any) => m.id === messageId);
       if (text === '✏️ ویرایش محتوا') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_content', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'edit_content');
         const current = targetMsg?.text || '(بدون محتوا)';
         await ctx.reply(`✏️ محتوای جدید را ارسال کنید:\n\nمتن فعلی: ${current}`, {
           ...postCancelOnlyReplyKeyboard(),
@@ -3209,7 +3209,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
       if (text === '📝 ویرایش عنوان') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_title', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'edit_title');
         await ctx.reply(`✏️ عنوان جدید را ارسال کنید:\n\nعنوان فعلی: *${post?.title || ''}*`, {
           parse_mode: 'Markdown' as any,
           ...postCancelOnlyReplyKeyboard(),
@@ -3218,20 +3218,20 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       }
       if (text === 'ویرایش دکمه ها') {
         clearButtonEditorState(ctx.from.id);
-        cache.set(pendingKey(ctx.from.id, 'editing_post'), editorPostId, 600);
-        cache.set(pendingKey(ctx.from.id, 'editing_message_idx'), messageId, 600);
-        cache.set(pendingKey(ctx.from.id, 'edit_mode'), editorPostId, 300);
-        cache.set(pendingKey(ctx.from.id, 'editor_mode'), 'create', 600);
+        cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), editorPostId);
+        cache.setPermanent(pendingKey(ctx.from.id, 'editing_message_idx'), messageId);
+        cache.setPermanent(pendingKey(ctx.from.id, 'edit_mode'), editorPostId);
+        cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
         cache.del(pendingKey(ctx.from.id, 'editor_state'));
         if (!post) return ctx.reply('❌ پست یافت نشد.');
         const buttons = extractButtonsForMessage(post, messageId);
         const { text: editorText, reply_markup } = renderButtonEditor(editorPostId, buttons, 'create');
         const sent = await ctx.reply(editorText, { reply_markup });
-        if (sent) cache.set(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id, 600);
+        if (sent) cache.setPermanent(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id);
         return;
       }
       if (text === '🔙 بازگشت') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
         cache.del(editorKey(ctx.from.id, 'msg_idx'));
         if (post) await refreshEditorMessages(ctx, post);
         return;
@@ -3243,7 +3243,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (mode === 'edit_content') {
       const messageId = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
       if (text === '❌ لغو') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'edit_message');
         const post = await postService.findById(editorPostId);
         const messages = post?.messages || [];
         const msgText = messages.find((m: any) => m.id === messageId)?.text || '(بدون محتوا)';
@@ -3259,7 +3259,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           entities: entityData,
         });
       }
-      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       postService.invalidateCache();
       const updated = await postService.findById(editorPostId);
@@ -3271,7 +3271,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (mode === 'edit_title') {
       const messageId = cache.get<number>(editorKey(ctx.from.id, 'msg_idx')) ?? -1;
       if (text === '❌ لغو') {
-        cache.set(editorKey(ctx.from.id, 'mode'), 'edit_message', 600);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'edit_message');
         const post = await postService.findById(editorPostId);
         const messages = post?.messages || [];
         const msgText = messages.find((m: any) => m.id === messageId)?.text || '(بدون محتوا)';
@@ -3281,7 +3281,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         return;
       }
       await postService.update(editorPostId, { title: text, updatedBy: BigInt(ctx.from.id) } as any);
-      cache.set(editorKey(ctx.from.id, 'mode'), 'main', 600);
+      cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
       cache.del(editorKey(ctx.from.id, 'msg_idx'));
       postService.invalidateCache();
       const updated = await postService.findById(editorPostId);
@@ -3397,8 +3397,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     const postId = parseInt(ctx.match[1]);
-    cache.set(pendingKey(ctx.from.id, 'editing_cmd'), true, 300);
-    cache.set(pendingKey(ctx.from.id, 'editing_post'), postId, 300);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_cmd'), true);
+    cache.setPermanent(pendingKey(ctx.from.id, 'editing_post'), postId);
     const existingCmd = await postService.getCommandByPostId(postId);
     const statusLine = existingCmd ? `دستور پست: /${existingCmd.command}` : 'دستور پست: ندارد';
     await ctx.reply(`🔗 نام دستور را ارسال کنید (بدون /):\n\n${statusLine}\n\nمثال: sgb/discount/rules`, {

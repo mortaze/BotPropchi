@@ -2,6 +2,7 @@
 // میانجی‌های ربات
 
 import { Context, Telegraf } from 'telegraf';
+import { BotAdminStatus } from '@prisma/client';
 import { userService } from '../../services/user.service';
 import { attributionService } from '../../services/attribution.service';
 import { userEventService } from '../../services/user-event.service';
@@ -9,6 +10,7 @@ import { logger } from '../../utils/logger';
 import { groupService } from '../../services/group.service';
 import { settingsService } from '../../services/settings.service';
 import { BOT_TEXT_FEATURES, featureForCallback } from '../service-toggle';
+import { prisma } from '../../prisma/client';
 
 // ─── ثبت / به‌روزرسانی کاربر ──────────────────────────────
 export function userMiddleware() {
@@ -189,11 +191,29 @@ export function groupAccessMiddleware(bot: Telegraf) {
 
 // ─── Rate Limiting ────────────────────────────────────────
 const userRequestCounts = new Map<number, { count: number; resetAt: number }>();
+const adminIds = new Set<number>();
+
+async function refreshAdminIds() {
+  try {
+    const admins = await prisma.botAdmin.findMany({
+      where: { status: BotAdminStatus.ACTIVE },
+      select: { telegramId: true },
+    });
+    adminIds.clear();
+    for (const a of admins) adminIds.add(Number(a.telegramId));
+  } catch {}
+}
+
+refreshAdminIds();
+setInterval(refreshAdminIds, 5 * 60 * 1000);
 
 export function rateLimitMiddleware(maxRequests = 20, windowMs = 60_000) {
   return async (ctx: Context, next: () => Promise<void>) => {
     if (!ctx.from) return next();
     const userId = ctx.from.id;
+
+    if (adminIds.has(userId)) return next();
+
     const now = Date.now();
     const record = userRequestCounts.get(userId);
 

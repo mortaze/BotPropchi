@@ -26,6 +26,10 @@ class CacheService {
     this.cache.set(key, value, ttl ?? config.cache.ttl);
   }
 
+  setPermanent<T>(key: string, value: T): void {
+    this.cache.set(key, value, 0);
+  }
+
   del(key: string): void {
     this.cache.del(key);
   }
