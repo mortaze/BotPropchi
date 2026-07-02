@@ -88,6 +88,7 @@ export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   rows.push(['📝 پست‌ها', '🎛 ویرایش منو']);
   rows.push(['👥 مدیریت ادمین‌ها']);
   rows.push(['📊 گزارشات', '🎫 تیکت‌ها']);
+  rows.push(['📢 پیام‌های خودکار']);
   rows.push(['↩️ بازگشت به منوی اصلی']);
   return Markup.keyboard(rows).resize().persistent();
 }

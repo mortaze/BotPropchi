@@ -425,20 +425,23 @@ model BroadcastDeliveryLog {
 }
 
 model TelegramGroup {
-  id                Int                 @id @default(autoincrement())
-  chatId            BigInt              @unique
-  title             String
-  username          String?
-  status            TelegramGroupStatus @default(PENDING)
-  botIsAdmin        Boolean             @default(false)
-  botAdminCheckedAt DateTime?
-  addedAt           DateTime            @default(now())
-  approvedAt        DateTime?
-  rejectedAt        DateTime?
-  disabledAt        DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  keywordLogs       KeywordReplyLog[]
+  id                   Int                 @id @default(autoincrement())
+  chatId               BigInt              @unique
+  title                String
+  username             String?
+  status               TelegramGroupStatus @default(PENDING)
+  botIsAdmin           Boolean             @default(false)
+  botAdminCheckedAt    DateTime?
+  addedAt              DateTime            @default(now())
+  approvedAt           DateTime?
+  rejectedAt           DateTime?
+  disabledAt           DateTime?
+  isForum              Boolean             @default(false)
+  forumTopics          Json?
+  forumTopicsFetchedAt DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  keywordLogs          KeywordReplyLog[]
 
   @@index([status])
   @@index([botIsAdmin])
@@ -1179,4 +1182,86 @@ model TicketAttachment {
 
   @@index([messageId])
   @@map("ticket_attachments")
+}
+
+// ─── Scheduled Messages (پیام‌های خودکار) ────────────────────
+
+model ScheduledMessage {
+  id            Int                @id @default(autoincrement())
+  title         String
+  slug          String?            @unique
+  status        PostStatus         @default(DRAFT)
+  isPublished   Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  intervalHours Int?
+  startTime     String?
+  targetChatId  BigInt?
+  targetTopicId BigInt?
+  lastSentAt    DateTime?
+  nextSendAt    DateTime?
+  sendCount     Int                @default(0)
+  createdBy     BigInt?
+
+  messages      ScheduledMessageMessage[]
+  buttons       ScheduledMessageButton[]
+  logs          ScheduledPostLog[]
+
+  @@index([status])
+  @@index([nextSendAt])
+  @@index([isPublished])
+  @@map("scheduled_messages")
+}
+
+model ScheduledMessageMessage {
+  id                 Int               @id @default(autoincrement())
+  scheduledMessageId Int
+  text               String            @default("")
+  type               PostMessageType   @default(text)
+  order              Int               @default(0)
+  mediaFileId        String?
+  caption            String?
+  captionEntities    Json?
+  entities           Json?
+  replyMarkup        Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  scheduledMessage   ScheduledMessage  @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledMessageId, order])
+  @@map("scheduled_message_messages")
+}
+
+model ScheduledMessageButton {
+  id                 Int               @id @default(autoincrement())
+  scheduledMessageId Int
+  messageId          Int?
+  row                Int               @default(0)
+  col                Int               @default(0)
+  text               String
+  type               String            @default("URL")
+  value              String?
+  payload            Json?
+  createdAt          DateTime          @default(now())
+  scheduledMessage   ScheduledMessage  @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledMessageId])
+  @@map("scheduled_message_buttons")
+}
+
+model ScheduledPostLog {
+  id                 Int               @id @default(autoincrement())
+  scheduledMessageId Int
+  sentAt             DateTime          @default(now())
+  targetChatId       BigInt
+  targetTopicId      BigInt?
+  status             String            @default("SUCCESS")
+  errorMessage       String?
+  createdAt          DateTime          @default(now())
+  scheduledMessage   ScheduledMessage  @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledMessageId])
+  @@index([sentAt])
+  @@map("scheduled_post_logs")
 }

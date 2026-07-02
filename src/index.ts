@@ -25,6 +25,8 @@ import { registerChatMemberHandlers } from './bot/webhooks/chatMember.handler';
 import { startMembershipWorker } from './workers/membership.worker';
 import { startLeaderboardWorker } from './workers/leaderboard.worker';
 import { postService } from './services/post.service';
+import { scheduledMessageService } from './services/scheduled-message.service';
+import { registerScheduledMessageHandlers } from './bot/handlers/scheduled-message.handlers';
 
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
@@ -100,6 +102,10 @@ async function bootstrap() {
 
   // ثبت هندلرها
   registerHandlers(bot);
+  registerScheduledMessageHandlers(bot);
+
+  // ─── Scheduled message service ──────────────────────────
+  scheduledMessageService.setBot(bot);
 
   // مدیریت خطا — CRITICAL: must answerCbQuery for callback_query errors
   bot.catch((err, ctx) => {

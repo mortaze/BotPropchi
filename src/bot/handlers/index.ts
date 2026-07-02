@@ -615,6 +615,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       '👻 پست‌های مخفی', '👁 پیش​‌نمایش', '📤 انتشار',
       '🔎 جستجو', '📊 آمار پست', '📊 آمار کلی', '🔍 بررسی سلامت',
       '↩️ بازگشت به پنل ادمین',
+      '📢 پیام‌های خودکار',
     ];
     if (knownTexts.includes(text)) return next();
 

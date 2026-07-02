@@ -6,6 +6,7 @@ import { prisma } from './prisma/client';
 import { lotteryService } from './services/lottery.service';
 import { broadcastService } from './services/broadcast.service';
 import { postService } from './services/post.service';
+import { scheduledMessageService } from './services/scheduled-message.service';
 import { logger } from './utils/logger';
 
 let running = false;
@@ -32,6 +33,12 @@ export function startScheduler() {
       }
     } catch (err) {
       logger.error('❌ Post scheduler error', err);
+    }
+
+    try {
+      await scheduledMessageService.processDueScheduled();
+    } catch (err) {
+      logger.error('❌ Scheduled message scheduler error', err);
     }
 
     // Auto-draw for lotteries is disabled - use manual wheel lottery instead

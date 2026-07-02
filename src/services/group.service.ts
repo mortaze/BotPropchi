@@ -50,4 +50,22 @@ export const groupService = {
     const current = checkedRecently ? group : await this.refreshBotAdmin(bot, group.chatId);
     return { allowed: current.status === TelegramGroupStatus.APPROVED && current.botIsAdmin, group: current };
   },
+
+  async fetchForumTopics(bot: Telegraf, chatId: number | bigint) {
+    try {
+      const chat = await bot.telegram.getChat(Number(chatId));
+      const isForum = (chat as any).is_forum === true;
+      if (!isForum) return null;
+
+      await prisma.telegramGroup.update({
+        where: { chatId: BigInt(chatId) },
+        data: { isForum: true, forumTopicsFetchedAt: new Date() },
+      });
+
+      return { isForum: true };
+    } catch (error) {
+      logger.error(`[GroupService] Failed to fetch forum info for ${chatId}:`, error);
+      return null;
+    }
+  },
 };

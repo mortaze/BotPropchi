@@ -1,0 +1,275 @@
+import { Telegraf } from 'telegraf';
+import { PostStatus, PostMessageType } from '@prisma/client';
+import { prisma } from '../prisma/client';
+import { scheduledMessageRepository } from '../repositories/scheduled-message.repository';
+import { logger } from '../utils/logger';
+import { sanitizeTelegramText, sanitizeTelegramExtra, validateDbInput } from '../utils/unicode';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+class ScheduledMessageService {
+  private bot?: Telegraf;
+
+  setBot(bot: Telegraf) {
+    this.bot = bot;
+  }
+
+  // ─── CRUD ────────────────────────────────────────────────
+
+  async create(data: { title: string; createdBy?: bigint }) {
+    const title = validateDbInput(data.title, 'title');
+    return scheduledMessageRepository.create({
+      title,
+      createdBy: data.createdBy,
+      messages: [{ text: '', type: PostMessageType.text, order: 0 }],
+    });
+  }
+
+  async update(id: number, data: { title?: string }) {
+    const updateData: any = {};
+    if (data.title !== undefined) updateData.title = validateDbInput(data.title, 'title');
+    return scheduledMessageRepository.update(id, updateData);
+  }
+
+  async delete(id: number) {
+    return scheduledMessageRepository.delete(id);
+  }
+
+  async publish(id: number) {
+    const msg = await scheduledMessageRepository.findById(id);
+    if (!msg || !msg.targetChatId || !msg.intervalHours || !msg.startTime) {
+      throw new Error('پیام هنوز کامل نشده است (زمان‌بندی و گروه تعیین نشده)');
+    }
+    const nextSendAt = this.calculateNextSend(msg.intervalHours, msg.startTime);
+    return scheduledMessageRepository.update(id, {
+      status: PostStatus.PUBLISHED,
+      isPublished: true,
+      nextSendAt,
+    });
+  }
+
+  async unpublish(id: number) {
+    return scheduledMessageRepository.update(id, {
+      status: PostStatus.DRAFT,
+      isPublished: false,
+      nextSendAt: null,
+    });
+  }
+
+  // ─── Message Management ──────────────────────────────────
+
+  async addMessage(scheduledMessageId: number) {
+    const lastMsg = await prisma.scheduledMessageMessage.findFirst({
+      where: { scheduledMessageId },
+      orderBy: { order: 'desc' },
+    });
+    const order = (lastMsg?.order ?? -1) + 1;
+    return prisma.scheduledMessageMessage.create({
+      data: { scheduledMessageId, text: '', type: PostMessageType.text, order },
+    });
+  }
+
+  async updateMessage(messageId: number, data: { text?: string; type?: PostMessageType; mediaFileId?: string; entities?: any; replyMarkup?: any }) {
+    return prisma.scheduledMessageMessage.update({ where: { id: messageId }, data });
+  }
+
+  async deleteMessage(messageId: number) {
+    const msg = await prisma.scheduledMessageMessage.findUnique({ where: { id: messageId } });
+    if (!msg) return;
+    await prisma.scheduledMessageMessage.delete({ where: { id: messageId } });
+    // Reorder remaining messages
+    const remaining = await prisma.scheduledMessageMessage.findMany({
+      where: { scheduledMessageId: msg.scheduledMessageId },
+      orderBy: { order: 'asc' },
+    });
+    for (let i = 0; i < remaining.length; i++) {
+      if (remaining[i].order !== i) {
+        await prisma.scheduledMessageMessage.update({ where: { id: remaining[i].id }, data: { order: i } });
+      }
+    }
+  }
+
+  async reorderMessages(scheduledMessageId: number, messageIds: number[]) {
+    for (let i = 0; i < messageIds.length; i++) {
+      await prisma.scheduledMessageMessage.update({ where: { id: messageIds[i] }, data: { order: i } });
+    }
+  }
+
+  async listMessages(scheduledMessageId: number) {
+    return prisma.scheduledMessageMessage.findMany({
+      where: { scheduledMessageId },
+      orderBy: { order: 'asc' },
+    });
+  }
+
+  // ─── Button Management ───────────────────────────────────
+
+  async addButton(scheduledMessageId: number, data: { text: string; type?: string; value?: string; row?: number; col?: number; messageId?: number }) {
+    return prisma.scheduledMessageButton.create({
+      data: {
+        scheduledMessageId,
+        messageId: data.messageId,
+        text: data.text,
+        type: data.type ?? 'URL',
+        value: data.value,
+        row: data.row ?? 0,
+        col: data.col ?? 0,
+      },
+    });
+  }
+
+  async updateButton(buttonId: number, data: { text?: string; type?: string; value?: string; row?: number; col?: number }) {
+    return prisma.scheduledMessageButton.update({ where: { id: buttonId }, data });
+  }
+
+  async deleteButton(buttonId: number) {
+    return prisma.scheduledMessageButton.delete({ where: { id: buttonId } });
+  }
+
+  async listButtons(scheduledMessageId: number) {
+    return prisma.scheduledMessageButton.findMany({
+      where: { scheduledMessageId },
+      orderBy: [{ row: 'asc' }, { col: 'asc' }],
+    });
+  }
+
+  // ─── Scheduling ──────────────────────────────────────────
+
+  async setSchedule(id: number, intervalHours: number, startTime: string, targetChatId: number, targetTopicId?: number | null) {
+    const nextSendAt = this.calculateNextSend(intervalHours, startTime);
+    return scheduledMessageRepository.update(id, {
+      intervalHours,
+      startTime,
+      targetChatId: BigInt(targetChatId),
+      targetTopicId: targetTopicId ? BigInt(targetTopicId) : null,
+      nextSendAt,
+    });
+  }
+
+  calculateNextSend(intervalHours: number, startTime: string): Date {
+    const [hours, mins] = startTime.split(':').map(Number);
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(hours, mins, 0, 0);
+
+    if (next <= now) {
+      next.setTime(next.getTime() + intervalHours * 60 * 60 * 1000);
+    }
+
+    return next;
+  }
+
+  // ─── Delivery ────────────────────────────────────────────
+
+  async processDueScheduled() {
+    try {
+      const due = await scheduledMessageRepository.findDueForSending();
+      for (const msg of due) {
+        await this.sendToGroup(msg);
+      }
+    } catch (error) {
+      logger.error('[ScheduledMessage] processDueScheduled failed:', error);
+    }
+  }
+
+  async sendToGroup(msg: any) {
+    if (!this.bot || !msg.targetChatId) return;
+
+    const chatId = Number(msg.targetChatId);
+    const threadId = msg.targetTopicId ? Number(msg.targetTopicId) : undefined;
+
+    try {
+      const messages = msg.messages || [];
+      for (const message of messages) {
+        const text = sanitizeTelegramText(message.text || '', 4096);
+        const extra: any = {};
+        if (threadId) extra.message_thread_id = threadId;
+        if (message.replyMarkup) extra.reply_markup = message.replyMarkup;
+
+        if (message.mediaFileId) {
+          switch (message.type) {
+            case 'PHOTO':
+              await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, { ...extra, caption: text });
+              break;
+            case 'VIDEO':
+              await this.bot.telegram.sendVideo(chatId, message.mediaFileId, { ...extra, caption: text });
+              break;
+            case 'DOCUMENT':
+              await this.bot.telegram.sendDocument(chatId, message.mediaFileId, { ...extra, caption: text });
+              break;
+            case 'VOICE':
+              await this.bot.telegram.sendVoice(chatId, message.mediaFileId, { ...extra, caption: text });
+              break;
+            case 'AUDIO':
+              await this.bot.telegram.sendAudio(chatId, message.mediaFileId, { ...extra, caption: text });
+              break;
+            case 'ANIMATION':
+              await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, { ...extra, caption: text });
+              break;
+            case 'STICKER':
+              await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra);
+              break;
+            default:
+              await this.bot.telegram.sendMessage(chatId, text || '(پیام خالی)', extra);
+          }
+        } else {
+          await this.bot.telegram.sendMessage(chatId, text || '(پیام خالی)', extra);
+        }
+
+        if (messages.length > 1) await sleep(100);
+      }
+
+      const nextSendAt = msg.intervalHours ? this.calculateNextSend(msg.intervalHours, msg.startTime || '00:00') : null;
+      await prisma.scheduledMessage.update({
+        where: { id: msg.id },
+        data: { lastSentAt: new Date(), nextSendAt, sendCount: { increment: 1 } },
+      });
+
+      await scheduledMessageRepository.logDelivery({
+        scheduledMessageId: msg.id,
+        targetChatId: msg.targetChatId,
+        targetTopicId: msg.targetTopicId,
+        status: 'SUCCESS',
+      });
+    } catch (error: any) {
+      const errMsg = error?.message || String(error);
+
+      if (error?.response?.parameters?.retry_after) {
+        const waitSeconds = error.response.parameters.retry_after;
+        logger.warn(`[ScheduledMsg] FloodWait for ${msg.id}, waiting ${waitSeconds}s`);
+        await prisma.scheduledMessage.update({
+          where: { id: msg.id },
+          data: { nextSendAt: new Date(Date.now() + waitSeconds * 1000) },
+        });
+      }
+
+      await scheduledMessageRepository.logDelivery({
+        scheduledMessageId: msg.id,
+        targetChatId: msg.targetChatId,
+        targetTopicId: msg.targetTopicId,
+        status: 'FAILED',
+        errorMessage: errMsg.slice(0, 900),
+      });
+
+      logger.error(`[ScheduledMsg] Send failed for ${msg.id}: ${errMsg}`);
+    }
+  }
+
+  // ─── Emergency Stop ──────────────────────────────────────
+
+  async emergencyStop() {
+    return scheduledMessageRepository.disableAll();
+  }
+
+  // ─── Stats ───────────────────────────────────────────────
+
+  async getStats() {
+    return scheduledMessageRepository.getStats();
+  }
+
+  async getLogs(messageId: number, limit?: number) {
+    return scheduledMessageRepository.getLogs(messageId, limit);
+  }
+}
+
+export const scheduledMessageService = new ScheduledMessageService();
