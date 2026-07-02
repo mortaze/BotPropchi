@@ -73,7 +73,7 @@ export const scheduledMessageRepository = {
         isPublished: true,
         status: PostStatus.PUBLISHED,
         nextSendAt: { lte: new Date() },
-        intervalHours: { not: null },
+        intervalMinutes: { not: null },
         targetChatId: { not: null },
       },
       include: { messages: { orderBy: { order: 'asc' } }, buttons: true },

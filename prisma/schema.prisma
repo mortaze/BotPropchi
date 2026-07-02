@@ -1195,7 +1195,7 @@ model ScheduledMessage {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
-  intervalHours Int?
+  intervalMinutes Int?
   startTime     String?
   targetChatId  BigInt?
   targetTopicId BigInt?

@@ -107,12 +107,13 @@ export function scheduledMessageSingleMessageInlineKeyboard(
 
 export function scheduleIntervalKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('⏰ هر ۳ ساعت', 'sched:interval:3')],
-    [Markup.button.callback('⏰ هر ۶ ساعت', 'sched:interval:6')],
-    [Markup.button.callback('⏰ هر ۹ ساعت', 'sched:interval:9')],
-    [Markup.button.callback('⏰ هر ۱۲ ساعت', 'sched:interval:12')],
-    [Markup.button.callback('⏰ هر ۲۴ ساعت', 'sched:interval:24')],
-    [Markup.button.callback('⏰ هر هفته', 'sched:interval:168')],
+    [Markup.button.callback('⏱ هر ۲ دقیقه (تست)', 'sched:interval:2')],
+    [Markup.button.callback('⏰ هر ۳ ساعت', 'sched:interval:180')],
+    [Markup.button.callback('⏰ هر ۶ ساعت', 'sched:interval:360')],
+    [Markup.button.callback('⏰ هر ۹ ساعت', 'sched:interval:540')],
+    [Markup.button.callback('⏰ هر ۱۲ ساعت', 'sched:interval:720')],
+    [Markup.button.callback('⏰ هر ۲۴ ساعت', 'sched:interval:1440')],
+    [Markup.button.callback('⏰ هر هفته', 'sched:interval:10080')],
     [Markup.button.callback('⏰ زمان سفارشی', 'sched:interval:custom')],
     [Markup.button.callback('↩️ بازگشت', 'sched:menu')],
   ]);

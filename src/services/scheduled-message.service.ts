@@ -36,16 +36,26 @@ class ScheduledMessageService {
 
   async publish(id: number) {
     const msg = await scheduledMessageRepository.findById(id);
-    if (!msg || !msg.targetChatId || !msg.intervalHours || !msg.startTime) {
-      throw new Error('پیام هنوز کامل نشده است (زمان‌بندی و گروه تعیین نشده)');
-    }
-    const nextSendAt = this.calculateNextSend(msg.intervalHours, msg.startTime);
-    logger.info(`[SchedMsg] Publishing msg=${id} interval=${msg.intervalHours}h start=${msg.startTime} chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'null'} nextSendAt=${nextSendAt.toISOString()} now=${new Date().toISOString()}`);
-    return scheduledMessageRepository.update(id, {
+    if (!msg) throw new Error('Post not found');
+    if (!msg.targetChatId) throw new Error('targetChatId is missing');
+    if (!msg.intervalMinutes) throw new Error('intervalMinutes is missing');
+    if (!msg.startTime) throw new Error('startTime is missing');
+    if ((msg.messages?.length || 0) === 0) throw new Error('No messages to send');
+
+    const nextSendAt = this.calculateNextSend(msg.intervalMinutes, msg.startTime);
+    logger.info(`[SchedMsg] Publishing msg=${id} interval=${msg.intervalMinutes}min start=${msg.startTime} chatId=${msg.targetChatId} topicId=${msg.targetTopicId ?? 'null'} nextSendAt=${nextSendAt.toISOString()} now=${new Date().toISOString()}`);
+
+    const result = await scheduledMessageRepository.update(id, {
       status: PostStatus.PUBLISHED,
       isPublished: true,
       nextSendAt,
     });
+
+    // Verify the save
+    const verify = await scheduledMessageRepository.findById(id);
+    logger.info(`[SchedMsg] Publish VERIFY: nextSendAt in DB = ${verify?.nextSendAt?.toISOString() ?? 'NULL'}`);
+
+    return result;
   }
 
   async unpublish(id: number) {
@@ -77,7 +87,6 @@ class ScheduledMessageService {
     const msg = await prisma.scheduledMessageMessage.findUnique({ where: { id: messageId } });
     if (!msg) return;
     await prisma.scheduledMessageMessage.delete({ where: { id: messageId } });
-    // Reorder remaining messages
     const remaining = await prisma.scheduledMessageMessage.findMany({
       where: { scheduledMessageId: msg.scheduledMessageId },
       orderBy: { order: 'asc' },
@@ -135,10 +144,10 @@ class ScheduledMessageService {
 
   // ─── Scheduling ──────────────────────────────────────────
 
-  async setSchedule(id: number, intervalHours: number, startTime: string, targetChatId: number, targetTopicId?: number | null) {
-    const nextSendAt = this.calculateNextSend(intervalHours, startTime);
+  async setSchedule(id: number, intervalMinutes: number, startTime: string, targetChatId: number, targetTopicId?: number | null) {
+    const nextSendAt = this.calculateNextSend(intervalMinutes, startTime);
     return scheduledMessageRepository.update(id, {
-      intervalHours,
+      intervalMinutes,
       startTime,
       targetChatId: BigInt(targetChatId),
       targetTopicId: targetTopicId != null ? BigInt(targetTopicId) : undefined,
@@ -146,21 +155,19 @@ class ScheduledMessageService {
     });
   }
 
-  calculateNextSend(intervalHours: number, startTime: string): Date {
+  calculateNextSend(intervalMinutes: number, startTime: string): Date {
     const [hours, mins] = startTime.split(':').map(Number);
-    // Use UTC to avoid timezone mismatches with PostgreSQL
     const now = new Date();
     const next = new Date(Date.UTC(
       now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
       hours, mins, 0, 0
     ));
 
-    // If that time today has passed, move to the next interval
     if (next.getTime() <= now.getTime()) {
-      next.setTime(next.getTime() + intervalHours * 60 * 60 * 1000);
+      next.setTime(next.getTime() + intervalMinutes * 60 * 1000);
     }
 
-    logger.info(`[SchedMsg] calculateNextSend: interval=${intervalHours}h start=${startTime} now=${now.toISOString()} nextSendAt=${next.toISOString()}`);
+    logger.info(`[SchedMsg] calculateNextSend: interval=${intervalMinutes}min start=${startTime} now=${now.toISOString()} nextSendAt=${next.toISOString()}`);
     return next;
   }
 
@@ -171,10 +178,9 @@ class ScheduledMessageService {
       const now = new Date();
       logger.info(`[ScheduledMsg] ═══ Scheduler tick at ${now.toISOString()} ═══`);
 
-      // Log ALL published messages for debugging
       const allPublished = await prisma.scheduledMessage.findMany({
         where: { isPublished: true, status: PostStatus.PUBLISHED },
-        select: { id: true, title: true, intervalHours: true, startTime: true, nextSendAt: true, targetChatId: true, targetTopicId: true, sendCount: true, lastSentAt: true, isPublished: true, status: true },
+        select: { id: true, title: true, intervalMinutes: true, startTime: true, nextSendAt: true, targetChatId: true, targetTopicId: true, sendCount: true, lastSentAt: true, isPublished: true, status: true },
       });
       logger.info(`[ScheduledMsg] Total published: ${allPublished.length}`);
 
@@ -182,13 +188,13 @@ class ScheduledMessageService {
         const reasons: string[] = [];
         if (m.nextSendAt == null) reasons.push('nextSendAt is null');
         if (m.nextSendAt && m.nextSendAt.getTime() > now.getTime()) reasons.push(`nextSendAt > now (${m.nextSendAt.toISOString()} > ${now.toISOString()})`);
-        if (m.intervalHours == null) reasons.push('intervalHours is null');
+        if (m.intervalMinutes == null) reasons.push('intervalMinutes is null');
         if (m.targetChatId == null) reasons.push('targetChatId is null');
         if (!m.isPublished) reasons.push('isPublished=false');
         if (m.status !== PostStatus.PUBLISHED) reasons.push(`status=${m.status}`);
 
         const eligible = reasons.length === 0;
-        logger.info(`[ScheduledMsg] msg=${m.id} "${m.title}" status=${m.status} isPub=${m.isPublished} interval=${m.intervalHours}h start=${m.startTime} nextSend=${m.nextSendAt?.toISOString() ?? 'NULL'} chatId=${m.targetChatId ?? 'NULL'} topicId=${m.targetTopicId ?? 'NULL'} sendCount=${m.sendCount} lastSent=${m.lastSentAt?.toISOString() ?? 'NULL'} → ${eligible ? '✅ DUE' : '❌ NOT DUE: ' + reasons.join(', ')}`);
+        logger.info(`[ScheduledMsg] msg=${m.id} "${m.title}" status=${m.status} isPub=${m.isPublished} interval=${m.intervalMinutes}min start=${m.startTime} nextSend=${m.nextSendAt?.toISOString() ?? 'NULL'} chatId=${m.targetChatId ?? 'NULL'} topicId=${m.targetTopicId ?? 'NULL'} sendCount=${m.sendCount} lastSent=${m.lastSentAt?.toISOString() ?? 'NULL'} → ${eligible ? '✅ DUE' : '❌ NOT DUE: ' + reasons.join(', ')}`);
       }
 
       const due = await scheduledMessageRepository.findDueForSending();
@@ -248,16 +254,16 @@ class ScheduledMessageService {
               await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra);
               break;
             default:
-              await this.bot.telegram.sendMessage(chatId, text || '(پیام خالی)', extra);
+              await this.bot.telegram.sendMessage(chatId, text || '(empty)', extra);
           }
         } else {
-          await this.bot.telegram.sendMessage(chatId, text || '(پیام خالی)', extra);
+          await this.bot.telegram.sendMessage(chatId, text || '(empty)', extra);
         }
 
         if (messages.length > 1) await sleep(100);
       }
 
-      const nextSendAt = msg.intervalHours ? this.calculateNextSend(msg.intervalHours, msg.startTime || '00:00') : null;
+      const nextSendAt = msg.intervalMinutes ? this.calculateNextSend(msg.intervalMinutes, msg.startTime || '00:00') : null;
       await prisma.scheduledMessage.update({
         where: { id: msg.id },
         data: { lastSentAt: new Date(), nextSendAt, sendCount: { increment: 1 } },

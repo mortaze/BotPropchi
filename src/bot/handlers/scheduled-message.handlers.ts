@@ -29,7 +29,7 @@ import {
 
 function formatScheduledMessageInfo(msg: any): string {
   const status = msg.isPublished ? '🟢 فعال' : '⚪ غیرفعال';
-  const interval = msg.intervalHours ? `هر ${msg.intervalHours} ساعت` : '—';
+  const interval = msg.intervalMinutes ? `هر ${msg.intervalMinutes >= 60 ? Math.floor(msg.intervalMinutes / 60) + ' ساعت' : msg.intervalMinutes + ' دقیقه'}` : '—';
   const startTime = msg.startTime || '—';
   const msgCount = msg.messages?.length || 0;
   const sendCount = msg.sendCount || 0;
@@ -49,7 +49,7 @@ function formatScheduledMessageInfo(msg: any): string {
 
 function validatePublishReadiness(msg: any): { ready: boolean; missing: { key: string; label: string }[] } {
   const missing: { key: string; label: string }[] = [];
-  if (!msg.intervalHours) missing.push({ key: 'schedule', label: '⏰ تنظیم زمان‌بندی' });
+  if (!msg.intervalMinutes) missing.push({ key: 'schedule', label: '⏰ تنظیم زمان‌بندی' });
   if (!msg.targetChatId) missing.push({ key: 'group', label: '👥 انتخاب گروه' });
   if (!msg.startTime) missing.push({ key: 'schedule', label: '⏰ تنظیم ساعت شروع' });
   if ((msg.messages?.length || 0) === 0) missing.push({ key: 'messages', label: '➕ افزودن پیام' });
@@ -250,7 +250,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return;
     }
 
-    logger.info(`[SchedMsg] Publish pre-check msg=${msgId} interval=${msg.intervalHours} startTime=${msg.startTime} chatId=${msg.targetChatId} topicId=${msg.targetTopicId} isPublished=${msg.isPublished} status=${msg.status} messages=${msg.messages?.length}`);
+    logger.info(`[SchedMsg] Publish pre-check msg=${msgId} interval=${msg.intervalMinutes}min startTime=${msg.startTime} chatId=${msg.targetChatId} topicId=${msg.targetTopicId} isPublished=${msg.isPublished} status=${msg.status} messages=${msg.messages?.length}`);
 
     const { ready, missing } = validatePublishReadiness(msg);
     if (!ready) {
@@ -267,7 +267,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       await scheduledMessageService.publish(msgId);
       // Verify what was saved
       const verify = await scheduledMessageRepository.findById(msgId);
-      logger.info(`[SchedMsg] Publish SUCCESS msg=${msgId} isPublished=${verify?.isPublished} status=${verify?.status} nextSendAt=${verify?.nextSendAt?.toISOString()} interval=${verify?.intervalHours} startTime=${verify?.startTime} chatId=${verify?.targetChatId}`);
+      logger.info(`[SchedMsg] Publish SUCCESS msg=${msgId} isPublished=${verify?.isPublished} status=${verify?.status} nextSendAt=${verify?.nextSendAt?.toISOString()} interval=${verify?.intervalMinutes}min startTime=${verify?.startTime} chatId=${verify?.targetChatId}`);
       await ctx.reply('✅ پست منتشر شد و ارسال خودکار فعال شد!');
       await showPostEditor(ctx, msgId);
     } catch (err: any) {
@@ -332,7 +332,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
         `ID: ${raw.id}`,
         `isPublished: ${raw.isPublished}`,
         `status: ${raw.status}`,
-        `intervalHours: ${raw.intervalHours}`,
+        `intervalMinutes: ${raw.intervalMinutes}`,
         `startTime: ${raw.startTime}`,
         `targetChatId: ${raw.targetChatId}`,
         `targetTopicId: ${raw.targetTopicId}`,
@@ -465,13 +465,14 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       }
       scheduledMessageState.setIntervalHours(userId, hours);
       scheduledMessageState.setScheduleStep(userId, 'start_time');
-      // Save intervalHours to DB immediately
+      // Save intervalMinutes to DB immediately
       const msgId = scheduledMessageState.getSchedulingMode(userId) || scheduledMessageState.getEditMode(userId);
       if (msgId) {
-        await scheduledMessageRepository.update(msgId, { intervalHours: hours });
-        logger.info(`[SchedMsg] Saved intervalHours=${hours} to msg=${msgId}`);
+        await scheduledMessageRepository.update(msgId, { intervalMinutes: hours });
+        logger.info(`[SchedMsg] Saved intervalMinutes=${hours} to msg=${msgId}`);
       }
-      await ctx.reply(`✅ بازه: هر ${hours} ساعت\n\n⏰ ساعت شروع ارسال را وارد کنید.\nمثال:\n09:00\n14:30\n22:15`);
+      const displayText = hours >= 60 ? `هر ${hours / 60} ساعت` : `هر ${hours} دقیقه`;
+      await ctx.reply(`✅ بازه: ${displayText}\n\n⏰ ساعت شروع ارسال را وارد کنید.\nمثال:\n09:00\n14:30\n22:15`);
       return;
     }
 
@@ -485,15 +486,15 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       scheduledMessageState.setStartTime(userId, text);
       scheduledMessageState.setScheduleStep(userId, null as any);
 
-      // Save startTime + intervalHours to DB individually (don't call setSchedule yet)
+      // Save startTime + intervalMinutes to DB individually
       const msgId = scheduledMessageState.getSchedulingMode(userId) || scheduledMessageState.getEditMode(userId);
       if (msgId) {
-        const intervalHours = scheduledMessageState.getIntervalHours(userId);
+        const intervalMinutes = scheduledMessageState.getIntervalHours(userId);
         await scheduledMessageRepository.update(msgId, {
           startTime: text,
-          ...(intervalHours ? { intervalHours } : {}),
+          ...(intervalMinutes ? { intervalMinutes } : {}),
         });
-        logger.info(`[SchedMsg] Saved startTime=${text} interval=${intervalHours} to msg=${msgId}`);
+        logger.info(`[SchedMsg] Saved startTime=${text} intervalMinutes=${intervalMinutes} to msg=${msgId}`);
       }
       // DON'T clearAll — preserve editMode, schedulingMode, targetGroup etc.
       if (msgId) {
@@ -655,14 +656,15 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     scheduledMessageState.setIntervalHours(userId, hours);
     scheduledMessageState.setScheduleStep(userId, 'start_time');
 
-    // Save intervalHours to DB immediately
+    // Save intervalMinutes to DB immediately
     const msgId = scheduledMessageState.getSchedulingMode(userId) || scheduledMessageState.getEditMode(userId);
     if (msgId) {
-      await scheduledMessageRepository.update(msgId, { intervalHours: hours });
-      logger.info(`[SchedMsg] Saved intervalHours=${hours} to msg=${msgId}`);
+      await scheduledMessageRepository.update(msgId, { intervalMinutes: hours });
+      logger.info(`[SchedMsg] Saved intervalMinutes=${hours} to msg=${msgId}`);
     }
 
-    await ctx.reply(`✅ بازه: هر ${hours} ساعت\n\n⏰ ساعت شروع ارسال را وارد کنید.\nمثال:\n09:00\n14:30\n22:15`);
+    const displayText = hours >= 60 ? `هر ${hours / 60} ساعت` : `هر ${hours} دقیقه`;
+    await ctx.reply(`✅ بازه: ${displayText}\n\n⏰ ساعت شروع ارسال را وارد کنید.\nمثال:\n09:00\n14:30\n22:15`);
   });
 
   // ─── Callback: Group selection via inline (for validation goto) ──
