@@ -133,7 +133,7 @@ class ScheduledMessageService {
     });
   }
 
-  async updateMessage(messageId: number, data: { text?: string; type?: PostMessageType; mediaFileId?: string; entities?: any; captionEntities?: any; caption?: string; replyMarkup?: any }) {
+  async updateMessage(messageId: number, data: { text?: string; type?: PostMessageType; mediaFileId?: string; mediaGroupId?: string; entities?: any; captionEntities?: any; caption?: string; replyMarkup?: any; parseMode?: any; forwardSource?: any }) {
     return prisma.scheduledMessageMessage.update({ where: { id: messageId }, data });
   }
 
@@ -323,14 +323,14 @@ class ScheduledMessageService {
             captionExtra.caption = message.text || '';
 
             switch (message.type) {
-              case 'PHOTO': await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, captionExtra); break;
-              case 'VIDEO': await this.bot.telegram.sendVideo(chatId, message.mediaFileId, captionExtra); break;
-              case 'DOCUMENT': await this.bot.telegram.sendDocument(chatId, message.mediaFileId, captionExtra); break;
-              case 'VOICE': await this.bot.telegram.sendVoice(chatId, message.mediaFileId, captionExtra); break;
-              case 'AUDIO': await this.bot.telegram.sendAudio(chatId, message.mediaFileId, captionExtra); break;
-              case 'ANIMATION': await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, captionExtra); break;
-              case 'STICKER': await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra); break;
-              case 'VIDEO_NOTE': await this.bot.telegram.sendVideoNote(chatId, message.mediaFileId, extra); break;
+              case 'photo': await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, captionExtra); break;
+              case 'video': await this.bot.telegram.sendVideo(chatId, message.mediaFileId, captionExtra); break;
+              case 'document': await this.bot.telegram.sendDocument(chatId, message.mediaFileId, captionExtra); break;
+              case 'voice': await this.bot.telegram.sendVoice(chatId, message.mediaFileId, captionExtra); break;
+              case 'audio': await this.bot.telegram.sendAudio(chatId, message.mediaFileId, captionExtra); break;
+              case 'animation': await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, captionExtra); break;
+              case 'sticker': await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra); break;
+              case 'video_note': await this.bot.telegram.sendVideoNote(chatId, message.mediaFileId, extra); break;
               default: await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
             }
           } else {

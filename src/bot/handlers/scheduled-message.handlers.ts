@@ -1407,11 +1407,53 @@ async function showPostEditor(ctx: any, id: number) {
 
   // Show each message with inline keyboard
   for (let i = 0; i < messages.length; i++) {
-    const message = messages[i];
-    const msgText = message.text || '(رسانه)';
+    const message = messages[i] as any;
     const label = `📨 پیام ${i + 1} از ${messages.length}`;
     const keyboard = scheduledMessageSingleMessageInlineKeyboard(id, message, i, messages.length);
-    await ctx.reply(`${label}\n\n${graphemeTruncate(msgText, 500)}`, { reply_markup: keyboard.reply_markup });
+
+    if (message.mediaFileId && message.type !== 'text') {
+      // Re-send actual media — same logic as sendToGroup
+      const captionExtra: any = { reply_markup: keyboard.reply_markup };
+      if (message.captionEntities && Array.isArray(message.captionEntities) && message.captionEntities.length > 0) {
+        captionExtra.caption_entities = message.captionEntities;
+      }
+      captionExtra.caption = `${label}\n\n${message.text || ''}`;
+
+      try {
+        switch (message.type) {
+          case 'photo': await ctx.replyWithPhoto(message.mediaFileId, captionExtra); break;
+          case 'video': await ctx.replyWithVideo(message.mediaFileId, captionExtra); break;
+          case 'document': await ctx.replyWithDocument(message.mediaFileId, captionExtra); break;
+          case 'voice': await ctx.replyWithVoice(message.mediaFileId, captionExtra); break;
+          case 'audio': await ctx.replyWithAudio(message.mediaFileId, captionExtra); break;
+          case 'animation': await ctx.replyWithAnimation(message.mediaFileId, captionExtra); break;
+          case 'sticker': await ctx.replyWithSticker(message.mediaFileId, { reply_markup: keyboard.reply_markup }); break;
+          case 'video_note': await ctx.replyWithVideoNote(message.mediaFileId, { reply_markup: keyboard.reply_markup }); break;
+          default: await ctx.reply(`${label}\n\n${graphemeTruncate(message.text || '(رسانه)', 500)}`, { reply_markup: keyboard.reply_markup });
+        }
+      } catch (err: any) {
+        logger.warn(`[SchedMsgEditor] Failed to re-send media: ${err?.message}`);
+        await ctx.reply(`${label}\n\n${graphemeTruncate(message.text || '(رسانه)', 500)}`, { reply_markup: keyboard.reply_markup });
+      }
+    } else if (message.type === 'forward' && message.forwardSource) {
+      // Re-send forward preview
+      const fs = message.forwardSource as any;
+      const srcChatId = Number(fs.originChatId || fs.chatId);
+      const srcMsgId = Number(fs.originMessageId || fs.messageId);
+      if (srcChatId && srcMsgId) {
+        try {
+          await ctx.reply(`${label}\n\n↪️ پیام فوروارد شده از: ${fs.originName || srcChatId}`);
+        } catch {
+          await ctx.reply(`${label}\n\n↪️ پیام فوروارد شده`);
+        }
+      } else {
+        await ctx.reply(`${label}\n\n↪️ پیام فوروارد شده`);
+      }
+      await ctx.reply('📎', { reply_markup: keyboard.reply_markup });
+    } else {
+      // Text message
+      await ctx.reply(`${label}\n\n${graphemeTruncate(message.text || '(پیام خالی)', 500)}`, { reply_markup: keyboard.reply_markup });
+    }
   }
 
   // Final info message with reply keyboard
