@@ -398,6 +398,11 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return next();
     }
 
+    // Button move mode has priority — always pass through to direction handlers
+    if (scheduledMessageState.isButtonMoveActive(userId)) {
+      return next();
+    }
+
     // Button editor has priority — if wait_text, let button handler process it
     const btnState = scheduledMessageState.getButtonState(userId);
     if (btnState === 'wait_text') {
@@ -413,6 +418,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       '🗑 حذف پست', '🔙 بازگشت', '🔙 بازگشت به لیست', '❌ لغو',
       '❌ حذف دستور', '🔘 مدیریت دکمه‌ها',
       '✏️ ویرایش محتوا', '📝 ویرایش عنوان',
+      '⬆️ بالا', '⬇️ پایین', '⬅️ چپ', '➡️ راست',
+      '✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی',
     ];
     if (scheduleStep && knownButtons.includes(text)) {
       // Let the hears handlers process it
