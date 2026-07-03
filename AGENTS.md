@@ -124,6 +124,8 @@ Optional:
 - `MEMBERSHIP_REQUIRED_CHANNELS` - Comma-separated channel IDs for force-join
 - `MEMBERSHIP_CACHE_TTL` - Membership status cache TTL in seconds (default 300)
 
+**Security**: `.env.example` contains hardcoded real tokens/IDs — do NOT copy it verbatim. Generate your own values.
+
 ## Testing
 
 Tests are pure unit tests (no DB/Redis needed). Run with `npm run test`.

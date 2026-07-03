@@ -31,12 +31,11 @@ export const broadcastRepository = {
   },
 
   async createPendingLogs(broadcastId: number) {
-    // PHASE: Only include users who have a valid start event
+    // Include all non-blocked users with a valid telegramId
     const users = await prisma.user.findMany({
       where: {
         isBlocked: false,
         telegramId: { not: BigInt(0) },
-        startCount: { gt: 0 },
       },
       select: { id: true, telegramId: true },
     });
