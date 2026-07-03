@@ -27,7 +27,6 @@ import {
   scheduledMessageDashboardKeyboard,
   renderScheduledButtonEditor,
   buildSmbtnEditTypeKeyboard,
-  buildSmbtnMoveKeyboard,
   buildSmbtnColorKeyboard,
 } from '../keyboards/scheduled-message-keyboards';
 
@@ -419,7 +418,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       '❌ حذف دستور', '🔘 مدیریت دکمه‌ها',
       '✏️ ویرایش محتوا', '📝 ویرایش عنوان',
       '⬆️ بالا', '⬇️ پایین', '⬅️ چپ', '➡️ راست',
-      '✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی',
+      '✅ تایید جابه‌جایی', '🔄 بازگشت', '❌ لغو جابجایی',
     ];
     if (scheduleStep && knownButtons.includes(text)) {
       // Let the hears handlers process it
@@ -1091,7 +1090,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
         const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, 'move', { row, col });
         try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
       }
-      await ctx.reply(`🔀 "${grid[row]?.[col]?.text || ''}" انتخاب شد. جهت را انتخاب کنید:`, buildSmbtnMoveKeyboard());
+      const moveKb = buildDynamicMoveKeyboard(grid, row, col);
+      await ctx.reply(`🔀 "${grid[row]?.[col]?.text || ''}" انتخاب شد. جهت را انتخاب کنید:`, moveKb);
       return;
     }
 
@@ -1314,185 +1314,219 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await refreshButtonEditor(ctx, msgId);
   });
 
-  // ─── Button Editor: Move direction handlers ──
-  function moveButtonInLayout(buttons: any[][], row: number, col: number, direction: 'up' | 'down'): { newRow: number; newCol: number } {
-    const btn = buttons[row]?.[col];
-    if (!btn) return { newRow: row, newCol: col };
-    const wasSingleton = buttons[row].length === 1;
+  // ─── Button Editor: Dynamic move keyboard based on grid position ──
+  function buildDynamicMoveKeyboard(grid: any[][], row: number, col: number) {
+    const rows: string[][] = [];
+    const directionRow: string[] = [];
+    if (row > 0) directionRow.push('⬆️ بالا');
+    if (row < grid.length - 1) directionRow.push('⬇️ پایین');
+    if (directionRow.length > 0) rows.push(directionRow);
 
-    // Remove button from its row
-    buttons[row].splice(col, 1);
-    if (buttons[row].length === 0) buttons.splice(row, 1);
+    const horizRow: string[] = [];
+    if (col > 0) horizRow.push('⬅️ چپ');
+    if (grid[row] && col < grid[row].length - 1) horizRow.push('➡️ راست');
+    if (horizRow.length > 0) rows.push(horizRow);
 
-    if (wasSingleton) {
-      // Singleton row was removed — merge into adjacent row
-      if (direction === 'down') {
-        if (row < buttons.length) {
-          buttons[row].push(btn);
-          return { newRow: row, newCol: buttons[row].length - 1 };
+    rows.push(['✅ تایید جابه‌جایی', '🔄 بازگشت']);
+    rows.push(['❌ لغو جابجایی']);
+    return Markup.keyboard(rows).resize().persistent();
+  }
+
+  // ─── Button Editor: Move direction handler (shared logic) ──
+  async function handleSchedMoveDirection(ctx: any, direction: 'up' | 'down' | 'left' | 'right') {
+    try {
+      const userId = ctx.from.id;
+      if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+      const msgId = scheduledMessageState.getEditingMessage(userId);
+      if (!msgId) return;
+      const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
+      if (moveSel.row === undefined || moveSel.col === undefined) return;
+
+      const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+      const grid = buttonsToGrid(buttons);
+      if (!grid[moveSel.row] || grid[moveSel.row][moveSel.col] === undefined) return;
+
+      const btn = grid[moveSel.row][moveSel.col];
+      let newRow = moveSel.row;
+      let newCol = moveSel.col;
+
+      if (direction === 'left') {
+        if (moveSel.col <= 0) return;
+        [grid[moveSel.row][moveSel.col - 1], grid[moveSel.row][moveSel.col]] = [grid[moveSel.row][moveSel.col], grid[moveSel.row][moveSel.col - 1]];
+        newCol = moveSel.col - 1;
+      } else if (direction === 'right') {
+        if (moveSel.col >= grid[moveSel.row].length - 1) return;
+        [grid[moveSel.row][moveSel.col], grid[moveSel.row][moveSel.col + 1]] = [grid[moveSel.row][moveSel.col + 1], grid[moveSel.row][moveSel.col]];
+        newCol = moveSel.col + 1;
+      } else if (direction === 'down') {
+        const wasSingleton = grid[moveSel.row].length === 1;
+        grid[moveSel.row].splice(moveSel.col, 1);
+        if (grid[moveSel.row].length === 0) grid.splice(moveSel.row, 1);
+
+        if (!wasSingleton) {
+          grid.splice(moveSel.row + 1, 0, [btn]);
+          newRow = moveSel.row + 1;
+          newCol = 0;
         } else {
-          buttons.push([btn]);
-          return { newRow: buttons.length - 1, newCol: 0 };
+          if (moveSel.row < grid.length) {
+            grid[moveSel.row].push(btn);
+            newRow = moveSel.row;
+            newCol = grid[moveSel.row].length - 1;
+          } else {
+            grid.push([btn]);
+            newRow = grid.length - 1;
+            newCol = 0;
+          }
         }
-      } else {
-        if (row > 0 && row - 1 < buttons.length) {
-          buttons[row - 1].unshift(btn);
-          return { newRow: row - 1, newCol: 0 };
+      } else if (direction === 'up') {
+        const wasSingleton = grid[moveSel.row].length === 1;
+        grid[moveSel.row].splice(moveSel.col, 1);
+        if (grid[moveSel.row].length === 0) grid.splice(moveSel.row, 1);
+
+        if (!wasSingleton) {
+          grid.splice(moveSel.row, 0, [btn]);
+          newRow = moveSel.row;
+          newCol = 0;
         } else {
-          buttons.push([btn]);
-          return { newRow: buttons.length - 1, newCol: 0 };
+          if (moveSel.row > 0) {
+            grid[moveSel.row - 1].unshift(btn);
+            newRow = moveSel.row - 1;
+            newCol = 0;
+          } else {
+            grid.unshift([btn]);
+            newRow = 0;
+            newCol = 0;
+          }
         }
       }
-    } else {
-      // Non-singleton — create a new singleton row right after original position
-      buttons.splice(row + 1, 0, [btn]);
-      return { newRow: row + 1, newCol: 0 };
+
+      // Persist all button positions to DB
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[r].length; c++) {
+          if (grid[r][c]?.id) {
+            await scheduledMessageRepository.updateButton(grid[r][c].id, { row: r, col: c });
+          }
+        }
+      }
+
+      scheduledMessageState.setButtonMoveSelected(userId, newRow, newCol);
+      scheduledMessageState.setButtonRow(userId, newRow);
+      scheduledMessageState.setButtonCol(userId, newCol);
+
+      // Refresh inline editor
+      await refreshButtonEditor(ctx, msgId);
+
+      // Show dynamic move keyboard with only valid directions
+      const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, 'move', { row: newRow, col: newCol });
+      const moveKb = buildDynamicMoveKeyboard(grid, newRow, newCol);
+      await ctx.reply(`🔀 "${btn.text || ''}" — جهت را انتخاب کنید:`, moveKb);
+    } catch (err: any) {
+      logger.error(`[SchedMove] ${direction} error: ${err.message}`);
     }
   }
 
   bot.hears('⬆️ بالا', async (ctx: any) => {
-    const userId = ctx.from.id;
-    logger.info(`[SchedMove] ⬆️ heard userId=${userId} moveActive=${scheduledMessageState.isButtonMoveActive(userId)}`);
-    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
-    const msgId = scheduledMessageState.getEditingMessage(userId);
-    if (!msgId) return;
-    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
-    if (moveSel.row === undefined || moveSel.col === undefined) return;
-
-    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
-    if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col]) return;
-
-    logger.info(`[SchedMove] UP before: row=${moveSel.row} col=${moveSel.col} grid=${JSON.stringify(grid.map((r: any[]) => r.map((b: any) => b?.id || null)))}`);
-    const { newRow, newCol } = moveButtonInLayout(grid, moveSel.row, moveSel.col, 'up');
-    logger.info(`[SchedMove] UP after: newRow=${newRow} newCol=${newCol} grid=${JSON.stringify(grid.map((r: any[]) => r.map((b: any) => b?.id || null)))}`);
-    for (let r = 0; r < grid.length; r++) {
-      for (let c = 0; c < grid[r].length; c++) {
-        if (grid[r][c]?.id) {
-          await scheduledMessageRepository.updateButton(grid[r][c].id, { row: r, col: c });
-          logger.info(`[SchedMove] DB update: btnId=${grid[r][c].id} → row=${r} col=${c}`);
-        }
-      }
-    }
-    scheduledMessageState.setButtonMoveSelected(userId, newRow, newCol);
-    scheduledMessageState.setButtonRow(userId, newRow);
-    scheduledMessageState.setButtonCol(userId, newCol);
-    await ctx.reply('✅ به بالا منتقل شد.');
-    logger.info(`[SchedMove] refreshButtonEditor msgId=${msgId}`);
-    await refreshButtonEditor(ctx, msgId);
+    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return;
+    await handleSchedMoveDirection(ctx, 'up');
   });
 
   bot.hears('⬇️ پایین', async (ctx: any) => {
-    const userId = ctx.from.id;
-    logger.info(`[SchedMove] ⬇️ heard userId=${userId} moveActive=${scheduledMessageState.isButtonMoveActive(userId)}`);
-    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
-    const msgId = scheduledMessageState.getEditingMessage(userId);
-    if (!msgId) return;
-    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
-    if (moveSel.row === undefined || moveSel.col === undefined) return;
-
-    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
-    if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col]) return;
-
-    logger.info(`[SchedMove] DOWN before: row=${moveSel.row} col=${moveSel.col}`);
-    const { newRow, newCol } = moveButtonInLayout(grid, moveSel.row, moveSel.col, 'down');
-    logger.info(`[SchedMove] DOWN after: newRow=${newRow} newCol=${newCol}`);
-    for (let r = 0; r < grid.length; r++) {
-      for (let c = 0; c < grid[r].length; c++) {
-        if (grid[r][c]?.id) {
-          await scheduledMessageRepository.updateButton(grid[r][c].id, { row: r, col: c });
-          logger.info(`[SchedMove] DB update: btnId=${grid[r][c].id} → row=${r} col=${c}`);
-        }
-      }
-    }
-    scheduledMessageState.setButtonMoveSelected(userId, newRow, newCol);
-    scheduledMessageState.setButtonRow(userId, newRow);
-    scheduledMessageState.setButtonCol(userId, newCol);
-    await ctx.reply('✅ به پایین منتقل شد.');
-    logger.info(`[SchedMove] refreshButtonEditor msgId=${msgId}`);
-    await refreshButtonEditor(ctx, msgId);
+    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return;
+    await handleSchedMoveDirection(ctx, 'down');
   });
 
   bot.hears('⬅️ چپ', async (ctx: any) => {
-    const userId = ctx.from.id;
-    logger.info(`[SchedMove] ⬅️ heard userId=${userId} moveActive=${scheduledMessageState.isButtonMoveActive(userId)}`);
-    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
-    const msgId = scheduledMessageState.getEditingMessage(userId);
-    if (!msgId) return;
-    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
-    if (moveSel.row === undefined || moveSel.col === undefined) return;
-
-    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
-    if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col] || moveSel.col === 0) return;
-
-    const a = grid[moveSel.row][moveSel.col];
-    const b = grid[moveSel.row][moveSel.col - 1];
-    logger.info(`[SchedMove] LEFT: swap btnId=${a?.id} with btnId=${b?.id}`);
-    if (a?.id && b?.id) {
-      await scheduledMessageRepository.updateButton(a.id, { col: moveSel.col - 1 });
-      await scheduledMessageRepository.updateButton(b.id, { col: moveSel.col });
-    }
-    scheduledMessageState.setButtonMoveSelected(userId, moveSel.row, moveSel.col - 1);
-    scheduledMessageState.setButtonRow(userId, moveSel.row);
-    scheduledMessageState.setButtonCol(userId, moveSel.col - 1);
-    await ctx.reply('✅ به چپ منتقل شد.');
-    logger.info(`[SchedMove] refreshButtonEditor msgId=${msgId}`);
-    await refreshButtonEditor(ctx, msgId);
+    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return;
+    await handleSchedMoveDirection(ctx, 'left');
   });
 
   bot.hears('➡️ راست', async (ctx: any) => {
-    const userId = ctx.from.id;
-    logger.info(`[SchedMove] ➡️ heard userId=${userId} moveActive=${scheduledMessageState.isButtonMoveActive(userId)}`);
-    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
-    const msgId = scheduledMessageState.getEditingMessage(userId);
-    if (!msgId) return;
-    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
-    if (moveSel.row === undefined || moveSel.col === undefined) return;
-
-    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
-    if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col] || moveSel.col >= grid[moveSel.row].length - 1) return;
-
-    const a = grid[moveSel.row][moveSel.col];
-    const b = grid[moveSel.row][moveSel.col + 1];
-    logger.info(`[SchedMove] RIGHT: swap btnId=${a?.id} with btnId=${b?.id}`);
-    if (a?.id && b?.id) {
-      await scheduledMessageRepository.updateButton(a.id, { col: moveSel.col + 1 });
-      await scheduledMessageRepository.updateButton(b.id, { col: moveSel.col });
-    }
-    scheduledMessageState.setButtonMoveSelected(userId, moveSel.row, moveSel.col + 1);
-    scheduledMessageState.setButtonRow(userId, moveSel.row);
-    scheduledMessageState.setButtonCol(userId, moveSel.col + 1);
-    await ctx.reply('✅ به راست منتقل شد.');
-    logger.info(`[SchedMove] refreshButtonEditor msgId=${msgId}`);
-    await refreshButtonEditor(ctx, msgId);
+    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return;
+    await handleSchedMoveDirection(ctx, 'right');
   });
 
-  // ─── Button Editor: Move confirm/cancel ──
-  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any) => {
-    const userId = ctx.from.id;
-    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
-    const msgId = scheduledMessageState.getEditingMessage(userId);
-    if (!msgId) return;
+  // ─── Button Editor: Move confirm/cancel/return ──
+  bot.hears('✅ تایید جابه‌جایی', async (ctx: any) => {
+    try {
+      const userId = ctx.from.id;
+      if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+      const msgId = scheduledMessageState.getEditingMessage(userId);
+      if (!msgId) return;
 
-    scheduledMessageState.setButtonMoveActive(userId, false);
-    scheduledMessageState.setButtonMode(userId, 'create');
-    scheduledMessageState.setButtonState(userId, '');
-    await ctx.reply('✅ جابه‌جایی ذخیره شد.');
-    await refreshButtonEditor(ctx, msgId);
+      scheduledMessageState.setButtonMoveActive(userId, false);
+      scheduledMessageState.setButtonMode(userId, 'create');
+      scheduledMessageState.setButtonState(userId, '');
+      scheduledMessageState.setButtonRow(userId, 0);
+      scheduledMessageState.setButtonCol(userId, 0);
+
+      try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+      await ctx.reply('✅ جابه‌جایی ذخیره شد.');
+      const msg = await scheduledMessageRepository.findById(msgId);
+      await ctx.reply(formatScheduledMessageInfo(msg), {
+        parse_mode: 'Markdown',
+        link_preview_options: { is_disabled: true },
+        ...scheduledMessageEditMessageReplyKeyboard(),
+      });
+      await refreshButtonEditor(ctx, msgId);
+    } catch (err: any) {
+      logger.error(`[SchedMove] confirm error: ${err.message}`);
+    }
+  });
+
+  bot.hears('🔄 بازگشت', async (ctx: any) => {
+    try {
+      const userId = ctx.from.id;
+      if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+      const msgId = scheduledMessageState.getEditingMessage(userId);
+
+      scheduledMessageState.setButtonMoveActive(userId, false);
+      scheduledMessageState.setButtonMode(userId, 'create');
+      scheduledMessageState.setButtonState(userId, '');
+      scheduledMessageState.setButtonRow(userId, 0);
+      scheduledMessageState.setButtonCol(userId, 0);
+
+      try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+      await ctx.reply('↩️ بازگشت از حالت جابه‌جایی.');
+      if (msgId) {
+        const msg = await scheduledMessageRepository.findById(msgId);
+        await ctx.reply(formatScheduledMessageInfo(msg), {
+          parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
+          ...scheduledMessageEditMessageReplyKeyboard(),
+        });
+        await refreshButtonEditor(ctx, msgId);
+      }
+    } catch (err: any) {
+      logger.error(`[SchedMove] return error: ${err.message}`);
+    }
   });
 
   bot.hears('❌ لغو جابجایی', async (ctx: any) => {
-    const userId = ctx.from.id;
-    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
-    const msgId = scheduledMessageState.getEditingMessage(userId);
-    scheduledMessageState.setButtonMoveActive(userId, false);
-    scheduledMessageState.setButtonMode(userId, 'create');
-    scheduledMessageState.setButtonState(userId, '');
-    await ctx.reply('❌ جابه‌جایی لغو شد.');
-    if (msgId) await refreshButtonEditor(ctx, msgId);
+    try {
+      const userId = ctx.from.id;
+      if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+      const msgId = scheduledMessageState.getEditingMessage(userId);
+
+      scheduledMessageState.setButtonMoveActive(userId, false);
+      scheduledMessageState.setButtonMode(userId, 'create');
+      scheduledMessageState.setButtonState(userId, '');
+      scheduledMessageState.setButtonRow(userId, 0);
+      scheduledMessageState.setButtonCol(userId, 0);
+
+      try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+      await ctx.reply('❌ جابه‌جایی لغو شد.');
+      if (msgId) {
+        const msg = await scheduledMessageRepository.findById(msgId);
+        await ctx.reply(formatScheduledMessageInfo(msg), {
+          parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
+          ...scheduledMessageEditMessageReplyKeyboard(),
+        });
+        await refreshButtonEditor(ctx, msgId);
+      }
+    } catch (err: any) {
+      logger.error(`[SchedMove] cancel error: ${err.message}`);
+    }
   });
 }
 

@@ -1599,17 +1599,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     clearMoveState(ctx.from.id);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     cache.setPermanent(pendingKey(ctx.from.id, 'edit_mode'), postId);
-    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
-    await ctx.reply('✅ جابه‌جایی لغو شد.');
-    const post = await postService.findById(postId);
-    if (post) {
-      const text = formatPostInfoPersian(post) + '\n\n✅ جابه‌جایی لغو شد.';
-      await ctx.reply(text, {
-        parse_mode: 'Markdown' as any,
-        link_preview_options: { is_disabled: true } as any,
-        ...postInfoActionKeyboard(post),
-      });
-    }
+    await refreshButtonListView(ctx, postId);
     await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
   });
 
@@ -1623,17 +1613,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     clearMoveState(ctx.from.id);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     cache.setPermanent(pendingKey(ctx.from.id, 'edit_mode'), postId);
-    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
-    await ctx.reply('✅ جابه‌جایی دکمه ذخیره شد.');
-    const post = await postService.findById(postId);
-    if (post) {
-      const text = formatPostInfoPersian(post) + '\n\n✅ تغییرات ذخیره شد.';
-      await ctx.reply(text, {
-        parse_mode: 'Markdown' as any,
-        link_preview_options: { is_disabled: true } as any,
-        ...postInfoActionKeyboard(post),
-      });
-    }
+    await refreshButtonListView(ctx, postId);
     await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
   });
 
