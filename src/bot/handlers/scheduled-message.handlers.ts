@@ -393,13 +393,13 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const isEditingContent = scheduledMessageState.isEditingContent(userId);
     const scheduleStep = scheduledMessageState.getScheduleStep(userId);
 
-    // Bug #8: If no state is active, pass through
-    if (!isCreating && !isEditingTitle && !isEditingContent && !scheduleStep) {
+    // Button move mode has priority — always pass through to direction handlers
+    if (scheduledMessageState.isButtonMoveActive(userId)) {
       return next();
     }
 
-    // Button move mode has priority — always pass through to direction handlers
-    if (scheduledMessageState.isButtonMoveActive(userId)) {
+    // Bug #8: If no state is active, pass through
+    if (!isCreating && !isEditingTitle && !isEditingContent && !scheduleStep) {
       return next();
     }
 
