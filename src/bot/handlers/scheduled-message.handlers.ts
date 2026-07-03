@@ -66,6 +66,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   bot.hears('📢 پیام‌های خودکار', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    const { clearAllPostStates } = require('./post-handlers');
+    clearAllPostStates(ctx.from.id);
     scheduledMessageState.clearAll(ctx.from.id);
     await ctx.reply('📢 سامانه مدیریت پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
   });

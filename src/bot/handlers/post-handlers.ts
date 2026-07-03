@@ -323,7 +323,7 @@ function getMessageTexts(post: any): string[] {
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
+    .replace(/[^\w\s\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF-]/g, '')
     .replace(/[\s_]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '')
@@ -385,6 +385,34 @@ function formatPostInfoPersian(post: any): string {
     updatedDate ? `📅 *به‌روزرسانی:* ${updatedDate}` : '',
   ].filter(Boolean).join('\n');
   return lines;
+}
+
+export function clearAllPostStates(userId: number) {
+  const pendingPrefix = `post:pending:${userId}:`;
+  const editorPrefix = `post:editor:${userId}:`;
+  const pendingKeys = [
+    'editing_cmd', 'editing_post', 'editing_field', 'editing_button',
+    'schedule_publish', 'schedule_unpublish', 'alias_cmd_id',
+    'searching', 'preview_id', 'publish_id', 'analytics_id',
+    'import_title', 'import_post', 'creating', 'edit_mode',
+    'editor_state', 'editor_mode', 'editor_row', 'editor_col',
+    'editing_message_idx', 'selected_post',
+  ];
+  for (const k of pendingKeys) cache.del(`${pendingPrefix}${k}`);
+  const editorKeys = [
+    'active', 'mode', 'msg_idx', 'message_ids',
+    'btn_sel_row', 'btn_sel_col', 'btn_msg_ids',
+    'add_btn_name', 'add_btn_ref_row', 'add_btn_ref_col',
+    'btn_text_row', 'btn_text_col', 'btn_link_row', 'btn_link_col',
+  ];
+  for (const k of editorKeys) cache.del(`${editorPrefix}${k}`);
+  cache.del(`post_mgmt_mode:${userId}`);
+  cache.del(`pbedit:editor_msg_id:${userId}`);
+  cache.del(`menu:edit_mode:${userId}`);
+  cache.del(`menu:selected:${userId}`);
+  cache.del(`menu:renaming:${userId}`);
+  cache.del(`search_mode:${userId}`);
+  cache.del(`admin_broadcast:${userId}`);
 }
 
 export function registerPostHandlers(bot: Telegraf<Context>) {
@@ -646,8 +674,18 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (importTitle) {
       cache.del(pendingKey(ctx.from.id, 'import_title'));
       const title = ctx.message.text;
-      const slug = slugify(title);
-      const post = await postService.create({ title, slug, content: '', contentFormat: 'telegram_entities', contentVersion: 2, createdBy: BigInt(ctx.from.id) } as any);
+      let slug = slugify(title);
+      let post;
+      try {
+        post = await postService.create({ title, slug, content: '', contentFormat: 'telegram_entities', contentVersion: 2, createdBy: BigInt(ctx.from.id) } as any);
+      } catch (err: any) {
+        if (err.code === 'P2002') {
+          slug = `${slug}-${Date.now()}`;
+          post = await postService.create({ title, slug, content: '', contentFormat: 'telegram_entities', contentVersion: 2, createdBy: BigInt(ctx.from.id) } as any);
+        } else {
+          throw err;
+        }
+      }
       cache.setPermanent(pendingKey(ctx.from.id, 'import_post'), post.id);
       await ctx.reply(`✅ پیش‌نویس ساخته شد (شناسه ${post.id}). حالا پیام اصلی را از تلگرام فوروارد کنید یا همینجا ارسال کنید.`);
       return;
@@ -664,14 +702,28 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (creating) {
       cache.del(pendingKey(ctx.from.id, 'creating'));
       const title = ctx.message.text;
-      const slug = slugify(title);
+      let slug = slugify(title);
       try {
         const post = await postService.create({ title, slug, createdBy: BigInt(ctx.from.id) });
-        await ctx.reply(`✅ پست ساخته شد!\n\nعنوان: ${title}\nاسلاگ: ${slug}`);
-        await showPostListFromLayout(ctx);
+        cache.setPermanent(editorKey(ctx.from.id, 'active'), post.id);
+        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'new_post_manager');
+        await ctx.reply(`✅ پست ساخته شد!\n\nعنوان: ${title}\nاسلاگ: ${slug}`, {
+          ...postNewPostManagerReplyKeyboard(),
+        });
       } catch (err: any) {
         if (err.code === 'P2002') {
-          await ctx.reply(`❌ اسلاگ "${slug}" از قبل وجود دارد. عنوان دیگری انتخاب کنید.`);
+          slug = `${slug}-${Date.now()}`;
+          try {
+            const post = await postService.create({ title, slug, createdBy: BigInt(ctx.from.id) });
+            cache.setPermanent(editorKey(ctx.from.id, 'active'), post.id);
+            cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'new_post_manager');
+            await ctx.reply(`✅ پست ساخته شد!\n\nعنوان: ${title}\nاسلاگ: ${slug}`, {
+              ...postNewPostManagerReplyKeyboard(),
+            });
+          } catch (err2: any) {
+            logger.error('[Post] Create error (retry):', err2);
+            await ctx.reply('❌ ایجاد پست ناموفق بود.');
+          }
         } else {
           logger.error('[Post] Create error:', err);
           await ctx.reply('❌ ایجاد پست ناموفق بود.');
@@ -2907,8 +2959,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           return;
         }
         case '✅ انتشار': {
-          await postService.publish(editorPostId);
-          await ctx.reply('✅ پست منتشر شد!');
+          await safeEdit(ctx, `📤 گزینه‌های انتشار برای "${post.title}":`, postPublishOptionsKeyboard(editorPostId));
           return;
         }
         case '🗑 حذف پست': {
@@ -3002,9 +3053,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           return;
         }
         case '✅ انتشار': {
-          await postService.publish(editorPostId);
-          const postPub = await postService.findById(editorPostId);
-          if (postPub) await refreshEditorMessages(ctx, postPub);
+          const postTitle = (await postService.findById(editorPostId))?.title || '';
+          await ctx.reply(`📤 گزینه‌های انتشار برای "${postTitle}":`, postPublishOptionsKeyboard(editorPostId));
           return;
         }
         case '📤 لغو انتشار': {

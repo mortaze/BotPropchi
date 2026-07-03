@@ -201,6 +201,8 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
   bot.hears('\uD83C\uDFAB تیکت\u200cها', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from?.id);
     if (!admin) return;
+    const { clearAllPostStates } = require('./post-handlers');
+    clearAllPostStates(ctx.from.id);
     await ctx.reply('مدیریت تیکت\u200cها:', buildTicketAdminMenuKeyboard());
   });
 

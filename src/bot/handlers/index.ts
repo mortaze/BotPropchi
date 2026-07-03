@@ -45,6 +45,7 @@ import {
   buildMenuItemEditKeyboard,
   buildCancelOnlyReplyKeyboard,
 } from '../keyboards/post-keyboards';
+import { clearAllPostStates } from './post-handlers';
 
 type PaginatedResult<T> = { items: T[]; total: number; pages: number };
 
@@ -235,22 +236,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     userService.processPendingReferral(BigInt(userId)).catch(() => {});
 
     // ─── HARD RESET: Clear ALL runtime/session/navigation state ──
-    const prefixes = [
-      `post:pending:${userId}:`,
-      `post:editor:${userId}:`,
-    ];
-    for (const key of cache.keys) {
-      for (const prefix of prefixes) {
-        if (key.startsWith(prefix)) cache.del(key);
-      }
-    }
-    cache.del(`post_mgmt_mode:${userId}`);
-    cache.del(`pbedit:editor_msg_id:${userId}`);
-    cache.del(`admin_broadcast:${userId}`);
-    cache.del(`menu:edit_mode:${userId}`);
-    cache.del(`menu:selected:${userId}`);
-    cache.del(`menu:renaming:${userId}`);
-    cache.del(`search_mode:${userId}`);
+    clearAllPostStates(userId);
 
     logger.info({ action: 'START_HARD_RESET', telegramId: userId, cleared: true });
 
@@ -297,6 +283,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('👨‍💼 پنل ادمین', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    clearAllPostStates(ctx.from.id);
     const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
     await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
@@ -385,6 +372,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('🎛 ویرایش منو', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    clearAllPostStates(ctx.from.id);
     cache.del(`menu:selected:${ctx.from.id}`);
     cache.del(`menu:renaming:${ctx.from.id}`);
     settingsService.invalidateMenuLayoutCache();
@@ -766,6 +754,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   bot.hears('↩️ بازگشت به منوی اصلی', async (ctx) => {
+    clearAllPostStates(ctx.from.id);
     await ctx.reply('منوی اصلی', await adminReplyOptions(ctx.from.id));
   });
 
@@ -788,6 +777,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('📢 پیام همگانی', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin || (admin.role !== BotAdminRole.OWNER && admin.role !== BotAdminRole.ADMIN)) return;
+    clearAllPostStates(ctx.from.id);
     cache.setPermanent(`admin_broadcast:${ctx.from.id}`, true);
     await ctx.reply([
       'پیام مورد نظر خود را ارسال کنید.',
@@ -798,6 +788,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('👥 مدیریت ادمین‌ها', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    clearAllPostStates(ctx.from.id);
     const admins = await botAdminService.list();
     const text = admins.length
       ? admins.map((item) =>
@@ -940,6 +931,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!(await settingsService.isFeatureEnabled('reports'))) return ctx.reply('⛔ این سرویس در حال حاضر غیرفعال است.');
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    clearAllPostStates(ctx.from.id);
     const report = await analyticsService.dashboard();
     await ctx.reply([
       '📊 گزارشات',
@@ -956,6 +948,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.hears('⚙️ تنظیمات', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
+    clearAllPostStates(ctx.from.id);
     await ctx.reply('⚙️ تنظیمات مدیریتی از پنل وب و دستورات ادمین قابل مدیریت است.');
   });
 
