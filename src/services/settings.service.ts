@@ -452,6 +452,12 @@ class SettingsService {
       version: newVersion,
     };
 
+    // Sync active edit sessions' draftLayout to match the saved (normalized) layout
+    // so that getEditableLayout() returns consistent objects after each save.
+    for (const [userId, session] of this.editSessions.entries()) {
+      session.draftLayout = layout;
+    }
+
     // Log diff
     const oldSerialized = JSON.stringify(oldLayout);
     const newSerialized = JSON.stringify(layout);

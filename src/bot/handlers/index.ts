@@ -81,11 +81,27 @@ function buildSafeMenuEditorKeyboard(layout: any[][], selectedKey?: { row: numbe
 }
 
 function resolveSelectedPosition(ctx: any, layout: any[][]): { row: number; col: number; button: any } | null {
-  const selected = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
+  const selected = cache.get<{ row: number; col: number; buttonId?: string }>(`menu:selected:${ctx.from.id}`);
   if (!selected) return null;
   if (isSelectedKeyValid(layout, selected)) {
     const button = layout[selected.row]?.[selected.col];
-    if (button) return { row: selected.row, col: selected.col, button };
+    if (button) {
+      // If we have a stored buttonId, verify it matches (prevents stale position after moves)
+      if (selected.buttonId && button.id !== selected.buttonId) {
+        // Button moved — find by ID in current layout
+        for (let r = 0; r < layout.length; r++) {
+          for (let c = 0; c < (layout[r]?.length || 0); c++) {
+            if (layout[r][c]?.id === selected.buttonId) {
+              cache.setPermanent(`menu:selected:${ctx.from.id}`, { row: r, col: c, buttonId: selected.buttonId });
+              return { row: r, col: c, button: layout[r][c] };
+            }
+          }
+        }
+        cache.del(`menu:selected:${ctx.from.id}`);
+        return null;
+      }
+      return { row: selected.row, col: selected.col, button };
+    }
   }
   cache.del(`menu:selected:${ctx.from.id}`);
   return null;
@@ -672,7 +688,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       if (buttonId) {
         const newPos = findButtonNewPosition(newLayout, buttonId);
         if (newPos) {
-          cache.setPermanent(`menu:selected:${ctx.from.id}`, newPos);
+    cache.setPermanent(`menu:selected:${ctx.from.id}`, { ...newPos, buttonId });
           const btn = newLayout[newPos.row][newPos.col];
           await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, newPos));
           await ctx.reply(`ویرایش دکمه: ${text}`, buildMenuItemEditKeyboard(newPos.row, newPos.col, btn, newLayout));
@@ -729,7 +745,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
           const displayText = `${prefix}${btnText}`;
           if (displayText === matchText) {
             const rawButton = rawLayout[r]?.[c];
-            cache.setPermanent(`menu:selected:${ctx.from.id}`, { row: r, col: c });
+            cache.setPermanent(`menu:selected:${ctx.from.id}`, { row: r, col: c, buttonId: btn.id });
             await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout, { row: r, col: c }));
             await ctx.reply(`ویرایش دکمه: ${btnText}`, buildMenuItemEditKeyboard(r, c, rawButton || btn, rawLayout));
             matched = true;
