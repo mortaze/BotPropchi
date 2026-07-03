@@ -450,12 +450,6 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     const text = ctx.message.text;
 
-    // Back to post main menu
-    if (text === '🔙 بازگشت به منوی پست' || text === '🔙 بازگشت به منوی پست‌ها') {
-      cache.del(`post_mgmt_mode:${ctx.from.id}`);
-      return ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
-    }
-
     // Start post → open editor
     if (text === '🚀 پیام Start') {
       const startPost = await postService.getOrCreateStartPost();
@@ -600,7 +594,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const creating = cache.get<boolean>(pendingKey(ctx.from.id, 'creating'));
     if (creating) {
       clearAllWaitingStates(ctx.from.id);
-      await ctx.reply('❌ ایجاد پست لغو شد.', postMainMenuKeyboard());
+      await ctx.reply('❌ ایجاد پست لغو شد.');
+      await showPostListFromLayout(ctx);
       return;
     }
     return next();
@@ -672,11 +667,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const slug = slugify(title);
       try {
         const post = await postService.create({ title, slug, createdBy: BigInt(ctx.from.id) });
-        cache.setPermanent(editorKey(ctx.from.id, 'active'), post.id);
-        cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'new_post_manager');
-        await ctx.reply(`✅ پست ساخته شد!\n\nعنوان: ${title}\nاسلاگ: ${slug}`, {
-          ...postNewPostManagerReplyKeyboard(),
-        });
+        await ctx.reply(`✅ پست ساخته شد!\n\nعنوان: ${title}\nاسلاگ: ${slug}`);
+        await showPostListFromLayout(ctx);
       } catch (err: any) {
         if (err.code === 'P2002') {
           await ctx.reply(`❌ اسلاگ "${slug}" از قبل وجود دارد. عنوان دیگری انتخاب کنید.`);
@@ -2104,14 +2096,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     clearButtonEditorState(ctx.from.id);
     cache.del(`pbedit:editor_msg_id:${ctx.from.id}`);
     delete ctx.session?.pbedit;
-    await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+    cache.setPermanent(`post_mgmt_mode:${ctx.from.id}`, true);
+    await showPostListFromLayout(ctx);
   });
 
 
   bot.hears('🚪 خروج از تنظیمات پیام', async (ctx: any) => {
     clearButtonEditorState(ctx.from.id);
     delete ctx.session?.pbedit;
-    return ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+    cache.setPermanent(`post_mgmt_mode:${ctx.from.id}`, true);
+    return showPostListFromLayout(ctx);
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -2342,13 +2336,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (editorPostId) {
       const mode = cache.get<string>(editorKey(ctx.from.id, 'mode')) || 'main';
 
-      // New post manager mode → return to post main menu
+      // New post manager mode → return to post list
       if (mode === 'new_post_manager') {
         clearAllWaitingStates(ctx.from.id);
         clearEditorKeyState(ctx.from.id);
         cache.del(editorKey(ctx.from.id, 'active'));
         cache.del(editorKey(ctx.from.id, 'mode'));
-        await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+        cache.setPermanent(`post_mgmt_mode:${ctx.from.id}`, true);
+        await showPostListFromLayout(ctx);
         return;
       }
 
@@ -3486,14 +3481,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
   });
 
-  // ─── post:menu — Back to post management menu ─────────────
+  // ─── post:menu — Back to post list ──────────────────────
   bot.action('post:menu', async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await requirePostAdmin(ctx);
     if (!isPostAdmin(admin)) return;
     clearEditorKeyState(ctx.from.id);
-    cache.del(`post_mgmt_mode:${ctx.from.id}`);
-    await ctx.reply('📝 سامانه مدیریت پست‌ها', postMainMenuKeyboard());
+    cache.setPermanent(`post_mgmt_mode:${ctx.from.id}`, true);
+    await showPostListFromLayout(ctx);
   });
 
   // ─── post:analytics:${postId} — Post analytics ────────────

@@ -13,7 +13,6 @@ export const postMainMenuKeyboard = () =>
   Markup.keyboard([
     ['➕ ایجاد پست'],
     ['📋 مدیریت پست‌ها'],
-    ['📊 آمار پست'],
     ['↩️ بازگشت به پنل ادمین'],
   ]).resize().persistent();
 
@@ -118,7 +117,9 @@ export const postTitleOnlyListKeyboard = (posts: any[]) => {
 // Only post-ref buttons are included, preserving the exact row/column structure.
 // The back button is always appended as the last row.
 export const buildPostListFromMenuLayout = (layout: any[][], drafts?: any[]) => {
-  const rows: string[][] = layout
+  const rows: string[][] = [];
+  rows.push(['➕ ایجاد پست']);
+  const postRows = layout
     .filter(row => Array.isArray(row))
     .map(row =>
       row
@@ -129,6 +130,7 @@ export const buildPostListFromMenuLayout = (layout: any[][], drafts?: any[]) => 
         })
     )
     .filter((row: string[]) => row.length > 0);
+  rows.push(...postRows);
   if (drafts && drafts.length > 0) {
     const existingIds = new Set<number>();
     for (const row of layout) {
@@ -147,7 +149,7 @@ export const buildPostListFromMenuLayout = (layout: any[][], drafts?: any[]) => 
   }
   rows.push(['🚀 پیام Start']);
   rows.push(['📩 پیام ناشناس']);
-  rows.push(['🔙 بازگشت به منوی پست‌ها']);
+  rows.push(['↩️ بازگشت به پنل ادمین']);
   return Markup.keyboard(rows).resize().persistent();
 };
 

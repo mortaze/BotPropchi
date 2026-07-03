@@ -7,7 +7,7 @@ Telegram bot for prop firm discount codes with lottery, scoring, and referral sy
 - **Root** (`src/`): Main Telegram bot + Express API (TypeScript, Telegraf, Prisma)
 - **Admin** (`admin/`): Next.js 15 admin panel (calls root API via `NEXT_PUBLIC_API_URL`)
 
-Note: WordPress plugin was removed from this repo. `config/index.ts:60-65` and `index.ts:32-34` still reference WordPress config — stale, can be cleaned up.
+WordPress plugin was removed from this repo. `src/config/index.ts:60-65` still references WordPress config — stale, can be cleaned up.
 
 ## Quick Commands
 
@@ -58,26 +58,37 @@ AI responses go through WordPress plugin (removed from repo), not direct Gemini 
 
 The order handlers are registered in `index.ts` determines which handler processes a message/callback. **Do not change this order.**
 
+At the `index.ts` level:
 ```
 callback trace logger (BEFORE all middleware)
 → middleware chain (logging→rateLimit→user→chatMember→membership→featureToggle→groupAccess)
-→ bot.start
+→ registerHandlers(bot)           — all handlers from handlers/index.ts
+→ registerScheduledMessageHandlers(bot) — scheduled message feature
+→ forum topic discovery handler   — group/supergroup topic events
+→ bot.catch                       — global error handler
+→ catch-all [UNMATCHED_CALLBACK]  — unmatched callback_data
+```
+
+Inside `registerHandlers()` (handlers/index.ts), the order is:
+```
+my_chat_member / new_chat_members
+→ bot.start (HARD RESET clears all user state)
 → admin panel handlers
-→ menu editor
-→ dynamic post button routing (L600)
+→ menu editor (with bot.on('text') at L647 consuming rename inputs)
+→ dynamic post button routing (L600-643) — intercepts text for published posts
 → various admin/user handlers
 → lottery
 → points/leaderboard/referral
 → membership check
 → ticket handlers
-→ post-handlers (LAST, registered at L1728 via registerPostHandlers())
-→ catch-all [UNMATCHED_CALLBACK] handler
+→ post-handlers (L1729 via registerPostHandlers())
+→ anonymous message fallback (L1735) — LAST handler in chain
 ```
 
 Key implications:
-- `index.ts` handlers run BEFORE `post-handlers.ts`. The Dynamic Post Button Routing at L600 intercepts text messages before post-handlers sees them. It only skips when `post_mgmt_mode`, `menu:edit_mode`, or `post:editor:{userId}:active` is set.
+- Dynamic Post Button Routing at L600 intercepts text messages before post-handlers sees them. It only skips when `post_mgmt_mode`, `menu:edit_mode`, or `post:editor:{userId}:active` is set.
 - `bot.on('text')` in `post-handlers.ts:610` has 12+ early returns that CONSUME messages without `next()`. Any `bot.hears` registered after L610 is unreachable if a state check matches.
-- `src/bot/handlers/index.ts` is a 1700+ line monolith — all bot handlers in one file; shared helpers live in `src/bot/shared.ts`. `post-handlers.ts` is 3600+ lines.
+- `src/bot/handlers/index.ts` is 1760 lines — all bot handlers in one file; shared helpers live in `src/bot/shared.ts`. `post-handlers.ts` is 3593 lines. `scheduled-message.handlers.ts` is 1356 lines.
 
 ## Callback Rules (Production Bugs)
 
