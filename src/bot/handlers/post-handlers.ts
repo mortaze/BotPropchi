@@ -1598,11 +1598,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return next();
     clearMoveState(ctx.from.id);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
+    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
     await ctx.reply('✅ جابه‌جایی لغو شد.');
-    await refreshButtonListView(ctx, postId, true);
+    const { Markup } = await import('telegraf');
+    await ctx.reply('🔘 ویرایش دکمه‌ها', Markup.keyboard([
+      ['✏️ ویرایش محتوا', '📝 ویرایش عنوان'],
+      ['🔘 ویرایش دکمه‌ها'],
+      ['🔙 بازگشت'],
+    ]).resize().persistent());
   });
 
-  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any, next) => {
+  bot.hears('✅ بازگشت تایید', async (ctx: any, next) => {
     const moveActive = cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'));
     if (!moveActive) return next();
     const admin = await requirePostAdmin(ctx);
@@ -1611,8 +1617,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!postId) return next();
     clearMoveState(ctx.from.id);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
-    await ctx.reply('✅ جابه‌جایی دکمه انجام شد.');
-    await refreshButtonListView(ctx, postId, true);
+    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+    await ctx.reply('✅ جابه‌جایی دکمه ذخیره شد.');
+    const { Markup } = await import('telegraf');
+    await ctx.reply('🔘 ویرایش دکمه‌ها', Markup.keyboard([
+      ['✏️ ویرایش محتوا', '📝 ویرایش عنوان'],
+      ['🔘 ویرایش دکمه‌ها'],
+      ['🔙 بازگشت'],
+    ]).resize().persistent());
   });
 
   function clearMoveState(userId: number) {

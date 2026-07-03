@@ -545,7 +545,7 @@ export function buildMoveReplyKeyboard() {
   return Markup.keyboard([
     ['⬆️ بالا', '⬇️ پایین'],
     ['⬅️ چپ', '➡️ راست'],
-    ['✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی'],
+    ['✅ بازگشت تایید', '❌ لغو جابجایی'],
   ]).resize().persistent();
 }
 
