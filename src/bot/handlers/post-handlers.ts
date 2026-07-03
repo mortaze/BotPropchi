@@ -2376,7 +2376,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
   });
 
-  // ❌ انصراف: Cancel delete, return to edit mode
+  // ❌ انصراف: Cancel delete, return to editor
   bot.hears('❌ انصراف', async (ctx: any, next: any) => {
     if (!ctx.from) return next();
     const admin = await botAdminService.getActive(ctx.from.id);
@@ -2384,8 +2384,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'delete_post_id'));
     if (!postId) return next();
     cache.del(pendingKey(ctx.from.id, 'delete_post_id'));
-    await ctx.reply('✅ عملیات حذف لغو شد. هیچ تغییری اعمال نشد.');
-    await showEditMode(ctx, postId);
+    const post = await postService.findById(postId);
+    if (!post) { await ctx.reply('❌ پست یافت نشد.'); return; }
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
+    const messages = (post.messages || []);
+    await ctx.reply(`✅ عملیات حذف لغو شد.\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
+      link_preview_options: { is_disabled: true },
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+    });
+    await refreshEditorMessages(ctx, post);
   });
 
   // 🔙 بازگشت: Handle back in both editor mode and edit mode
