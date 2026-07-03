@@ -621,8 +621,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     return next();
   });
 
-  // ─── Media handler — save ALL media data ──
-  bot.on(['photo', 'video', 'document', 'voice', 'audio', 'animation', 'sticker'], async (ctx: any) => {
+  // ─── Media handler — save ALL media data (mirrors Post importFromTelegram) ──
+  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice', 'video_note', 'sticker'], async (ctx: any) => {
     const userId = ctx.from.id;
     const isEditingContent = scheduledMessageState.isEditingContent(userId);
     if (!isEditingContent) return;
@@ -632,41 +632,80 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     if (!msgId) return;
 
     const msg = ctx.message as any;
-    const media = msg.photo?.pop() || msg.video || msg.document || msg.voice || msg.audio || msg.animation || msg.sticker;
 
-    if (media?.file_id) {
-      const type = msg.photo ? 'photo' : msg.video ? 'video' : msg.document ? 'document' :
-        msg.voice ? 'voice' : msg.audio ? 'audio' : msg.animation ? 'animation' : 'sticker';
+    // Extract media file_id (same logic as Post)
+    let mediaFileId = '';
+    let mediaType = '';
+    if (msg.photo) { const p = msg.photo[msg.photo.length - 1]; mediaFileId = p.file_id; mediaType = 'photo'; }
+    else if (msg.video) { mediaFileId = msg.video.file_id; mediaType = 'video'; }
+    else if (msg.animation) { mediaFileId = msg.animation.file_id; mediaType = 'animation'; }
+    else if (msg.document) { mediaFileId = msg.document.file_id; mediaType = 'document'; }
+    else if (msg.audio) { mediaFileId = msg.audio.file_id; mediaType = 'audio'; }
+    else if (msg.voice) { mediaFileId = msg.voice.file_id; mediaType = 'voice'; }
+    else if (msg.video_note) { mediaFileId = msg.video_note.file_id; mediaType = 'video_note'; }
+    else if (msg.sticker) { mediaFileId = msg.sticker.file_id; mediaType = 'sticker'; }
 
-      // Save ALL fields from the Telegram message
-      const caption = msg.caption || '';
-      const captionEntities = msg.caption_entities || [];
-      const replyMarkup = msg.reply_markup || null;
-      const entities = msg.entities || [];
+    if (!mediaFileId) return;
 
-      let targetMsgId = editMsgId;
-      if (editMsgId === -1) {
-        const newMsg = await scheduledMessageService.addMessage(msgId);
-        targetMsgId = newMsg.id;
+    // Extract caption and entities (same as Post)
+    const caption = msg.caption || '';
+    const captionEntities = msg.caption_entities || [];
+    const entities = msg.entities || [];
+    const replyMarkup = msg.reply_markup || null;
+
+    // Extract forward metadata (same as Post)
+    const isForward = !!(msg.forward_origin || msg.forward_from_chat || msg.forward_from || msg.forward_date || msg.forward_sender_name);
+    let forwardSource: any = null;
+    if (isForward) {
+      let type = 'hidden_user';
+      let originName = msg.forward_sender_name || '';
+      let originChatId: number | null = null;
+      let originMessageId: number | null = null;
+      if (msg.forward_from_chat) {
+        type = msg.forward_from_chat.type || 'channel';
+        originName = msg.forward_from_chat.title || '';
+        originChatId = msg.forward_from_chat.id;
+        originMessageId = msg.forward_from_message_id || null;
+      } else if (msg.forward_from) {
+        type = 'user';
+        originName = [msg.forward_from.first_name, msg.forward_from.last_name].filter(Boolean).join(' ');
       }
-
-      if (targetMsgId && targetMsgId > 0) {
-        await scheduledMessageService.updateMessage(targetMsgId, {
-          mediaFileId: media.file_id,
-          type: type as any,
-          text: caption,
-          caption: caption,
-          captionEntities: captionEntities.length > 0 ? captionEntities : undefined,
-          entities: entities.length > 0 ? entities : undefined,
-          replyMarkup: replyMarkup,
-        });
-      }
-
-      scheduledMessageState.setEditingContent(userId, false);
-      scheduledMessageState.setEditingMessage(userId, 0);
-      await ctx.reply('✅ رسانه ذخیره شد.');
-      await showPostEditor(ctx, msgId);
+      forwardSource = { type, originName, originChatId, originMessageId, forwardDate: msg.forward_date || null };
+      logger.info(`[SchedMsgMedia] Forward detected: type=${type} origin=${originName} chatId=${originChatId} msgId=${originMessageId}`);
     }
+
+    // Extract media_group_id for album support (same as Post)
+    const mediaGroupId = msg.media_group_id || null;
+
+    // Build the full update object (mirrors Post importFromTelegram)
+    const update: any = {
+      text: caption || msg.text || '',
+      type: mediaType,
+      mediaFileId,
+      caption: caption || undefined,
+      captionEntities: captionEntities.length > 0 ? captionEntities : undefined,
+      entities: entities.length > 0 ? entities : undefined,
+      replyMarkup: replyMarkup || undefined,
+      parseMode: 'None',
+      forwardSource: forwardSource || undefined,
+      mediaGroupId: mediaGroupId || undefined,
+    };
+
+    let targetMsgId = editMsgId;
+    if (editMsgId === -1) {
+      const newMsg = await scheduledMessageService.addMessage(msgId);
+      targetMsgId = newMsg.id;
+    }
+
+    if (targetMsgId && targetMsgId > 0) {
+      await scheduledMessageService.updateMessage(targetMsgId, update);
+      logger.info(`[SchedMsgMedia] Saved: msgId=${targetMsgId} type=${mediaType} file_id=${mediaFileId} caption="${caption.substring(0, 50)}" entities=${entities.length} captionEntities=${captionEntities.length} forward=${!!forwardSource} mediaGroup=${mediaGroupId}`);
+    }
+
+    scheduledMessageState.setEditingContent(userId, false);
+    scheduledMessageState.setEditingMessage(userId, 0);
+    await ctx.reply(`✅ ${mediaType} ذخیره شد.`);
+    await showPostEditor(ctx, msgId);
   });
 
   // ─── Callback: View post ────────────────────────────────

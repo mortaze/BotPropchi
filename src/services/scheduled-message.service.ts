@@ -292,7 +292,29 @@ class ScheduledMessageService {
         logger.info(`[SchedMsg] PRE_SEND msg=${msg.id} [${i + 1}] method=${message.mediaFileId ? message.type : 'sendMessage'} hasReplyMarkup=${!!inlineKeyboard} reply_markup=${JSON.stringify(inlineKeyboard || {}).substring(0, 200)}`);
 
         try {
-          if (message.mediaFileId) {
+          // Handle forward messages — same as Post sendSingleMessage
+          if (message.type === 'forward' && message.forwardSource) {
+            const fs = message.forwardSource as any;
+            const srcChatId = Number(fs.originChatId || fs.chatId);
+            const srcMsgId = Number(fs.originMessageId || fs.messageId);
+            if (srcChatId && srcMsgId && !isNaN(srcChatId) && !isNaN(srcMsgId)) {
+              try {
+                await this.bot.telegram.forwardMessage(chatId, srcChatId, srcMsgId);
+                logger.info(`[SchedMsg] SEND_OK msg=${msg.id} [${i + 1}] method=forwardMessage srcChat=${srcChatId} srcMsg=${srcMsgId}`);
+              } catch (fwdErr: any) {
+                // Fallback to copyMessage
+                try {
+                  await this.bot.telegram.copyMessage(chatId, srcChatId, srcMsgId);
+                  logger.info(`[SchedMsg] SEND_OK msg=${msg.id} [${i + 1}] method=copyMessage srcChat=${srcChatId} srcMsg=${srcMsgId}`);
+                } catch (copyErr: any) {
+                  logger.error(`[SchedMsg] FORWARD_FAILED msg=${msg.id} [${i + 1}] forward and copy both failed: ${copyErr?.message}`);
+                  throw copyErr;
+                }
+              }
+            } else {
+              logger.warn(`[SchedMsg] FORWARD_SKIP msg=${msg.id} [${i + 1}] invalid forward metadata`);
+            }
+          } else if (message.mediaFileId) {
             // Media message — pass caption_entities
             const captionExtra: any = { ...extra };
             if (message.captionEntities && Array.isArray(message.captionEntities) && message.captionEntities.length > 0) {
@@ -308,6 +330,7 @@ class ScheduledMessageService {
               case 'AUDIO': await this.bot.telegram.sendAudio(chatId, message.mediaFileId, captionExtra); break;
               case 'ANIMATION': await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, captionExtra); break;
               case 'STICKER': await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra); break;
+              case 'VIDEO_NOTE': await this.bot.telegram.sendVideoNote(chatId, message.mediaFileId, extra); break;
               default: await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
             }
           } else {

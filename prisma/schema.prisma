@@ -1221,10 +1221,13 @@ model ScheduledMessageMessage {
   type               PostMessageType   @default(text)
   order              Int               @default(0)
   mediaFileId        String?
+  mediaGroupId       String?
   caption            String?
   captionEntities    Json?
   entities           Json?
+  parseMode          PostMessageParseMode @default(None)
   replyMarkup        Json?
+  forwardSource      Json?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   scheduledMessage   ScheduledMessage  @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
