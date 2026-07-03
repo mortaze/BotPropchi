@@ -1067,10 +1067,11 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       scheduledMessageState.setButtonRow(userId, row);
       scheduledMessageState.setButtonCol(userId, col);
       scheduledMessageState.setButtonMode(userId, 'edit');
-      const typeLabel = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : '🔗 لینک';
+      const typeLabel = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : btn.type === 'URL' ? '🔗 لینک' : btn.type;
+      const valueLabel = btn.type === 'URL' ? 'آدرس' : btn.type === 'COMMAND' ? 'دستور' : btn.type === 'POPUP' ? 'متن پنجره' : 'مقدار';
       const colorText = btn.style ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
       await ctx.editMessageText(
-        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n${btn.text}: ${btn.value || ''}\n${colorText}`,
+        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${btn.text}\n${valueLabel}: ${btn.value || '(خالی)'}\n${colorText}`,
         buildSmbtnEditTypeKeyboard(msgId, row, col, btn.style),
       );
       return;
@@ -1127,7 +1128,12 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     scheduledMessageState.setButtonCol(userId, col);
 
     const typeLabel = btnType === 'popup' ? '🪟 POP-UP' : btnType === 'command' ? '⌨️ دستور' : '🔗 لینک';
-    await ctx.editMessageText(`📝 متن دکمه (${typeLabel}) را وارد کنید:`, {
+    const prompts: Record<string, string> = {
+      url: '🔗 داده‌ها را برای URL وارد کنید:\n\n🏷 عنوان دکمه\n🌐 آدرس اینترنتی',
+      popup: '🪟 داده‌ها را برای POP-UP وارد کنید:\n\n⚠️ حداکثر ۲۰۰ کاراکتر\n\n🏷 عنوان دکمه\n📝 متن پنجره',
+      command: '⌨️ داده‌ها را برای دستور وارد کنید:\n\n🏷 عنوان دکمه\n⌨️ نام دستور (بدون /)',
+    };
+    await ctx.editMessageText(prompts[btnType] || `${typeLabel}: متن دکمه را وارد کنید:`, {
       reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `smbtn:type:cancel:${msgId}`)]] },
     });
   });
@@ -1184,40 +1190,74 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     if (btnState !== 'wait_text') return next();
     logger.info(`[ButtonEditor] Text input received for button, state=wait_text`);
 
-    const text = ctx.message.text;
+    const rawText = ctx.message.text;
     const msgId = scheduledMessageState.getEditingMessage(userId);
     const row = scheduledMessageState.getButtonRow(userId);
     const col = scheduledMessageState.getButtonCol(userId);
     const btnType = scheduledMessageState.getButtonType(userId);
     if (!msgId || row === undefined || col === undefined) return next();
 
+    // Parse two lines: line 1 = button text (display), line 2 = value (URL/command/popup text)
+    const lines = rawText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+    if (lines.length < 2) {
+      await ctx.reply('❌ حداقل دو خط وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: مقدار', {
+        reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `smbtn:type:cancel:${msgId}`)]] },
+      });
+      return;
+    }
+    const title = lines[0];
+    const value = lines.slice(1).join('\n');
+
+    // Validate value based on type
+    if (btnType === 'url') {
+      if (!value.startsWith('http') && !value.startsWith('https') && !value.startsWith('t.me/') && !value.startsWith('tg://')) {
+        await ctx.reply('❌ آدرس نامعتبر است. باید با http://، https://، t.me/ یا tg:// شروع شود.', {
+          reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `smbtn:type:cancel:${msgId}`)]] },
+        });
+        return;
+      }
+    }
+    if (btnType === 'command') {
+      if (!/^[a-z0-9_]+$/.test(value)) {
+        await ctx.reply('❌ دستور نامعتبر است. فقط حروف a-z، اعداد 0-9 و زیرخط (_) مجاز است.', {
+          reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `smbtn:type:cancel:${msgId}`)]] },
+        });
+        return;
+      }
+    }
+    if (btnType === 'popup') {
+      if (value.length > 200) {
+        await ctx.reply('❌ متن POP-UP نمی‌تواند بیش از ۲۰۰ کاراکتر باشد.', {
+          reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `smbtn:type:cancel:${msgId}`)]] },
+        });
+        return;
+      }
+    }
+
     const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
     const existingBtn = grid[row]?.[col];
 
+    // Map internal type names to DB type values
+    const dbType = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : 'CALLBACK';
+
     if (existingBtn?.id) {
       // Update existing button
-      const updateData: any = { text };
-      if (btnType === 'url' || btnType === 'command') {
-        // For URL/command, user enters the value in next step — but for simplicity, treat text as both name and value
-        updateData.value = text;
-        updateData.type = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : 'CALLBACK';
-      } else if (btnType === 'popup') {
-        updateData.type = 'CALLBACK';
-        updateData.value = text;
-      }
-      await scheduledMessageRepository.updateButton(existingBtn.id, updateData);
+      await scheduledMessageRepository.updateButton(existingBtn.id, {
+        text: title,
+        type: dbType,
+        value,
+      });
     } else {
       // Create new button
-      const type = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : btnType === 'popup' ? 'CALLBACK' : 'URL';
       await scheduledMessageRepository.createButton({
         scheduledMessageId: msgId,
         messageId: msgId,
         row,
         col,
-        text,
-        type,
-        value: text,
+        text: title,
+        type: dbType,
+        value,
       });
     }
 
