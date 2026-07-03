@@ -4,6 +4,7 @@ import { prisma } from '../prisma/client';
 import { scheduledMessageRepository } from '../repositories/scheduled-message.repository';
 import { logger } from '../utils/logger';
 import { sanitizeTelegramText, sanitizeTelegramExtra, validateDbInput } from '../utils/unicode';
+import { buildTelegramKeyboard } from './renderer';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -253,9 +254,29 @@ class ScheduledMessageService {
           where: { messageId: message.id },
           orderBy: [{ row: 'asc' }, { col: 'asc' }],
         });
-        const inlineKeyboard = buttonsFromDb.length > 0
-          ? { inline_keyboard: this.buildInlineKeyboard(buttonsFromDb) }
+
+        const keyboard = buttonsFromDb.length > 0
+          ? this.buildInlineKeyboard(buttonsFromDb)
+          : [];
+        const inlineKeyboard = keyboard.length > 0
+          ? { inline_keyboard: keyboard }
           : undefined;
+
+        // Comprehensive keyboard logging
+        if (buttonsFromDb.length > 0) {
+          const btnTypes = buttonsFromDb.map(b => (b.type || 'URL').toUpperCase());
+          const popupCount = btnTypes.filter(t => t === 'POPUP').length;
+          const cmdCount = btnTypes.filter(t => t === 'COMMAND').length;
+          const urlCount = btnTypes.filter(t => t === 'URL').length;
+          const rows = keyboard.length;
+          const cols = Math.max(...keyboard.map(r => r.length), 0);
+          logger.info(`[SchedMsg] KEYBOARD msg=${msg.id} [${i + 1}] count=${buttonsFromDb.length} rows=${rows} cols=${cols} types=${btnTypes.join(',')} popup=${popupCount} cmd=${cmdCount} url=${urlCount}`);
+          for (let b = 0; b < buttonsFromDb.length; b++) {
+            const btn = buttonsFromDb[b];
+            const cb = keyboard.flat().find((k: any) => k?.text?.includes(btn.text))?.callback_data || keyboard.flat().find((k: any) => k?.text?.includes(btn.text))?.url || '(none)';
+            logger.info(`[SchedMsg] BUTTON #${b + 1} msg=${msg.id} [${i + 1}] type=${(btn.type || 'URL').toUpperCase()} text="${btn.text}" value="${(btn.value || '').substring(0, 80)}" callback="${cb}"`);
+          }
+        }
 
         // Build extra with thread, entities, reply_markup — pass directly to Telegram
         const extra: any = {};
@@ -267,27 +288,36 @@ class ScheduledMessageService {
           extra.entities = message.entities;
         }
 
-        if (message.mediaFileId) {
-          // Media message — pass caption_entities
-          const captionExtra: any = { ...extra };
-          if (message.captionEntities && Array.isArray(message.captionEntities) && message.captionEntities.length > 0) {
-            captionExtra.caption_entities = message.captionEntities;
-          }
-          captionExtra.caption = message.text || '';
+        // Log generated reply_markup before sending
+        logger.info(`[SchedMsg] PRE_SEND msg=${msg.id} [${i + 1}] method=${message.mediaFileId ? message.type : 'sendMessage'} hasReplyMarkup=${!!inlineKeyboard} reply_markup=${JSON.stringify(inlineKeyboard || {}).substring(0, 200)}`);
 
-          switch (message.type) {
-            case 'PHOTO': await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, captionExtra); break;
-            case 'VIDEO': await this.bot.telegram.sendVideo(chatId, message.mediaFileId, captionExtra); break;
-            case 'DOCUMENT': await this.bot.telegram.sendDocument(chatId, message.mediaFileId, captionExtra); break;
-            case 'VOICE': await this.bot.telegram.sendVoice(chatId, message.mediaFileId, captionExtra); break;
-            case 'AUDIO': await this.bot.telegram.sendAudio(chatId, message.mediaFileId, captionExtra); break;
-            case 'ANIMATION': await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, captionExtra); break;
-            case 'STICKER': await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra); break;
-            default: await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
+        try {
+          if (message.mediaFileId) {
+            // Media message — pass caption_entities
+            const captionExtra: any = { ...extra };
+            if (message.captionEntities && Array.isArray(message.captionEntities) && message.captionEntities.length > 0) {
+              captionExtra.caption_entities = message.captionEntities;
+            }
+            captionExtra.caption = message.text || '';
+
+            switch (message.type) {
+              case 'PHOTO': await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, captionExtra); break;
+              case 'VIDEO': await this.bot.telegram.sendVideo(chatId, message.mediaFileId, captionExtra); break;
+              case 'DOCUMENT': await this.bot.telegram.sendDocument(chatId, message.mediaFileId, captionExtra); break;
+              case 'VOICE': await this.bot.telegram.sendVoice(chatId, message.mediaFileId, captionExtra); break;
+              case 'AUDIO': await this.bot.telegram.sendAudio(chatId, message.mediaFileId, captionExtra); break;
+              case 'ANIMATION': await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, captionExtra); break;
+              case 'STICKER': await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra); break;
+              default: await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
+            }
+          } else {
+            // Text message — pass entities directly
+            await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
           }
-        } else {
-          // Text message — pass entities directly
-          await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
+          logger.info(`[SchedMsg] SEND_OK msg=${msg.id} [${i + 1}] Telegram API SUCCESS`);
+        } catch (sendErr: any) {
+          logger.error(`[SchedMsg] SEND_ERROR msg=${msg.id} [${i + 1}] Telegram API ERROR: ${sendErr?.message || sendErr}`, { error: sendErr?.response || sendErr });
+          throw sendErr;
         }
 
         if (messages.length > 1) await sleep(100);
@@ -329,55 +359,28 @@ class ScheduledMessageService {
 
   /**
    * Convert DB buttons to Telegram inline_keyboard format.
-   * Mirrors Post system's buildTelegramKeyboard from renderer.
+   * Uses the same renderer as Post system (buildTelegramKeyboard from telegram-native-renderer).
    */
   private buildInlineKeyboard(buttons: any[]): any[][] {
-    const grid: any[][] = [];
+    // Transform ScheduledMessageButton records into the grid format
+    // that buildTelegramKeyboard expects: array of arrays of button objects
+    const grid: any[] = [];
     for (const btn of buttons) {
       const row = btn.row ?? 0;
       const col = btn.col ?? 0;
       if (!grid[row]) grid[row] = [];
-      grid[row][col] = btn;
+      grid[row][col] = {
+        text: btn.text || '',
+        type: (btn.type || 'URL').toUpperCase(),
+        value: btn.value || '',
+        style: btn.style || undefined,
+      };
     }
-
-    return grid.filter(Boolean).map((row) =>
-      row.filter(Boolean).map((btn) => {
-        const type = (btn.type || 'URL').toUpperCase();
-        const text = btn.text || '';
-        const value = btn.value || '';
-        const style = btn.style;
-
-        // Apply color style
-        let styledText = text;
-        if (style === 'primary') styledText = `🔵 ${text}`;
-        else if (style === 'success') styledText = `🟢 ${text}`;
-        else if (style === 'danger') styledText = `🔴 ${text}`;
-
-        switch (type) {
-          case 'URL':
-            return { text: styledText, url: value || 'https://t.me' };
-          case 'CALLBACK':
-            return { text: styledText, callback_data: value || 'noop' };
-          case 'WEB_APP':
-          case 'OPEN_MINI_APP':
-            return { text: styledText, web_app: { url: value } };
-          case 'LOGIN_URL':
-            return { text: styledText, login_url: { url: value } };
-          case 'COPY_TEXT':
-            return { text: styledText, copy_text: { text: value } };
-          case 'SWITCH_INLINE':
-            return { text: styledText, switch_inline_query: value };
-          case 'SWITCH_INLINE_CURRENT_CHAT':
-            return { text: styledText, switch_inline_query_current_chat: value };
-          case 'COMMAND':
-            return { text: styledText, callback_data: value || 'noop' };
-          case 'POPUP':
-            return { text: styledText, callback_data: value || 'noop' };
-          default:
-            return { text: styledText, url: value || 'https://t.me' };
-        }
-      })
-    ).filter(row => row.length > 0);
+    // Filter empty rows and columns
+    const cleaned = grid.filter(Boolean).map(row => row.filter(Boolean));
+    if (cleaned.length === 0) return [];
+    // Use the Post system's shared renderer with 'sched' prefix for callbacks
+    return buildTelegramKeyboard(cleaned, 0, 'sched');
   }
 
   // ─── Test Send (same pipeline) ──────────────────────────

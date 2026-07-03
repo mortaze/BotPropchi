@@ -60,16 +60,17 @@ function telegramLength(text: string) {
   return Buffer.from(text || '', 'utf16le').length / 2;
 }
 
-function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number) {
+function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number, entityPrefix?: string) {
   const text = sanitizeTelegramText(btn?.text || 'Link', 128);
   const value = btn?.value || btn?.url || btn?.callback_data || '';
   const btnType = btn?.type || 'UNKNOWN';
+  const pfx = entityPrefix || 'post';
   let result: any;
   switch (btn?.type) {
     case 'URL': result = Markup.button.url(text, value); break;
     case 'CALLBACK': {
       const cbData = btn.callback_data
-        || `post:user:click:${postId}:${row}:${col}`;
+        || `${pfx}:user:click:${postId}:${row}:${col}`;
       result = Markup.button.callback(text, cbData);
       break;
     }
@@ -80,13 +81,13 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number)
     case 'SWITCH_INLINE':
     case 'SEND_COMMAND': result = Markup.button.switchToChat(text, value); break;
     case 'SWITCH_INLINE_CURRENT_CHAT': result = Markup.button.switchToCurrentChat(text, value); break;
-    case 'POPUP': result = Markup.button.callback(text, `post:user:popup:${postId}:${row}:${col}`); break;
-    case 'COMMAND': result = Markup.button.callback(text, `post:user:cmd:${value}`); break;
-    case 'INTERNAL_NAV': result = Markup.button.callback(text, `post:user:nav:${postId}:${row}:${col}`); break;
-    default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, `post:user:click:${postId}:${row}:${col}`); break;
+    case 'POPUP': result = Markup.button.callback(text, `${pfx}:user:popup:${postId}:${row}:${col}`); break;
+    case 'COMMAND': result = Markup.button.callback(text, `${pfx}:user:cmd:${value}`); break;
+    case 'INTERNAL_NAV': result = Markup.button.callback(text, `${pfx}:user:nav:${postId}:${row}:${col}`); break;
+    default: result = value?.startsWith('http') ? Markup.button.url(text, value) : Markup.button.callback(text, `${pfx}:user:click:${postId}:${row}:${col}`); break;
   }
   const finalCb = result?.callback_data || result?.url || '(no callback)';
-  logger.info(`[BTN_RENDER] postId=${postId} row=${row} col=${col} type="${btnType}" text="${text}" value="${value}" → callback_data="${finalCb}"`);
+  logger.info(`[BTN_RENDER] entity=${pfx} id=${postId} row=${row} col=${col} type="${btnType}" text="${text}" value="${value}" → callback_data="${finalCb}"`);
   // Preserve all extra properties from original button (e.g. style)
   if (result && btn) {
     for (const key of Object.keys(btn)) {
@@ -98,9 +99,9 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number)
   return result;
 }
 
-function buildTelegramKeyboard(buttons: any[] | null | undefined, postId?: number): any[][] {
+function buildTelegramKeyboard(buttons: any[] | null | undefined, postId?: number, entityPrefix?: string): any[][] {
   if (!Array.isArray(buttons)) return [];
-  return buttons.map((row, r) => (Array.isArray(row) ? row : []).map((btn, c) => buttonToTelegram(btn, postId, r, c)).filter(Boolean));
+  return buttons.map((row, r) => (Array.isArray(row) ? row : []).map((btn, c) => buttonToTelegram(btn, postId, r, c, entityPrefix)).filter(Boolean));
 }
 
 export function extractTelegramSnapshot(message: any) {

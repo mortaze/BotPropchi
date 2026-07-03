@@ -1249,6 +1249,120 @@ export function registerHandlers(bot: Telegraf<Context>) {
     }
   });
 
+  // ─── Scheduled Message POPUP Button routing ──────────────
+  bot.action(/^sched:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    const schedMsgId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    logger.info(`[SchedPopup] HIT schedMsgId=${schedMsgId} row=${row} col=${col}`);
+    try {
+      const buttons = await prisma.scheduledMessageButton.findMany({
+        where: { scheduledMessageId: schedMsgId },
+        orderBy: [{ row: 'asc' }, { col: 'asc' }],
+      });
+      // Build grid to find button at position
+      const grid: any[][] = [];
+      for (const btn of buttons) {
+        const r = btn.row ?? 0;
+        const c = btn.col ?? 0;
+        if (!grid[r]) grid[r] = [];
+        grid[r][c] = btn;
+      }
+      const btn = grid[row]?.[col];
+      if (btn && (btn.type || '').toUpperCase() === 'POPUP') {
+        logger.info(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP`);
+        await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+      } else if (btn) {
+        logger.warn(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} type=${btn.type} FALLBACK_SHOWING`);
+        await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: true });
+      } else {
+        logger.warn(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} BUTTON_NOT_FOUND`);
+        await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+      }
+    } catch (err) {
+      logger.error(`[SchedPopup] FAILED schedMsgId=${schedMsgId}:`, err);
+      await ctx.answerCbQuery('❌ خطا', { show_alert: true });
+    }
+  });
+
+  // ─── Scheduled Message Command Button routing ─────────────
+  bot.action(/^sched:user:cmd:(.+)$/, async (ctx: any) => {
+    const t0 = Date.now();
+    logger.info(`[SchedCMD_BTN] t=${t0} ▶ CALLBACK RECEIVED callback_data="${ctx.callbackData}" from user=${ctx.from?.id}`);
+    await ctx.answerCbQuery();
+    const raw = ctx.match[1].trim().replace(/\s+/g, ' ');
+    const normalized = raw.startsWith('/') ? raw : `/${raw}`;
+    const cmdName = normalized.slice(1).toLowerCase();
+    logger.info(`[SchedCMD_BTN] t=${Date.now()} parsed: raw="${raw}" normalized="${normalized}" cmdName="${cmdName}"`);
+    try {
+      const post = await postService.resolveCommand(cmdName);
+      if (post && post.status === 'PUBLISHED' && post.isPublished) {
+        logger.info(`[SchedCMD_BTN] t=${Date.now()} SENDING post#${post.id}...`);
+        await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+        await sendPostToUser(ctx, post);
+        logger.info(`[SchedCMD_BTN] t=${Date.now()} ✅ SENT post#${post.id} totalMs=${Date.now()-t0}`);
+      } else if (post) {
+        logger.warn(`[SchedCMD_BTN] t=${Date.now()} POST NOT PUBLISHED: postId=${post.id} status=${post.status}`);
+      } else {
+        logger.warn(`[SchedCMD_BTN] t=${Date.now()} COMMAND NOT FOUND: cmdName="${cmdName}"`);
+      }
+    } catch (err: any) {
+      logger.error(`[SchedCMD_BTN] t=${Date.now()} ERROR: ${err.message}`, err);
+    }
+  });
+
+  // ─── Scheduled Message Click Button routing ───────────────
+  bot.action(/^sched:user:click:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    const schedMsgId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    logger.info(`[SchedClick] HIT schedMsgId=${schedMsgId} row=${row} col=${col}`);
+    try {
+      const buttons = await prisma.scheduledMessageButton.findMany({
+        where: { scheduledMessageId: schedMsgId },
+        orderBy: [{ row: 'asc' }, { col: 'asc' }],
+      });
+      const grid: any[][] = [];
+      for (const btn of buttons) {
+        const r = btn.row ?? 0;
+        const c = btn.col ?? 0;
+        if (!grid[r]) grid[r] = [];
+        grid[r][c] = btn;
+      }
+      const btn = grid[row]?.[col];
+      if (btn) {
+        // If it's a COMMAND type, resolve the command
+        if ((btn.type || '').toUpperCase() === 'COMMAND') {
+          const cmdName = (btn.value || '').replace(/^\//, '').toLowerCase();
+          const post = await postService.resolveCommand(cmdName);
+          if (post && post.status === 'PUBLISHED' && post.isPublished) {
+            await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+            await sendPostToUser(ctx, post);
+          }
+          return;
+        }
+        // If it has a URL, open it
+        if (btn.value && btn.value.startsWith('http')) {
+          await ctx.answerCbQuery();
+          return;
+        }
+        await ctx.answerCbQuery(btn.value || '✅');
+      } else {
+        await ctx.answerCbQuery();
+      }
+    } catch (err) {
+      logger.error(`[SchedClick] FAILED schedMsgId=${schedMsgId}:`, err);
+      await ctx.answerCbQuery();
+    }
+  });
+
+  // ─── Scheduled Message Copy Button routing ────────────────
+  bot.action(/^sched:user:copy:(.+)$/, async (ctx: any) => {
+    const text = ctx.match[1];
+    logger.info(`[SchedCopy] HIT text="${text.substring(0, 50)}"`);
+    await ctx.answerCbQuery('✅ کپی شد', { show_alert: true });
+  });
+
   bot.action('broadcast:confirm', async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
