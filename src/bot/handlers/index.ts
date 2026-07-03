@@ -80,6 +80,17 @@ function buildSafeMenuEditorKeyboard(layout: any[][], selectedKey?: { row: numbe
   }
 }
 
+function resolveSelectedPosition(ctx: any, layout: any[][]): { row: number; col: number; button: any } | null {
+  const selected = cache.get<{ row: number; col: number }>(`menu:selected:${ctx.from.id}`);
+  if (!selected) return null;
+  if (isSelectedKeyValid(layout, selected)) {
+    const button = layout[selected.row]?.[selected.col];
+    if (button) return { row: selected.row, col: selected.col, button };
+  }
+  cache.del(`menu:selected:${ctx.from.id}`);
+  return null;
+}
+
 async function assertMenuTextPreserved(before: any[][], after: any[][], operation: string) {
   const beforeTexts = before.flat().map((button: any) => button?.text || button?.label || button?.title || button?.ref || '');
   const afterTexts = after.flat().map((button: any) => button?.text || button?.label || button?.title || button?.ref || '');
@@ -450,12 +461,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
     const layout = settingsService.getEditableLayout(ctx.from.id);
-    if (!layout[row] || col === 0) return;
-    const btnId = layout[row][col].id;
-    [layout[row][col - 1], layout[row][col]] = [layout[row][col], layout[row][col - 1]];
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (!pos || pos.col === 0) return;
+    const btnId = pos.button.id;
+    [layout[pos.row][pos.col - 1], layout[pos.row][pos.col]] = [layout[pos.row][pos.col], layout[pos.row][pos.col - 1]];
     await settingsService.saveMenuLayout(layout);
     settingsService.notifySessionChanged(ctx.from.id, 'left');
     await updateAfterItemAction(ctx, btnId);
@@ -466,41 +476,34 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
     const layout = settingsService.getEditableLayout(ctx.from.id);
-    if (!layout[row] || col >= layout[row].length - 1) return;
-    const btnId = layout[row][col].id;
-    [layout[row][col], layout[row][col + 1]] = [layout[row][col + 1], layout[row][col]];
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (!pos || pos.col >= layout[pos.row].length - 1) return;
+    const btnId = pos.button.id;
+    [layout[pos.row][pos.col], layout[pos.row][pos.col + 1]] = [layout[pos.row][pos.col + 1], layout[pos.row][pos.col]];
     await settingsService.saveMenuLayout(layout);
     settingsService.notifySessionChanged(ctx.from.id, 'right');
     await updateAfterItemAction(ctx, btnId);
   });
 
   // ─── Menu Item: Move Up ────────────────────────────────
-  // Multi-col row → extract button to own single row above
-  // Single-col row → move button to previous row
   bot.action(/^menu:item:up:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
     const layout = settingsService.getEditableLayout(ctx.from.id);
-    const button = layout[row]?.[col];
-    if (!button) return;
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (!pos) return;
+    const button = pos.button;
     const btnId = button.id;
 
-    if (layout[row].length > 1) {
-      // Multi-column → extract to own row above
-      layout[row].splice(col, 1);
-      layout.splice(row, 0, [button]);
+    if (layout[pos.row].length > 1) {
+      layout[pos.row].splice(pos.col, 1);
+      layout.splice(pos.row, 0, [button]);
     } else {
-      // Single-column → move to previous row
-      if (row === 0) return;
-      layout[row].splice(col, 1);
-      layout[row - 1].push(button);
-      // Remove empty row
+      if (pos.row === 0) return;
+      layout[pos.row].splice(pos.col, 1);
+      layout[pos.row - 1].push(button);
       const cleaned = layout.filter((r: any[]) => r.length > 0);
       await settingsService.saveMenuLayout(cleaned);
       settingsService.notifySessionChanged(ctx.from.id, 'up');
@@ -513,29 +516,23 @@ export function registerHandlers(bot: Telegraf<Context>) {
   });
 
   // ─── Menu Item: Move Down ──────────────────────────────
-  // Multi-col row → extract button to own single row below
-  // Single-col row → move button to next row
   bot.action(/^menu:item:down:(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
     const layout = settingsService.getEditableLayout(ctx.from.id);
-    const button = layout[row]?.[col];
-    if (!button) return;
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (!pos) return;
+    const button = pos.button;
     const btnId = button.id;
 
-    if (layout[row].length > 1) {
-      // Multi-column → extract to own row below
-      layout[row].splice(col, 1);
-      layout.splice(row + 1, 0, [button]);
+    if (layout[pos.row].length > 1) {
+      layout[pos.row].splice(pos.col, 1);
+      layout.splice(pos.row + 1, 0, [button]);
     } else {
-      // Single-column → move to next row
-      if (row >= layout.length - 1) return;
-      layout[row].splice(col, 1);
-      layout[row + 1].push(button);
-      // Remove empty row
+      if (pos.row >= layout.length - 1) return;
+      layout[pos.row].splice(pos.col, 1);
+      layout[pos.row + 1].push(button);
       const cleaned = layout.filter((r: any[]) => r.length > 0);
       await settingsService.saveMenuLayout(cleaned);
       settingsService.notifySessionChanged(ctx.from.id, 'down');
@@ -552,15 +549,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
     const layout = settingsService.getEditableLayout(ctx.from.id);
-    if (layout[row]?.[col]) {
-      layout[row][col].visible = layout[row][col].visible === false ? true : false;
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (pos) {
+      pos.button.visible = pos.button.visible === false ? true : false;
       await settingsService.saveMenuLayout(layout);
       settingsService.notifySessionChanged(ctx.from.id, 'toggle');
-      const btnId = layout[row][col].id;
-      await updateAfterItemAction(ctx, btnId);
+      await updateAfterItemAction(ctx, pos.button.id);
     }
   });
 
@@ -569,13 +564,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const row = parseInt(ctx.match[1]);
-    const col = parseInt(ctx.match[2]);
     const layout = settingsService.getEditableLayout(ctx.from.id);
-    const button = layout[row]?.[col];
-    if (!button) return;
-    cache.setPermanent(`menu:renaming:${ctx.from.id}`, { row, col });
-    const btnText = button.text || button.label || button.title || button.ref || 'دکمه';
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (!pos) return;
+    cache.setPermanent(`menu:renaming:${ctx.from.id}`, { row: pos.row, col: pos.col });
+    const btnText = pos.button.text || pos.button.label || pos.button.title || pos.button.ref || 'دکمه';
     try {
       await ctx.editMessageText(`✏️ لطفاً نام جدید را برای "${btnText}" وارد کنید:`, { reply_markup: undefined });
     } catch {
