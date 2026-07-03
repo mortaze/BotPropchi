@@ -1091,13 +1091,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   async function showPostEditor(ctx: any, postId: number) {
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
-    const hasContent = (post.messages || []).length > 0;
-    const preview = formatPostPreview(post);
-    await safeEdit(ctx, preview, {
-      parse_mode: 'Markdown',
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
+    const messages = (post.messages || []);
+    await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
     });
+    await refreshEditorMessages(ctx, post);
   }
 
   // ─── Edit Post Actions ───────────────────────────────────
@@ -1286,13 +1287,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     await postService.publish(postId, BigInt(ctx.from.id));
     const post = await postService.findById(postId);
-    const preview = formatPostPreview(post);
-    const hasContent = (post.messages || []).length > 0;
-    await safeEdit(ctx, `✅ پست منتشر شد!\n\n${preview}`, {
-      parse_mode: 'Markdown',
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
+    const messages = (post.messages || []);
+    await ctx.reply(`✅ پست منتشر شد!\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
     });
+    await refreshEditorMessages(ctx, post);
   });
 
   bot.action(/^post:draft:(\d+)$/, async (ctx: any) => {
@@ -1303,13 +1306,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await postService.update(postId, { status: PostStatus.DRAFT, updatedBy: BigInt(ctx.from.id) } as any);
     postService.invalidateCache();
     const post = await postService.findById(postId);
-    const preview = formatPostPreview(post);
-    const hasContent = (post.messages || []).length > 0;
-    await safeEdit(ctx, `📝 به عنوان پیش‌نویس ذخیره شد.\n\n${preview}`, {
-      parse_mode: 'Markdown',
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
+    const messages = (post.messages || []);
+    await ctx.reply(`📝 به عنوان پیش‌نویس ذخیره شد.\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
     });
+    await refreshEditorMessages(ctx, post);
   });
 
   // ─── Archive ─────────────────────────────────────────────
@@ -1320,13 +1325,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     await postService.archive(postId);
     const post = await postService.findById(postId);
-    const preview = formatPostPreview(post);
-    const hasContent = (post.messages || []).length > 0;
-    await safeEdit(ctx, `📦 پست بایگانی شد.\n\n${preview}`, {
-      parse_mode: 'Markdown',
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
+    const messages = (post.messages || []);
+    await ctx.reply(`📦 پست بایگانی شد.\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
     });
+    await refreshEditorMessages(ctx, post);
   });
 
   // ─── Hide / Show ─────────────────────────────────────────
@@ -1344,14 +1351,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       await postService.hide(postId);
     }
     const updated = await postService.findById(postId);
-    const preview = formatPostPreview(updated);
-    const hasContent = !!((updated.messages || []).length > 0 || updated.mediaFileId);
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
+    const messages = (updated.messages || []);
     const msg = wasHidden ? '👻 پست اکنون قابل مشاهده است.' : '👻 پست مخفی شد.';
-    await safeEdit(ctx, `${msg}\n\n${preview}`, {
-      parse_mode: 'Markdown',
+    await ctx.reply(`${msg}\n\n📝 ${updated.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent),
+      ...postMultiMessageEditorReplyKeyboard(updated.isPublished, updated.slug === '__start__', updated.slug === '__anonymous__'),
     });
+    await refreshEditorMessages(ctx, updated);
   });
 
   // ─── Schedule ────────────────────────────────────────────
@@ -1444,13 +1452,15 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const postId = parseInt(ctx.match[1]);
     await postService.unpublish(postId);
     const post = await postService.findById(postId);
-    const preview = formatPostPreview(post);
-    const hasContent = (post.messages || []).length > 0;
-    await safeEdit(ctx, `📥 انتشار پست لغو شد.\n\n${preview}`, {
-      parse_mode: 'Markdown',
+    if (!post) return ctx.reply('❌ پست یافت نشد.');
+    cache.setPermanent(editorKey(ctx.from.id, 'active'), postId);
+    cache.setPermanent(editorKey(ctx.from.id, 'mode'), 'main');
+    const messages = (post.messages || []);
+    await ctx.reply(`📥 انتشار پست لغو شد.\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postEditorKeyboard(postId, hasContent),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
     });
+    await refreshEditorMessages(ctx, post);
   });
 
   // ─── Delete ─────────────────────────────────────────────
