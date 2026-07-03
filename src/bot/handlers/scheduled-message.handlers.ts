@@ -1307,6 +1307,148 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await refreshButtonEditor(ctx, msgId);
   });
 
+  // ─── Button Editor: Move direction handlers ──
+  function moveButtonInLayout(buttons: any[][], row: number, col: number, direction: 'up' | 'down'): { newRow: number; newCol: number } {
+    const btn = buttons[row]?.[col];
+    if (!btn) return { newRow: row, newCol: col };
+    const wasSingleton = buttons[row].length === 1;
+
+    // Remove button from its row
+    buttons[row].splice(col, 1);
+    if (buttons[row].length === 0) buttons.splice(row, 1);
+
+    if (wasSingleton) {
+      // Singleton row was removed — merge into adjacent row
+      if (direction === 'down') {
+        if (row < buttons.length) {
+          buttons[row].push(btn);
+          return { newRow: row, newCol: buttons[row].length - 1 };
+        } else {
+          buttons.push([btn]);
+          return { newRow: buttons.length - 1, newCol: 0 };
+        }
+      } else {
+        if (row > 0 && row - 1 < buttons.length) {
+          buttons[row - 1].unshift(btn);
+          return { newRow: row - 1, newCol: 0 };
+        } else {
+          buttons.push([btn]);
+          return { newRow: buttons.length - 1, newCol: 0 };
+        }
+      }
+    } else {
+      // Non-singleton — create a new singleton row right after original position
+      buttons.splice(row + 1, 0, [btn]);
+      return { newRow: row + 1, newCol: 0 };
+    }
+  }
+
+  bot.hears('⬆️ بالا', async (ctx: any) => {
+    const userId = ctx.from.id;
+    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+    const msgId = scheduledMessageState.getEditingMessage(userId);
+    if (!msgId) return;
+    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
+    if (moveSel.row === undefined || moveSel.col === undefined) return;
+
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col]) return;
+
+    const { newRow, newCol } = moveButtonInLayout(grid, moveSel.row, moveSel.col, 'up');
+    // Rebuild row/col for all buttons in the grid
+    for (let r = 0; r < grid.length; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        if (grid[r][c]?.id) {
+          await scheduledMessageRepository.updateButton(grid[r][c].id, { row: r, col: c });
+        }
+      }
+    }
+    scheduledMessageState.setButtonMoveSelected(userId, newRow, newCol);
+    scheduledMessageState.setButtonRow(userId, newRow);
+    scheduledMessageState.setButtonCol(userId, newCol);
+    await ctx.reply('✅ به بالا منتقل شد.');
+    await refreshButtonEditor(ctx, msgId);
+  });
+
+  bot.hears('⬇️ پایین', async (ctx: any) => {
+    const userId = ctx.from.id;
+    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+    const msgId = scheduledMessageState.getEditingMessage(userId);
+    if (!msgId) return;
+    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
+    if (moveSel.row === undefined || moveSel.col === undefined) return;
+
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col]) return;
+
+    const { newRow, newCol } = moveButtonInLayout(grid, moveSel.row, moveSel.col, 'down');
+    for (let r = 0; r < grid.length; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        if (grid[r][c]?.id) {
+          await scheduledMessageRepository.updateButton(grid[r][c].id, { row: r, col: c });
+        }
+      }
+    }
+    scheduledMessageState.setButtonMoveSelected(userId, newRow, newCol);
+    scheduledMessageState.setButtonRow(userId, newRow);
+    scheduledMessageState.setButtonCol(userId, newCol);
+    await ctx.reply('✅ به پایین منتقل شد.');
+    await refreshButtonEditor(ctx, msgId);
+  });
+
+  bot.hears('⬅️ چپ', async (ctx: any) => {
+    const userId = ctx.from.id;
+    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+    const msgId = scheduledMessageState.getEditingMessage(userId);
+    if (!msgId) return;
+    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
+    if (moveSel.row === undefined || moveSel.col === undefined) return;
+
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col] || moveSel.col === 0) return;
+
+    // Swap with left neighbor
+    const a = grid[moveSel.row][moveSel.col];
+    const b = grid[moveSel.row][moveSel.col - 1];
+    if (a?.id && b?.id) {
+      await scheduledMessageRepository.updateButton(a.id, { col: moveSel.col - 1 });
+      await scheduledMessageRepository.updateButton(b.id, { col: moveSel.col });
+    }
+    scheduledMessageState.setButtonMoveSelected(userId, moveSel.row, moveSel.col - 1);
+    scheduledMessageState.setButtonRow(userId, moveSel.row);
+    scheduledMessageState.setButtonCol(userId, moveSel.col - 1);
+    await ctx.reply('✅ به چپ منتقل شد.');
+    await refreshButtonEditor(ctx, msgId);
+  });
+
+  bot.hears('➡️ راست', async (ctx: any) => {
+    const userId = ctx.from.id;
+    if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+    const msgId = scheduledMessageState.getEditingMessage(userId);
+    if (!msgId) return;
+    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
+    if (moveSel.row === undefined || moveSel.col === undefined) return;
+
+    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col] || moveSel.col >= grid[moveSel.row].length - 1) return;
+
+    const a = grid[moveSel.row][moveSel.col];
+    const b = grid[moveSel.row][moveSel.col + 1];
+    if (a?.id && b?.id) {
+      await scheduledMessageRepository.updateButton(a.id, { col: moveSel.col + 1 });
+      await scheduledMessageRepository.updateButton(b.id, { col: moveSel.col });
+    }
+    scheduledMessageState.setButtonMoveSelected(userId, moveSel.row, moveSel.col + 1);
+    scheduledMessageState.setButtonRow(userId, moveSel.row);
+    scheduledMessageState.setButtonCol(userId, moveSel.col + 1);
+    await ctx.reply('✅ به راست منتقل شد.');
+    await refreshButtonEditor(ctx, msgId);
+  });
+
   // ─── Button Editor: Move confirm/cancel ──
   bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any) => {
     const userId = ctx.from.id;
@@ -1314,26 +1456,11 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const msgId = scheduledMessageState.getEditingMessage(userId);
     if (!msgId) return;
 
-    const moveSel = scheduledMessageState.getButtonMoveSelected(userId);
-    const btnRow = scheduledMessageState.getButtonRow(userId);
-    const btnCol = scheduledMessageState.getButtonCol(userId);
-    if (moveSel.row === undefined || moveSel.col === undefined || btnRow === undefined || btnCol === undefined) return;
-
-    // Swap buttons in DB
-    const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
-    const btnA = grid[btnRow]?.[btnCol];
-    const btnB = grid[moveSel.row]?.[moveSel.col];
-    if (btnA?.id && btnB?.id) {
-      const tmpRow = btnA.row, tmpCol = btnA.col;
-      await scheduledMessageRepository.updateButton(btnA.id, { row: btnB.row, col: btnB.col });
-      await scheduledMessageRepository.updateButton(btnB.id, { row: tmpRow, col: tmpCol });
-    }
-
     scheduledMessageState.setButtonMoveActive(userId, false);
     scheduledMessageState.setButtonMode(userId, 'create');
-    await ctx.reply('✅ جابه‌جایی انجام شد.');
-    await refreshButtonEditor(ctx, msgId!);
+    scheduledMessageState.setButtonState(userId, '');
+    await ctx.reply('✅ جابه‌جایی ذخیره شد.');
+    await refreshButtonEditor(ctx, msgId);
   });
 
   bot.hears('❌ لغو جابجایی', async (ctx: any) => {
@@ -1342,6 +1469,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const msgId = scheduledMessageState.getEditingMessage(userId);
     scheduledMessageState.setButtonMoveActive(userId, false);
     scheduledMessageState.setButtonMode(userId, 'create');
+    scheduledMessageState.setButtonState(userId, '');
     await ctx.reply('❌ جابه‌جایی لغو شد.');
     if (msgId) await refreshButtonEditor(ctx, msgId);
   });

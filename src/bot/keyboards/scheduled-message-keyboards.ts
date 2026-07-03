@@ -216,7 +216,7 @@ function buildButtonEditorInlineKeyboard(
         if (!btn) continue;
         const label = (btn.text || 'بدون عنوان').substring(0, 13);
         const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
-        const icon = isSelected ? '✅' : mode === 'edit' ? '✏️' : mode === 'delete' ? '✖' : mode === 'move' ? '🔀' : '＋';
+        const icon = isSelected ? '[✅]' : mode === 'edit' ? '[✏️]' : mode === 'delete' ? '[✖]' : mode === 'move' ? '[🔀]' : '[＋]';
         rowButtons.push(
           Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${label}`, `smbtn:click:${messageId}:${r}:${c}`),
         );
