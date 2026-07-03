@@ -394,8 +394,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     cache.del(`menu:selected:${ctx.from.id}`);
     cache.del(`menu:renaming:${ctx.from.id}`);
     cache.del(`menu:edit_mode:${ctx.from.id}`);
-    // Cancel session with revert: discards draft changes and restores original layout
-    await settingsService.cancelEditSession(ctx.from.id, true);
+    await settingsService.cancelEditSession(ctx.from.id, false);
     const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
     await safeEdit(ctx, '⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
@@ -714,10 +713,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
           await ctx.reply('🎛 ویرایشگر منوی اصلی:', buildSafeMenuEditorKeyboard(resolvedLayout));
           return;
         }
-        // Exit menu editor — cancel session with revert to restore original layout
+        // Exit menu editor — keep persisted changes
         cache.del(`menu:edit_mode:${ctx.from.id}`);
         cache.del(`menu:selected:${ctx.from.id}`);
-        await settingsService.cancelEditSession(ctx.from.id, true);
+        await settingsService.cancelEditSession(ctx.from.id, false);
         const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
         await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
         return;
