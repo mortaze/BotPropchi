@@ -88,7 +88,7 @@ my_chat_member / new_chat_members
 Key implications:
 - Dynamic Post Button Routing at L600 intercepts text messages before post-handlers sees them. It only skips when `post_mgmt_mode`, `menu:edit_mode`, or `post:editor:{userId}:active` is set.
 - `bot.on('text')` in `post-handlers.ts:610` has 12+ early returns that CONSUME messages without `next()`. Any `bot.hears` registered after L610 is unreachable if a state check matches.
-- `src/bot/handlers/index.ts` is 1760 lines — all bot handlers in one file; shared helpers live in `src/bot/shared.ts`. `post-handlers.ts` is 3593 lines. `scheduled-message.handlers.ts` is 1356 lines.
+- `src/bot/handlers/index.ts` is ~1875 lines — all bot handlers in one file; shared helpers live in `src/bot/shared.ts`. `post-handlers.ts` is ~3656 lines. `scheduled-message.handlers.ts` is ~1614 lines.
 
 ## Callback Rules (Production Bugs)
 

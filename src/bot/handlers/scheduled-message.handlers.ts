@@ -1352,6 +1352,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
   bot.hears('⬆️ بالا', async (ctx: any) => {
     const userId = ctx.from.id;
+    logger.info(`[SchedMove] ⬆️ heard userId=${userId} moveActive=${scheduledMessageState.isButtonMoveActive(userId)}`);
     if (!scheduledMessageState.isButtonMoveActive(userId)) return;
     const msgId = scheduledMessageState.getEditingMessage(userId);
     if (!msgId) return;
@@ -1362,12 +1363,14 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const grid = buttonsToGrid(buttons);
     if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col]) return;
 
+    logger.info(`[SchedMove] UP before: row=${moveSel.row} col=${moveSel.col} grid=${JSON.stringify(grid.map((r: any[]) => r.map((b: any) => b?.id || null)))}`);
     const { newRow, newCol } = moveButtonInLayout(grid, moveSel.row, moveSel.col, 'up');
-    // Rebuild row/col for all buttons in the grid
+    logger.info(`[SchedMove] UP after: newRow=${newRow} newCol=${newCol} grid=${JSON.stringify(grid.map((r: any[]) => r.map((b: any) => b?.id || null)))}`);
     for (let r = 0; r < grid.length; r++) {
       for (let c = 0; c < grid[r].length; c++) {
         if (grid[r][c]?.id) {
           await scheduledMessageRepository.updateButton(grid[r][c].id, { row: r, col: c });
+          logger.info(`[SchedMove] DB update: btnId=${grid[r][c].id} → row=${r} col=${c}`);
         }
       }
     }
@@ -1375,11 +1378,13 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     scheduledMessageState.setButtonRow(userId, newRow);
     scheduledMessageState.setButtonCol(userId, newCol);
     await ctx.reply('✅ به بالا منتقل شد.');
+    logger.info(`[SchedMove] refreshButtonEditor msgId=${msgId}`);
     await refreshButtonEditor(ctx, msgId);
   });
 
   bot.hears('⬇️ پایین', async (ctx: any) => {
     const userId = ctx.from.id;
+    logger.info(`[SchedMove] ⬇️ heard userId=${userId} moveActive=${scheduledMessageState.isButtonMoveActive(userId)}`);
     if (!scheduledMessageState.isButtonMoveActive(userId)) return;
     const msgId = scheduledMessageState.getEditingMessage(userId);
     if (!msgId) return;
@@ -1390,11 +1395,14 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const grid = buttonsToGrid(buttons);
     if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col]) return;
 
+    logger.info(`[SchedMove] DOWN before: row=${moveSel.row} col=${moveSel.col}`);
     const { newRow, newCol } = moveButtonInLayout(grid, moveSel.row, moveSel.col, 'down');
+    logger.info(`[SchedMove] DOWN after: newRow=${newRow} newCol=${newCol}`);
     for (let r = 0; r < grid.length; r++) {
       for (let c = 0; c < grid[r].length; c++) {
         if (grid[r][c]?.id) {
           await scheduledMessageRepository.updateButton(grid[r][c].id, { row: r, col: c });
+          logger.info(`[SchedMove] DB update: btnId=${grid[r][c].id} → row=${r} col=${c}`);
         }
       }
     }
@@ -1402,11 +1410,13 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     scheduledMessageState.setButtonRow(userId, newRow);
     scheduledMessageState.setButtonCol(userId, newCol);
     await ctx.reply('✅ به پایین منتقل شد.');
+    logger.info(`[SchedMove] refreshButtonEditor msgId=${msgId}`);
     await refreshButtonEditor(ctx, msgId);
   });
 
   bot.hears('⬅️ چپ', async (ctx: any) => {
     const userId = ctx.from.id;
+    logger.info(`[SchedMove] ⬅️ heard userId=${userId} moveActive=${scheduledMessageState.isButtonMoveActive(userId)}`);
     if (!scheduledMessageState.isButtonMoveActive(userId)) return;
     const msgId = scheduledMessageState.getEditingMessage(userId);
     if (!msgId) return;
@@ -1417,9 +1427,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const grid = buttonsToGrid(buttons);
     if (!grid[moveSel.row] || !grid[moveSel.row][moveSel.col] || moveSel.col === 0) return;
 
-    // Swap with left neighbor
     const a = grid[moveSel.row][moveSel.col];
     const b = grid[moveSel.row][moveSel.col - 1];
+    logger.info(`[SchedMove] LEFT: swap btnId=${a?.id} with btnId=${b?.id}`);
     if (a?.id && b?.id) {
       await scheduledMessageRepository.updateButton(a.id, { col: moveSel.col - 1 });
       await scheduledMessageRepository.updateButton(b.id, { col: moveSel.col });
@@ -1428,11 +1438,13 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     scheduledMessageState.setButtonRow(userId, moveSel.row);
     scheduledMessageState.setButtonCol(userId, moveSel.col - 1);
     await ctx.reply('✅ به چپ منتقل شد.');
+    logger.info(`[SchedMove] refreshButtonEditor msgId=${msgId}`);
     await refreshButtonEditor(ctx, msgId);
   });
 
   bot.hears('➡️ راست', async (ctx: any) => {
     const userId = ctx.from.id;
+    logger.info(`[SchedMove] ➡️ heard userId=${userId} moveActive=${scheduledMessageState.isButtonMoveActive(userId)}`);
     if (!scheduledMessageState.isButtonMoveActive(userId)) return;
     const msgId = scheduledMessageState.getEditingMessage(userId);
     if (!msgId) return;
@@ -1445,6 +1457,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
     const a = grid[moveSel.row][moveSel.col];
     const b = grid[moveSel.row][moveSel.col + 1];
+    logger.info(`[SchedMove] RIGHT: swap btnId=${a?.id} with btnId=${b?.id}`);
     if (a?.id && b?.id) {
       await scheduledMessageRepository.updateButton(a.id, { col: moveSel.col + 1 });
       await scheduledMessageRepository.updateButton(b.id, { col: moveSel.col });
@@ -1453,6 +1466,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     scheduledMessageState.setButtonRow(userId, moveSel.row);
     scheduledMessageState.setButtonCol(userId, moveSel.col + 1);
     await ctx.reply('✅ به راست منتقل شد.');
+    logger.info(`[SchedMove] refreshButtonEditor msgId=${msgId}`);
     await refreshButtonEditor(ctx, msgId);
   });
 

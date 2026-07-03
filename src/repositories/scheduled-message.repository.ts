@@ -33,7 +33,7 @@ export const scheduledMessageRepository = {
     return prisma.scheduledMessage.findUnique({
       where: { id },
       include: {
-        messages: { orderBy: { order: 'asc' } },
+        messages: { orderBy: { order: 'asc' }, include: { buttons: { orderBy: [{ row: 'asc' }, { col: 'asc' }] } } },
         buttons: { orderBy: [{ row: 'asc' }, { col: 'asc' }] },
       },
     });

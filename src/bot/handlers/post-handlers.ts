@@ -1573,42 +1573,42 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   }
 
   // ─── Reply Keyboard: Move Mode Directional Arrows ─────────
-  bot.hears('⬆️ بالا', async (ctx: any) => {
-    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return;
+  bot.hears('⬆️ بالا', async (ctx: any, next) => {
+    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return next();
     await handleMoveDirection(ctx, 'up');
   });
-  bot.hears('⬇️ پایین', async (ctx: any) => {
-    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return;
+  bot.hears('⬇️ پایین', async (ctx: any, next) => {
+    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return next();
     await handleMoveDirection(ctx, 'down');
   });
-  bot.hears('⬅️ چپ', async (ctx: any) => {
-    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return;
+  bot.hears('⬅️ چپ', async (ctx: any, next) => {
+    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return next();
     await handleMoveDirection(ctx, 'left');
   });
-  bot.hears('➡️ راست', async (ctx: any) => {
-    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return;
+  bot.hears('➡️ راست', async (ctx: any, next) => {
+    if (!cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'))) return next();
     await handleMoveDirection(ctx, 'right');
   });
-  bot.hears('❌ لغو جابجایی', async (ctx: any) => {
+  bot.hears('❌ لغو جابجایی', async (ctx: any, next) => {
     const moveActive = cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'));
-    if (!moveActive) return;
+    if (!moveActive) return next();
     const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
+    if (!isPostAdmin(admin)) return next();
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
-    if (!postId) return;
+    if (!postId) return next();
     clearMoveState(ctx.from.id);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     await ctx.reply('✅ جابه‌جایی لغو شد.');
     await refreshButtonListView(ctx, postId, true);
   });
 
-  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any) => {
+  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any, next) => {
     const moveActive = cache.get<boolean>(pendingKey(ctx.from.id, 'move_active'));
-    if (!moveActive) return;
+    if (!moveActive) return next();
     const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
+    if (!isPostAdmin(admin)) return next();
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'editing_post'));
-    if (!postId) return;
+    if (!postId) return next();
     clearMoveState(ctx.from.id);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     await ctx.reply('✅ جابه‌جایی دکمه انجام شد.');
