@@ -43,6 +43,7 @@ import {
   buildButtonColorSelectionKeyboard,
   renderButtonEditor,
   buildMoveReplyKeyboard,
+  buildPostEditorReplyKeyboard,
 } from '../keyboards/post-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards';
 import { settingsService } from '../../services/settings.service';
@@ -1600,7 +1601,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     cache.setPermanent(pendingKey(ctx.from.id, 'edit_mode'), postId);
     await refreshButtonListView(ctx, postId);
-    await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
+    await ctx.reply('✏️ حالت ویرایش:', buildPostEditorReplyKeyboard());
   });
 
   bot.hears('✅ بازگشت تایید', async (ctx: any, next) => {
@@ -1614,7 +1615,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     cache.setPermanent(pendingKey(ctx.from.id, 'edit_mode'), postId);
     await refreshButtonListView(ctx, postId);
-    await ctx.reply('✏️ حالت ویرایش:', postEditModeReplyKeyboard());
+    await ctx.reply('✏️ حالت ویرایش:', buildPostEditorReplyKeyboard());
   });
 
   function clearMoveState(userId: number) {

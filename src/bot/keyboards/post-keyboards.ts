@@ -549,6 +549,15 @@ export function buildMoveReplyKeyboard() {
   ]).resize().persistent();
 }
 
+// ─── Reply Keyboard: Post Editor (4 options) ────────────────
+export function buildPostEditorReplyKeyboard() {
+  return Markup.keyboard([
+    ['✏️ ویرایش محتوا', '📝 ویرایش عنوان'],
+    ['🔘 ویرایش دکمه‌ها'],
+    ['🔙 بازگشت'],
+  ]).resize().persistent();
+}
+
 // ─── Centralized Renderer ──────────────────────────────────
 // THE single entry point. Returns { text, reply_markup }.
 // Text: always "⌨️ ویرایشگر دکمه‌ها"
