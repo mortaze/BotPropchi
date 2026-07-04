@@ -65,6 +65,7 @@ callback trace logger (BEFORE all middleware)
 → middleware chain
 → registerHandlers(bot)            — all handlers from handlers/index.ts
 → registerScheduledMessageHandlers(bot)
+→ registerAutoReplyHandlers(bot)
 → forum topic discovery handler    — group/supergroup topic events
 → bot.catch                        — global error handler
 → catch-all [UNMATCHED_CALLBACK]   — unmatched callback_data

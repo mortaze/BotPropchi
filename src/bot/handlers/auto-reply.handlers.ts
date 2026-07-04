@@ -12,7 +12,6 @@ import { validateDbInput, sanitizeTelegramText } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
 import {
   autoReplyMainMenuKeyboard,
-  autoReplyAutomationKeyboard,
   autoReplyListInlineKeyboard,
   autoReplyNewPostManagerReplyKeyboard,
   autoReplyEditorReplyKeyboard,
@@ -53,54 +52,33 @@ function formatAutoReplyInfo(msg: any): string {
 
 function validatePublishReadiness(msg: any): { ready: boolean; missing: { key: string; label: string }[] } {
   const missing: { key: string; label: string }[] = [];
-  if (!msg.intervalMinutes) missing.push({ key: 'schedule', label: '⏰ تنظیم زمان‌بندی' });
-  if (!msg.targetChatId) missing.push({ key: 'group', label: '👥 انتخاب گروه' });
-  if (!msg.startTime) missing.push({ key: 'schedule', label: '⏰ تنظیم ساعت شروع' });
-  if ((msg.messages?.length || 0) === 0) missing.push({ key: 'messages', label: '➕ افزودن پیام' });
+  if (!msg.intervalMinutes) missing.push({ key: 'schedule', label: '⏰ زمان‌بندی پاسخ' });
+  if (!msg.targetChatId) missing.push({ key: 'group', label: '👥 گروه پاسخ' });
+  if (!msg.startTime) missing.push({ key: 'schedule', label: '⏰ ساعت شروع پاسخ' });
+  if ((msg.messages?.length || 0) === 0) missing.push({ key: 'messages', label: '➕ افزودن پیام پاسخ' });
   return { ready: missing.length === 0, missing };
 }
 
 export function registerAutoReplyHandlers(bot: Telegraf) {
 
-  // ─── Entry: 🤖 اتوماسیون ─────────────────────────
-  bot.hears('🤖 اتوماسیون', async (ctx: any) => {
+  // ─── Entry: /autoreply command ─────────────────────────
+  bot.command('autoreply', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const { clearAllPostStates } = require('./post-handlers');
-    clearAllPostStates(ctx.from.id);
-    autoReplyState.clearAll(ctx.from.id);
-    await ctx.reply('🤖 اتوماسیون', autoReplyAutomationKeyboard());
-  });
-
-  // ─── Entry: 💬 پاسخ‌های خودکار ──────────────────────
-  bot.hears('💬 پاسخ‌های خودکار', async (ctx: any) => {
-    const admin = await botAdminService.getActive(ctx.from.id);
-    if (!admin) return;
-    const { clearAllPostStates } = require('./post-handlers');
-    clearAllPostStates(ctx.from.id);
     autoReplyState.clearAll(ctx.from.id);
     autoReplyState.setManagementMode(ctx.from.id, true);
     const result = await autoReplyRepository.findAll({ page: 1, limit: 100 });
     await ctx.reply('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
   });
 
-  // ─── From auto reply menu → back to automation ──
-  bot.hears('🔙 بازگشت', async (ctx: any, next) => {
-    if (!autoReplyState.isManagementMode(ctx.from.id)) return next();
-    const msgId = autoReplyState.getEditMode(ctx.from.id);
-    if (msgId) return next();
-    autoReplyState.clearAll(ctx.from.id);
-    await ctx.reply('🤖 اتوماسیون', autoReplyAutomationKeyboard());
-  });
-
   // ─── Back to admin panel ────────────────────────────────
-  bot.hears('🔙 بازگشت به پنل ادمین', async (ctx: any, next) => {
+  bot.hears('🔙 بازگشت به پنل', async (ctx: any, next) => {
     if (!autoReplyState.isManagementMode(ctx.from.id)) return next();
     autoReplyState.clearAll(ctx.from.id);
   });
 
   // ─── Create new auto reply ──────────────────────────────
-  bot.hears('➕ ایجاد پست جدید', async (ctx: any) => {
+  bot.hears('➕ ایجاد پاسخ جدید', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     autoReplyState.clearAll(ctx.from.id);
@@ -109,7 +87,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── List posts ─────────────────────────────────────────
-  bot.hears('📋 لیست پست‌ها', async (ctx: any) => {
+  bot.hears('📋 لیست پاسخ‌ها', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     autoReplyState.clearAll(ctx.from.id);
@@ -117,7 +95,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── Reports ────────────────────────────────────────────
-  bot.hears('📊 گزارش ارسال', async (ctx: any) => {
+  bot.hears('📊 گزارش پاسخ‌ها', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const stats = await autoReplyService.getStats();
@@ -134,7 +112,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── Cancel creation ────────────────────────────────────
-  bot.hears('❌ لغو', async (ctx: any, next) => {
+  bot.hears('❌ لغو پاسخ', async (ctx: any, next) => {
     if (!ctx.from) return next();
     const userId = ctx.from.id;
     const creating = autoReplyState.isCreating(userId);
@@ -175,7 +153,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── Back buttons ──
-  bot.hears('🔙 بازگشت', async (ctx: any, next) => {
+  bot.hears('🔙 بازگشت به پنل', async (ctx: any, next) => {
     if (!ctx.from) return next();
     const userId = ctx.from.id;
     autoReplyState.setEditingContent(userId, false);
@@ -193,14 +171,14 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     return next();
   });
 
-  bot.hears('🔙 بازگشت به لیست', async (ctx: any) => {
+  bot.hears('🔙 بازگشت به لیست پاسخ', async (ctx: any) => {
     autoReplyState.clearAll(ctx.from.id);
     await sendList(ctx, 1);
   });
 
   // ─── Editor actions (Reply Keyboard) ────────────────────
 
-  bot.hears('➕ افزودن پیام', async (ctx: any) => {
+  bot.hears('➕ افزودن پیام پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     autoReplyState.setEditingMessage(ctx.from.id, -1);
@@ -211,7 +189,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     );
   });
 
-  bot.hears('⏰ تنظیم زمان‌بندی', async (ctx: any) => {
+  bot.hears('⏰ زمان‌بندی پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     autoReplyState.setSchedulingMode(ctx.from.id, msgId);
@@ -219,7 +197,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply('⏰ بازه زمانی ارسال را انتخاب کنید:', autoReplyIntervalKeyboard());
   });
 
-  bot.hears('👥 انتخاب گروه', async (ctx: any) => {
+  bot.hears('👥 گروه پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const groups = await prisma.telegramGroup.findMany({
@@ -234,7 +212,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply('👥 گروه مقصد را انتخاب کنید:', autoReplyGroupReplyKeyboard(groups));
   });
 
-  bot.hears('📖 دستور', async (ctx: any) => {
+  bot.hears('📖 دستور پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     autoReplyState.setScheduleStep(ctx.from.id, 'command_input');
@@ -244,7 +222,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply(`نام دستور را ارسال کنید.\nبدون علامت /\nمثال: start, help, vip${hint}`, autoReplyCancelOnlyKeyboard());
   });
 
-  bot.hears('❌ حذف دستور', async (ctx: any) => {
+  bot.hears('❌ حذف دستور پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     autoReplyState.setScheduleStep(ctx.from.id, null as any);
@@ -253,7 +231,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await showAutoReplyEditor(ctx, msgId);
   });
 
-  bot.hears('✅ انتشار', async (ctx: any) => {
+  bot.hears('✅ انتشار پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     logger.info(`[AutoReply] Publish requested by userId=${ctx.from.id} editMode=${msgId}`);
     if (!msgId) {
@@ -292,7 +270,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   });
 
-  bot.hears('🧪 ارسال تستی', async (ctx: any) => {
+  bot.hears('🧪 تست پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) {
       await ctx.reply('❌ پستی انتخاب نشده.');
@@ -324,7 +302,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await showAutoReplyEditor(ctx, msgId);
   });
 
-  bot.hears('📊 آمار', async (ctx: any) => {
+  bot.hears('📊 آمار پاسخ‌ها', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const msg = await autoReplyRepository.findById(msgId);
@@ -342,7 +320,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply(text);
   });
 
-  bot.hears('📊 وضعیت Scheduler', async (ctx: any) => {
+  bot.hears('📊 وضعیت زمان‌بند پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) {
       await ctx.reply('❌ پستی انتخاب نشده.');
@@ -377,7 +355,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply(text, { parse_mode: 'Markdown' });
   });
 
-  bot.hears('🗑 حذف پست', async (ctx: any) => {
+  bot.hears('🗑 حذف پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const msg = await autoReplyRepository.findById(msgId);
@@ -428,16 +406,15 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
 
     const knownButtons = [
-      '🤖 اتوماسیون', '💬 پاسخ‌های خودکار',
-      '➕ ایجاد پست جدید', '📋 لیست پست‌ها',
-      '🔙 بازگشت به پنل ادمین', '➕ افزودن پیام', '⏰ تنظیم زمان‌بندی',
-      '👥 انتخاب گروه', '📖 دستور', '✅ انتشار', '📊 آمار',
-      '🧪 ارسال تستی', '📊 وضعیت Scheduler',
-      '🗑 حذف پست', '🔙 بازگشت', '🔙 بازگشت به لیست', '❌ لغو',
-      '❌ حذف دستور', '🔘 مدیریت دکمه‌ها',
-      '✏️ ویرایش محتوا', '📝 ویرایش عنوان',
-      '⬆️ بالا', '⬇️ پایین', '⬅️ چپ', '➡️ راست',
-      '✅ تایید جابه‌جایی', '❌ لغو جابجایی',
+      '➕ ایجاد پاسخ جدید', '📋 لیست پاسخ‌ها',
+      '🔙 بازگشت به پنل', '➕ افزودن پیام پاسخ', '⏰ زمان‌بندی پاسخ',
+      '👥 گروه پاسخ', '📖 دستور پاسخ', '✅ انتشار پاسخ', '📊 آمار پاسخ‌ها',
+      '🧪 تست پاسخ', '📊 وضعیت زمان‌بند پاسخ',
+      '🗑 حذف پاسخ', '🔙 بازگشت به لیست پاسخ', '❌ لغو پاسخ',
+      '❌ حذف دستور پاسخ', '🔘 دکمه‌های پاسخ',
+      '✏️ ویرایش محتوای پاسخ', '📝 ویرایش عنوان پاسخ',
+      '⬆️ بالا پاسخ', '⬇️ پایین پاسخ', '⬅️ چپ پاسخ', '➡️ راست پاسخ',
+      '✅ تایید جابه‌جایی پاسخ', '❌ لغو جابجایی پاسخ',
     ];
     if (scheduleStep && knownButtons.includes(text)) {
       return next();
@@ -917,7 +894,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     );
   });
 
-  bot.hears('✏️ ویرایش محتوا', async (ctx: any) => {
+  bot.hears('✏️ ویرایش محتوای پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditingMessage(ctx.from.id);
     if (!msgId) return;
     autoReplyState.setEditingContent(ctx.from.id, true);
@@ -928,7 +905,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     );
   });
 
-  bot.hears('📝 ویرایش عنوان', async (ctx: any) => {
+  bot.hears('📝 ویرایش عنوان پاسخ', async (ctx: any) => {
     const msgId = autoReplyState.getEditingMessage(ctx.from.id);
     if (!msgId) return;
     autoReplyState.setEditingTitle(ctx.from.id, true);
@@ -940,7 +917,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── Button Editor ──
-  bot.hears('🔘 مدیریت دکمه‌ها', async (ctx: any) => {
+  bot.hears('🔘 دکمه‌های پاسخ', async (ctx: any) => {
     const userId = ctx.from.id;
     logger.info(`[ARButtonEditor] Reply Button Clicked userId=${userId}`);
 
@@ -1353,16 +1330,16 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   function buildDynamicMoveKeyboard(grid: any[][], row: number, col: number) {
     const rows: string[][] = [];
     const directionRow: string[] = [];
-    if (row > 0 || (grid[row] && grid[row].length > 1)) directionRow.push('⬆️ بالا');
-    if (row < grid.length - 1 || (grid[row] && grid[row].length > 1)) directionRow.push('⬇️ پایین');
+    if (row > 0 || (grid[row] && grid[row].length > 1)) directionRow.push('⬆️ بالا پاسخ');
+    if (row < grid.length - 1 || (grid[row] && grid[row].length > 1)) directionRow.push('⬇️ پایین پاسخ');
     if (directionRow.length > 0) rows.push(directionRow);
 
     const horizRow: string[] = [];
-    if (col > 0) horizRow.push('⬅️ چپ');
-    if (grid[row] && col < grid[row].length - 1) horizRow.push('➡️ راست');
+    if (col > 0) horizRow.push('⬅️ چپ پاسخ');
+    if (grid[row] && col < grid[row].length - 1) horizRow.push('➡️ راست پاسخ');
     if (horizRow.length > 0) rows.push(horizRow);
 
-    rows.push(['✅ تایید جابه‌جایی', '❌ لغو جابجایی']);
+    rows.push(['✅ تایید جابه‌جایی پاسخ', '❌ لغو جابجایی پاسخ']);
     return Markup.keyboard(rows).resize().persistent();
   }
 
@@ -1456,27 +1433,27 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   }
 
-  bot.hears('⬆️ بالا', async (ctx: any) => {
+  bot.hears('⬆️ بالا پاسخ', async (ctx: any) => {
     if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
     await handleARMoveDirection(ctx, 'up');
   });
 
-  bot.hears('⬇️ پایین', async (ctx: any) => {
+  bot.hears('⬇️ پایین پاسخ', async (ctx: any) => {
     if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
     await handleARMoveDirection(ctx, 'down');
   });
 
-  bot.hears('⬅️ چپ', async (ctx: any) => {
+  bot.hears('⬅️ چپ پاسخ', async (ctx: any) => {
     if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
     await handleARMoveDirection(ctx, 'left');
   });
 
-  bot.hears('➡️ راست', async (ctx: any) => {
+  bot.hears('➡️ راست پاسخ', async (ctx: any) => {
     if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
     await handleARMoveDirection(ctx, 'right');
   });
 
-  bot.hears('✅ تایید جابه‌جایی', async (ctx: any) => {
+  bot.hears('✅ تایید جابه‌جایی پاسخ', async (ctx: any) => {
     try {
       const userId = ctx.from.id;
       if (!autoReplyState.isButtonMoveActive(userId)) return;
@@ -1503,7 +1480,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   });
 
-  bot.hears('🔄 بازگشت', async (ctx: any) => {
+  bot.hears('↩️ پایان جابه‌جایی', async (ctx: any) => {
     try {
       const userId = ctx.from.id;
       if (!autoReplyState.isButtonMoveActive(userId)) return;
@@ -1531,7 +1508,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   });
 
-  bot.hears('❌ لغو جابجایی', async (ctx: any) => {
+  bot.hears('❌ لغو جابجایی پاسخ', async (ctx: any) => {
     try {
       const userId = ctx.from.id;
       if (!autoReplyState.isButtonMoveActive(userId)) return;

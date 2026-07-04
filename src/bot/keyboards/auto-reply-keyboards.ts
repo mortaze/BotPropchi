@@ -2,25 +2,15 @@ import { Markup } from 'telegraf';
 import { sanitizeTelegramText } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
 
-// ─── Automation Menu ───────────────────────────────────────
-
-export function autoReplyAutomationKeyboard() {
-  return Markup.keyboard([
-    ['📨 پیام‌های خودکار'],
-    ['💬 پاسخ‌های خودکار'],
-    ['🔙 بازگشت به پنل ادمین'],
-  ]).resize().persistent();
-}
-
 // ─── Main Menu ────────────────────────────────────────────
 
 export function autoReplyMainMenuKeyboard(posts: any[] = []) {
-  const rows: string[][] = [['➕ ایجاد پست جدید']];
+  const rows: string[][] = [['➕ ایجاد پاسخ جدید']];
   for (const post of posts) {
     const label = graphemeTruncate(sanitizeTelegramText(post.title || 'بدون عنوان'), 30);
     rows.push([label]);
   }
-  rows.push(['🔙 بازگشت']);
+  rows.push(['🔙 بازگشت به پنل']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -38,7 +28,7 @@ export function autoReplyListInlineKeyboard(messages: any[], page: number, total
   nav.push(Markup.button.callback(`${page}/${totalPages}`, 'noop'));
   if (page < totalPages) nav.push(Markup.button.callback('بعدی ▶️', `ar:list:${page + 1}`));
   if (nav.length > 1) rows.push(nav);
-  rows.push([Markup.button.callback('« بازگشت به منوی پست', 'ar:menu')]);
+  rows.push([Markup.button.callback('« بازگشت به لیست پاسخ‌ها', 'ar:menu')]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -46,11 +36,11 @@ export function autoReplyListInlineKeyboard(messages: any[], page: number, total
 
 export function autoReplyNewPostManagerReplyKeyboard() {
   return Markup.keyboard([
-    ['➕ افزودن پیام', '⏰ تنظیم زمان‌بندی'],
-    ['📖 دستور', '👥 انتخاب گروه'],
-    ['✅ انتشار'],
-    ['🗑 حذف پست'],
-    ['🔙 بازگشت'],
+    ['➕ افزودن پیام پاسخ', '⏰ زمان‌بندی پاسخ'],
+    ['📖 دستور پاسخ', '👥 گروه پاسخ'],
+    ['✅ انتشار پاسخ'],
+    ['🗑 حذف پاسخ'],
+    ['🔙 بازگشت به پنل'],
   ]).resize().persistent();
 }
 
@@ -58,35 +48,35 @@ export function autoReplyNewPostManagerReplyKeyboard() {
 
 export function autoReplyEditorReplyKeyboard(isPublished: boolean) {
   return Markup.keyboard([
-    ['➕ افزودن پیام'],
-    ['👥 انتخاب گروه', '⏰ تنظیم زمان‌بندی'],
-    ['📖 دستور'],
-    ['✅ انتشار', '📊 آمار'],
-    ['🧪 ارسال تستی'],
-    ['🗑 حذف پست'],
-    ['🔙 بازگشت به لیست'],
+    ['➕ افزودن پیام پاسخ'],
+    ['👥 گروه پاسخ', '⏰ زمان‌بندی پاسخ'],
+    ['📖 دستور پاسخ'],
+    ['✅ انتشار پاسخ', '📊 آمار پاسخ‌ها'],
+    ['🧪 تست پاسخ'],
+    ['🗑 حذف پاسخ'],
+    ['🔙 بازگشت به لیست پاسخ'],
   ]).resize().persistent();
 }
 
 // ─── Cancel Only ──────────────────────────────────────────
 
 export function autoReplyCancelOnlyKeyboard() {
-  return Markup.keyboard([['❌ لغو']]).resize().persistent();
+  return Markup.keyboard([['❌ لغو پاسخ']]).resize().persistent();
 }
 
 // ─── Add Message Prompt ───────────────────────────────────
 
 export function autoReplyAddMessageKeyboard() {
-  return Markup.keyboard([['❌ لغو']]).resize().persistent();
+  return Markup.keyboard([['❌ لغو پاسخ']]).resize().persistent();
 }
 
 // ─── Message Edit Reply Keyboard ──────────────────────────
 
 export function autoReplyEditMessageReplyKeyboard() {
   return Markup.keyboard([
-    ['✏️ ویرایش محتوا', '📝 ویرایش عنوان'],
-    ['🔘 مدیریت دکمه‌ها'],
-    ['🔙 بازگشت'],
+    ['✏️ ویرایش محتوای پاسخ', '📝 ویرایش عنوان پاسخ'],
+    ['🔘 دکمه‌های پاسخ'],
+    ['🔙 بازگشت به پنل'],
   ]).resize().persistent();
 }
 
@@ -154,7 +144,7 @@ export function autoReplyTopicKeyboard(topics: any[]) {
 
 export function autoReplyGroupReplyKeyboard(groups: any[]) {
   const rows: string[][] = groups.map((g) => [g.title]);
-  rows.push(['🔙 بازگشت']);
+  rows.push(['🔙 بازگشت به پنل']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -165,7 +155,7 @@ export function autoReplyTopicReplyKeyboard(topics: any[]) {
   for (const t of topics) {
     rows.push([t.name]);
   }
-  rows.push(['🔙 بازگشت']);
+  rows.push(['🔙 بازگشت به پنل']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -237,10 +227,10 @@ function buildButtonEditorInlineKeyboard(
 
   if (mode !== 'move') {
     rows.push([
-      Markup.button.callback('➕ ایجاد', `arbtn:mode:create:${messageId}`),
-      Markup.button.callback('✏️ ویرایش', `arbtn:mode:edit:${messageId}`),
-      Markup.button.callback('🗑 حذف', `arbtn:mode:delete:${messageId}`),
-      Markup.button.callback('🔀 جابجایی', `arbtn:mode:move:${messageId}`),
+      Markup.button.callback('➕ ایجاد دکمه', `arbtn:mode:create:${messageId}`),
+      Markup.button.callback('✏️ ویرایش دکمه', `arbtn:mode:edit:${messageId}`),
+      Markup.button.callback('🗑 حذف دکمه', `arbtn:mode:delete:${messageId}`),
+      Markup.button.callback('🔀 جابه‌جایی دکمه', `arbtn:mode:move:${messageId}`),
     ]);
   }
 
@@ -256,7 +246,7 @@ export function renderAutoReplyButtonEditor(
   const effectiveMode = mode || 'create';
   const rows = buildButtonEditorInlineKeyboard(messageId, buttons, effectiveMode, selectedPos);
   return {
-    text: '⌨️ ویرایشگر دکمه‌ها',
+    text: '⌨️ ویرایشگر دکمه‌های پاسخ',
     reply_markup: { inline_keyboard: rows },
   };
 }
@@ -274,9 +264,9 @@ export function buildArbtnEditTypeKeyboard(messageId: number, row: number, col: 
 
 export function buildArbtnMoveKeyboard() {
   return Markup.keyboard([
-    ['⬆️ بالا', '⬇️ پایین'],
-    ['⬅️ چپ', '➡️ راست'],
-    ['✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی'],
+    ['⬆️ بالا پاسخ', '⬇️ پایین پاسخ'],
+    ['⬅️ چپ پاسخ', '➡️ راست پاسخ'],
+    ['✅ تایید جابه‌جایی پاسخ', '❌ لغو جابجایی پاسخ'],
   ]).resize().persistent();
 }
 
