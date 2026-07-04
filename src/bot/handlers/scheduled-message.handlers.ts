@@ -8,7 +8,7 @@ import { forumTopicService } from '../../services/forum-topic.service';
 import { prisma } from '../../prisma/client';
 import { logger } from '../../utils/logger';
 import { cache } from '../../utils/cache';
-import { validateDbInput } from '../../utils/unicode';
+import { validateDbInput, sanitizeTelegramText } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
 import {
   scheduledMessageMainMenuKeyboard,
@@ -79,7 +79,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const { clearAllPostStates } = require('./post-handlers');
     clearAllPostStates(ctx.from.id);
     scheduledMessageState.clearAll(ctx.from.id);
-    await ctx.reply('📨 پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
+    scheduledMessageState.setManagementMode(ctx.from.id, true);
+    const result = await scheduledMessageRepository.findAll({ page: 1, limit: 100 });
+    await ctx.reply('📨 پیام‌های خودکار', scheduledMessageMainMenuKeyboard(result.items));
   });
 
   // ─── From scheduled messages menu → back to automation ──
@@ -419,6 +421,20 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
     // Bug #8: If no state is active, pass through
     if (!isCreating && !isEditingTitle && !isEditingContent && !scheduleStep) {
+      // Check if text matches a post title in the reply keyboard list
+      if (scheduledMessageState.isManagementMode(userId) && !scheduledMessageState.getEditMode(userId)) {
+        const listResult = await scheduledMessageRepository.findAll({ page: 1, limit: 100 });
+        const matchedPost = listResult.items.find((p: any) => {
+          const label = graphemeTruncate(sanitizeTelegramText(p.title || 'بدون عنوان'), 30);
+          return label === text;
+        });
+        if (matchedPost) {
+          scheduledMessageState.setEditMode(userId, matchedPost.id);
+          scheduledMessageState.setManagementMode(userId, true);
+          await showPostEditor(ctx, matchedPost.id);
+          return;
+        }
+      }
       return next();
     }
 

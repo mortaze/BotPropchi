@@ -14,12 +14,14 @@ export function scheduledMessageAutomationKeyboard() {
 
 // ─── Main Menu ────────────────────────────────────────────
 
-export function scheduledMessageMainMenuKeyboard() {
-  return Markup.keyboard([
-    ['➕ ایجاد پست جدید'],
-    ['📋 لیست پست‌ها'],
-    ['🔙 بازگشت'],
-  ]).resize().persistent();
+export function scheduledMessageMainMenuKeyboard(posts: any[] = []) {
+  const rows: string[][] = [['➕ ایجاد پست جدید']];
+  for (const post of posts) {
+    const label = graphemeTruncate(sanitizeTelegramText(post.title || 'بدون عنوان'), 30);
+    rows.push([label]);
+  }
+  rows.push(['🔙 بازگشت']);
+  return Markup.keyboard(rows).resize().persistent();
 }
 
 // ─── Post List (Inline — after clicking 📋 لیست پست‌ها) ────

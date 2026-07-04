@@ -261,8 +261,9 @@ export const postService = {
           const messagesFormat = (rawButtons as any)?.messages;
           if (messagesFormat && typeof messagesFormat === 'object') {
             let syncedCount = 0;
-            for (const msg of existingMessages) {
-              const idx = String(msg.id);
+            for (let i = 0; i < existingMessages.length; i++) {
+              const msg = existingMessages[i];
+              const idx = String(i);
               const perMsgButtons = (messagesFormat as any)[idx];
               const btnCount = Array.isArray(perMsgButtons) ? perMsgButtons.flat().length : 0;
               const sampleTypes = Array.isArray(perMsgButtons) ? perMsgButtons.flat().slice(0, 3).map((b: any) => `${b?.type}:${b?.value?.substring(0, 20)}`) : [];
@@ -283,9 +284,10 @@ export const postService = {
             logger.info(`[KeyboardSync] post=${post.id} synced buttons to messageId=${lastMsg.id} (array format)`);
           }
           // ── Sync to post_keyboards: clear + re-insert per message ──
-          for (const msg of existingMessages) {
+          for (let i = 0; i < existingMessages.length; i++) {
+            const msg = existingMessages[i];
             const msgBtns = (messagesFormat && typeof messagesFormat === 'object')
-              ? (messagesFormat as any)[String(msg.id)]
+              ? (messagesFormat as any)[String(i)]
               : (Array.isArray(rawButtons) && msg === existingMessages[existingMessages.length - 1] ? rawButtons : null);
             if (!Array.isArray(msgBtns) || msgBtns.length === 0) {
               await prisma.postKeyboard.deleteMany({ where: { messageId: msg.id } });
