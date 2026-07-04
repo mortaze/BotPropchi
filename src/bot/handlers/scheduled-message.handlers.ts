@@ -1103,7 +1103,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   bot.action('sched:menu', async (ctx: any) => {
     await ctx.answerCbQuery();
     scheduledMessageState.clearAll(ctx.from.id);
-    await ctx.reply('📢 سامانه مدیریت پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
+    scheduledMessageState.setManagementMode(ctx.from.id, true);
+    const result = await scheduledMessageRepository.findAll({ page: 1, limit: 100 });
+    await ctx.reply('📨 پیام‌های خودکار', scheduledMessageMainMenuKeyboard(result.items));
   });
 
   // ─── Button Editor: Click on a button slot ──
@@ -1719,14 +1721,8 @@ async function showPostEditor(ctx: any, id: number) {
 
 // ─── Helper: Send list ────────────────────────────────────
 
-async function sendList(ctx: any, page: number) {
-  const result = await scheduledMessageRepository.findAll({ page, limit: 10 });
-  if (!result.items.length) {
-    await ctx.reply('📋 پست خودکاری وجود ندارد.', scheduledMessageMainMenuKeyboard());
-    return;
-  }
-  await ctx.reply(
-    `📋 لیست پست‌ها (${result.total} مورد):`,
-    scheduledMessageListInlineKeyboard(result.items, result.page, result.pages),
-  );
+async function sendList(ctx: any, _page?: number) {
+  const result = await scheduledMessageRepository.findAll({ page: 1, limit: 100 });
+  scheduledMessageState.setManagementMode(ctx.from.id, true);
+  await ctx.reply('📨 پیام‌های خودکار', scheduledMessageMainMenuKeyboard(result.items));
 }
