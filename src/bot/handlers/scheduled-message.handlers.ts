@@ -1343,71 +1343,77 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       if (moveSel.row === undefined || moveSel.col === undefined) return;
 
       const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
-      const grid = buttonsToGrid(buttons);
-      if (!grid[moveSel.row] || grid[moveSel.row][moveSel.col] === undefined) return;
 
-      const btn = grid[moveSel.row][moveSel.col];
-      let newRow = moveSel.row;
-      let newCol = moveSel.col;
+      // Find the selected button by the cached row/col, then normalize the grid
+      const rawGrid = buttonsToGrid(buttons);
+      const rawBtn = rawGrid[moveSel.row]?.[moveSel.col];
+      if (!rawBtn?.id) return;
+      const btnId = rawBtn.id;
+
+      // Normalize grid (collapse sparse entries caused by deleted buttons)
+      let grid = normalizeGrid(rawGrid);
+
+      // Find the button in the normalized grid
+      const normPos = findButtonInGrid(grid, btnId);
+      if (!normPos) return;
+      const btn = grid[normPos.row][normPos.col];
+      let curRow = normPos.row;
+      let curCol = normPos.col;
 
       if (direction === 'left') {
-        if (moveSel.col <= 0) return;
-        [grid[moveSel.row][moveSel.col - 1], grid[moveSel.row][moveSel.col]] = [grid[moveSel.row][moveSel.col], grid[moveSel.row][moveSel.col - 1]];
-        newCol = moveSel.col - 1;
+        if (curCol <= 0) return;
+        [grid[curRow][curCol - 1], grid[curRow][curCol]] = [grid[curRow][curCol], grid[curRow][curCol - 1]];
       } else if (direction === 'right') {
-        if (moveSel.col >= grid[moveSel.row].length - 1) return;
-        [grid[moveSel.row][moveSel.col], grid[moveSel.row][moveSel.col + 1]] = [grid[moveSel.row][moveSel.col + 1], grid[moveSel.row][moveSel.col]];
-        newCol = moveSel.col + 1;
+        if (curCol >= grid[curRow].length - 1) return;
+        [grid[curRow][curCol], grid[curRow][curCol + 1]] = [grid[curRow][curCol + 1], grid[curRow][curCol]];
       } else if (direction === 'down') {
-        const wasSingleton = grid[moveSel.row].length === 1;
-        grid[moveSel.row].splice(moveSel.col, 1);
-        if (grid[moveSel.row].length === 0) grid.splice(moveSel.row, 1);
+        const wasSingleton = grid[curRow].length === 1;
+        grid[curRow].splice(curCol, 1);
+        if (grid[curRow].length === 0) grid.splice(curRow, 1);
 
         if (!wasSingleton) {
-          grid.splice(moveSel.row + 1, 0, [btn]);
-          newRow = moveSel.row + 1;
-          newCol = 0;
+          grid.splice(curRow + 1, 0, [btn]);
         } else {
-          if (moveSel.row < grid.length) {
-            grid[moveSel.row].push(btn);
-            newRow = moveSel.row;
-            newCol = grid[moveSel.row].length - 1;
+          if (curRow < grid.length) {
+            grid[curRow].unshift(btn);
           } else {
             grid.push([btn]);
-            newRow = grid.length - 1;
-            newCol = 0;
           }
         }
       } else if (direction === 'up') {
-        const wasSingleton = grid[moveSel.row].length === 1;
-        grid[moveSel.row].splice(moveSel.col, 1);
-        if (grid[moveSel.row].length === 0) grid.splice(moveSel.row, 1);
+        const wasSingleton = grid[curRow].length === 1;
+        grid[curRow].splice(curCol, 1);
+        if (grid[curRow].length === 0) grid.splice(curRow, 1);
 
         if (!wasSingleton) {
-          grid.splice(moveSel.row, 0, [btn]);
-          newRow = moveSel.row;
-          newCol = 0;
+          grid.splice(curRow, 0, [btn]);
         } else {
-          if (moveSel.row > 0) {
-            grid[moveSel.row - 1].unshift(btn);
-            newRow = moveSel.row - 1;
-            newCol = 0;
+          if (curRow > 0) {
+            grid[curRow - 1].unshift(btn);
           } else {
             grid.unshift([btn]);
-            newRow = 0;
-            newCol = 0;
           }
         }
       }
+
+      // Normalize grid (collapse sparse entries, renumber rows/cols contiguously)
+      grid = normalizeGrid(grid);
 
       // Persist all button positions to DB
       for (let r = 0; r < grid.length; r++) {
-        for (let c = 0; c < grid[r].length; c++) {
-          if (grid[r][c]?.id) {
-            await scheduledMessageRepository.updateButton(grid[r][c].id, { row: r, col: c });
+        const row = grid[r];
+        for (let c = 0; c < row.length; c++) {
+          const b = row[c];
+          if (b?.id) {
+            await scheduledMessageRepository.updateButton(b.id, { row: r, col: c });
           }
         }
       }
+
+      // Find button's new position in the normalized grid
+      const newPos = findButtonInGrid(grid, btnId);
+      const newRow = newPos ? newPos.row : 0;
+      const newCol = newPos ? newPos.col : 0;
 
       scheduledMessageState.setButtonMoveSelected(userId, newRow, newCol);
       scheduledMessageState.setButtonRow(userId, newRow);
@@ -1538,6 +1544,30 @@ function buttonsToGrid(buttons: any[]): any[][] {
     grid[btn.row][btn.col] = btn;
   }
   return grid;
+}
+
+// ─── Helper: Normalize grid to dense (remove sparse entries, renumber rows/cols) ──
+function normalizeGrid(grid: any[][]): any[][] {
+  const dense: any[][] = [];
+  for (let r = 0; r < grid.length; r++) {
+    if (!Array.isArray(grid[r]) || grid[r].length === 0) continue;
+    const row: any[] = [];
+    for (let c = 0; c < grid[r].length; c++) {
+      if (grid[r][c]) row.push(grid[r][c]);
+    }
+    if (row.length > 0) dense.push(row);
+  }
+  return dense;
+}
+
+// ─── Helper: Find button position in grid by ID ──
+function findButtonInGrid(grid: any[][], btnId: number): { row: number; col: number } | null {
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < grid[r].length; c++) {
+      if (grid[r][c]?.id === btnId) return { row: r, col: c };
+    }
+  }
+  return null;
 }
 
 // ─── Helper: Refresh button editor inline keyboard ──

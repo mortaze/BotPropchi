@@ -28,9 +28,9 @@ function moveDown(grid: Grid, row: number, col: number): { grid: Grid; newRow: n
     newCol = 0;
   } else {
     if (row < g.length) {
-      g[row].push(btn);
+      g[row].unshift(btn);
       newRow = row;
-      newCol = g[row].length - 1;
+      newCol = 0;
     } else {
       g.push([btn]);
       newRow = g.length - 1;
@@ -97,46 +97,46 @@ describe('Button Editor Move Mode', () => {
       expect(r.newCol).toBe(0);
     });
 
-    it('second ⬇️ on button 2 from Row2 singleton → appends to Row3', () => {
+    it('second ⬇️ on button 2 from Row2 singleton → merges into Row3', () => {
       let g: Grid = [[B('1'), B('2'), B('3')], [B('5'), B('6')]];
       let r = moveDown(g, 0, 1);
       expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2\nRow3: 5 6');
 
       r = moveDown(r.grid, 1, 0);
-      expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 5 6 2');
+      expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2 5 6');
       expect(r.newRow).toBe(1);
-      expect(r.newCol).toBe(2);
+      expect(r.newCol).toBe(0);
     });
   });
 
   describe('up — non-singleton row creates singleton row above', () => {
-    it('Example 2: button 2 at Row2 singleton goes up → appends to Row2 with Row3', () => {
+    it('Example 2: button 2 at Row2 singleton goes up → merges into Row1', () => {
       const g: Grid = [[B('1'), B('3')], [B('2')], [B('5'), B('6')]];
       const r = moveUp(g, 1, 0);
-      expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2 5 6');
-      expect(r.newRow).toBe(1);
-      expect(r.newCol).toBe(0);
-    });
-
-    it('second ⬆️ from merged row → button 2 creates singleton at row 1', () => {
-      let g: Grid = [[B('1'), B('3')], [B('2')], [B('5'), B('6')]];
-      let r = moveUp(g, 1, 0);
-      expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2 5 6');
-
-      r = moveUp(r.grid, 1, 0);
-      expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2\nRow3: 5 6');
-      expect(r.newRow).toBe(1);
-      expect(r.newCol).toBe(0);
-    });
-
-    it('third ⬆️ merges singleton back into Row1', () => {
-      let g: Grid = [[B('1'), B('3')], [B('2')], [B('5'), B('6')]];
-      let r = moveUp(g, 1, 0);
-      r = moveUp(r.grid, 1, 0);
-      r = moveUp(r.grid, 1, 0);
-      expect(gridText(r.grid)).toBe('Row1: 1 2 3\nRow2: 5 6');
+      expect(gridText(r.grid)).toBe('Row1: 2 1 3\nRow2: 5 6');
       expect(r.newRow).toBe(0);
-      expect(r.newCol).toBe(1);
+      expect(r.newCol).toBe(0);
+    });
+
+    it('second ⬆️ extracts button 5 from Row2', () => {
+      let g: Grid = [[B('1'), B('3')], [B('2')], [B('5'), B('6')]];
+      let r = moveUp(g, 1, 0);
+      expect(gridText(r.grid)).toBe('Row1: 2 1 3\nRow2: 5 6');
+
+      r = moveUp(r.grid, 1, 0);
+      expect(gridText(r.grid)).toBe('Row1: 2 1 3\nRow2: 5\nRow3: 6');
+      expect(r.newRow).toBe(1);
+      expect(r.newCol).toBe(0);
+    });
+
+    it('third ⬆️ merges button 5 singleton into Row1', () => {
+      let g: Grid = [[B('1'), B('3')], [B('2')], [B('5'), B('6')]];
+      let r = moveUp(g, 1, 0);
+      r = moveUp(r.grid, 1, 0);
+      r = moveUp(r.grid, 1, 0);
+      expect(gridText(r.grid)).toBe('Row1: 5 2 1 3\nRow2: 6');
+      expect(r.newRow).toBe(0);
+      expect(r.newCol).toBe(0);
     });
   });
 
@@ -145,7 +145,7 @@ describe('Button Editor Move Mode', () => {
       const g: Grid = [[B('1'), B('2'), B('3')]];
       const r = moveLeft(g, 0, 1);
       expect(r).not.toBeNull();
-      expect(gridText(r!.grid)).toBe('Row1: 1 2 3');
+      expect(gridText(r!.grid)).toBe('Row1: 2 1 3');
       expect(r!.newCol).toBe(0);
     });
 
@@ -153,7 +153,7 @@ describe('Button Editor Move Mode', () => {
       const g: Grid = [[B('1'), B('2'), B('3')]];
       const r = moveRight(g, 0, 1);
       expect(r).not.toBeNull();
-      expect(gridText(r!.grid)).toBe('Row1: 1 2 3');
+      expect(gridText(r!.grid)).toBe('Row1: 1 3 2');
       expect(r!.newCol).toBe(2);
     });
 
@@ -208,7 +208,7 @@ describe('Button Editor Move Mode', () => {
       const r = moveDown(g, 0, 0);
       expect(gridText(r.grid)).toBe('Row1: 1 2');
       expect(r.newRow).toBe(0);
-      expect(r.newCol).toBe(1);
+      expect(r.newCol).toBe(0);
     });
 
     it('up from last singleton row merges into previous', () => {
@@ -230,17 +230,19 @@ describe('Button Editor Move Mode', () => {
       expect(gridText(r.grid)).toBe('Row1: C\nRow2: A\nRow3: B');
     });
 
-    it('down then up returns to original', () => {
+    it('down then up round-trip', () => {
       const orig: Grid = [[B('1'), B('2'), B('3')], [B('5'), B('6')]];
       let r = moveDown(clone(orig) as any, 0, 1);
-      r = moveUp(r.grid, 1, 0);
-      expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2 5 6');
-
-      r = moveUp(r.grid, 1, 0);
       expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2\nRow3: 5 6');
 
       r = moveUp(r.grid, 1, 0);
-      expect(gridText(r.grid)).toBe('Row1: 1 2 3\nRow2: 5 6');
+      expect(gridText(r.grid)).toBe('Row1: 2 1 3\nRow2: 5 6');
+
+      r = moveUp(r.grid, 1, 0);
+      expect(gridText(r.grid)).toBe('Row1: 2 1 3\nRow2: 5\nRow3: 6');
+
+      r = moveUp(r.grid, 1, 0);
+      expect(gridText(r.grid)).toBe('Row1: 5 2 1 3\nRow2: 6');
     });
 
     it('zigzag down-up-down', () => {
@@ -249,10 +251,10 @@ describe('Button Editor Move Mode', () => {
       expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2');
 
       r = moveUp(r.grid, 1, 0);
-      expect(gridText(r.grid)).toBe('Row1: 1 2 3');
+      expect(gridText(r.grid)).toBe('Row1: 2 1 3');
 
       r = moveDown(r.grid, 0, 1);
-      expect(gridText(r.grid)).toBe('Row1: 1 3\nRow2: 2');
+      expect(gridText(r.grid)).toBe('Row1: 2 3\nRow2: 1');
     });
   });
 
@@ -261,7 +263,7 @@ describe('Button Editor Move Mode', () => {
       const g: Grid = [[B('1'), B('2'), B('3')]];
       const r = moveRight(g, 0, 0);
       expect(r).not.toBeNull();
-      expect(gridText(r!.grid)).toBe('Row1: 1 2 3');
+      expect(gridText(r!.grid)).toBe('Row1: 2 1 3');
       expect(r!.newCol).toBe(1);
     });
 
@@ -269,7 +271,7 @@ describe('Button Editor Move Mode', () => {
       const g: Grid = [[B('1'), B('2'), B('3')]];
       const r = moveLeft(g, 0, 2);
       expect(r).not.toBeNull();
-      expect(gridText(r!.grid)).toBe('Row1: 1 2 3');
+      expect(gridText(r!.grid)).toBe('Row1: 1 3 2');
       expect(r!.newCol).toBe(1);
     });
   });
