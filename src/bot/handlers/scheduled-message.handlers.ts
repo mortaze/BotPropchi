@@ -496,7 +496,58 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       const msgId = scheduledMessageState.getEditMode(userId);
       if (!msgId) return next();
 
-      // Extract all Telegram message data
+      const msg = ctx.message as any;
+      const isForward = !!(msg.forward_origin || msg.forward_from_chat || msg.forward_from || msg.forward_date || msg.forward_sender_name);
+
+      if (isForward) {
+        // Save as forward type (not extracted text)
+        let originChatId: number | null = null;
+        let originMessageId: number | null = null;
+        const fo = msg.forward_origin;
+        if (fo) {
+          if (fo.type === 'channel') {
+            originChatId = fo.chat?.id ? Number(fo.chat.id) : null;
+            originMessageId = fo.message_id || null;
+          } else if (fo.type === 'chat') {
+            originChatId = fo.sender_chat?.id ? Number(fo.sender_chat.id) : null;
+            originMessageId = msg.forward_from_message_id || null;
+          }
+        } else if (msg.forward_from_chat) {
+          originChatId = msg.forward_from_chat.id ? Number(msg.forward_from_chat.id) : null;
+          originMessageId = msg.forward_from_message_id || null;
+        } else if (msg.forward_from) {
+          originChatId = msg.forward_from.id ? Number(msg.forward_from.id) : null;
+          originMessageId = msg.forward_from_message_id || null;
+        }
+
+        if (originChatId && originMessageId && !isNaN(originChatId) && !isNaN(originMessageId)) {
+          // Validate forward source by trying a copy
+          try {
+            await ctx.telegram.copyMessage(ctx.chat.id, originChatId, originMessageId);
+          } catch {
+            await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست.\nاین پیام را دوباره از منبع ثبت کنید.');
+            return;
+          }
+
+          const forwardSource = { chatId: originChatId, messageId: originMessageId };
+
+          if (editMsgId === -1) {
+            const newMsg = await scheduledMessageService.addMessage(msgId);
+            await scheduledMessageService.updateMessage(newMsg.id, { type: 'forward' as any, forwardSource });
+          } else if (editMsgId) {
+            await scheduledMessageService.updateMessage(editMsgId, { type: 'forward' as any, forwardSource });
+          }
+
+          scheduledMessageState.setEditingContent(userId, false);
+          scheduledMessageState.setEditingMessage(userId, 0);
+          await ctx.reply('✅ پیام فورواردی اضافه شد');
+          await showPostEditor(ctx, msgId);
+          return;
+        }
+        // Fall through to regular text save if forward source is invalid
+      }
+
+      // Extract all Telegram message data (non-forward path)
       const entities = ctx.message.entities?.map((e: any) => ({
         type: e.type, offset: e.offset, length: e.length,
         url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id,
@@ -696,25 +747,53 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const entities = msg.entities || [];
     const replyMarkup = msg.reply_markup || null;
 
-    // Extract forward metadata (same as Post)
+    // ── Forward detection — save as type 'forward' if valid ──
     const isForward = !!(msg.forward_origin || msg.forward_from_chat || msg.forward_from || msg.forward_date || msg.forward_sender_name);
-    let forwardSource: any = null;
     if (isForward) {
-      let type = 'hidden_user';
-      let originName = msg.forward_sender_name || '';
       let originChatId: number | null = null;
       let originMessageId: number | null = null;
-      if (msg.forward_from_chat) {
-        type = msg.forward_from_chat.type || 'channel';
-        originName = msg.forward_from_chat.title || '';
-        originChatId = msg.forward_from_chat.id;
+      const fo = msg.forward_origin;
+      if (fo) {
+        if (fo.type === 'channel') {
+          originChatId = fo.chat?.id ? Number(fo.chat.id) : null;
+          originMessageId = fo.message_id || null;
+        } else if (fo.type === 'chat') {
+          originChatId = fo.sender_chat?.id ? Number(fo.sender_chat.id) : null;
+          originMessageId = msg.forward_from_message_id || null;
+        }
+      } else if (msg.forward_from_chat) {
+        originChatId = msg.forward_from_chat.id ? Number(msg.forward_from_chat.id) : null;
         originMessageId = msg.forward_from_message_id || null;
       } else if (msg.forward_from) {
-        type = 'user';
-        originName = [msg.forward_from.first_name, msg.forward_from.last_name].filter(Boolean).join(' ');
+        originChatId = msg.forward_from.id ? Number(msg.forward_from.id) : null;
+        originMessageId = msg.forward_from_message_id || null;
       }
-      forwardSource = { type, originName, originChatId, originMessageId, forwardDate: msg.forward_date || null };
-      logger.info(`[SchedMsgMedia] Forward detected: type=${type} origin=${originName} chatId=${originChatId} msgId=${originMessageId}`);
+
+      if (originChatId && originMessageId && !isNaN(originChatId) && !isNaN(originMessageId)) {
+        // Validate forward source
+        try {
+          await ctx.telegram.copyMessage(ctx.chat.id, originChatId, originMessageId);
+        } catch {
+          await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست.\nاین پیام را دوباره از منبع ثبت کنید.');
+          return;
+        }
+
+        const forwardSource = { chatId: originChatId, messageId: originMessageId };
+
+        if (editMsgId === -1) {
+          const newMsg = await scheduledMessageService.addMessage(msgId);
+          await scheduledMessageService.updateMessage(newMsg.id, { type: 'forward' as any, forwardSource });
+        } else if (editMsgId) {
+          await scheduledMessageService.updateMessage(editMsgId, { type: 'forward' as any, forwardSource });
+        }
+
+        scheduledMessageState.setEditingContent(userId, false);
+        scheduledMessageState.setEditingMessage(userId, 0);
+        await ctx.reply('✅ پیام فورواردی اضافه شد');
+        await showPostEditor(ctx, msgId);
+        return;
+      }
+      // Fall through to media save if forward source invalid (e.g. hidden_user)
     }
 
     // Extract media_group_id for album support (same as Post)
@@ -730,7 +809,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       entities: entities.length > 0 ? entities : undefined,
       replyMarkup: replyMarkup || undefined,
       parseMode: 'None',
-      forwardSource: forwardSource || undefined,
+      forwardSource: undefined,
       mediaGroupId: mediaGroupId || undefined,
     };
 
@@ -742,7 +821,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
     if (targetMsgId && targetMsgId > 0) {
       await scheduledMessageService.updateMessage(targetMsgId, update);
-      logger.info(`[SchedMsgMedia] Saved: msgId=${targetMsgId} type=${mediaType} file_id=${mediaFileId} caption="${caption.substring(0, 50)}" entities=${entities.length} captionEntities=${captionEntities.length} forward=${!!forwardSource} mediaGroup=${mediaGroupId}`);
+      logger.info(`[SchedMsgMedia] Saved: msgId=${targetMsgId} type=${mediaType} file_id=${mediaFileId} caption="${caption.substring(0, 50)}" entities=${entities.length} captionEntities=${captionEntities.length} mediaGroup=${mediaGroupId}`);
     }
 
     scheduledMessageState.setEditingContent(userId, false);
