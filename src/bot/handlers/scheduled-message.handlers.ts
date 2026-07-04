@@ -1327,8 +1327,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     if (grid[row] && col < grid[row].length - 1) horizRow.push('➡️ راست');
     if (horizRow.length > 0) rows.push(horizRow);
 
-    rows.push(['✅ تایید جابه‌جایی', '🔄 بازگشت']);
-    rows.push(['❌ لغو جابجایی']);
+    rows.push(['✅ تایید جابه‌جایی', '❌ لغو جابجایی']);
     return Markup.keyboard(rows).resize().persistent();
   }
 

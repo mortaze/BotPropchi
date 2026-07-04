@@ -89,14 +89,10 @@ export function scheduledMessageSingleMessageInlineKeyboard(
   totalMsgs: number,
 ) {
   const msgId = msg.id;
-  const hasButtons = msg.buttons && Array.isArray(msg.buttons) && msg.buttons.length > 0;
   const actionRow: any[] = [
     Markup.button.callback('✏️ ویرایش پیام', `sched:msg:edit:${msgId}`),
     Markup.button.callback('🗑 حذف پیام', `sched:msg:delete:${msgId}`),
   ];
-  if (hasButtons) {
-    actionRow.push(Markup.button.callback('🔘 ویرایش دکمه‌ها', `sched:msg:btnedit:${msgId}`));
-  }
   const rows: any[][] = [actionRow];
   const moveRow: any[] = [];
   if (msgIndex > 0) moveRow.push(Markup.button.callback('⬆️ بالا', `sched:msg:up:${scheduledMessageId}:${msgId}`));
