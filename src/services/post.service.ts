@@ -253,10 +253,6 @@ export const postService = {
     const rawButtons = (data as any).buttons;
     if (rawButtons && !clonedMessages) {
       try {
-        const rawBtnMsgs = rawButtons?.messages;
-        const rawBtnKeys = rawBtnMsgs ? Object.keys(rawBtnMsgs) : [];
-        const rawBtnCounts = rawBtnKeys.map(k => `${k}:${Array.isArray(rawBtnMsgs[k]) ? rawBtnMsgs[k].length : 'N/A'}`);
-        logger.info(`[KBSYNC_DEBUG] postId=${post.id} rawButtons.messages keys=[${rawBtnKeys}] counts=[${rawBtnCounts}]`);
         const existingMessages = await prisma.postMessage.findMany({
           where: { postId: post.id },
           orderBy: { order: 'asc' },
@@ -265,9 +261,8 @@ export const postService = {
           const messagesFormat = (rawButtons as any)?.messages;
           if (messagesFormat && typeof messagesFormat === 'object') {
             let syncedCount = 0;
-            for (let i = 0; i < existingMessages.length; i++) {
-              const msg = existingMessages[i];
-              const idx = String(i);
+            for (const msg of existingMessages) {
+              const idx = String(msg.id);
               const perMsgButtons = (messagesFormat as any)[idx];
               const btnCount = Array.isArray(perMsgButtons) ? perMsgButtons.flat().length : 0;
               const sampleTypes = Array.isArray(perMsgButtons) ? perMsgButtons.flat().slice(0, 3).map((b: any) => `${b?.type}:${b?.value?.substring(0, 20)}`) : [];
@@ -288,10 +283,9 @@ export const postService = {
             logger.info(`[KeyboardSync] post=${post.id} synced buttons to messageId=${lastMsg.id} (array format)`);
           }
           // ── Sync to post_keyboards: clear + re-insert per message ──
-          for (let i = 0; i < existingMessages.length; i++) {
-            const msg = existingMessages[i];
+          for (const msg of existingMessages) {
             const msgBtns = (messagesFormat && typeof messagesFormat === 'object')
-              ? (messagesFormat as any)[String(i)]
+              ? (messagesFormat as any)[String(msg.id)]
               : (Array.isArray(rawButtons) && msg === existingMessages[existingMessages.length - 1] ? rawButtons : null);
             if (!Array.isArray(msgBtns) || msgBtns.length === 0) {
               await prisma.postKeyboard.deleteMany({ where: { messageId: msg.id } });
