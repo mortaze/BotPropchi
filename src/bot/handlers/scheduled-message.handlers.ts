@@ -1770,20 +1770,26 @@ async function showPostEditor(ctx: any, id: number) {
         await ctx.reply(`${label}\n\n${graphemeTruncate(message.text || '(رسانه)', 500)}`, { reply_markup: keyboard.reply_markup });
       }
     } else if (message.type === 'forward' && message.forwardSource) {
-      // Re-send forward preview
+      // Try to show the actual forwarded message
       const fs = message.forwardSource as any;
-      const srcChatId = Number(fs.originChatId || fs.chatId);
-      const srcMsgId = Number(fs.originMessageId || fs.messageId);
+      const srcChatId = Number(fs.chatId || fs.originChatId);
+      const srcMsgId = Number(fs.messageId || fs.originMessageId);
       if (srcChatId && srcMsgId) {
         try {
-          await ctx.reply(`${label}\n\n↪️ پیام فوروارد شده از: ${fs.originName || srcChatId}`);
-        } catch {
-          await ctx.reply(`${label}\n\n↪️ پیام فوروارد شده`);
+          const sent = await ctx.telegram.forwardMessage(ctx.chat.id, srcChatId, srcMsgId);
+          try {
+            await ctx.telegram.editMessageReplyMarkup(ctx.chat.id, sent.message_id, null, keyboard.reply_markup);
+          } catch (editErr: any) {
+            logger.warn(`[SchedMsgEditor] Failed to add keyboard to forwarded preview: ${editErr?.message}`);
+          }
+          continue;
+        } catch (forwardErr: any) {
+          logger.warn(`[SchedMsgEditor] Failed to forward message for preview: ${forwardErr?.message}`);
         }
-      } else {
-        await ctx.reply(`${label}\n\n↪️ پیام فوروارد شده`);
       }
-      await ctx.reply('📎', { reply_markup: keyboard.reply_markup });
+      // Fallback: info card when forward fails or source is missing
+      const sourceName = fs.originName || fs.sourceTitle || String(fs.chatId || fs.originChatId || 'نامشخص');
+      await ctx.reply(`${label}\n\n📨 پیام فوروارد\n✅ نوع پیام: Forward\n📍 مبدأ: ${sourceName}\n⚠️ پیش‌نمایش این پیام قابل نمایش نیست، اما پیام ذخیره شده و هنگام اجرای اتوماسیون به صورت Forward ارسال خواهد شد.`, { reply_markup: keyboard.reply_markup });
     } else {
       // Text message
       await ctx.reply(`${label}\n\n${graphemeTruncate(message.text || '(پیام خالی)', 500)}`, { reply_markup: keyboard.reply_markup });

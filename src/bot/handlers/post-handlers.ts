@@ -2734,19 +2734,33 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
       if (isForward) {
         const fs = msg.forwardSource;
-        const sourceTitle = fs.sourceTitle || 'ناشناس';
-        const previewText = `${label}\n\n↪️ فوروارد شده از:\n${sourceTitle}`;
-        try {
-          const sent = await ctx.reply(previewText, {
-            parse_mode: 'Markdown',
-            link_preview_options: { is_disabled: true },
-            ...keyboard,
-          });
-          if (sent) newMsgIds.push(sent.message_id);
-        } catch (e) {
-          const sent = await ctx.reply(previewText, { ...keyboard });
-          if (sent) newMsgIds.push(sent.message_id);
+        const srcChatId = Number(fs.chatId || fs.originChatId);
+        const srcMsgId = Number(fs.messageId || fs.originMessageId);
+        if (srcChatId && srcMsgId) {
+          try {
+            const sent = await ctx.telegram.forwardMessage(ctx.chat.id, srcChatId, srcMsgId);
+            if (sent) {
+              newMsgIds.push(sent.message_id);
+              try {
+                await ctx.telegram.editMessageReplyMarkup(ctx.chat.id, sent.message_id, null, keyboard.reply_markup);
+              } catch (editErr: any) {
+                logger.warn(`[PostEditor] Failed to add keyboard to forwarded preview: ${editErr?.message}`);
+              }
+              continue;
+            }
+          } catch (forwardErr: any) {
+            logger.warn(`[PostEditor] Failed to forward message for preview: ${forwardErr?.message}`);
+          }
         }
+        // Fallback info card when forward is unavailable
+        const sourceName = fs.sourceTitle || fs.originName || String(fs.chatId || fs.originChatId || 'نامشخص');
+        const previewText = `${label}\n\n📨 پیام فوروارد\n✅ نوع پیام: Forward\n📍 مبدأ: ${sourceName}\n⚠️ پیش‌نمایش این پیام قابل نمایش نیست، اما پیام ذخیره شده و هنگام اجرا به صورت Forward ارسال خواهد شد.`;
+        const sent = await ctx.reply(previewText, {
+          parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
+          ...keyboard,
+        });
+        if (sent) newMsgIds.push(sent.message_id);
       } else if (isMedia) {
         const labelText = msg.caption ? `${label}\n\n💬 ${msg.caption}` : label;
         try {
