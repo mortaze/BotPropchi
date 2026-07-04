@@ -81,21 +81,40 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
   });
 
-  // ─── Back to admin panel ────────────────────────────────
+  // ─── Back to admin panel (single handler) ───────────────
   bot.hears('🔙 بازگشت به پنل', async (ctx: any, next) => {
-    if (!autoReplyState.isManagementMode(ctx.from.id)) return next();
-    const kwMode = autoReplyState.getKeywordMode(ctx.from.id);
+    if (!ctx.from) return next();
+    const userId = ctx.from.id;
+
+    // If in keyword mode, go back to editor
+    const kwMode = autoReplyState.getKeywordMode(userId);
     if (kwMode) {
-      autoReplyState.setKeywordMode(ctx.from.id, '');
-      autoReplyState.setKeywordCreating(ctx.from.id, false);
-      autoReplyState.setKeywordEditing(ctx.from.id, 0);
-      const msgId = autoReplyState.getEditMode(ctx.from.id);
+      autoReplyState.setKeywordMode(userId, '');
+      autoReplyState.setKeywordCreating(userId, false);
+      autoReplyState.setKeywordEditing(userId, 0);
+      const msgId = autoReplyState.getEditMode(userId);
       if (msgId) {
         await showAutoReplyEditor(ctx, msgId);
         return;
       }
     }
-    autoReplyState.clearAll(ctx.from.id);
+
+    // If in editor mode, go back to main menu
+    const editMode = autoReplyState.getEditMode(userId);
+    if (editMode) {
+      autoReplyState.clearAll(userId);
+      const result = await autoReplyRepository.findAll({ page: 1, limit: 100 });
+      await ctx.reply('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
+      return;
+    }
+
+    // If in management mode (main menu), go back to automation menu
+    if (autoReplyState.isManagementMode(userId)) {
+      autoReplyState.clearAll(userId);
+      return next();
+    }
+
+    return next();
   });
 
   // ─── Create new auto reply ──────────────────────────────
@@ -139,24 +158,6 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       autoReplyState.setEditingMessage(userId, 0);
       const msgId = autoReplyState.getEditMode(userId);
       if (msgId) await showAutoReplyEditor(ctx, msgId);
-      return;
-    }
-    return next();
-  });
-
-  // ─── Back to editor ──
-  bot.hears('🔙 بازگشت به پنل', async (ctx: any, next) => {
-    if (!ctx.from) return next();
-    const userId = ctx.from.id;
-    autoReplyState.setEditingContent(userId, false);
-    autoReplyState.setEditingTitle(userId, false);
-    const editMsgId = autoReplyState.getEditingMessage(userId);
-    if (editMsgId) {
-      autoReplyState.setEditingMessage(userId, 0);
-    }
-    const msgId = autoReplyState.getEditMode(userId);
-    if (msgId) {
-      await showAutoReplyEditor(ctx, msgId);
       return;
     }
     return next();
@@ -298,6 +299,21 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     if (autoReplyState.isButtonMoveActive(userId)) {
       return next();
+    }
+
+    // ─── Post title click from main menu ──
+    if (autoReplyState.isManagementMode(userId) && !isCreating && !isEditingTitle && !isEditingContent) {
+      const listResult = await autoReplyRepository.findAll({ page: 1, limit: 100 });
+      const matchedPost = listResult.items.find((p: any) => {
+        const label = graphemeTruncate(sanitizeTelegramText(p.title || 'بدون عنوان'), 30);
+        return label === text;
+      });
+      if (matchedPost) {
+        autoReplyState.setEditMode(userId, matchedPost.id);
+        autoReplyState.setManagementMode(userId, true);
+        await showAutoReplyEditor(ctx, matchedPost.id);
+        return;
+      }
     }
 
     // ─── Keyword creation input ──
