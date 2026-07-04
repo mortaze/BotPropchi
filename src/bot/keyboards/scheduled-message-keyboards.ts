@@ -2,14 +2,23 @@ import { Markup } from 'telegraf';
 import { sanitizeTelegramText } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
 
+// ─── Automation Menu ───────────────────────────────────────
+
+export function scheduledMessageAutomationKeyboard() {
+  return Markup.keyboard([
+    ['📨 پیام‌های خودکار'],
+    ['💬 پاسخ‌های خودکار'],
+    ['🔙 بازگشت به پنل ادمین'],
+  ]).resize().persistent();
+}
+
 // ─── Main Menu ────────────────────────────────────────────
 
 export function scheduledMessageMainMenuKeyboard() {
   return Markup.keyboard([
     ['➕ ایجاد پست جدید'],
     ['📋 لیست پست‌ها'],
-    ['📊 گزارش ارسال'],
-    ['🔙 بازگشت به پنل ادمین'],
+    ['🔙 بازگشت'],
   ]).resize().persistent();
 }
 

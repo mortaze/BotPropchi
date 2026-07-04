@@ -12,6 +12,7 @@ import { validateDbInput } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
 import {
   scheduledMessageMainMenuKeyboard,
+  scheduledMessageAutomationKeyboard,
   scheduledMessageListInlineKeyboard,
   scheduledMessageNewPostManagerReplyKeyboard,
   scheduledMessageEditorReplyKeyboard,
@@ -61,14 +62,33 @@ function validatePublishReadiness(msg: any): { ready: boolean; missing: { key: s
 
 export function registerScheduledMessageHandlers(bot: Telegraf) {
 
-  // ─── Entry: 📢 پیام‌های خودکار ─────────────────────────
-  bot.hears('📢 پیام‌های خودکار', async (ctx: any) => {
+  // ─── Entry: 🤖 اتوماسیون ─────────────────────────
+  bot.hears('🤖 اتوماسیون', async (ctx: any) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     const { clearAllPostStates } = require('./post-handlers');
     clearAllPostStates(ctx.from.id);
     scheduledMessageState.clearAll(ctx.from.id);
-    await ctx.reply('📢 سامانه مدیریت پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
+    await ctx.reply('🤖 اتوماسیون', scheduledMessageAutomationKeyboard());
+  });
+
+  // ─── Entry: 📨 پیام‌های خودکار ──────────────────────
+  bot.hears('📨 پیام‌های خودکار', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const { clearAllPostStates } = require('./post-handlers');
+    clearAllPostStates(ctx.from.id);
+    scheduledMessageState.clearAll(ctx.from.id);
+    await ctx.reply('📨 پیام‌های خودکار', scheduledMessageMainMenuKeyboard());
+  });
+
+  // ─── From scheduled messages menu → back to automation ──
+  bot.hears('🔙 بازگشت', async (ctx: any, next) => {
+    if (!scheduledMessageState.isManagementMode(ctx.from.id)) return next();
+    const msgId = scheduledMessageState.getEditMode(ctx.from.id);
+    if (msgId) return next();
+    scheduledMessageState.clearAll(ctx.from.id);
+    await ctx.reply('🤖 اتوماسیون', scheduledMessageAutomationKeyboard());
   });
 
   // ─── Back to admin panel ────────────────────────────────
@@ -410,7 +430,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
     // Bug #8: If scheduleStep is set but text matches a known button, don't consume it
     const knownButtons = [
-      '➕ ایجاد پست جدید', '📋 لیست پست‌ها', '📊 گزارش ارسال',
+      '🤖 اتوماسیون', '📨 پیام‌های خودکار',
+      '➕ ایجاد پست جدید', '📋 لیست پست‌ها',
       '🔙 بازگشت به پنل ادمین', '➕ افزودن پیام', '⏰ تنظیم زمان‌بندی',
       '👥 انتخاب گروه', '📖 دستور', '✅ انتشار', '📊 آمار',
       '🧪 ارسال تستی', '📊 وضعیت Scheduler',
@@ -418,7 +439,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       '❌ حذف دستور', '🔘 مدیریت دکمه‌ها',
       '✏️ ویرایش محتوا', '📝 ویرایش عنوان',
       '⬆️ بالا', '⬇️ پایین', '⬅️ چپ', '➡️ راست',
-      '✅ تایید جابه‌جایی', '🔄 بازگشت', '❌ لغو جابجایی',
+      '✅ تایید جابه‌جایی', '❌ لغو جابجایی',
     ];
     if (scheduleStep && knownButtons.includes(text)) {
       // Let the hears handlers process it

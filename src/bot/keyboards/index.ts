@@ -86,9 +86,8 @@ export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   const rows: string[][] = [];
   if (canBroadcast) rows.push(['📢 پیام همگانی']);
   rows.push(['📝 پست‌ها', '🎛 ویرایش منو']);
-  rows.push(['👥 مدیریت ادمین‌ها']);
-  rows.push(['📊 گزارشات', '🎫 تیکت‌ها']);
-  rows.push(['📢 پیام‌های خودکار']);
+  rows.push(['👤 ادمین‌ها', '🎫 تیکت‌ها']);
+  rows.push(['🤖 اتوماسیون']);
   rows.push(['↩️ بازگشت به منوی اصلی']);
   return Markup.keyboard(rows).resize().persistent();
 }

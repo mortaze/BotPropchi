@@ -793,7 +793,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     ].join('\n'));
   });
 
-  bot.hears('👥 مدیریت ادمین‌ها', async (ctx) => {
+  bot.hears('👤 ادمین‌ها', async (ctx) => {
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
     clearAllPostStates(ctx.from.id);
