@@ -99,30 +99,9 @@ Key implications:
 - **Cache invalidation required after message delete**: both bot handler and API route must call `postService.invalidateCache()` after deleting a message.
 - **`safeEdit` in `shared.ts`** falls back to `ctx.reply()` on editMessageText failure — violates the rule above. Fix the root cause, not the fallback.
 
-## Button Move Bug (Fixed 2026-07-04)
+## Button Grid Gotchas
 
-Root cause in `handleSchedMoveDirection` (`src/bot/handlers/scheduled-message.handlers.ts:1336`):
-
-1. **Sparse grid crash**: `buttonsToGrid()` creates sparse arrays (skips rows with gaps), causing `grid[r].length` to crash on `undefined` entries. Fixed by adding `normalizeGrid()` that packs sparse arrays into dense form (`[{id,text},...][]`) before any move operation, and `findButtonInGrid()` to locate button by DB `id` after normalization shifts indices.
-
-2. **Singleton down push → unshift**: Singleton row moving down was using `.push()` (end of target row) instead of `.unshift()` (beginning). This contradicted the expected behavior where singleton down should merge at the start of the row below. **All four directions now**:
-   - ⬇️ Non-singleton → extract into new singleton row below
-   - ⬇️ Singleton → merge at **start** of next row (`.unshift()`)
-   - ⬆️ Non-singleton → extract into new singleton row above
-   - ⬆️ Singleton → merge at **start** of previous row (`.unshift()`)
-    - ⬅️➡️ Swap adjacent buttons within same row
-
-3. **Test helpers also fixed**: `src/__tests__/button-editor-move.test.ts` had standalone `moveDown/moveUp/moveLeft/moveRight` helpers using the old `push` behavior, plus 8 pre-existing wrong expectations (swap tests expected same order after swap, up tests expected wrong merge target). All 20 tests now pass.
-
-## Button Move UX Fixes (2026-07-04)
-
-Three UX improvements in `buildDynamicMoveKeyboard()` and `refreshButtonEditor()`:
-
-1. **Split first row (⬆️)**: Previously the ⬆️ button was hidden when the selected button was in the first row (`row > 0` guard). Now it's also shown when the row has >1 buttons, allowing splitting the first row. Handler was already correct — the keyboard condition was the only blocker.
-
-2. **Split last row (⬇️)**: Previously the ⬇️ button was hidden when the selected button was in the last row (`row < grid.length - 1` guard). Now it's also shown when the row has >1 buttons, allowing splitting the last row.
-
-3. **Selection preservation (✅)**: `refreshButtonEditor()` was calling `renderScheduledButtonEditor()` without the `selectedPos` argument, causing the ✅ marker to disappear on every move. Now it reads the current selection from state and passes it through, so the selected button stays highlighted after every move direction.
+In `src/bot/handlers/scheduled-message.handlers.ts`, button grids use `normalizeGrid()` (dense `[{id,text},...][]`) before any move/swap — `buttonsToGrid()` can produce sparse arrays that crash on index access. `findButtonInGrid()` locates buttons by DB `id` after normalization shifts array positions.
 
 ## Bug Verification Protocol
 

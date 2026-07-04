@@ -1274,6 +1274,96 @@ model ScheduledPostLog {
   @@map("scheduled_post_logs")
 }
 
+// ─── Auto Replies (پاسخ‌های خودکار) ────────────────────────
+
+model AutoReply {
+  id            Int                @id @default(autoincrement())
+  title         String
+  slug          String?            @unique
+  status        PostStatus         @default(DRAFT)
+  isPublished   Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  intervalMinutes Int?
+  startTime     String?
+  targetChatId  BigInt?
+  targetTopicId BigInt?
+  lastSentAt    DateTime?
+  nextSendAt    DateTime?
+  sendCount     Int                @default(0)
+  createdBy     BigInt?
+
+  messages      AutoReplyMessage[]
+  buttons       AutoReplyButton[]
+  logs          AutoReplySendLog[]
+
+  @@index([status])
+  @@index([nextSendAt])
+  @@index([isPublished])
+  @@map("auto_replies")
+}
+
+model AutoReplyMessage {
+  id              Int               @id @default(autoincrement())
+  autoReplyId     Int
+  text            String            @default("")
+  type            PostMessageType   @default(text)
+  order           Int               @default(0)
+  mediaFileId     String?
+  mediaGroupId    String?
+  caption         String?
+  captionEntities Json?
+  entities        Json?
+  parseMode       PostMessageParseMode @default(None)
+  replyMarkup     Json?
+  forwardSource   Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  autoReply       AutoReply         @relation(fields: [autoReplyId], references: [id], onDelete: Cascade)
+  buttons         AutoReplyButton[]
+
+  @@index([autoReplyId, order])
+  @@map("auto_reply_messages")
+}
+
+model AutoReplyButton {
+  id              Int                @id @default(autoincrement())
+  autoReplyId     Int
+  messageId       Int?
+  row             Int                @default(0)
+  col             Int                @default(0)
+  text            String
+  type            String             @default("URL")
+  value           String?
+  style           String?
+  payload         Json?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  autoReply       AutoReply          @relation(fields: [autoReplyId], references: [id], onDelete: Cascade)
+  message         AutoReplyMessage?  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([autoReplyId])
+  @@index([messageId])
+  @@map("auto_reply_buttons")
+}
+
+model AutoReplySendLog {
+  id              Int               @id @default(autoincrement())
+  autoReplyId     Int
+  sentAt          DateTime          @default(now())
+  targetChatId    BigInt
+  targetTopicId   BigInt?
+  status          String            @default("SUCCESS")
+  errorMessage    String?
+  createdAt       DateTime          @default(now())
+  autoReply       AutoReply         @relation(fields: [autoReplyId], references: [id], onDelete: Cascade)
+
+  @@index([autoReplyId])
+  @@index([sentAt])
+  @@map("auto_reply_send_logs")
+}
+
 // ─── Forum Topics (discovered from Telegram updates) ──────
 
 model ForumTopic {

@@ -28,6 +28,8 @@ import { postService } from './services/post.service';
 import { scheduledMessageService } from './services/scheduled-message.service';
 import { forumTopicService } from './services/forum-topic.service';
 import { registerScheduledMessageHandlers } from './bot/handlers/scheduled-message.handlers';
+import { registerAutoReplyHandlers } from './bot/handlers/auto-reply.handlers';
+import { autoReplyService } from './services/auto-reply.service';
 
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
@@ -104,9 +106,11 @@ async function bootstrap() {
   // ثبت هندلرها
   registerHandlers(bot);
   registerScheduledMessageHandlers(bot);
+  registerAutoReplyHandlers(bot);
 
   // ─── Scheduled message service ──────────────────────────
   scheduledMessageService.setBot(bot);
+  autoReplyService.setBot(bot);
   forumTopicService.setBot(bot);
 
   // ─── Forum topic discovery from group messages ──────────
