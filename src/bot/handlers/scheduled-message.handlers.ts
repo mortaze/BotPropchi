@@ -1776,12 +1776,9 @@ async function showPostEditor(ctx: any, id: number) {
       const srcMsgId = Number(fs.messageId || fs.originMessageId);
       if (srcChatId && srcMsgId) {
         try {
-          const sent = await ctx.telegram.forwardMessage(ctx.chat.id, srcChatId, srcMsgId);
-          try {
-            await ctx.telegram.editMessageReplyMarkup(ctx.chat.id, sent.message_id, null, keyboard.reply_markup);
-          } catch (editErr: any) {
-            logger.warn(`[SchedMsgEditor] Failed to add keyboard to forwarded preview: ${editErr?.message}`);
-          }
+          await ctx.telegram.forwardMessage(ctx.chat.id, srcChatId, srcMsgId);
+          // Control message with management buttons (forwarded messages can't have inline keyboard)
+          await ctx.reply(label, { reply_markup: keyboard.reply_markup });
           continue;
         } catch (forwardErr: any) {
           logger.warn(`[SchedMsgEditor] Failed to forward message for preview: ${forwardErr?.message}`);

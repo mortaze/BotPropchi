@@ -2741,11 +2741,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
             const sent = await ctx.telegram.forwardMessage(ctx.chat.id, srcChatId, srcMsgId);
             if (sent) {
               newMsgIds.push(sent.message_id);
-              try {
-                await ctx.telegram.editMessageReplyMarkup(ctx.chat.id, sent.message_id, null, keyboard.reply_markup);
-              } catch (editErr: any) {
-                logger.warn(`[PostEditor] Failed to add keyboard to forwarded preview: ${editErr?.message}`);
-              }
+              // Control message with management buttons (forwarded messages can't have inline keyboard)
+              const ctrl = await ctx.reply(label, { ...keyboard });
+              if (ctrl) newMsgIds.push(ctrl.message_id);
               continue;
             }
           } catch (forwardErr: any) {
