@@ -2053,11 +2053,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), newRow);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), 0);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
-    const freshPost = await postService.findById(postId);
-    const freshButtons = extractButtonsForMessage(freshPost, messageIdx);
-    const { text: editorText, reply_markup } = renderButtonEditor(postId, freshButtons, 'create', { row: newRow, col: 0 });
-    const sent = await ctx.reply(editorText, { reply_markup });
-    if (sent) cache.setPermanent(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id);
+    await refreshButtonListView(ctx, postId);
     logger.info(`[ButtonEditor] sync complete postId=${postId}`);
     return;
   });
