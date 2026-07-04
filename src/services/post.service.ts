@@ -253,6 +253,10 @@ export const postService = {
     const rawButtons = (data as any).buttons;
     if (rawButtons && !clonedMessages) {
       try {
+        const rawBtnMsgs = rawButtons?.messages;
+        const rawBtnKeys = rawBtnMsgs ? Object.keys(rawBtnMsgs) : [];
+        const rawBtnCounts = rawBtnKeys.map(k => `${k}:${Array.isArray(rawBtnMsgs[k]) ? rawBtnMsgs[k].length : 'N/A'}`);
+        logger.info(`[KBSYNC_DEBUG] postId=${post.id} rawButtons.messages keys=[${rawBtnKeys}] counts=[${rawBtnCounts}]`);
         const existingMessages = await prisma.postMessage.findMany({
           where: { postId: post.id },
           orderBy: { order: 'asc' },

@@ -1548,6 +1548,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     if (!post) return;
     const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
     const buttons = extractButtonsForMessage(post, messageIdx);
+    logger.info(`[REFRESH_DEBUG] postId=${postId} messageIdx=${messageIdx} rows=${buttons.length} flat=${buttons.flat().length} editorMode=${cache.get<string>(pendingKey(ctx.from.id, 'editor_mode'))}`);
     const editorMode = cache.get<string>(pendingKey(ctx.from.id, 'editor_mode'));
     const listMode: 'create' | 'edit' | 'delete' | 'move' = editorMode === 'edit' ? 'edit' : editorMode === 'delete' ? 'delete' : editorMode === 'move' ? 'move' : 'create';
 
@@ -2040,11 +2041,17 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
 
     // Default: create mode — add a new default button, then enter edit mode for it
     const newRow = row + 1;
+    logger.info(`[CREATE_DEBUG] before splice: ${buttons.length} rows, flat=${buttons.flat().length}`);
     buttons.splice(newRow, 0, [{ text: 'دکمه جدید', type: 'URL', value: '' }]);
+    logger.info(`[CREATE_DEBUG] after splice: ${buttons.length} rows, flat=${buttons.flat().length}, newRow=${newRow}`);
+    const syncPayload = setMessageButtons((post as any).buttons, messageIdx, buttons);
+    const syncMsgCount = syncPayload?.messages ? Object.keys(syncPayload.messages).length : 0;
+    const syncBtnCount = syncPayload?.messages?.[String(messageIdx)]?.length ?? 0;
+    logger.info(`[CREATE_DEBUG] setMessageButtons: msgKeys=[${Object.keys(syncPayload?.messages || {})}], msgIdx=${messageIdx}, msgBtnRows=${syncBtnCount}`);
     logger.info(`[ButtonEditor] create placeholder postId=${postId} messageIdx=${messageIdx} row=${newRow}`);
     try {
-      await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
-      logger.info(`[ButtonEditor] persist keyboard postId=${postId}`);
+      await postService.update(postId, { buttons: syncPayload } as any);
+      logger.info(`[CREATE_DEBUG] after update: persist succeeded`);
     } catch (e: any) {
       logger.error(`[ButtonEditor] persist failed postId=${postId}: ${e.message}`);
       await ctx.reply('❌ خطا در ذخیره دکمه.');
