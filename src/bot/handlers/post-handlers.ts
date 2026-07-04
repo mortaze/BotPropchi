@@ -225,9 +225,16 @@ function getMessageButtons(raw: any, messageIdx: number): any[][] {
 // Priority: post.keyboards (normalized) → post_messages.replyMarkup → post.buttons
 function extractButtonsForMessage(post: any, messageId: number): any[][] {
   let currentMsgId: number | null = null;
+
+  // First: try to find by exact DB id
   if (post.messages && Array.isArray(post.messages)) {
     const msg = post.messages.find((m: any) => m.id === messageId);
     if (msg) currentMsgId = msg.id;
+  }
+
+  // Fallback: if no message found by id, treat messageId as array index
+  if (currentMsgId == null && post.messages && Array.isArray(post.messages) && messageId >= 0 && messageId < post.messages.length) {
+    currentMsgId = post.messages[messageId].id;
   }
 
   if (post.keyboards && Array.isArray(post.keyboards) && post.keyboards.length > 0) {
@@ -244,23 +251,23 @@ function extractButtonsForMessage(post: any, messageId: number): any[][] {
       const reconstructed = kb.payload
         ? { ...kb.payload, text: kb.text, type: reconstructedType, value: kb.value }
         : { text: kb.text, type: reconstructedType, value: kb.value, style: baseStyle || undefined };
-      logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} row=${kb.row} col=${kb.col} db_type="${rawType}" → reconstructed_type="${reconstructed.type}" text="${kb.text}" value="${kb.value}" payload_type="${kb.payload?.type || 'none'}"`);
+      logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} resolvedMsgId=${currentMsgId} row=${kb.row} col=${kb.col} db_type="${rawType}" → reconstructed_type="${reconstructed.type}" text="${kb.text}" value="${kb.value}" payload_type="${kb.payload?.type || 'none'}"`);
       grouped[kb.row][kb.col || 0] = reconstructed;
     }
     const rows = Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(k => grouped[Number(k)].filter(Boolean));
     if (rows.some(r => r.length > 0)) return rows;
   }
 
-  if (post.messages && Array.isArray(post.messages)) {
-    const msg = post.messages.find((m: any) => m.id === messageId);
+  if (currentMsgId != null && post.messages && Array.isArray(post.messages)) {
+    const msg = post.messages.find((m: any) => m.id === currentMsgId);
     if (msg && msg.replyMarkup && Array.isArray(msg.replyMarkup)) {
-      logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} using replyMarkup (${msg.replyMarkup.length} rows)`);
+      logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} resolvedMsgId=${currentMsgId} using replyMarkup (${msg.replyMarkup.length} rows)`);
       return msg.replyMarkup;
     }
   }
 
-  const fallbackBtns = getMessageButtons((post as any).buttons, messageId);
-  logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} fallback to post.buttons (${fallbackBtns.length} rows)`);
+  const fallbackBtns = getMessageButtons((post as any).buttons, 0);
+  logger.info(`[BTN_EXTRACT] postId=${post.id} msgId=${messageId} resolvedMsgId=${currentMsgId} fallback to post.buttons[${0}] (${fallbackBtns.length} rows)`);
   return fallbackBtns;
 }
 

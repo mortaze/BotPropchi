@@ -110,10 +110,19 @@ Root cause in `handleSchedMoveDirection` (`src/bot/handlers/scheduled-message.ha
    - ⬇️ Singleton → merge at **start** of next row (`.unshift()`)
    - ⬆️ Non-singleton → extract into new singleton row above
    - ⬆️ Singleton → merge at **start** of previous row (`.unshift()`)
-   - ⬅️ ➡️ Swap adjacent buttons within same row
-   - ⬅️➡️ Swap adjacent buttons within same row
+    - ⬅️➡️ Swap adjacent buttons within same row
 
 3. **Test helpers also fixed**: `src/__tests__/button-editor-move.test.ts` had standalone `moveDown/moveUp/moveLeft/moveRight` helpers using the old `push` behavior, plus 8 pre-existing wrong expectations (swap tests expected same order after swap, up tests expected wrong merge target). All 20 tests now pass.
+
+## Button Move UX Fixes (2026-07-04)
+
+Three UX improvements in `buildDynamicMoveKeyboard()` and `refreshButtonEditor()`:
+
+1. **Split first row (⬆️)**: Previously the ⬆️ button was hidden when the selected button was in the first row (`row > 0` guard). Now it's also shown when the row has >1 buttons, allowing splitting the first row. Handler was already correct — the keyboard condition was the only blocker.
+
+2. **Split last row (⬇️)**: Previously the ⬇️ button was hidden when the selected button was in the last row (`row < grid.length - 1` guard). Now it's also shown when the row has >1 buttons, allowing splitting the last row.
+
+3. **Selection preservation (✅)**: `refreshButtonEditor()` was calling `renderScheduledButtonEditor()` without the `selectedPos` argument, causing the ✅ marker to disappear on every move. Now it reads the current selection from state and passes it through, so the selected button stays highlighted after every move direction.
 
 ## Bug Verification Protocol
 

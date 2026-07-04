@@ -1318,8 +1318,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   function buildDynamicMoveKeyboard(grid: any[][], row: number, col: number) {
     const rows: string[][] = [];
     const directionRow: string[] = [];
-    if (row > 0) directionRow.push('⬆️ بالا');
-    if (row < grid.length - 1) directionRow.push('⬇️ پایین');
+    if (row > 0 || (grid[row] && grid[row].length > 1)) directionRow.push('⬆️ بالا');
+    if (row < grid.length - 1 || (grid[row] && grid[row].length > 1)) directionRow.push('⬇️ پایین');
     if (directionRow.length > 0) rows.push(directionRow);
 
     const horizRow: string[] = [];
@@ -1579,7 +1579,11 @@ async function refreshButtonEditor(ctx: any, msgId: number) {
   const grid = buttonsToGrid(buttons);
   const mode = scheduledMessageState.getButtonMode(userId) || 'create';
   const moveActive = scheduledMessageState.isButtonMoveActive(userId);
-  const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, moveActive ? 'move' : mode as any);
+  const moveSel = moveActive ? scheduledMessageState.getButtonMoveSelected(userId) : undefined;
+  const selectedPos = moveSel && moveSel.row !== undefined && moveSel.col !== undefined
+    ? { row: moveSel.row, col: moveSel.col }
+    : undefined;
+  const { text, reply_markup } = renderScheduledButtonEditor(msgId, grid, moveActive ? 'move' : mode as any, selectedPos);
   try {
     await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup });
   } catch {}
