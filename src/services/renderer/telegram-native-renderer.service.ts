@@ -67,7 +67,14 @@ function buttonToTelegram(btn: any, postId?: number, row?: number, col?: number,
   const pfx = entityPrefix || 'post';
   let result: any;
   switch (btn?.type) {
-    case 'URL': result = Markup.button.url(text, value); break;
+    case 'URL': {
+      if (!value) {
+        result = Markup.button.callback(text, `${pfx}:user:click:${postId}:${row}:${col}`);
+      } else {
+        result = Markup.button.url(text, value);
+      }
+      break;
+    }
     case 'CALLBACK': {
       const cbData = btn.callback_data
         || `${pfx}:user:click:${postId}:${row}:${col}`;

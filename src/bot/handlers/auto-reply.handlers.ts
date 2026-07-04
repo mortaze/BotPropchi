@@ -71,6 +71,16 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
   });
 
+  // ─── Entry: 💬 پاسخ‌های خودکار button ──────────────────
+  bot.hears('💬 پاسخ‌های خودکار', async (ctx: any) => {
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    autoReplyState.clearAll(ctx.from.id);
+    autoReplyState.setManagementMode(ctx.from.id, true);
+    const result = await autoReplyRepository.findAll({ page: 1, limit: 100 });
+    await ctx.reply('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
+  });
+
   // ─── Back to admin panel ────────────────────────────────
   bot.hears('🔙 بازگشت به پنل', async (ctx: any, next) => {
     if (!autoReplyState.isManagementMode(ctx.from.id)) return next();
