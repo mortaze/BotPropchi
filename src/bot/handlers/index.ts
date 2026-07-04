@@ -4,6 +4,7 @@ import { channelService } from '../../services/channel.service';
 import { lotteryService } from '../../services/lottery.service';
 import { groupService } from '../../services/group.service';
 import { keywordReplyService } from '../../services/keyword-reply.service';
+import { autoReplyService } from '../../services/auto-reply.service';
 import { referralService } from '../../services/referral.service';
 import { leaderboardService } from '../../services/leaderboard.service';
 import { analyticsService } from '../../services/analytics.service';
@@ -1427,6 +1428,8 @@ export function registerHandlers(bot: Telegraf<Context>) {
       if (group) {
         const handled = await keywordReplyService.handleGroupText(ctx, group.id);
         if (handled) return;
+        const arHandled = await autoReplyService.handleGroupMessage(ctx, group.id);
+        if (arHandled) return;
       }
       return next();
     }

@@ -36,8 +36,8 @@ export function autoReplyListInlineKeyboard(messages: any[], page: number, total
 
 export function autoReplyNewPostManagerReplyKeyboard() {
   return Markup.keyboard([
-    ['➕ افزودن پیام پاسخ', '⏰ زمان‌بندی پاسخ'],
-    ['📖 دستور پاسخ', '👥 گروه پاسخ'],
+    ['➕ افزودن پیام پاسخ'],
+    ['👥 گروه پاسخ', '🏷 کلمات کلیدی پاسخ'],
     ['✅ انتشار پاسخ'],
     ['🗑 حذف پاسخ'],
     ['🔙 بازگشت به پنل'],
@@ -49,10 +49,8 @@ export function autoReplyNewPostManagerReplyKeyboard() {
 export function autoReplyEditorReplyKeyboard(isPublished: boolean) {
   return Markup.keyboard([
     ['➕ افزودن پیام پاسخ'],
-    ['👥 گروه پاسخ', '⏰ زمان‌بندی پاسخ'],
-    ['📖 دستور پاسخ'],
-    ['✅ انتشار پاسخ', '📊 آمار پاسخ‌ها'],
-    ['🧪 تست پاسخ'],
+    ['👥 گروه پاسخ', '🏷 کلمات کلیدی پاسخ'],
+    ['✅ انتشار پاسخ'],
     ['🗑 حذف پاسخ'],
     ['🔙 بازگشت به لیست پاسخ'],
   ]).resize().persistent();
@@ -102,44 +100,6 @@ export function autoReplySingleMessageInlineKeyboard(
   return Markup.inlineKeyboard(rows);
 }
 
-// ─── Schedule Interval Selection ──────────────────────────
-
-export function autoReplyIntervalKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('⏱ هر ۲ دقیقه (تست)', 'ar:interval:2')],
-    [Markup.button.callback('⏰ هر ۳ ساعت', 'ar:interval:180')],
-    [Markup.button.callback('⏰ هر ۶ ساعت', 'ar:interval:360')],
-    [Markup.button.callback('⏰ هر ۹ ساعت', 'ar:interval:540')],
-    [Markup.button.callback('⏰ هر ۱۲ ساعت', 'ar:interval:720')],
-    [Markup.button.callback('⏰ هر ۲۴ ساعت', 'ar:interval:1440')],
-    [Markup.button.callback('⏰ هر هفته', 'ar:interval:10080')],
-    [Markup.button.callback('⏰ زمان سفارشی', 'ar:interval:custom')],
-    [Markup.button.callback('↩️ بازگشت', 'ar:menu')],
-  ]);
-}
-
-// ─── Group Selection ──────────────────────────────────────
-
-export function autoReplyGroupKeyboard(groups: any[]) {
-  const rows: any[][] = groups.map((g) => [
-    Markup.button.callback(`${g.title}`, `ar:group:${g.chatId}`),
-  ]);
-  rows.push([Markup.button.callback('↩️ بازگشت', 'ar:menu')]);
-  return Markup.inlineKeyboard(rows);
-}
-
-// ─── Topic Selection ──────────────────────────────────────
-
-export function autoReplyTopicKeyboard(topics: any[]) {
-  const rows: any[][] = [];
-  rows.push([Markup.button.callback('📌 همه تاپیک‌ها', 'ar:topic:all')]);
-  for (const t of topics) {
-    rows.push([Markup.button.callback(`${t.name}`, `ar:topic:${t.id}`)]);
-  }
-  rows.push([Markup.button.callback('↩️ بازگشت', 'ar:menu')]);
-  return Markup.inlineKeyboard(rows);
-}
-
 // ─── Group Selection (Reply Keyboard) ─────────────────────
 
 export function autoReplyGroupReplyKeyboard(groups: any[]) {
@@ -184,6 +144,39 @@ export function autoReplyDashboardKeyboard() {
     [Markup.button.callback('🔄 تازه‌سازی', 'ar:dashboard:refresh')],
     [Markup.button.callback('↩️ بازگشت', 'ar:menu')],
   ]);
+}
+
+// ─── Keyword Management ───────────────────────────────────
+
+export function autoReplyKeywordListKeyboard(keywords: any[]) {
+  const rows: any[][] = keywords.map((kw: any) => [
+    Markup.button.callback(`📌 ${kw.keyword}`, `ar:kw:view:${kw.id}`),
+  ]);
+  return Markup.inlineKeyboard(rows);
+}
+
+export function autoReplyKeywordEditKeyboard(keywords: any[]) {
+  const rows: any[][] = keywords.map((kw: any) => [
+    Markup.button.callback(`✏️ ${kw.keyword}`, `ar:kw:edit:${kw.id}`),
+  ]);
+  if (rows.length === 0) rows.push([Markup.button.callback('(هیچ کلمه‌ای ثبت نشده)', 'noop')]);
+  return Markup.inlineKeyboard(rows);
+}
+
+export function autoReplyKeywordDeleteKeyboard(keywords: any[]) {
+  const rows: any[][] = keywords.map((kw: any) => [
+    Markup.button.callback(`❌ ${kw.keyword}`, `ar:kw:delete:${kw.id}`),
+  ]);
+  if (rows.length === 0) rows.push([Markup.button.callback('(هیچ کلمه‌ای ثبت نشده)', 'noop')]);
+  return Markup.inlineKeyboard(rows);
+}
+
+export function autoReplyKeywordManageKeyboard() {
+  return Markup.keyboard([
+    ['➕ ایجاد کلمه جدید پاسخ'],
+    ['✏️ ویرایش کلمات پاسخ', '🗑 حذف کلمات پاسخ'],
+    ['🔙 بازگشت به پنل'],
+  ]).resize().persistent();
 }
 
 // ─── Button Editor ────────────────────────────────────────

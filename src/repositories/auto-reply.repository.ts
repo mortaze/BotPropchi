@@ -4,7 +4,6 @@ import { prisma } from '../prisma/client';
 export const autoReplyRepository = {
   async create(data: {
     title: string;
-    slug?: string;
     status?: PostStatus;
     createdBy?: bigint;
     messages?: { text: string; type: PostMessageType; order: number; mediaFileId?: string; entities?: any; replyMarkup?: any }[];
@@ -12,12 +11,11 @@ export const autoReplyRepository = {
     return prisma.autoReply.create({
       data: {
         title: data.title,
-        slug: data.slug,
         status: data.status ?? PostStatus.DRAFT,
         createdBy: data.createdBy,
         messages: data.messages ? { createMany: { data: data.messages } } : undefined,
       },
-      include: { messages: { orderBy: { order: 'asc' } }, buttons: true },
+      include: { messages: { orderBy: { order: 'asc' } }, buttons: true, keywords: true },
     });
   },
 
@@ -35,6 +33,7 @@ export const autoReplyRepository = {
       include: {
         messages: { orderBy: { order: 'asc' }, include: { buttons: { orderBy: [{ row: 'asc' }, { col: 'asc' }] } } },
         buttons: { orderBy: [{ row: 'asc' }, { col: 'asc' }] },
+        keywords: { orderBy: { createdAt: 'asc' } },
       },
     });
   },
@@ -49,7 +48,7 @@ export const autoReplyRepository = {
     const [items, total] = await Promise.all([
       prisma.autoReply.findMany({
         where,
-        include: { messages: { orderBy: { order: 'asc' } } },
+        include: { messages: { orderBy: { order: 'asc' } }, keywords: true },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
@@ -60,23 +59,14 @@ export const autoReplyRepository = {
     return { items, total, pages: Math.ceil(total / limit), page };
   },
 
-  async getPublished() {
+  async getPublishedWithKeywords() {
     return prisma.autoReply.findMany({
       where: { isPublished: true, status: PostStatus.PUBLISHED },
-      include: { messages: { orderBy: { order: 'asc' } } },
-    });
-  },
-
-  async findDueForSending() {
-    return prisma.autoReply.findMany({
-      where: {
-        isPublished: true,
-        status: PostStatus.PUBLISHED,
-        nextSendAt: { lte: new Date() },
-        intervalMinutes: { not: null },
-        targetChatId: { not: null },
+      include: {
+        messages: { orderBy: { order: 'asc' } },
+        keywords: true,
+        buttons: { orderBy: [{ row: 'asc' }, { col: 'asc' }] },
       },
-      include: { messages: { orderBy: { order: 'asc' } }, buttons: true },
     });
   },
 
@@ -129,7 +119,7 @@ export const autoReplyRepository = {
   async disableAll() {
     return prisma.autoReply.updateMany({
       where: { isPublished: true },
-      data: { isPublished: false, status: PostStatus.DRAFT, nextSendAt: null },
+      data: { isPublished: false, status: PostStatus.DRAFT },
     });
   },
 
@@ -197,5 +187,31 @@ export const autoReplyRepository = {
 
   async deleteButtonsByAutoReply(autoReplyId: number) {
     return prisma.autoReplyButton.deleteMany({ where: { autoReplyId } });
+  },
+
+  // ─── Keyword CRUD ────────────────────────────────────────
+
+  async createKeyword(autoReplyId: number, keyword: string) {
+    return prisma.autoReplyKeyword.create({
+      data: { autoReplyId, keyword },
+    });
+  },
+
+  async updateKeyword(id: number, keyword: string) {
+    return prisma.autoReplyKeyword.update({
+      where: { id },
+      data: { keyword },
+    });
+  },
+
+  async deleteKeyword(id: number) {
+    return prisma.autoReplyKeyword.delete({ where: { id } });
+  },
+
+  async findKeywordsByAutoReply(autoReplyId: number) {
+    return prisma.autoReplyKeyword.findMany({
+      where: { autoReplyId },
+      orderBy: { createdAt: 'asc' },
+    });
   },
 };

@@ -49,48 +49,6 @@ export const autoReplyState = {
     return cache.get<boolean>(arKey(userId, 'editing_content'));
   },
 
-  setSchedulingMode(userId: number, messageId: number) {
-    cache.setPermanent(arKey(userId, 'scheduling'), messageId);
-  },
-  getSchedulingMode(userId: number) {
-    return cache.get<number>(arKey(userId, 'scheduling'));
-  },
-
-  setScheduleStep(userId: number, step: string) {
-    cache.setPermanent(arKey(userId, 'schedule_step'), step);
-  },
-  getScheduleStep(userId: number) {
-    return cache.get<string>(arKey(userId, 'schedule_step'));
-  },
-
-  setIntervalHours(userId: number, hours: number) {
-    cache.setPermanent(arKey(userId, 'interval_hours'), hours);
-  },
-  getIntervalHours(userId: number) {
-    return cache.get<number>(arKey(userId, 'interval_hours'));
-  },
-
-  setStartTime(userId: number, time: string) {
-    cache.setPermanent(arKey(userId, 'start_time'), time);
-  },
-  getStartTime(userId: number) {
-    return cache.get<string>(arKey(userId, 'start_time'));
-  },
-
-  setTargetGroup(userId: number, chatId: number) {
-    cache.setPermanent(arKey(userId, 'target_group'), chatId);
-  },
-  getTargetGroup(userId: number) {
-    return cache.get<number>(arKey(userId, 'target_group'));
-  },
-
-  setTargetTopic(userId: number, topicId: number | null) {
-    cache.setPermanent(arKey(userId, 'target_topic'), topicId);
-  },
-  getTargetTopic(userId: number) {
-    return cache.get<number | null>(arKey(userId, 'target_topic'));
-  },
-
   setEditMode(userId: number, messageId: number) {
     cache.setPermanent(arKey(userId, 'edit_mode'), messageId);
   },
@@ -104,6 +62,38 @@ export const autoReplyState = {
   getDeleteConfirm(userId: number) {
     return cache.get<number>(arKey(userId, 'delete_confirm'));
   },
+
+  setManagementMode(userId: number, value: boolean) {
+    cache.setPermanent(arKey(userId, 'mgmt_mode'), value);
+  },
+  isManagementMode(userId: number) {
+    return cache.get<boolean>(arKey(userId, 'mgmt_mode'));
+  },
+
+  // ─── Keyword management state ────────────────────────────
+
+  setKeywordMode(userId: number, mode: string) {
+    cache.setPermanent(arKey(userId, 'kw_mode'), mode);
+  },
+  getKeywordMode(userId: number) {
+    return cache.get<string>(arKey(userId, 'kw_mode'));
+  },
+
+  setKeywordCreating(userId: number, value: boolean) {
+    cache.setPermanent(arKey(userId, 'kw_creating'), value);
+  },
+  isKeywordCreating(userId: number) {
+    return cache.get<boolean>(arKey(userId, 'kw_creating'));
+  },
+
+  setKeywordEditing(userId: number, keywordId: number) {
+    cache.setPermanent(arKey(userId, 'kw_editing'), keywordId);
+  },
+  getKeywordEditing(userId: number) {
+    return cache.get<number>(arKey(userId, 'kw_editing'));
+  },
+
+  // ─── Button editor state ─────────────────────────────────
 
   setButtonEditorMode(userId: number, mode: string) {
     cache.setPermanent(arKey(userId, 'btn_editor_mode'), mode);
@@ -124,13 +114,6 @@ export const autoReplyState = {
   },
   getButtonEditorCol(userId: number) {
     return cache.get<number>(arKey(userId, 'btn_editor_col'));
-  },
-
-  setManagementMode(userId: number, value: boolean) {
-    cache.setPermanent(arKey(userId, 'mgmt_mode'), value);
-  },
-  isManagementMode(userId: number) {
-    return cache.get<boolean>(arKey(userId, 'mgmt_mode'));
   },
 
   setButtonEditorMsgId(userId: number, msgId: number) {
@@ -229,10 +212,9 @@ export const autoReplyState = {
   clearAll(userId: number) {
     const fields = [
       'creating', 'editing_field', 'editing_message', 'selected_message',
-      'editing_title', 'editing_content', 'scheduling', 'schedule_step',
-      'interval_hours', 'start_time', 'target_group', 'target_topic',
-      'edit_mode', 'delete_confirm', 'btn_editor_mode', 'btn_editor_row',
-      'btn_editor_col', 'mgmt_mode',
+      'editing_title', 'editing_content', 'edit_mode', 'delete_confirm',
+      'mgmt_mode', 'kw_mode', 'kw_creating', 'kw_editing',
+      'btn_editor_mode', 'btn_editor_row', 'btn_editor_col',
     ];
     for (const field of fields) {
       cache.del(arKey(userId, field));
