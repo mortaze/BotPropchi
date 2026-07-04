@@ -541,12 +541,33 @@ export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: nu
 };
 
 // ─── Reply Keyboard for Move Mode (directional arrows) ─────
-export function buildMoveReplyKeyboard() {
-  return Markup.keyboard([
-    ['⬆️ بالا', '⬇️ پایین'],
-    ['⬅️ چپ', '➡️ راست'],
-    ['✅ بازگشت تایید', '❌ لغو جابجایی'],
-  ]).resize().persistent();
+export function buildMoveReplyKeyboard(
+  row?: number,
+  col?: number,
+  buttons?: any[][],
+) {
+  const dirs: string[] = [];
+  const isSingleRow = (r: number) => Array.isArray(buttons?.[r]) && buttons![r].length === 1;
+  const isFirstRow = row === 0;
+  const isLastRow = buttons ? row === buttons.length - 1 : false;
+  const isFirstCol = col === 0;
+  const isLastCol = buttons && row !== undefined && col !== undefined
+    ? col === (buttons[row]?.length ?? 1) - 1
+    : false;
+
+  if (!(isFirstRow && isSingleRow(row!))) dirs.push('⬆️ بالا');
+  if (!(isLastRow && isSingleRow(row!))) dirs.push('⬇️ پایین');
+  if (!isFirstCol) dirs.push('⬅️ چپ');
+  if (!isLastCol) dirs.push('➡️ راست');
+
+  const rows: string[][] = [];
+  if (dirs.length === 4) rows.push([dirs[0], dirs[1]], [dirs[2], dirs[3]]);
+  else if (dirs.length === 3) rows.push([dirs[0], dirs[1]], [dirs[2]]);
+  else if (dirs.length === 2) rows.push([dirs[0], dirs[1]]);
+  else if (dirs.length === 1) rows.push([dirs[0]]);
+  rows.push(['✅ بازگشت تایید', '❌ لغو جابجایی']);
+
+  return Markup.keyboard(rows).resize().persistent();
 }
 
 // ─── Reply Keyboard: Post Editor (4 options) ────────────────

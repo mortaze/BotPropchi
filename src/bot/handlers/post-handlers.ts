@@ -1711,6 +1711,9 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
 
     await refreshMoveEditor(ctx, postId, buttons, { row: newRow, col: newCol });
+
+    const moveReplyKb = buildMoveReplyKeyboard(newRow, newCol, buttons);
+    await ctx.reply(`📍 جهت بعدی:`, moveReplyKb);
   }
 
   async function refreshMoveEditor(ctx: any, postId: number, buttons: any[][], selectedPos: { row: number; col: number }) {
@@ -1999,7 +2002,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
         try { await ctx.telegram.editMessageText(ctx.chat.id, msgId, null, text, { reply_markup }); } catch {}
       }
 
-      const replyKb = buildMoveReplyKeyboard();
+      const replyKb = buildMoveReplyKeyboard(row, col, buttons);
       await ctx.reply(`🔀 "${buttons[row][col].text}" انتخاب شد. جهت را انتخاب کنید:`, replyKb);
       return;
     }
@@ -2049,10 +2052,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     }
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), newRow);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), 0);
-    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'edit');
+    cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
     const freshPost = await postService.findById(postId);
     const freshButtons = extractButtonsForMessage(freshPost, messageIdx);
-    const { text: editorText, reply_markup } = renderButtonEditor(postId, freshButtons, 'edit', { row: newRow, col: 0 });
+    const { text: editorText, reply_markup } = renderButtonEditor(postId, freshButtons, 'create', { row: newRow, col: 0 });
     const sent = await ctx.reply(editorText, { reply_markup });
     if (sent) cache.setPermanent(`pbedit:editor_msg_id:${ctx.from.id}`, sent.message_id);
     logger.info(`[ButtonEditor] sync complete postId=${postId}`);
