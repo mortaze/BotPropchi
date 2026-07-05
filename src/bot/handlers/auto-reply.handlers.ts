@@ -10,6 +10,7 @@ import { logger } from '../../utils/logger';
 import { cache } from '../../utils/cache';
 import { validateDbInput, sanitizeTelegramText } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
+import { scheduledMessageAutomationKeyboard } from '../keyboards/scheduled-message-keyboards';
 import {
   autoReplyMainMenuKeyboard,
   autoReplyListInlineKeyboard,
@@ -81,12 +82,11 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
   });
 
-  // ─── Back to admin panel (single handler) ───────────────
-  bot.hears('🔙 بازگشت به پنل', async (ctx: any, next) => {
-    if (!ctx.from) return next();
+  // ─── Back to automation menu ───────────────────────────
+  bot.hears('🔙 بازگشت به اتوماسیون', async (ctx: any) => {
+    if (!ctx.from) return;
     const userId = ctx.from.id;
 
-    // If in keyword mode, go back to editor
     const kwMode = autoReplyState.getKeywordMode(userId);
     if (kwMode) {
       autoReplyState.setKeywordMode(userId, '');
@@ -99,22 +99,25 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       }
     }
 
-    // If in editor mode, go back to main menu
     const editMode = autoReplyState.getEditMode(userId);
     if (editMode) {
       autoReplyState.clearAll(userId);
+      cache.del(`ar:${userId}:selecting_group`);
       const result = await autoReplyRepository.findAll({ page: 1, limit: 100 });
       await ctx.reply('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
       return;
     }
 
-    // If in management mode (main menu), go back to automation menu
     if (autoReplyState.isManagementMode(userId)) {
       autoReplyState.clearAll(userId);
-      return next();
+      cache.del(`ar:${userId}:selecting_group`);
+      await ctx.reply('🤖 اتوماسیون', scheduledMessageAutomationKeyboard());
+      return;
     }
 
-    return next();
+    autoReplyState.clearAll(userId);
+    cache.del(`ar:${userId}:selecting_group`);
+    await ctx.reply('🤖 اتوماسیون', scheduledMessageAutomationKeyboard());
   });
 
   // ─── Create new auto reply ──────────────────────────────

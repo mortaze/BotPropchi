@@ -215,6 +215,9 @@ export const autoReplyState = {
       'editing_title', 'editing_content', 'edit_mode', 'delete_confirm',
       'mgmt_mode', 'kw_mode', 'kw_creating', 'kw_editing',
       'btn_editor_mode', 'btn_editor_row', 'btn_editor_col',
+      'pbedit_editor_msg_id', 'btn_mode', 'btn_state', 'btn_row', 'btn_col',
+      'btn_type', 'btn_color', 'btn_previous_view', 'btn_move_active',
+      'btn_move_row', 'btn_move_col', 'btn_pending_delete',
     ];
     for (const field of fields) {
       cache.del(arKey(userId, field));

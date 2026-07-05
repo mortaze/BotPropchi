@@ -10,7 +10,7 @@ export function autoReplyMainMenuKeyboard(posts: any[] = []) {
     const label = graphemeTruncate(sanitizeTelegramText(post.title || 'بدون عنوان'), 30);
     rows.push([label]);
   }
-  rows.push(['🔙 بازگشت به پنل']);
+  rows.push(['🔙 بازگشت به اتوماسیون']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -40,7 +40,7 @@ export function autoReplyNewPostManagerReplyKeyboard() {
     ['👥 گروه پاسخ', '🏷 کلمات کلیدی پاسخ'],
     ['✅ انتشار پاسخ'],
     ['🗑 حذف پاسخ'],
-    ['🔙 بازگشت به پنل'],
+    ['🔙 بازگشت به اتوماسیون'],
   ]).resize().persistent();
 }
 
@@ -74,7 +74,7 @@ export function autoReplyEditMessageReplyKeyboard() {
   return Markup.keyboard([
     ['✏️ ویرایش محتوای پاسخ', '📝 ویرایش عنوان پاسخ'],
     ['🔘 دکمه‌های پاسخ'],
-    ['🔙 بازگشت به پنل'],
+    ['🔙 بازگشت به اتوماسیون'],
   ]).resize().persistent();
 }
 
@@ -104,7 +104,7 @@ export function autoReplySingleMessageInlineKeyboard(
 
 export function autoReplyGroupReplyKeyboard(groups: any[]) {
   const rows: string[][] = groups.map((g) => [g.title]);
-  rows.push(['🔙 بازگشت به پنل']);
+  rows.push(['🔙 بازگشت به اتوماسیون']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -115,7 +115,7 @@ export function autoReplyTopicReplyKeyboard(topics: any[]) {
   for (const t of topics) {
     rows.push([t.name]);
   }
-  rows.push(['🔙 بازگشت به پنل']);
+  rows.push(['🔙 بازگشت به اتوماسیون']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -175,7 +175,7 @@ export function autoReplyKeywordManageKeyboard() {
   return Markup.keyboard([
     ['➕ ایجاد کلمه جدید پاسخ'],
     ['✏️ ویرایش کلمات پاسخ', '🗑 حذف کلمات پاسخ'],
-    ['🔙 بازگشت به پنل'],
+    ['🔙 بازگشت به اتوماسیون'],
   ]).resize().persistent();
 }
 

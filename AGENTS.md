@@ -102,7 +102,7 @@ Key implications:
 
 ## Button Grid Gotchas
 
-In `src/bot/handlers/scheduled-message.handlers.ts`, button grids use `normalizeGrid()` (dense `[{id,text},...][]`) before any move/swap — `buttonsToGrid()` can produce sparse arrays that crash on index access. `findButtonInGrid()` locates buttons by DB `id` after normalization shifts array positions.
+In `src/bot/handlers/scheduled-message.handlers.ts` and `auto-reply.handlers.ts`, button grids use `normalizeGrid()` (dense `[{id,text},...][]`) before any move/swap — `buttonsToGrid()` can produce sparse arrays that crash on index access. `findButtonInGrid()` locates buttons by DB `id` after normalization shifts array positions.
 
 ## Bug Verification Protocol
 
