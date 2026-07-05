@@ -173,10 +173,19 @@ export function autoReplyKeywordDeleteKeyboard(keywords: any[]) {
 
 export function autoReplyKeywordManageKeyboard() {
   return Markup.keyboard([
-    ['➕ ایجاد کلمه جدید پاسخ'],
-    ['✏️ ویرایش کلمات پاسخ', '🗑 حذف کلمات پاسخ'],
-    ['🔙 بازگشت به اتوماسیون'],
+    ['➕ ایجاد کلمه جدید'],
+    ['✏️ ویرایش', '🗑 حذف'],
+    ['🔙 بازگشت'],
   ]).resize().persistent();
+}
+
+export function mergeKeywordKeyboards(inlineKb: any, replyKb: any) {
+  return {
+    reply_markup: {
+      ...inlineKb.reply_markup,
+      ...replyKb.reply_markup,
+    },
+  };
 }
 
 // ─── Button Editor ────────────────────────────────────────

@@ -28,6 +28,7 @@ import {
   autoReplyKeywordListKeyboard,
   autoReplyKeywordEditKeyboard,
   autoReplyKeywordDeleteKeyboard,
+  mergeKeywordKeyboards,
   renderAutoReplyButtonEditor,
   buildArbtnEditTypeKeyboard,
   buildArbtnColorKeyboard,
@@ -210,10 +211,10 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const text = keywords.length > 0
       ? `🏷 کلمات کلیدی این پاسخ خودکار:\nهر زمان یکی از کاربران یکی از این عبارات را در گروه ارسال کند، این پاسخ خودکار برای او ارسال خواهد شد.`
       : '🏷 هیچ کلمه کلیدی ثبت نشده است.\nحداقل یک کلمه کلیدی برای انتشار لازم است.';
-    await ctx.reply(text, {
-      ...autoReplyKeywordListKeyboard(keywords),
-      ...autoReplyKeywordManageKeyboard(),
-    });
+    await ctx.reply(text, mergeKeywordKeyboards(
+      autoReplyKeywordListKeyboard(keywords),
+      autoReplyKeywordManageKeyboard(),
+    ));
   });
 
   bot.hears('➕ ایجاد کلمه جدید پاسخ', async (ctx: any) => {
@@ -223,26 +224,37 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply('کلمه یا عبارت کلیدی جدید را ارسال کنید:', autoReplyCancelOnlyKeyboard());
   });
 
-  bot.hears('✏️ ویرایش کلمات پاسخ', async (ctx: any) => {
+  bot.hears('✏️ ویرایش', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const keywords = await autoReplyService.listKeywords(msgId);
     autoReplyState.setKeywordMode(ctx.from.id, 'edit');
-    await ctx.reply('کلمه مورد نظر را برای ویرایش انتخاب کنید:', {
-      ...autoReplyKeywordEditKeyboard(keywords),
-      ...autoReplyKeywordManageKeyboard(),
-    });
+    await ctx.reply('کلمه مورد نظر را برای ویرایش انتخاب کنید:', mergeKeywordKeyboards(
+      autoReplyKeywordEditKeyboard(keywords),
+      autoReplyKeywordManageKeyboard(),
+    ));
   });
 
-  bot.hears('🗑 حذف کلمات پاسخ', async (ctx: any) => {
+  bot.hears('🗑 حذف', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const keywords = await autoReplyService.listKeywords(msgId);
     autoReplyState.setKeywordMode(ctx.from.id, 'delete');
-    await ctx.reply('کلمه مورد نظر را برای حذف انتخاب کنید:', {
-      ...autoReplyKeywordDeleteKeyboard(keywords),
-      ...autoReplyKeywordManageKeyboard(),
-    });
+    await ctx.reply('کلمه مورد نظر را برای حذف انتخاب کنید:', mergeKeywordKeyboards(
+      autoReplyKeywordDeleteKeyboard(keywords),
+      autoReplyKeywordManageKeyboard(),
+    ));
+  });
+
+  bot.hears('🔙 بازگشت', async (ctx: any) => {
+    const userId = ctx.from.id;
+    if (!autoReplyState.isManagementMode(userId)) return;
+    const editMode = autoReplyState.getEditMode(userId);
+    if (!editMode) return;
+    autoReplyState.setKeywordMode(userId, '');
+    autoReplyState.setKeywordCreating(userId, false);
+    autoReplyState.setKeywordEditing(userId, 0);
+    await showAutoReplyEditor(ctx, editMode);
   });
 
   // ─── Publish ────────────────────────────────────────────
@@ -327,10 +339,10 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         await autoReplyService.addKeyword(msgId, text);
         autoReplyState.setKeywordCreating(userId, false);
         const keywords = await autoReplyService.listKeywords(msgId);
-        await ctx.reply(`✅ کلمه "${text}" اضافه شد.`, {
-          ...autoReplyKeywordListKeyboard(keywords),
-          ...autoReplyKeywordManageKeyboard(),
-        });
+        await ctx.reply(`✅ کلمه "${text}" اضافه شد.`, mergeKeywordKeyboards(
+          autoReplyKeywordListKeyboard(keywords),
+          autoReplyKeywordManageKeyboard(),
+        ));
       } catch (err: any) {
         await ctx.reply(`❌ خطا: ${err.message}`);
       }
@@ -347,10 +359,10 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         autoReplyState.setKeywordEditing(userId, 0);
         autoReplyState.setKeywordMode(userId, 'list');
         const keywords = await autoReplyService.listKeywords(msgId);
-        await ctx.reply(`✅ کلمه بروزرسانی شد.`, {
-          ...autoReplyKeywordListKeyboard(keywords),
-          ...autoReplyKeywordManageKeyboard(),
-        });
+        await ctx.reply(`✅ کلمه بروزرسانی شد.`, mergeKeywordKeyboards(
+          autoReplyKeywordListKeyboard(keywords),
+          autoReplyKeywordManageKeyboard(),
+        ));
       } catch (err: any) {
         await ctx.reply(`❌ خطا: ${err.message}`);
       }
@@ -527,10 +539,10 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       await autoReplyService.deleteKeyword(keywordId);
       const keywords = await autoReplyService.listKeywords(msgId);
       autoReplyState.setKeywordMode(ctx.from.id, 'list');
-      await ctx.reply('✅ کلمه حذف شد.', {
-        ...autoReplyKeywordListKeyboard(keywords),
-        ...autoReplyKeywordManageKeyboard(),
-      });
+      await ctx.reply('✅ کلمه حذف شد.', mergeKeywordKeyboards(
+        autoReplyKeywordListKeyboard(keywords),
+        autoReplyKeywordManageKeyboard(),
+      ));
     } catch (err: any) {
       await ctx.reply(`❌ خطا: ${err.message}`);
     }
@@ -618,10 +630,10 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (key === 'keywords') {
       const keywords = await autoReplyService.listKeywords(msgId);
       autoReplyState.setKeywordMode(ctx.from.id, 'list');
-      await ctx.reply('🏷 کلمات کلیدی:', {
-        ...autoReplyKeywordListKeyboard(keywords),
-        ...autoReplyKeywordManageKeyboard(),
-      });
+      await ctx.reply('🏷 کلمات کلیدی:', mergeKeywordKeyboards(
+        autoReplyKeywordListKeyboard(keywords),
+        autoReplyKeywordManageKeyboard(),
+      ));
     } else if (key === 'group') {
       const groups = await prisma.telegramGroup.findMany({
         where: { status: 'APPROVED', botIsAdmin: true },
