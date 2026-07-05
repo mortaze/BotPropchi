@@ -54,8 +54,8 @@ function formatAutoReplyInfo(msg: any): string {
 function validatePublishReadiness(msg: any): { ready: boolean; missing: { key: string; label: string }[] } {
   const missing: { key: string; label: string }[] = [];
   if ((msg.keywords?.length || 0) === 0) missing.push({ key: 'keywords', label: '🏷 کلمات کلیدی پاسخ' });
-  if (!msg.targetChatId) missing.push({ key: 'group', label: '👥 گروه پاسخ' });
-  if ((msg.messages?.length || 0) === 0) missing.push({ key: 'messages', label: '➕ افزودن پیام پاسخ' });
+  if (!msg.targetChatId) missing.push({ key: 'group', label: '👥 انتخاب گروه' });
+  if ((msg.messages?.length || 0) === 0) missing.push({ key: 'messages', label: '➕ افزودن پیام' });
   return { ready: missing.length === 0, missing };
 }
 
@@ -120,7 +120,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply('🤖 اتوماسیون', scheduledMessageAutomationKeyboard());
   });
 
-  bot.hears('🔙 بازگشت به ویرایش', async (ctx: any) => {
+  bot.hears('🔙 بازگشت', async (ctx: any) => {
     const userId = ctx.from.id;
     cache.del(`ar:${userId}:selecting_group`);
     const editMode = autoReplyState.getEditMode(userId);
@@ -153,7 +153,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── Cancel creation ────────────────────────────────────
-  bot.hears('❌ لغو پاسخ', async (ctx: any, next) => {
+  bot.hears('❌ لغو', async (ctx: any, next) => {
     if (!ctx.from) return next();
     const userId = ctx.from.id;
     const creating = autoReplyState.isCreating(userId);
@@ -181,14 +181,14 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     return next();
   });
 
-  bot.hears('🔙 بازگشت به لیست پاسخ', async (ctx: any) => {
+  bot.hears('🔙 بازگشت به لیست', async (ctx: any) => {
     autoReplyState.clearAll(ctx.from.id);
     await sendList(ctx, 1);
   });
 
   // ─── Editor actions (Reply Keyboard) ────────────────────
 
-  bot.hears('➕ افزودن پیام پاسخ', async (ctx: any) => {
+  bot.hears('➕ افزودن پیام', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     autoReplyState.setEditingMessage(ctx.from.id, -1);
@@ -199,7 +199,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     );
   });
 
-  bot.hears('👥 گروه پاسخ', async (ctx: any) => {
+  bot.hears('👥 انتخاب گروه', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const groups = await prisma.telegramGroup.findMany({
@@ -251,16 +251,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await showKeywordPage(ctx, 'delete');
   });
 
-  bot.hears('🔙 بازگشت', async (ctx: any) => {
-    const userId = ctx.from.id;
-    if (!autoReplyState.isManagementMode(userId)) return;
-    const editMode = autoReplyState.getEditMode(userId);
-    if (!editMode) return;
-    autoReplyState.setKeywordMode(userId, '');
-    autoReplyState.setKeywordCreating(userId, false);
-    autoReplyState.setKeywordEditing(userId, 0);
-    await showAutoReplyEditor(ctx, editMode);
-  });
+
 
   // ─── Keyword inline callbacks ───────────────────────────
 
@@ -328,7 +319,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
   // ─── Publish ────────────────────────────────────────────
 
-  bot.hears('✅ انتشار پاسخ', async (ctx: any) => {
+  bot.hears('✅ انتشار', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) {
       await ctx.reply('❌ پستی انتخاب نشده است.');
@@ -898,44 +889,70 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const msgId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
-
     const mode = autoReplyState.getButtonMode(userId) || 'create';
+
+    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+
     if (mode === 'move') {
       autoReplyState.setButtonMoveSelected(userId, row, col);
-      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-      const grid = buttonsToGrid(buttons);
-      const selected = grid[row]?.[col];
-      if (selected) {
-        await ctx.reply(`🔀 "${selected.text}" را به کجا منتقل کنید؟`, buildArbtnMoveKeyboard());
+      autoReplyState.setButtonMoveActive(userId, true);
+      const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
+      if (editorMsgId) {
+        const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, grid, 'move', { row, col });
+        try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
+      }
+      const moveKb = buildDynamicMoveKeyboard(grid, row, col);
+      await ctx.reply(`🔀 "${grid[row]?.[col]?.text || ''}" انتخاب شد. جهت را انتخاب کنید:`, moveKb);
+      return;
+    }
+
+    if (mode === 'delete') {
+      if (grid[row] && grid[row][col]) {
+        const btn = grid[row][col];
+        if (btn.id) {
+          await autoReplyService.deleteButton(btn.id);
+        }
+        autoReplyState.setButtonMode(userId, 'create');
+        await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
       }
       return;
     }
 
-    autoReplyState.setButtonEditorRow(userId, row);
-    autoReplyState.setButtonEditorCol(userId, col);
-    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
-    const existing = grid[row]?.[col];
-
-    if (mode === 'delete' && existing) {
-      await autoReplyService.deleteButton(existing.id);
-      const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
-      await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+    if (mode === 'edit') {
+      const btn = grid[row]?.[col];
+      if (!btn) return;
+      autoReplyState.setButtonRow(userId, row);
+      autoReplyState.setButtonCol(userId, col);
+      autoReplyState.setButtonMode(userId, 'edit');
+      const typeLabel = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : btn.type === 'URL' ? '🔗 لینک' : btn.type;
+      const valueLabel = btn.type === 'URL' ? 'آدرس' : btn.type === 'COMMAND' ? 'دستور' : btn.type === 'POPUP' ? 'متن پنجره' : 'مقدار';
+      const colorText = btn.style ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
+      await ctx.editMessageText(
+        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${btn.text}\n${valueLabel}: ${btn.value || '(خالی)'}\n${colorText}`,
+        buildArbtnEditTypeKeyboard(msgId, row, col, btn.style),
+      );
       return;
     }
 
-    if (mode === 'edit' && existing) {
-      const kb = buildArbtnEditTypeKeyboard(msgId, row, col, existing.style);
-      await ctx.reply('نوع دکمه را انتخاب کنید:', kb);
-      autoReplyState.setButtonState(userId, 'wait_type');
-      return;
+    // Create mode — add placeholder button BELOW clicked button, shift existing buttons down
+    const existingButtons = buttons.filter((b: any) => b.row >= row + 1);
+    for (const btn of existingButtons) {
+      await autoReplyRepository.updateButton(btn.id, { row: btn.row + 1 });
     }
 
-    if (mode === 'create' && !existing) {
-      autoReplyState.setButtonState(userId, 'wait_text');
-      await ctx.reply('📝 متن دکمه را وارد کنید:', autoReplyCancelOnlyKeyboard());
-      return;
-    }
+    const newBtn = await autoReplyService.addButton(msgId, {
+      text: 'دکمه جدید',
+      type: 'URL',
+      value: '',
+      row: row + 1,
+      col: 0,
+    });
+    autoReplyState.setButtonRow(userId, row + 1);
+    autoReplyState.setButtonCol(userId, 0);
+    autoReplyState.setButtonMode(userId, 'edit');
+    const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
+    await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
   });
 
   bot.action(/^arbtn:mode:(create|edit|delete|move):(\d+)$/, async (ctx: any) => {
@@ -944,21 +961,16 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const mode = ctx.match[1];
     const msgId = parseInt(ctx.match[2]);
     autoReplyState.setButtonMode(userId, mode);
-
+    autoReplyState.setButtonState(userId, '');
+    autoReplyState.setButtonRow(userId, 0);
+    autoReplyState.setButtonCol(userId, 0);
     if (mode === 'move') {
-      autoReplyState.setButtonMoveActive(userId, true);
-      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-      const grid = buttonsToGrid(buttons);
-      const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, grid, 'move');
-      try { await ctx.editMessageText(text, { reply_markup }); } catch {}
-      await ctx.reply('🔀 دکمه مورد نظر را انتخاب کنید:', buildArbtnMoveKeyboard());
-    } else {
       autoReplyState.setButtonMoveActive(userId, false);
-      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-      const grid = buttonsToGrid(buttons);
-      const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, grid, mode as any);
-      try { await ctx.editMessageText(text, { reply_markup }); } catch {}
     }
+    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, grid, mode as any);
+    try { await ctx.editMessageText(text, { reply_markup }); } catch {}
   });
 
   bot.action(/^arbtn:type:(url|popup|command):(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -978,17 +990,91 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       const newBtn = await autoReplyService.addButton(msgId, { text: '', type, row, col });
     }
 
-    autoReplyState.setButtonState(userId, 'wait_value');
-    await ctx.reply('📝 مقدار دکمه را وارد کنید (لینک یا متن):', autoReplyCancelOnlyKeyboard());
+    autoReplyState.setButtonState(userId, 'wait_text');
+    autoReplyState.setButtonType(userId, ctx.match[1]);
+    autoReplyState.setButtonRow(userId, parseInt(ctx.match[3]));
+    autoReplyState.setButtonCol(userId, parseInt(ctx.match[4]));
+    autoReplyState.setButtonPreviousView(userId, autoReplyState.getButtonMode(userId) || 'edit');
+    await ctx.reply('📝 متن و مقدار دکمه را وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: مقدار (لینک/دستور/متن)', autoReplyCancelOnlyKeyboard());
   });
 
   bot.action(/^arbtn:type:cancel:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id;
     autoReplyState.setButtonState(userId, '');
+    autoReplyState.setButtonType(userId, '');
+    const prevMode = autoReplyState.getButtonPreviousView(userId) || 'edit';
+    autoReplyState.setButtonMode(userId, prevMode);
     const msgId = parseInt(ctx.match[1]);
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     await refreshButtonEditor(ctx, msgId, buttonsToGrid(buttons));
+  });
+
+  // ─── Button Editor: Text input for button name/value ──
+  bot.on('text', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const btnState = autoReplyState.getButtonState(userId);
+    if (btnState !== 'wait_text') return next();
+
+    const rawText = ctx.message.text;
+    const msgId = autoReplyState.getEditingMessage(userId);
+    const row = autoReplyState.getButtonRow(userId);
+    const col = autoReplyState.getButtonCol(userId);
+    const btnType = autoReplyState.getButtonType(userId);
+    if (!msgId || row === undefined || col === undefined) return next();
+
+    const lines = rawText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+    if (lines.length < 2) {
+      await ctx.reply('❌ حداقل دو خط وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: مقدار', {
+        reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `arbtn:type:cancel:${msgId}`)]] },
+      });
+      return;
+    }
+    const title = lines[0];
+    const value = lines.slice(1).join('\n');
+
+    if (btnType === 'url') {
+      if (!value.startsWith('http') && !value.startsWith('https') && !value.startsWith('t.me/') && !value.startsWith('tg://')) {
+        await ctx.reply('❌ آدرس نامعتبر است. باید با http://، https://، t.me/ یا tg:// شروع شود.', {
+          reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `arbtn:type:cancel:${msgId}`)]] },
+        });
+        return;
+      }
+    }
+    if (btnType === 'command') {
+      if (!/^[a-z0-9_]+$/.test(value)) {
+        await ctx.reply('❌ دستور نامعتبر است. فقط حروف a-z، اعداد 0-9 و زیرخط (_) مجاز است.', {
+          reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `arbtn:type:cancel:${msgId}`)]] },
+        });
+        return;
+      }
+    }
+    if (btnType === 'popup') {
+      if (value.length > 200) {
+        await ctx.reply('❌ متن POP-UP نمی‌تواند بیش از ۲۰۰ کاراکتر باشد.', {
+          reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `arbtn:type:cancel:${msgId}`)]] },
+        });
+        return;
+      }
+    }
+
+    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const existingBtn = grid[row]?.[col];
+
+    const dbType = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : 'CALLBACK';
+
+    if (existingBtn?.id) {
+      await autoReplyService.updateButton(existingBtn.id, { text: title, type: dbType, value });
+    } else {
+      await autoReplyService.addButton(msgId, { text: title, type: dbType, value, row, col });
+    }
+
+    autoReplyState.setButtonState(userId, '');
+    autoReplyState.setButtonType(userId, '');
+    autoReplyState.setButtonMode(userId, 'create');
+    await ctx.reply('✅ دکمه ذخیره شد.');
+    await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
   });
 
   bot.action(/^arbtn:color:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -1018,45 +1104,51 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
   // ─── Move direction handlers ────────────────────────────
 
-  bot.hears('⬆️ بالا پاسخ', async (ctx: any) => {
+  bot.hears('⬆️ بالا', async (ctx: any) => {
     if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
     await handleARMoveDirection(ctx, 'up');
   });
 
-  bot.hears('⬇️ پایین پاسخ', async (ctx: any) => {
+  bot.hears('⬇️ پایین', async (ctx: any) => {
     if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
     await handleARMoveDirection(ctx, 'down');
   });
 
-  bot.hears('⬅️ چپ پاسخ', async (ctx: any) => {
+  bot.hears('⬅️ چپ', async (ctx: any) => {
     if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
     await handleARMoveDirection(ctx, 'left');
   });
 
-  bot.hears('➡️ راست پاسخ', async (ctx: any) => {
+  bot.hears('➡️ راست', async (ctx: any) => {
     if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
     await handleARMoveDirection(ctx, 'right');
   });
 
-  bot.hears('✅ تایید جابه‌جایی پاسخ', async (ctx: any) => {
-    const userId = ctx.from.id;
-    if (!autoReplyState.isButtonMoveActive(userId)) return;
-    const msgId = autoReplyState.getEditingMessage(userId);
-    if (!msgId) return;
+  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any) => {
+    try {
+      const userId = ctx.from.id;
+      if (!autoReplyState.isButtonMoveActive(userId)) return;
+      const msgId = autoReplyState.getEditingMessage(userId);
+      if (!msgId) return;
 
-    autoReplyState.setButtonMoveActive(userId, false);
-    autoReplyState.setButtonMode(userId, 'create');
+      autoReplyState.setButtonMoveActive(userId, false);
+      autoReplyState.setButtonMode(userId, 'create');
+      autoReplyState.setButtonState(userId, '');
+      autoReplyState.setButtonRow(userId, 0);
+      autoReplyState.setButtonCol(userId, 0);
 
-    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
-    await ctx.reply('✅ جابه‌جایی ذخیره شد.');
-    const msg = await autoReplyRepository.findById(msgId);
-    await ctx.reply(formatAutoReplyInfo(msg), {
-      parse_mode: 'Markdown',
-      link_preview_options: { is_disabled: true },
-      ...autoReplyEditMessageReplyKeyboard(),
-    });
-    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-    await refreshButtonEditor(ctx, msgId, buttonsToGrid(buttons));
+      try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+      await ctx.reply('✅ جابه‌جایی ذخیره شد.');
+      const msg = await autoReplyRepository.findById(msgId);
+      await ctx.reply(formatAutoReplyInfo(msg), {
+        parse_mode: 'Markdown',
+        link_preview_options: { is_disabled: true },
+        ...autoReplyEditMessageReplyKeyboard(),
+      });
+      await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
+    } catch (err: any) {
+      logger.error(`[ARMove] confirm error: ${err.message}`);
+    }
   });
 
   bot.hears('↩️ پایان جابه‌جایی', async (ctx: any) => {
@@ -1081,25 +1173,31 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   });
 
-  bot.hears('❌ لغو جابجایی پاسخ', async (ctx: any) => {
-    const userId = ctx.from.id;
-    if (!autoReplyState.isButtonMoveActive(userId)) return;
-    const msgId = autoReplyState.getEditingMessage(userId);
+  bot.hears('❌ لغو جابجایی', async (ctx: any) => {
+    try {
+      const userId = ctx.from.id;
+      if (!autoReplyState.isButtonMoveActive(userId)) return;
+      const msgId = autoReplyState.getEditingMessage(userId);
 
-    autoReplyState.setButtonMoveActive(userId, false);
-    autoReplyState.setButtonMode(userId, 'create');
+      autoReplyState.setButtonMoveActive(userId, false);
+      autoReplyState.setButtonMode(userId, 'create');
+      autoReplyState.setButtonState(userId, '');
+      autoReplyState.setButtonRow(userId, 0);
+      autoReplyState.setButtonCol(userId, 0);
 
-    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
-    await ctx.reply('❌ جابه‌جایی لغو شد.');
-    if (msgId) {
-      const msg = await autoReplyRepository.findById(msgId);
-      await ctx.reply(formatAutoReplyInfo(msg), {
-        parse_mode: 'Markdown',
-        link_preview_options: { is_disabled: true },
-        ...autoReplyEditMessageReplyKeyboard(),
-      });
-      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-      await refreshButtonEditor(ctx, msgId, buttonsToGrid(buttons));
+      try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+      await ctx.reply('❌ جابه‌جایی لغو شد.');
+      if (msgId) {
+        const msg = await autoReplyRepository.findById(msgId);
+        await ctx.reply(formatAutoReplyInfo(msg), {
+          parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
+          ...autoReplyEditMessageReplyKeyboard(),
+        });
+        await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
+      }
+    } catch (err: any) {
+      logger.error(`[ARMove] cancel error: ${err.message}`);
     }
   });
 
@@ -1107,16 +1205,16 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   function buildDynamicMoveKeyboard(grid: any[][], row: number, col: number) {
     const rows: string[][] = [];
     const directionRow: string[] = [];
-    if (row > 0 || (grid[row] && grid[row].length > 1)) directionRow.push('⬆️ بالا پاسخ');
-    if (row < grid.length - 1 || (grid[row] && grid[row].length > 1)) directionRow.push('⬇️ پایین پاسخ');
+    if (row > 0 || (grid[row] && grid[row].length > 1)) directionRow.push('⬆️ بالا');
+    if (row < grid.length - 1 || (grid[row] && grid[row].length > 1)) directionRow.push('⬇️ پایین');
     if (directionRow.length > 0) rows.push(directionRow);
 
     const horizRow: string[] = [];
-    if (col > 0) horizRow.push('⬅️ چپ پاسخ');
-    if (grid[row] && col < grid[row].length - 1) horizRow.push('➡️ راست پاسخ');
+    if (col > 0) horizRow.push('⬅️ چپ');
+    if (grid[row] && col < grid[row].length - 1) horizRow.push('➡️ راست');
     if (horizRow.length > 0) rows.push(horizRow);
 
-    rows.push(['✅ تایید جابه‌جایی پاسخ', '❌ لغو جابجایی پاسخ']);
+    rows.push(['✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی']);
     return Markup.keyboard(rows).resize().persistent();
   }
 

@@ -36,11 +36,11 @@ export function autoReplyListInlineKeyboard(messages: any[], page: number, total
 
 export function autoReplyNewPostManagerReplyKeyboard() {
   return Markup.keyboard([
-    ['➕ افزودن پیام پاسخ'],
-    ['👥 گروه پاسخ', '🏷 کلمات کلیدی پاسخ'],
-    ['✅ انتشار پاسخ'],
+    ['➕ افزودن پیام'],
+    ['👥 انتخاب گروه', '🏷 کلمات کلیدی پاسخ'],
+    ['✅ انتشار'],
     ['🗑 حذف پاسخ'],
-    ['🔙 بازگشت به اتوماسیون'],
+    ['🔙 بازگشت'],
   ]).resize().persistent();
 }
 
@@ -48,33 +48,33 @@ export function autoReplyNewPostManagerReplyKeyboard() {
 
 export function autoReplyEditorReplyKeyboard(isPublished: boolean) {
   return Markup.keyboard([
-    ['➕ افزودن پیام پاسخ'],
-    ['👥 گروه پاسخ', '🏷 کلمات کلیدی پاسخ'],
-    ['✅ انتشار پاسخ'],
+    ['➕ افزودن پیام'],
+    ['👥 انتخاب گروه', '🏷 کلمات کلیدی پاسخ'],
+    ['✅ انتشار', '📊 آمار'],
     ['🗑 حذف پاسخ'],
-    ['🔙 بازگشت به لیست پاسخ'],
+    ['🔙 بازگشت به لیست'],
   ]).resize().persistent();
 }
 
 // ─── Cancel Only ──────────────────────────────────────────
 
 export function autoReplyCancelOnlyKeyboard() {
-  return Markup.keyboard([['❌ لغو پاسخ']]).resize().persistent();
+  return Markup.keyboard([['❌ لغو']]).resize().persistent();
 }
 
 // ─── Add Message Prompt ───────────────────────────────────
 
 export function autoReplyAddMessageKeyboard() {
-  return Markup.keyboard([['❌ لغو پاسخ']]).resize().persistent();
+  return Markup.keyboard([['❌ لغو']]).resize().persistent();
 }
 
 // ─── Message Edit Reply Keyboard ──────────────────────────
 
 export function autoReplyEditMessageReplyKeyboard() {
   return Markup.keyboard([
-    ['✏️ ویرایش محتوای پاسخ', '📝 ویرایش عنوان پاسخ'],
-    ['🔘 دکمه‌های پاسخ'],
-    ['🔙 بازگشت به اتوماسیون'],
+    ['✏️ ویرایش محتوا', '📝 ویرایش عنوان'],
+    ['🔘 مدیریت دکمه‌ها'],
+    ['🔙 بازگشت'],
   ]).resize().persistent();
 }
 
@@ -104,7 +104,7 @@ export function autoReplySingleMessageInlineKeyboard(
 
 export function autoReplyGroupReplyKeyboard(groups: any[]) {
   const rows: string[][] = groups.map((g) => [g.title]);
-  rows.push(['🔙 بازگشت به ویرایش']);
+  rows.push(['🔙 بازگشت']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -115,7 +115,7 @@ export function autoReplyTopicReplyKeyboard(topics: any[]) {
   for (const t of topics) {
     rows.push([t.name]);
   }
-  rows.push(['🔙 بازگشت به ویرایش']);
+  rows.push(['🔙 بازگشت']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -184,10 +184,11 @@ export function renderKeywordPage(keywords: any[], mode: 'list' | 'edit' | 'dele
 // ─── Keyword Reply Keyboards (for text input prompts) ─────
 
 export function autoReplyKeywordCancelKeyboard() {
-  return Markup.keyboard([['❌ لغو پاسخ']]).resize().persistent();
+  return Markup.keyboard([['❌ لغو']]).resize().persistent();
 }
 
 // ─── Button Editor ────────────────────────────────────────
+// Shared builders with configurable prefix (arbtn: for auto-reply, smbtn: for scheduled-messages)
 
 const colorIndicator = (style?: string) => {
   if (style === 'primary') return '🔵';
@@ -196,11 +197,12 @@ const colorIndicator = (style?: string) => {
   return '';
 };
 
-function buildButtonEditorInlineKeyboard(
+export function buildButtonEditorInlineKeyboard(
   messageId: number,
   buttons: any[][],
   mode: 'create' | 'edit' | 'delete' | 'move',
   selectedPos?: { row: number; col: number },
+  prefix: string = 'arbtn',
 ): any[][] {
   const rows: any[][] = [];
   const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
@@ -217,21 +219,21 @@ function buildButtonEditorInlineKeyboard(
         const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
         const icon = isSelected ? '[✅]' : mode === 'edit' ? '[✏️]' : mode === 'delete' ? '[✖]' : mode === 'move' ? '[🔀]' : '[＋]';
         rowButtons.push(
-          Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${label}`, `arbtn:click:${messageId}:${r}:${c}`),
+          Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
         );
       }
       if (rowButtons.length > 0) rows.push(rowButtons);
     }
   } else if (mode === 'create') {
-    rows.push([Markup.button.callback('＋', `arbtn:click:${messageId}:0:0`)]);
+    rows.push([Markup.button.callback('＋', `${prefix}:click:${messageId}:0:0`)]);
   }
 
   if (mode !== 'move') {
     rows.push([
-      Markup.button.callback('➕ ایجاد دکمه', `arbtn:mode:create:${messageId}`),
-      Markup.button.callback('✏️ ویرایش دکمه', `arbtn:mode:edit:${messageId}`),
-      Markup.button.callback('🗑 حذف دکمه', `arbtn:mode:delete:${messageId}`),
-      Markup.button.callback('🔀 جابه‌جایی دکمه', `arbtn:mode:move:${messageId}`),
+      Markup.button.callback('➕ ایجاد', `${prefix}:mode:create:${messageId}`),
+      Markup.button.callback('✏️ ویرایش', `${prefix}:mode:edit:${messageId}`),
+      Markup.button.callback('🗑 حذف', `${prefix}:mode:delete:${messageId}`),
+      Markup.button.callback('🔀 جابجایی', `${prefix}:mode:move:${messageId}`),
     ]);
   }
 
@@ -245,9 +247,9 @@ export function renderAutoReplyButtonEditor(
   selectedPos?: { row: number; col: number },
 ): { text: string; reply_markup: any } {
   const effectiveMode = mode || 'create';
-  const rows = buildButtonEditorInlineKeyboard(messageId, buttons, effectiveMode, selectedPos);
+  const rows = buildButtonEditorInlineKeyboard(messageId, buttons, effectiveMode, selectedPos, 'arbtn');
   return {
-    text: '⌨️ ویرایشگر دکمه‌های پاسخ',
+    text: '⌨️ ویرایشگر دکمه‌ها',
     reply_markup: { inline_keyboard: rows },
   };
 }
@@ -265,9 +267,9 @@ export function buildArbtnEditTypeKeyboard(messageId: number, row: number, col: 
 
 export function buildArbtnMoveKeyboard() {
   return Markup.keyboard([
-    ['⬆️ بالا پاسخ', '⬇️ پایین پاسخ'],
-    ['⬅️ چپ پاسخ', '➡️ راست پاسخ'],
-    ['✅ تایید جابه‌جایی پاسخ', '❌ لغو جابجایی پاسخ'],
+    ['⬆️ بالا', '⬇️ پایین'],
+    ['⬅️ چپ', '➡️ راست'],
+    ['✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی'],
   ]).resize().persistent();
 }
 
