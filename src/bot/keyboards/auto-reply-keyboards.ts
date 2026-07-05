@@ -225,7 +225,7 @@ export function buildButtonEditorInlineKeyboard(
       if (rowButtons.length > 0) rows.push(rowButtons);
     }
   } else if (mode === 'create') {
-    rows.push([Markup.button.callback('＋', `${prefix}:click:${messageId}:0:0`)]);
+    rows.push([Markup.button.callback('➕ ایجاد دکمه جدید', `${prefix}:mode:create:${messageId}`)]);
   }
 
   if (mode !== 'move') {
@@ -234,6 +234,9 @@ export function buildButtonEditorInlineKeyboard(
       Markup.button.callback('✏️ ویرایش', `${prefix}:mode:edit:${messageId}`),
       Markup.button.callback('🗑 حذف', `${prefix}:mode:delete:${messageId}`),
       Markup.button.callback('🔀 جابجایی', `${prefix}:mode:move:${messageId}`),
+    ]);
+    rows.push([
+      Markup.button.callback('🔙 بازگشت', `ar:back:${messageId}`),
     ]);
   }
 

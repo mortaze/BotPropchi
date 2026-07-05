@@ -264,10 +264,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         }
       }
     }
-    if (!msgId || msgId <= 0) {
-      await ctx.reply('❌ ابتدا یک پیام انتخاب کنید.');
-      return;
-    }
+    if (!msgId || msgId <= 0) return;
 
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
@@ -935,6 +932,13 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   });
 
+  bot.action(/^ar:back:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const editMode = autoReplyState.getEditMode(userId);
+    if (editMode) await showAutoReplyEditor(ctx, editMode);
+  });
+
   // ─── Dashboard callbacks ────────────────────────────────
 
   bot.action('ar:dashboard:refresh', async (ctx: any) => {
@@ -1007,24 +1011,23 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       return;
     }
 
-    // Create mode — shift existing buttons down, create placeholder
-    const existingButtons = buttons.filter((b: any) => b.row >= row + 1);
-    for (const btn of existingButtons) {
-      await autoReplyRepository.updateButton(btn.id, { row: btn.row + 1 });
-    }
+    // Create mode — enter text input flow at this position
+    autoReplyState.setButtonRow(userId, row);
+    autoReplyState.setButtonCol(userId, col);
+    autoReplyState.setButtonState(userId, 'wait_text');
+    autoReplyState.setButtonType(userId, 'url');
+    autoReplyState.setButtonPreviousView(userId, 'create');
 
-    await autoReplyService.addButton(msgId, {
-      text: 'دکمه جدید',
-      type: 'URL',
-      value: '',
-      row: row + 1,
-      col: 0,
-    });
-    autoReplyState.setButtonRow(userId, row + 1);
-    autoReplyState.setButtonCol(userId, 0);
-    autoReplyState.setButtonMode(userId, 'edit');
-    const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
-    await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+    const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
+    if (editorMsgId) {
+      try {
+        await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null,
+          '📝 متن و مقدار دکمه را وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: مقدار (لینک/دستور/متن)',
+          { reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `arbtn:type:cancel:${msgId}`)]] } },
+        );
+      } catch {}
+    }
+    await ctx.reply('متن دکمه را ارسال کنید.', autoReplyCancelOnlyKeyboard());
   });
 
   // Switch editor mode
@@ -1033,6 +1036,37 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const userId = ctx.from.id;
     const mode = ctx.match[1];
     const msgId = parseInt(ctx.match[2]);
+
+    if (mode === 'create') {
+      // Directly enter button creation flow — find next available slot
+      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+      const grid = buttonsToGrid(buttons);
+      let nextRow = 0;
+      let nextCol = 0;
+      if (grid.length > 0) {
+        nextRow = grid.length;
+      }
+
+      autoReplyState.setButtonState(userId, 'wait_text');
+      autoReplyState.setButtonType(userId, 'url');
+      autoReplyState.setButtonPreviousView(userId, 'create');
+      autoReplyState.setEditingMessage(userId, msgId);
+      autoReplyState.setButtonRow(userId, nextRow);
+      autoReplyState.setButtonCol(userId, nextCol);
+
+      const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
+      if (editorMsgId) {
+        try {
+          await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null,
+            '📝 متن و مقدار دکمه را وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: مقدار (لینک/دستور/متن)',
+            { reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `arbtn:type:cancel:${msgId}`)]] } },
+          );
+        } catch {}
+      }
+      await ctx.reply('متن دکمه را ارسال کنید.', autoReplyCancelOnlyKeyboard());
+      return;
+    }
+
     autoReplyState.setButtonMode(userId, mode);
     autoReplyState.setButtonState(userId, '');
     autoReplyState.setButtonRow(userId, 0);
@@ -1155,8 +1189,9 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     autoReplyState.setButtonState(userId, '');
     autoReplyState.setButtonType(userId, '');
-    autoReplyState.setButtonMode(userId, 'create');
-    await ctx.reply('✅ دکمه ذخیره شد.');
+    autoReplyState.setButtonMode(userId, 'edit');
+    autoReplyState.setButtonRow(userId, row);
+    autoReplyState.setButtonCol(userId, col);
     await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
   });
 
