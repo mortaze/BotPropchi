@@ -1241,8 +1241,18 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return;
     }
 
-    // Create mode — add placeholder button, then enter edit mode
+    // Create mode — add placeholder button BELOW clicked button, shift existing buttons down
     const msgRecord = await prisma.scheduledMessageMessage.findUnique({ where: { id: msgId } });
+
+    // Shift existing buttons at row >= (row + 1) down by one to make space
+    const existingButtons = await prisma.scheduledMessageButton.findMany({
+      where: { messageId: msgId, row: { gte: row + 1 } },
+      orderBy: [{ row: 'desc' }, { col: 'desc' }],
+    });
+    for (const btn of existingButtons) {
+      await scheduledMessageRepository.updateButton(btn.id, { row: btn.row + 1 });
+    }
+
     const newBtn = await scheduledMessageRepository.createButton({
       scheduledMessageId: msgRecord?.scheduledMessageId || 0,
       messageId: msgId,

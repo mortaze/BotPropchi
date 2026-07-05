@@ -4,169 +4,123 @@
 
 Telegram bot for prop firm discount codes with lottery, scoring, and referral system. Two codebases in one repo:
 
-- **Root** (`src/`): Main Telegram bot + Express API (TypeScript, Telegraf, Prisma)
+- **Root** (`src/`): Main Telegram bot (Telegraf) + Express API (TypeScript, Prisma, BullMQ)
 - **Admin** (`admin/`): Next.js 15 admin panel (calls root API via `NEXT_PUBLIC_API_URL`)
 
-WordPress plugin directory was removed from this repo, but WordPress API env vars remain in `src/config/index.ts:60-65` for AI response routing.
+WordPress plugin directory was removed — but WordPress API env vars remain in `src/config/index.ts:60-65` for AI response routing (no direct Gemini calls).
 
 ## Quick Commands
 
 ```bash
-# Bot development
-npm run dev              # ts-node-dev with hot reload
+npm run dev              # ts-node-dev hot-reload
 npm run build            # tsc
 npm start                # node dist/index.js
-
-# Database (requires PostgreSQL)
-npm run db:push          # push schema to DB (NOT migration-based)
-npm run db:generate      # regenerate Prisma client only
-npm run db:seed          # seed initial data (admin: admin/admin123)
-npm run db:studio        # Prisma Studio UI
-
-# Testing (pure unit tests, no DB/Redis needed)
-npm run test             # vitest run — picks up src/__tests__/*.test.ts
-
-# Admin panel (from admin/ directory)
+npm run test             # vitest run (pure unit, no DB/Redis)
+npm run db:push          # prisma db push (NOT migration-based)
+npm run db:generate      # regenerate Prisma client
+npm run db:seed          # seed (admin: admin/admin123)
+npm run db:studio        # Prisma Studio
 cd admin && npm run dev  # Next.js dev server
 cd admin && npm run build
-cd admin && npm run lint # next lint
+cd admin && npm run lint # next lint — only lint in repo
 ```
 
-No lint or typecheck script exists in root `package.json`. Only the admin panel has `next lint`.
+No lint/typecheck at root. Only admin has lint.
 
-## Architecture
+## Key Docs (read these for deep context)
 
-Entry point: `src/index.ts` → `bootstrap()` starts bot, API, scheduler, workers
+- `ARCHITECTURE.md` — full system architecture, data model, API routes, deployment
+- `ADMIN_PANEL_AUDIT.md` — auth flow, panel page tree, legacy files, feature toggles
+- `CALLBACK_CROSS_CHECK.md` — all callback_data patterns vs handler regex, with dead-pattern history
+
+## Architecture Essentials
+
+Entry: `src/index.ts` → `bootstrap()` starts bot, API, scheduler, workers.
 
 Layer order: `handlers → services → repositories → prisma`
 
-Middleware stack (applied in order):
-1. `loggingMiddleware` (src/bot/middlewares/)
-2. `rateLimitMiddleware` (20 req/60s)
+Middleware stack (applied in `src/index.ts` in this order):
+1. `loggingMiddleware`
+2. `rateLimitMiddleware` (20 req/60s, MUST answerCbQuery on error)
 3. `userMiddleware`
 4. `registerChatMemberHandlers` (chat_member events, before membership guard)
-5. `membershipGuard` (in `src/middleware/`, not `src/bot/middlewares/`)
+5. `membershipGuard` (in `src/middleware/`, NOT `src/bot/middlewares/`)
 6. `featureToggleMiddleware`
 7. `groupAccessMiddleware`
 
-Background workers: `src/workers/` (membership, leaderboard) use BullMQ with Redis. Queue definitions live in `src/queue/`.
+Background workers (`src/workers/`): membership + leaderboard via BullMQ (Redis). Queue defs in `src/queue/`. Started from bootstrap.
 
-One-off migration/repair scripts in `src/scripts/` and `scripts/` (not run automatically).
+One-off scripts: `src/scripts/`, `scripts/` (not auto-run).
 
-AI responses go through WordPress API endpoint (`/wp-json/propchi/v1/message`), not direct Gemini calls.
+Feature toggle keys (FeatureToggle model): `discount_codes`, `lottery`, `referrals`, `force_join`, `auto_replies`, `reports`, `groups`, `leaderboard`, `points`, `prop_firms`, `prop_firm_check`, `ai_assistant`, `posts`.
 
-## Handler Registration Order (CRITICAL)
+Debug commands (admin only): `/debug_post_render <id>`, `/debug_compare_post <id>`, `/debug_delivery <id>`.
 
-The order handlers are registered in `src/index.ts` determines which handler processes a message/callback. **Do not change this order.**
+## Handler Registration Order (CRITICAL — do not change)
 
-At the `src/index.ts` level:
+Registered in `src/index.ts`:
 ```
 callback trace logger (BEFORE all middleware)
 → middleware chain
-→ registerHandlers(bot)            — all handlers from handlers/index.ts
+→ registerHandlers(bot)
 → registerScheduledMessageHandlers(bot)
 → registerAutoReplyHandlers(bot)
-→ forum topic discovery handler    — group/supergroup topic events
-→ bot.catch                        — global error handler
-→ catch-all [UNMATCHED_CALLBACK]   — unmatched callback_data
+→ forum topic discovery handler (group/supergroup messages)
+→ bot.catch (global error handler — MUST answerCbQuery)
+→ catch-all [UNMATCHED_CALLBACK] (log + answerCbQuery)
 ```
 
-Inside `registerHandlers()` (handlers/index.ts), the order is:
+Inside `registerHandlers()` (`handlers/index.ts`):
 ```
 my_chat_member / new_chat_members
 → bot.start (HARD RESET clears all user state)
 → admin panel handlers
 → menu editor (bot.on('text') consuming rename inputs)
-→ dynamic post button routing       — intercepts text for published posts
+→ dynamic post button routing (intercepts text for published posts)
 → various admin/user handlers
 → lottery
 → points/leaderboard/referral
 → membership check
 → ticket handlers
 → post-handlers (via registerPostHandlers())
-→ anonymous message fallback        — LAST handler in chain
+→ anonymous message fallback (LAST handler)
 ```
 
-Key implications:
-- Dynamic Post Button Routing intercepts text messages before post-handlers sees them. It only skips when `post_mgmt_mode`, `menu:edit_mode`, or `post:editor:{userId}:active` is set.
-- `bot.on('text')` in post-handlers has 12+ early returns that CONSUME messages without `next()`. Any `bot.hears` registered after it is unreachable if a state check matches.
-- Handlers in `src/bot/handlers/index.ts`, post-handlers, and scheduled-message handlers are the three large handler files.
+Implications:
+- Dynamic Post Button Routing only skips when `post_mgmt_mode`, `menu:edit_mode`, or `post:editor:{userId}:active` is set
+- `bot.on('text')` in post-handlers has 12+ early returns consuming messages without `next()` — any `bot.hears` after it is unreachable
+- Three large handler files: `handlers/index.ts`, `post-handlers.ts`, `scheduled-message.handlers.ts`
 
 ## Callback Rules (Production Bugs)
 
-- **`ctx.reply()` is NOT acceptable as fallback for editMessage failures** — fix the root cause, never send a new message
-- **answerCbQuery is REQUIRED for ALL callback error paths**: `bot.catch()`, `rateLimitMiddleware`, and catch-all handlers MUST call `ctx.answerCbQuery()`. The Telegram loading spinner only dismisses when answerCbQuery is called.
-- **Every keyboard button needs a matching `bot.action()` handler**: orphaned callback_data patterns cause infinite loading spinner with zero logs. Use the catch-all `[UNMATCHED_CALLBACK]` log to detect orphaned patterns.
-- **Cache invalidation required after message delete**: both bot handler and API route must call `postService.invalidateCache()` after deleting a message.
-- **`safeEdit` in `shared.ts`** falls back to `ctx.reply()` on editMessageText failure — violates the rule above. Fix the root cause, not the fallback.
+- **`ctx.reply()` is NOT acceptable fallback for editMessage failures** — fix root cause, never send new message
+- **`answerCbQuery()` is REQUIRED for ALL callback error paths**: `bot.catch()`, `rateLimitMiddleware`, catch-all handler. Telegram spinner only dismisses on answerCbQuery.
+- **Every keyboard button needs matching `bot.action()` handler**: orphaned callback_data causes infinite spinner with zero logs. Use catch-all `[UNMATCHED_CALLBACK]` log to detect.
+- **Cache invalidation required after message delete**: both handler and API route must call `postService.invalidateCache()` after deleting a message.
+- **`safeEdit` in `shared.ts`** falls back to `ctx.reply()` on editMessageText failure — fix root cause, not fallback.
 
 ## Button Grid Gotchas
 
-In `src/bot/handlers/scheduled-message.handlers.ts` and `auto-reply.handlers.ts`, button grids use `normalizeGrid()` (dense `[{id,text},...][]`) before any move/swap — `buttonsToGrid()` can produce sparse arrays that crash on index access. `findButtonInGrid()` locates buttons by DB `id` after normalization shifts array positions.
+`scheduled-message.handlers.ts` and `auto-reply.handlers.ts`: button grids use `normalizeGrid()` (dense `[{id,text},...][]`) before any move/swap — `buttonsToGrid()` can produce sparse arrays that crash on index access. `findButtonInGrid()` locates by DB `id` after normalization shifts positions.
 
-## Bug Verification Protocol
+## Key Constraints & Gotchas
 
-After fixing a bug:
-1. Create NEW command
-2. Immediately click — must work on FIRST click
-3. Repeat 10+ consecutive times
-4. If one single first click fails, bug is NOT fixed
-5. Run TS check + tests + commit + push
+- **BigInt serialization**: Prisma BigInt in `JSON.stringify` paths → use `src/utils/serialize.ts:serializeBigInts` or BigInt replacer
+- **Do NOT refactor command architecture**: command bugs are runtime issues, not architectural. No new repositories, no command resolution redesign.
+- **Admin auth**: cookies (`admin_token` + `admin_user`), root API uses JWT Bearer. Admin stores use `useSyncExternalStore` (auth.store.ts + ui.store.ts), not Zustand.
+- **Redis optional**: falls back to `node-cache` in-memory when `REDIS_URL` not set
+- **All user-facing strings**: Persian (Farsi)
+- **Bot middleware**: `src/bot/middlewares/` except `membershipGuard` in `src/middleware/`
+- **Admin dead files**: `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` — legacy, not used by Next.js
+- **Admin legacy bot scripts** in `admin/package.json`: `dev:bot`, `build:bot`, `start:bot` — ignore
+- **Prisma client**: `src/prisma/client.ts` (singleton with dev query logging); generated in `node_modules/.prisma/client`
+- **Docker**: `docker-compose.yml` runs PostgreSQL 16 + Redis 7 only (bot service built via Dockerfile at deploy)
+- **No CI/CD, no husky, no prettier, no editorconfig**
+- **`docker-compose.yml` is commented out for bot service** — only postgres + redis active
+- **stray dir**: `src/tests/` exists but vitest only picks up `src/__tests__/*.test.ts`
 
-## Key Environment Variables
+## Env Variables
 
-Required in `.env`:
-- `BOT_TOKEN` - Telegram bot token
-- `ADMIN_TELEGRAM_ID` - Owner's Telegram numeric ID
-- `JWT_SECRET` - For admin API auth
-- `DATABASE_URL` - PostgreSQL connection string
+Required: `BOT_TOKEN`, `ADMIN_TELEGRAM_ID`, `JWT_SECRET`, `DATABASE_URL`
 
-Optional:
-- `REDIS_URL` - Falls back to in-memory cache (`node-cache`) if missing
-- `WORDPRESS_API_URL` - For AI responses (endpoint: `/wp-json/propchi/v1/message`)
-- `WORDPRESS_BOT_API_KEY` - Auth key for WordPress plugin
-- `WORDPRESS_SIGNATURE_SECRET` - HMAC signature for WordPress plugin
-- `WORDPRESS_API_TIMEOUT_MS` - Timeout for WordPress calls (default 25000)
-- `MEMBERSHIP_REQUIRED_CHANNELS` - Comma-separated channel IDs for force-join
-- `MEMBERSHIP_CACHE_TTL` - Membership status cache TTL in seconds (default 300)
-- `WINNER_CONTACT` - Telegram username for lottery winner contact
-- `PORT` - Express API port (default 3000)
-- `JWT_EXPIRES_IN` - JWT token expiry (default 7d)
-- `CACHE_TTL_SECONDS` - General cache TTL in seconds (default 300)
-
-## Testing
-
-Tests are pure unit tests (no DB/Redis needed). Run with `npm run test`.
-
-Test files: `src/__tests__/*.test.ts` (vitest configured to only include this path).
-
-Note: there is a stray `src/tests/` directory with one file — vitest does NOT pick it up.
-
-## TypeScript Config
-
-Root (`tsconfig.json`):
-- Target: ES2020, Module: commonjs
-- `strict: false`, `noImplicitAny: false`, `strictNullChecks: false`
-- Path alias: `@/*` → `src/*`
-- Output: `dist/`
-
-Admin (`admin/tsconfig.json`):
-- `strict: true`, module: esnext, moduleResolution: bundler
-- Excludes `src/api`, `src/index.ts`, `src/scheduler.ts` (legacy dead files in admin/)
-- Lint: `cd admin && npm run lint` (uses `next lint`)
-
-## Gotchas
-
-- `docker-compose.yml` runs PostgreSQL 16 and Redis 7 (ports 5432, 6379). The bot service is NOT in docker-compose — deploy via the Dockerfile which runs `npx prisma db push && node dist/index.js` at container start.
-- **No CI/CD workflows in repo**
-- Prisma client wrapper is at `src/prisma/client.ts` (singleton with dev query logging); generated client in `node_modules/.prisma/client`
-- All user-facing strings are in Persian (Farsi)
-- `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` are legacy/dead code — the real admin app is the Next.js frontend. Admin also has legacy bot scripts (`dev:bot`, `build:bot`, `start:bot`) in its package.json.
-- Admin panel uses cookie-based auth (`admin_token` + `admin_user` cookies), root API uses JWT Bearer tokens
-- Admin panel middleware blocks non-OWNER/SUPER_ADMIN from `/dashboard/settings` and `/dashboard/admin-users`
-- Redis is optional — falls back to in-memory cache (`node-cache`) if `REDIS_URL` not set
-- `admin/.env` contains `NEXT_PUBLIC_API_URL` pointing to the root API base URL — override for local dev
-- Bot middleware lives in `src/bot/middlewares/`, but `membershipGuard` is in `src/middleware/` (separate directory, same Telegraf interface)
-- **BigInt serialization**: Any `JSON.stringify` path touching Prisma data MUST use BigInt replacer. Helper: `src/utils/serialize.ts` (`serializeBigInts`)
-- **Do NOT refactor command architecture**: The user explicitly rejected `command.repository.ts` creation and `post.service.ts` command method refactoring. Command button bugs are RUNTIME issues, not architectural. Do NOT create new repositories, do NOT redesign command resolution, do NOT change APIs.
-- Admin uses shadcn/ui components (Radix UI primitives + Tailwind CSS + class-variance-authority)
+Notable optional: `REDIS_URL` (no Redis = in-memory cache), `WORDPRESS_API_URL` + `WORDPRESS_BOT_API_KEY` + `WORDPRESS_SIGNATURE_SECRET` (AI routing), `MEMBERSHIP_REQUIRED_CHANNELS`, `WINNER_CONTACT`, `CACHE_TTL_SECONDS` (default 300), `PORT` (default 3000)
