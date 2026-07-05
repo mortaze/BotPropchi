@@ -978,9 +978,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   });
 
   // Content editing — set state to receive new content
-  bot.hears('✏️ ویرایش محتوا', async (ctx: any) => {
+  bot.hears('✏️ ویرایش محتوا', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
-    if (!msgId) return;
+    if (!msgId) return next();
     scheduledMessageState.setEditingContent(ctx.from.id, true);
     const msg = await prisma.scheduledMessageMessage.findUnique({ where: { id: msgId } });
     await ctx.reply(
@@ -989,9 +989,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     );
   });
 
-  bot.hears('📝 ویرایش عنوان', async (ctx: any) => {
+  bot.hears('📝 ویرایش عنوان', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditingMessage(ctx.from.id);
-    if (!msgId) return;
+    if (!msgId) return next();
     scheduledMessageState.setEditingTitle(ctx.from.id, true);
     const msg = await scheduledMessageRepository.findById(msgId);
     await ctx.reply(
@@ -1001,7 +1001,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   });
 
   // ─── Button Editor: Enter via Reply Keyboard ──
-  bot.hears('🔘 مدیریت دکمه‌ها', async (ctx: any) => {
+  bot.hears('🔘 مدیریت دکمه‌ها', async (ctx: any, next) => {
     const userId = ctx.from.id;
     logger.info(`[ButtonEditor] Reply Button Clicked userId=${userId}`);
 
@@ -1023,7 +1023,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     if (!msgId || msgId <= 0) {
       logger.warn(`[ButtonEditor] No message to edit buttons for userId=${userId}`);
       await ctx.reply('❌ ابتدا یک پیام انتخاب کنید.');
-      return;
+      return next();
     }
 
     logger.info(`[ButtonEditor] Scheduled Message Loaded, Loading buttons for messageId=${msgId}`);
@@ -1558,33 +1558,33 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     }
   }
 
-  bot.hears('⬆️ بالا', async (ctx: any) => {
-    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return;
+  bot.hears('⬆️ بالا', async (ctx: any, next) => {
+    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return next();
     await handleSchedMoveDirection(ctx, 'up');
   });
 
-  bot.hears('⬇️ پایین', async (ctx: any) => {
-    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return;
+  bot.hears('⬇️ پایین', async (ctx: any, next) => {
+    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return next();
     await handleSchedMoveDirection(ctx, 'down');
   });
 
-  bot.hears('⬅️ چپ', async (ctx: any) => {
-    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return;
+  bot.hears('⬅️ چپ', async (ctx: any, next) => {
+    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return next();
     await handleSchedMoveDirection(ctx, 'left');
   });
 
-  bot.hears('➡️ راست', async (ctx: any) => {
-    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return;
+  bot.hears('➡️ راست', async (ctx: any, next) => {
+    if (!scheduledMessageState.isButtonMoveActive(ctx.from.id)) return next();
     await handleSchedMoveDirection(ctx, 'right');
   });
 
   // ─── Button Editor: Move confirm/cancel/return ──
-  bot.hears('✅ تایید جابه‌جایی', async (ctx: any) => {
+  bot.hears('✅ تایید جابه‌جایی', async (ctx: any, next) => {
     try {
       const userId = ctx.from.id;
-      if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+      if (!scheduledMessageState.isButtonMoveActive(userId)) return next();
       const msgId = scheduledMessageState.getEditingMessage(userId);
-      if (!msgId) return;
+      if (!msgId) return next();
 
       scheduledMessageState.setButtonMoveActive(userId, false);
       scheduledMessageState.setButtonMode(userId, 'create');
@@ -1606,10 +1606,10 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     }
   });
 
-  bot.hears('🔄 بازگشت', async (ctx: any) => {
+  bot.hears('🔄 بازگشت', async (ctx: any, next) => {
     try {
       const userId = ctx.from.id;
-      if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+      if (!scheduledMessageState.isButtonMoveActive(userId)) return next();
       const msgId = scheduledMessageState.getEditingMessage(userId);
 
       scheduledMessageState.setButtonMoveActive(userId, false);
@@ -1634,10 +1634,10 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     }
   });
 
-  bot.hears('❌ لغو جابجایی', async (ctx: any) => {
+  bot.hears('❌ لغو جابجایی', async (ctx: any, next) => {
     try {
       const userId = ctx.from.id;
-      if (!scheduledMessageState.isButtonMoveActive(userId)) return;
+      if (!scheduledMessageState.isButtonMoveActive(userId)) return next();
       const msgId = scheduledMessageState.getEditingMessage(userId);
 
       scheduledMessageState.setButtonMoveActive(userId, false);

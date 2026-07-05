@@ -835,10 +835,19 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.answerCbQuery();
     const msgId = parseInt(ctx.match[1]);
     const userId = ctx.from.id;
+    const editMode = autoReplyState.getEditMode(userId);
+    if (!editMode) return;
+
+    // Find index of this message in the auto-reply's message list
+    const allMsgs = await autoReplyService.listMessages(editMode);
+    const idx = allMsgs.findIndex((m: any) => m.id === msgId);
+    const total = allMsgs.length;
+    const position = idx >= 0 ? idx + 1 : msgId;
+
     autoReplyState.setEditingMessage(userId, msgId);
     const msg = await prisma.autoReplyMessage.findUnique({ where: { id: msgId } });
     await ctx.reply(
-      `📝 پیام ${msgId}\n\nمحتوای فعلی:\n${msg?.text || '(رسانه)'}`,
+      `📝 پیام ${position} از ${total}\n\nمحتوای فعلی:\n${msg?.text || '(رسانه)'}`,
       autoReplyEditMessageReplyKeyboard(),
     );
   });
@@ -1178,30 +1187,30 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
   // ─── Move direction handlers ────────────────────────────
 
-  bot.hears('⬆️ بالا', async (ctx: any) => {
-    if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
+  bot.hears('⬆️ بالا', async (ctx: any, next) => {
+    if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return next();
     await handleARMoveDirection(ctx, 'up');
   });
 
-  bot.hears('⬇️ پایین', async (ctx: any) => {
-    if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
+  bot.hears('⬇️ پایین', async (ctx: any, next) => {
+    if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return next();
     await handleARMoveDirection(ctx, 'down');
   });
 
-  bot.hears('⬅️ چپ', async (ctx: any) => {
-    if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
+  bot.hears('⬅️ چپ', async (ctx: any, next) => {
+    if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return next();
     await handleARMoveDirection(ctx, 'left');
   });
 
-  bot.hears('➡️ راست', async (ctx: any) => {
-    if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return;
+  bot.hears('➡️ راست', async (ctx: any, next) => {
+    if (!autoReplyState.isButtonMoveActive(ctx.from.id)) return next();
     await handleARMoveDirection(ctx, 'right');
   });
 
-  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any) => {
+  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any, next) => {
     try {
       const userId = ctx.from.id;
-      if (!autoReplyState.isButtonMoveActive(userId)) return;
+      if (!autoReplyState.isButtonMoveActive(userId)) return next();
       const msgId = autoReplyState.getEditingMessage(userId);
       if (!msgId) return;
 
@@ -1225,9 +1234,9 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   });
 
-  bot.hears('↩️ پایان جابه‌جایی', async (ctx: any) => {
+  bot.hears('↩️ پایان جابه‌جایی', async (ctx: any, next) => {
     const userId = ctx.from.id;
-    if (!autoReplyState.isButtonMoveActive(userId)) return;
+    if (!autoReplyState.isButtonMoveActive(userId)) return next();
     const msgId = autoReplyState.getEditingMessage(userId);
 
     autoReplyState.setButtonMoveActive(userId, false);
@@ -1247,10 +1256,10 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   });
 
-  bot.hears('❌ لغو جابجایی', async (ctx: any) => {
+  bot.hears('❌ لغو جابجایی', async (ctx: any, next) => {
     try {
       const userId = ctx.from.id;
-      if (!autoReplyState.isButtonMoveActive(userId)) return;
+      if (!autoReplyState.isButtonMoveActive(userId)) return next();
       const msgId = autoReplyState.getEditingMessage(userId);
 
       autoReplyState.setButtonMoveActive(userId, false);
