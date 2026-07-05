@@ -1016,6 +1016,7 @@ enum PostMessageType {
   sticker
   album
   forward
+  video_note
 }
 
 enum PostMessageParseMode {

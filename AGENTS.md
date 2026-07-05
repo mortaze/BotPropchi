@@ -111,13 +111,15 @@ Implications:
 - **Redis optional**: falls back to `node-cache` in-memory when `REDIS_URL` not set
 - **All user-facing strings**: Persian (Farsi)
 - **Bot middleware**: `src/bot/middlewares/` except `membershipGuard` in `src/middleware/`
-- **Admin dead files**: `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` — legacy, not used by Next.js
+- **Admin dead files**: `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` — legacy, not used by Next.js. Admin `tsconfig.json` explicitly excludes them.
 - **Admin legacy bot scripts** in `admin/package.json`: `dev:bot`, `build:bot`, `start:bot` — ignore
 - **Prisma client**: `src/prisma/client.ts` (singleton with dev query logging); generated in `node_modules/.prisma/client`
 - **Docker**: `docker-compose.yml` runs PostgreSQL 16 + Redis 7 only (bot service built via Dockerfile at deploy)
 - **No CI/CD, no husky, no prettier, no editorconfig**
 - **`docker-compose.yml` is commented out for bot service** — only postgres + redis active
 - **stray dir**: `src/tests/` exists but vitest only picks up `src/__tests__/*.test.ts`
+- **TypeScript strictness differs**: root `tsconfig.json` has `strict: false` / `noImplicitAny: false`; admin has `strict: true`
+- **Path alias**: both root and admin use `@/*` → `src/*`
 
 ## Env Variables
 
