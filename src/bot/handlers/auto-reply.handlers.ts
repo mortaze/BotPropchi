@@ -217,9 +217,12 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     ));
   });
 
-  bot.hears('➕ ایجاد کلمه جدید پاسخ', async (ctx: any) => {
+  bot.hears('➕ ایجاد کلمه جدید', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
+    autoReplyState.clearAll(ctx.from.id);
+    autoReplyState.setEditMode(ctx.from.id, msgId);
+    autoReplyState.setManagementMode(ctx.from.id, true);
     autoReplyState.setKeywordCreating(ctx.from.id, true);
     await ctx.reply('کلمه یا عبارت کلیدی جدید را ارسال کنید:', autoReplyCancelOnlyKeyboard());
   });
@@ -316,22 +319,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       return next();
     }
 
-    // ─── Post title click from main menu ──
-    if (autoReplyState.isManagementMode(userId) && !isCreating && !isEditingTitle && !isEditingContent) {
-      const listResult = await autoReplyRepository.findAll({ page: 1, limit: 100 });
-      const matchedPost = listResult.items.find((p: any) => {
-        const label = graphemeTruncate(sanitizeTelegramText(p.title || 'بدون عنوان'), 30);
-        return label === text;
-      });
-      if (matchedPost) {
-        autoReplyState.setEditMode(userId, matchedPost.id);
-        autoReplyState.setManagementMode(userId, true);
-        await showAutoReplyEditor(ctx, matchedPost.id);
-        return;
-      }
-    }
-
-    // ─── Keyword creation input ──
+    // ─── Keyword creation input (highest priority) ──
     if (autoReplyState.isKeywordCreating(userId)) {
       const msgId = autoReplyState.getEditMode(userId);
       if (!msgId) return next();
@@ -367,6 +355,21 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         await ctx.reply(`❌ خطا: ${err.message}`);
       }
       return;
+    }
+
+    // ─── Post title click from main menu ──
+    if (autoReplyState.isManagementMode(userId) && !isCreating && !isEditingTitle && !isEditingContent) {
+      const listResult = await autoReplyRepository.findAll({ page: 1, limit: 100 });
+      const matchedPost = listResult.items.find((p: any) => {
+        const label = graphemeTruncate(sanitizeTelegramText(p.title || 'بدون عنوان'), 30);
+        return label === text;
+      });
+      if (matchedPost) {
+        autoReplyState.setEditMode(userId, matchedPost.id);
+        autoReplyState.setManagementMode(userId, true);
+        await showAutoReplyEditor(ctx, matchedPost.id);
+        return;
+      }
     }
 
     // ─── Group selection input ──
