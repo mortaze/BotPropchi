@@ -146,46 +146,45 @@ export function autoReplyDashboardKeyboard() {
   ]);
 }
 
-// ─── Keyword Management ───────────────────────────────────
+// ─── Keyword Management (All-Inline) ─────────────────────
 
-export function autoReplyKeywordListKeyboard(keywords: any[]) {
-  const rows: any[][] = keywords.map((kw: any) => [
-    Markup.button.callback(`📌 ${kw.keyword}`, `ar:kw:view:${kw.id}`),
+export function renderKeywordPage(keywords: any[], mode: 'list' | 'edit' | 'delete') {
+  const rows: any[][] = [];
+
+  if (keywords.length === 0) {
+    rows.push([Markup.button.callback('(هنوز هیچ کلمه‌ای ثبت نشده است)', 'noop')]);
+  } else if (mode === 'edit') {
+    for (const kw of keywords) {
+      rows.push([Markup.button.callback(`✏️ ${kw.keyword}`, `ar:kw:edit:${kw.id}`)]);
+    }
+  } else if (mode === 'delete') {
+    for (const kw of keywords) {
+      rows.push([Markup.button.callback(`❌ ${kw.keyword}`, `ar:kw:delete:${kw.id}`)]);
+    }
+  } else {
+    for (const kw of keywords) {
+      rows.push([Markup.button.callback(kw.keyword, `ar:kw:noop:${kw.id}`)]);
+    }
+  }
+
+  rows.push([
+    Markup.button.callback('➕ ایجاد کلمه جدید', 'ar:kw:create'),
+    Markup.button.callback('✏️ ویرایش', 'ar:kw:enter_edit'),
+    Markup.button.callback('🗑 حذف', 'ar:kw:enter_delete'),
   ]);
-  return Markup.inlineKeyboard(rows);
+  rows.push([Markup.button.callback('🔙 بازگشت', 'ar:kw:back')]);
+
+  const countLine = `تعداد کلمات کلیدی: ${keywords.length}`;
+  const modeLabel = mode === 'edit' ? ' (حالت ویرایش)' : mode === 'delete' ? ' (حالت حذف)' : '';
+  const text = `🏷 مدیریت کلمات کلیدی${modeLabel}\n\nهر زمان یکی از کاربران یکی از کلمات زیر را داخل گروه ارسال کند، این پاسخ خودکار برای او ارسال خواهد شد.\n\n${countLine}`;
+
+  return { text, reply_markup: { inline_keyboard: rows } };
 }
 
-export function autoReplyKeywordEditKeyboard(keywords: any[]) {
-  const rows: any[][] = keywords.map((kw: any) => [
-    Markup.button.callback(`✏️ ${kw.keyword}`, `ar:kw:edit:${kw.id}`),
-  ]);
-  if (rows.length === 0) rows.push([Markup.button.callback('(هیچ کلمه‌ای ثبت نشده)', 'noop')]);
-  return Markup.inlineKeyboard(rows);
-}
+// ─── Keyword Reply Keyboards (for text input prompts) ─────
 
-export function autoReplyKeywordDeleteKeyboard(keywords: any[]) {
-  const rows: any[][] = keywords.map((kw: any) => [
-    Markup.button.callback(`❌ ${kw.keyword}`, `ar:kw:delete:${kw.id}`),
-  ]);
-  if (rows.length === 0) rows.push([Markup.button.callback('(هیچ کلمه‌ای ثبت نشده)', 'noop')]);
-  return Markup.inlineKeyboard(rows);
-}
-
-export function autoReplyKeywordManageKeyboard() {
-  return Markup.keyboard([
-    ['➕ ایجاد کلمه جدید'],
-    ['✏️ ویرایش', '🗑 حذف'],
-    ['🔙 بازگشت'],
-  ]).resize().persistent();
-}
-
-export function mergeKeywordKeyboards(inlineKb: any, replyKb: any) {
-  return {
-    reply_markup: {
-      ...inlineKb.reply_markup,
-      ...replyKb.reply_markup,
-    },
-  };
+export function autoReplyKeywordCancelKeyboard() {
+  return Markup.keyboard([['❌ لغو پاسخ']]).resize().persistent();
 }
 
 // ─── Button Editor ────────────────────────────────────────
