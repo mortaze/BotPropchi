@@ -188,7 +188,7 @@ class AutoReplyService {
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
       const buttonsForMsg = allButtons.filter((b: any) => b.messageId === message.id);
-      const inlineKeyboard = buttonsForMsg.length > 0 ? this.buildInlineKeyboard(buttonsForMsg) : undefined;
+      const inlineKeyboard = buttonsForMsg.length > 0 ? this.buildInlineKeyboard(buttonsForMsg, ar.id) : undefined;
 
       const row = {
         ...message,
@@ -220,7 +220,7 @@ class AutoReplyService {
     }
   }
 
-  private buildInlineKeyboard(buttons: any[]): any[][] {
+  private buildInlineKeyboard(buttons: any[], entityId?: number): any[][] {
     const grid: any[] = [];
     for (const btn of buttons) {
       const row = btn.row ?? 0;
@@ -235,7 +235,7 @@ class AutoReplyService {
     }
     const cleaned = grid.filter(Boolean).map(row => row.filter(Boolean));
     if (cleaned.length === 0) return [];
-    return buildTelegramKeyboard(cleaned, 0, 'ar');
+    return buildTelegramKeyboard(cleaned, entityId ?? 0, 'ar');
   }
 
   // ─── Stats / Logs ────────────────────────────────────────

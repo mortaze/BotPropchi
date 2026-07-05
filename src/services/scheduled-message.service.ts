@@ -256,7 +256,7 @@ class ScheduledMessageService {
         });
 
         const keyboard = buttonsFromDb.length > 0
-          ? this.buildInlineKeyboard(buttonsFromDb)
+          ? this.buildInlineKeyboard(buttonsFromDb, msg.id)
           : [];
         const inlineKeyboard = keyboard.length > 0
           ? { inline_keyboard: keyboard }
@@ -384,7 +384,7 @@ class ScheduledMessageService {
    * Convert DB buttons to Telegram inline_keyboard format.
    * Uses the same renderer as Post system (buildTelegramKeyboard from telegram-native-renderer).
    */
-  private buildInlineKeyboard(buttons: any[]): any[][] {
+  private buildInlineKeyboard(buttons: any[], entityId?: number): any[][] {
     // Transform ScheduledMessageButton records into the grid format
     // that buildTelegramKeyboard expects: array of arrays of button objects
     const grid: any[] = [];
@@ -403,7 +403,7 @@ class ScheduledMessageService {
     const cleaned = grid.filter(Boolean).map(row => row.filter(Boolean));
     if (cleaned.length === 0) return [];
     // Use the Post system's shared renderer with 'sched' prefix for callbacks
-    return buildTelegramKeyboard(cleaned, 0, 'sched');
+    return buildTelegramKeyboard(cleaned, entityId ?? 0, 'sched');
   }
 
   // ─── Test Send (same pipeline) ──────────────────────────

@@ -1286,6 +1286,40 @@ export function registerHandlers(bot: Telegraf<Context>) {
     }
   });
 
+  // ─── Auto Reply POPUP Button routing ────────────────────────
+  bot.action(/^ar:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    const autoReplyId = parseInt(ctx.match[1]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    logger.info(`[ArPopup] HIT autoReplyId=${autoReplyId} row=${row} col=${col}`);
+    try {
+      const buttons = await prisma.autoReplyButton.findMany({
+        where: { autoReplyId },
+        orderBy: [{ row: 'asc' }, { col: 'asc' }],
+      });
+      const grid: any[][] = [];
+      for (const btn of buttons) {
+        const r = btn.row ?? 0;
+        const c = btn.col ?? 0;
+        if (!grid[r]) grid[r] = [];
+        grid[r][c] = btn;
+      }
+      const btn = grid[row]?.[col];
+      if (btn && (btn.type || '').toUpperCase() === 'POPUP') {
+        logger.info(`[ArPopup] autoReplyId=${autoReplyId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP`);
+        await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+      } else if (btn) {
+        await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: true });
+      } else {
+        logger.warn(`[ArPopup] autoReplyId=${autoReplyId} row=${row} col=${col} BUTTON_NOT_FOUND`);
+        await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+      }
+    } catch (err) {
+      logger.error(`[ArPopup] FAILED autoReplyId=${autoReplyId}:`, err);
+      await ctx.answerCbQuery('❌ خطا', { show_alert: true });
+    }
+  });
+
   // ─── Scheduled Message Command Button routing ─────────────
   bot.action(/^sched:user:cmd:(.+)$/, async (ctx: any) => {
     const t0 = Date.now();
