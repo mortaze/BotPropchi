@@ -159,6 +159,10 @@ async function bootstrap() {
     logger.error(`[BOT_CATCH] Error for user=${userId} updateType=${updateType}:`, err);
 
     if (ctx.callbackQuery) {
+      const cqData = (ctx.callbackQuery as any)?.data;
+      if (cqData && /:(user:popup:)/.test(cqData)) {
+        logger.warn(`[POPUP_TRACE] SECOND HANDLER DETECTED Handler=BotCatch — error for popup callback data="${cqData}" user=${userId}`);
+      }
       ctx.answerCbQuery('❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.', { show_alert: true })
         .catch(() => {
           logger.error(`[BOT_CATCH] Failed to answerCbQuery for user=${userId}`);
@@ -175,6 +179,9 @@ async function bootstrap() {
     const cq = ctx.callbackQuery;
     const data = 'data' in cq ? cq.data : 'N/A';
     const userId = ctx.from?.id;
+    if (data && /:(user:popup:)/.test(data)) {
+      logger.warn(`[POPUP_TRACE] SECOND HANDLER DETECTED Handler=CatchAll — popup callback reached catch-all! data="${data}" user=${userId}`);
+    }
     logger.warn(`[UNMATCHED_CALLBACK] user=${userId} data="${data}" — no handler matched`);
     ctx.answerCbQuery('⚠️ این دکمه در دسترس نیست.', { show_alert: true }).catch(() => {});
   });
