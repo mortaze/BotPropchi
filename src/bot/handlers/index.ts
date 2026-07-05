@@ -1242,8 +1242,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
         logger.warn(`[PostPopup] postId=${postId} row=${row} col=${col} btn=${JSON.stringify(btn)} BUTTON_NOT_FOUND_OR_WRONG_TYPE`);
         return ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
       }
-      logger.info(`[PostPopup] postId=${postId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP`);
-      await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+      logger.info(`[PostPopup] postId=${postId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP cq_id="${ctx.callbackQuery?.id}"`);
+      try {
+        await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+        logger.info(`[PostPopup] postId=${postId} answerCbQuery SUCCEEDED`);
+      } catch (ansErr: any) {
+        logger.error(`[PostPopup] postId=${postId} answerCbQuery FAILED: ${ansErr.message} code=${ansErr.code} description=${ansErr.description}`);
+      }
     } catch (err) {
       logger.error(`[PostPopup] FAILED postId=${postId}:`, err);
       await ctx.answerCbQuery('❌ خطا', { show_alert: true });
@@ -1271,8 +1276,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
       }
       const btn = grid[row]?.[col];
       if (btn && (btn.type || '').toUpperCase() === 'POPUP') {
-        logger.info(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP`);
-        await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+        logger.info(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP cq_id="${ctx.callbackQuery?.id}"`);
+        try {
+          await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+          logger.info(`[SchedPopup] schedMsgId=${schedMsgId} answerCbQuery SUCCEEDED`);
+        } catch (ansErr: any) {
+          logger.error(`[SchedPopup] schedMsgId=${schedMsgId} answerCbQuery FAILED: ${ansErr.message} code=${ansErr.code} description=${ansErr.description}`);
+        }
       } else if (btn) {
         logger.warn(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} type=${btn.type} FALLBACK_SHOWING`);
         await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: true });
@@ -1306,8 +1316,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
       }
       const btn = grid[row]?.[col];
       if (btn && (btn.type || '').toUpperCase() === 'POPUP') {
-        logger.info(`[ArPopup] autoReplyId=${autoReplyId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP`);
-        await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+        logger.info(`[ArPopup] autoReplyId=${autoReplyId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP cq_id="${ctx.callbackQuery?.id}"`);
+        try {
+          await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+          logger.info(`[ArPopup] autoReplyId=${autoReplyId} answerCbQuery SUCCEEDED`);
+        } catch (ansErr: any) {
+          logger.error(`[ArPopup] autoReplyId=${autoReplyId} answerCbQuery FAILED: ${ansErr.message} code=${ansErr.code} description=${ansErr.description}`);
+        }
       } else if (btn) {
         await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: true });
       } else {
