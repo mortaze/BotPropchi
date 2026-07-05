@@ -101,6 +101,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (editMode) {
       autoReplyState.clearAll(userId);
       cache.del(`ar:${userId}:selecting_group`);
+      autoReplyState.setManagementMode(userId, true);
       const result = await autoReplyRepository.findAll({ page: 1, limit: 100 });
       await ctx.reply('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
       return;
@@ -115,6 +116,21 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     autoReplyState.clearAll(userId);
     cache.del(`ar:${userId}:selecting_group`);
+    await ctx.reply('🤖 اتوماسیون', scheduledMessageAutomationKeyboard());
+  });
+
+  bot.hears('🔙 بازگشت به ویرایش', async (ctx: any) => {
+    const userId = ctx.from.id;
+    cache.del(`ar:${userId}:selecting_group`);
+    const editMode = autoReplyState.getEditMode(userId);
+    if (editMode) {
+      autoReplyState.setKeywordMode(userId, '');
+      autoReplyState.setKeywordCreating(userId, false);
+      autoReplyState.setKeywordEditing(userId, 0);
+      await showAutoReplyEditor(ctx, editMode);
+      return;
+    }
+    autoReplyState.clearAll(userId);
     await ctx.reply('🤖 اتوماسیون', scheduledMessageAutomationKeyboard());
   });
 

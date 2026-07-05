@@ -104,7 +104,7 @@ export function autoReplySingleMessageInlineKeyboard(
 
 export function autoReplyGroupReplyKeyboard(groups: any[]) {
   const rows: string[][] = groups.map((g) => [g.title]);
-  rows.push(['🔙 بازگشت به اتوماسیون']);
+  rows.push(['🔙 بازگشت به ویرایش']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
@@ -115,7 +115,7 @@ export function autoReplyTopicReplyKeyboard(topics: any[]) {
   for (const t of topics) {
     rows.push([t.name]);
   }
-  rows.push(['🔙 بازگشت به اتوماسیون']);
+  rows.push(['🔙 بازگشت به ویرایش']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
