@@ -52,13 +52,13 @@ class AutoReplyService {
 
   // ─── Message Management ──────────────────────────────────
 
-  async addMessage(autoReplyId: number) {
+  async addMessage(autoReplyId: number, type?: PostMessageType) {
     const lastMsg = await prisma.autoReplyMessage.findFirst({
       where: { autoReplyId }, orderBy: { order: 'desc' },
     });
     const order = (lastMsg?.order ?? -1) + 1;
     return prisma.autoReplyMessage.create({
-      data: { autoReplyId, text: '', type: PostMessageType.text, order },
+      data: { autoReplyId, text: '', type: type ?? PostMessageType.text, order },
     });
   }
 

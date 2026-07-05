@@ -11,6 +11,7 @@ import { cache } from '../../utils/cache';
 import { validateDbInput, sanitizeTelegramText } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
 import { scheduledMessageAutomationKeyboard } from '../keyboards/scheduled-message-keyboards';
+import { extractForwardMeta } from '../../utils/forward';
 import {
   autoReplyMainMenuKeyboard,
   autoReplyListInlineKeyboard,
@@ -491,26 +492,217 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     if (isEditingContent) {
       const editingMsgId = autoReplyState.getEditingMessage(userId);
+      const autoReplyId = autoReplyState.getEditMode(userId);
+      if (!autoReplyId) return next();
+
+      // Handle forward messages
+      const { isForwarded, forwardMeta } = extractForwardMeta(ctx.message);
+      if (isForwarded && forwardMeta?.originChatId && forwardMeta.originMessageId) {
+        const srcChatId = Number(forwardMeta.originChatId);
+        const srcMsgId = Number(forwardMeta.originMessageId);
+        if (srcChatId && srcMsgId && !isNaN(srcChatId) && !isNaN(srcMsgId)) {
+          try {
+            await ctx.telegram.copyMessage(ctx.chat.id, srcChatId, srcMsgId);
+          } catch {
+            await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست.');
+            return;
+          }
+        }
+        if (editingMsgId && editingMsgId === -1) {
+          const newMsg = await autoReplyService.addMessage(autoReplyId);
+          await autoReplyService.updateMessage(newMsg.id, {
+            type: PostMessageType.forward,
+            forwardSource: {
+              chatId: forwardMeta.originChatId,
+              messageId: forwardMeta.originMessageId,
+              sourceType: forwardMeta.type,
+              sourceTitle: forwardMeta.originName,
+              sourceUsername: forwardMeta.originUsername,
+            },
+          });
+        } else if (editingMsgId) {
+          await autoReplyService.updateMessage(editingMsgId, {
+            type: PostMessageType.forward,
+            forwardSource: {
+              chatId: forwardMeta.originChatId,
+              messageId: forwardMeta.originMessageId,
+              sourceType: forwardMeta.type,
+              sourceTitle: forwardMeta.originName,
+              sourceUsername: forwardMeta.originUsername,
+            },
+          });
+        }
+        autoReplyState.setEditingContent(userId, false);
+        autoReplyState.setEditingMessage(userId, 0);
+        await ctx.reply('✅ پیام فوروارد ذخیره شد.');
+        await showAutoReplyEditor(ctx, autoReplyId);
+        return;
+      }
+
+      // Handle text messages with entities
+      const entities = ctx.message.entities?.map((e: any) => ({
+        type: e.type, offset: e.offset, length: e.length,
+        url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id,
+      })) || [];
+
       if (editingMsgId && editingMsgId === -1) {
-        const autoReplyId = autoReplyState.getEditMode(userId);
-        if (!autoReplyId) return next();
         const newMsg = await autoReplyService.addMessage(autoReplyId);
-        await autoReplyService.updateMessage(newMsg.id, { text });
+        await autoReplyService.updateMessage(newMsg.id, {
+          text,
+          entities,
+          type: PostMessageType.text,
+        });
         autoReplyState.setEditingMessage(userId, newMsg.id);
         await ctx.reply(`✅ پیام ذخیره شد.`);
         await showAutoReplyEditor(ctx, autoReplyId);
       } else if (editingMsgId) {
-        await autoReplyService.updateMessage(editingMsgId, { text });
+        await autoReplyService.updateMessage(editingMsgId, {
+          text,
+          entities,
+          type: PostMessageType.text,
+        });
         autoReplyState.setEditingContent(userId, false);
         autoReplyState.setEditingMessage(userId, 0);
         await ctx.reply(`✅ محتوا بروزرسانی شد.`);
-        const msgId = autoReplyState.getEditMode(userId);
-        if (msgId) await showAutoReplyEditor(ctx, msgId);
+        await showAutoReplyEditor(ctx, autoReplyId);
       }
       return;
     }
 
     return next();
+  });
+
+  // ─── Media message handler (photo, video, animation, etc.) ──
+  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice', 'video_note', 'sticker'], async (ctx: any, next) => {
+    if (!ctx.from || ctx.chat?.type !== 'private') return next();
+    const userId = ctx.from.id;
+
+    const admin = await botAdminService.getActive(userId);
+    if (!admin) return next();
+
+    if (!autoReplyState.isEditingContent(userId)) return next();
+
+    const editingMsgId = autoReplyState.getEditingMessage(userId);
+    const autoReplyId = autoReplyState.getEditMode(userId);
+    if (!autoReplyId) return next();
+
+    try {
+      const msg = ctx.message;
+      const caption = msg.caption || null;
+      const captionEntities = msg.caption_entities?.map((e: any) => ({
+        type: e.type, offset: e.offset, length: e.length,
+        url: e.url, user: e.user, language: e.language, custom_emoji_id: e.custom_emoji_id,
+      })) || [];
+
+      let mediaFileId = '';
+      let messageType: PostMessageType = PostMessageType.text;
+
+      if (msg.photo) {
+        mediaFileId = msg.photo[msg.photo.length - 1].file_id;
+        messageType = PostMessageType.photo;
+      } else if (msg.video) {
+        mediaFileId = msg.video.file_id;
+        messageType = PostMessageType.video;
+      } else if (msg.animation) {
+        mediaFileId = msg.animation.file_id;
+        messageType = PostMessageType.animation;
+      } else if (msg.document) {
+        mediaFileId = msg.document.file_id;
+        messageType = PostMessageType.document;
+      } else if (msg.audio) {
+        mediaFileId = msg.audio.file_id;
+        messageType = PostMessageType.audio;
+      } else if (msg.voice) {
+        mediaFileId = msg.voice.file_id;
+        messageType = PostMessageType.voice;
+      } else if (msg.video_note) {
+        mediaFileId = msg.video_note.file_id;
+        messageType = PostMessageType.video_note;
+      } else if (msg.sticker) {
+        mediaFileId = msg.sticker.file_id;
+        messageType = PostMessageType.sticker;
+      }
+
+      if (!mediaFileId) {
+        await ctx.reply('❌ نوع فایل پشتیبانی نمی‌شود.');
+        return;
+      }
+
+      const { isForwarded, forwardMeta } = extractForwardMeta(msg);
+
+      if (isForwarded && forwardMeta?.originChatId && forwardMeta.originMessageId) {
+        const srcChatId = Number(forwardMeta.originChatId);
+        const srcMsgId = Number(forwardMeta.originMessageId);
+        if (srcChatId && srcMsgId && !isNaN(srcChatId) && !isNaN(srcMsgId)) {
+          try {
+            await ctx.telegram.copyMessage(ctx.chat.id, srcChatId, srcMsgId);
+          } catch {
+            await ctx.reply('⚠️ منبع پیام فوروارد در دسترس نیست.');
+            return;
+          }
+        }
+        if (editingMsgId && editingMsgId === -1) {
+          const newMsg = await autoReplyService.addMessage(autoReplyId);
+          await autoReplyService.updateMessage(newMsg.id, {
+            type: PostMessageType.forward,
+            forwardSource: {
+              chatId: forwardMeta.originChatId,
+              messageId: forwardMeta.originMessageId,
+              sourceType: forwardMeta.type,
+              sourceTitle: forwardMeta.originName,
+              sourceUsername: forwardMeta.originUsername,
+            },
+          });
+        } else if (editingMsgId) {
+          await autoReplyService.updateMessage(editingMsgId, {
+            type: PostMessageType.forward,
+            forwardSource: {
+              chatId: forwardMeta.originChatId,
+              messageId: forwardMeta.originMessageId,
+              sourceType: forwardMeta.type,
+              sourceTitle: forwardMeta.originName,
+              sourceUsername: forwardMeta.originUsername,
+            },
+          });
+        }
+        autoReplyState.setEditingContent(userId, false);
+        autoReplyState.setEditingMessage(userId, 0);
+        await ctx.reply('✅ پیام فوروارد ذخیره شد.');
+        await showAutoReplyEditor(ctx, autoReplyId);
+        return;
+      }
+
+      if (editingMsgId && editingMsgId === -1) {
+        const newMsg = await autoReplyService.addMessage(autoReplyId);
+        await autoReplyService.updateMessage(newMsg.id, {
+          type: messageType,
+          mediaFileId,
+          text: caption || '',
+          caption,
+          captionEntities,
+          entities: [],
+        });
+        autoReplyState.setEditingMessage(userId, newMsg.id);
+        await ctx.reply(`✅ رسانه ذخیره شد.`);
+        await showAutoReplyEditor(ctx, autoReplyId);
+      } else if (editingMsgId) {
+        await autoReplyService.updateMessage(editingMsgId, {
+          type: messageType,
+          mediaFileId,
+          text: caption || '',
+          caption,
+          captionEntities,
+          entities: [],
+        });
+        autoReplyState.setEditingContent(userId, false);
+        autoReplyState.setEditingMessage(userId, 0);
+        await ctx.reply(`✅ رسانه بروزرسانی شد.`);
+        await showAutoReplyEditor(ctx, autoReplyId);
+      }
+    } catch (e: any) {
+      logger.error(`[AutoReply] Media save error: ${e.message}`);
+      await ctx.reply('❌ خطا در ذخیره رسانه.');
+    }
   });
 
   // ─── Inline callback handlers ───────────────────────────
