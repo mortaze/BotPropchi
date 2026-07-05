@@ -1213,124 +1213,184 @@ export function registerHandlers(bot: Telegraf<Context>) {
   }
 
   // ─── Post POPUP Button routing ─────────────────────────
+  // ════════════════════════════════════════════════════════════
+  // POPUP DEBUG — Post Messages
+  // ════════════════════════════════════════════════════════════
   bot.action(/^post:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     const postId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
-    logger.info(`[PostPopup] HIT postId=${postId} row=${row} col=${col} callbackData=${ctx.callbackQuery?.data}`);
+    const cqId = ctx.callbackQuery?.id;
+    const cqData = ctx.callbackQuery?.data;
+    const chatId = ctx.chat?.id;
+    const msgId = ctx.callbackQuery?.message?.message_id;
+    const userId = ctx.from?.id;
+    logger.info(`[POPUP_DEBUG] Callback Received callback_query.id=${cqId} callback_data=${cqData} chat_id=${chatId} message_id=${msgId} user_id=${userId}`);
+
     if (!(await settingsService.isFeatureEnabled('posts'))) {
-      logger.warn(`[PostPopup] BLOCKED: posts feature disabled`);
+      logger.warn(`[POPUP_DEBUG] RETURN because posts feature disabled`);
       return ctx.answerCbQuery('⛔ سرویس پست غیرفعال است.', { show_alert: true });
     }
+
     try {
       const post = await postService.findById(postId);
       if (!post) {
-        logger.warn(`[PostPopup] postId=${postId} NOT_FOUND`);
+        logger.warn(`[POPUP_DEBUG] RETURN because post NOT_FOUND postId=${postId}`);
         return ctx.answerCbQuery('❌ پست یافت نشد.', { show_alert: true });
       }
+
       const rawButtons = (post as any).buttons;
-      logger.info(`[PostPopup] postId=${postId} buttonsType=${typeof rawButtons} hasMessages=${!!rawButtons?.messages} isArray=${Array.isArray(rawButtons)}`);
       const messages = (post as any).messages || [];
       const btn = findPopupButton(post, row, col, messages);
+
+      logger.info(`[POPUP_DEBUG] Button Loaded button_id=${btn?.id} button_type=${btn?.type} action=${btn?.type === 'POPUP' ? 'popup' : btn?.type} popup=${btn?.type === 'POPUP'} show_alert=true alert_text="${(btn?.value || '').substring(0, 100)}" callback_data=${cqData}`);
+
       if (!btn || btn.type !== 'POPUP') {
-        // Fail-safe: if button exists at position but isn't POPUP, show its value anyway
         const anyBtn = findAnyButtonAtPosition(post, row, col, messages);
         if (anyBtn) {
-          logger.warn(`[PostPopup] postId=${postId} row=${row} col=${col} type=${anyBtn.type} FALLBACK_SHOWING`);
-          return ctx.answerCbQuery(anyBtn.value || anyBtn.text || '✅', { show_alert: true });
+          logger.warn(`[POPUP_DEBUG] Popup Condition = FALSE — reason: button.type=${btn?.type} btn_exists=${!!btn} anyBtn.type=${anyBtn.type} — FALLBACK`);
+          logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="${(anyBtn.value || anyBtn.text || '✅').substring(0, 100)}" callback_query_id=${cqId}`);
+          try {
+            await ctx.answerCbQuery(anyBtn.value || anyBtn.text || '✅', { show_alert: true });
+            logger.info(`[POPUP_DEBUG] answerCallbackQuery SUCCESS`);
+          } catch (ansErr: any) {
+            logger.error(`[POPUP_DEBUG] answerCallbackQuery ERROR error_code=${ansErr.code} description=${ansErr.description} stacktrace=${ansErr.stack}`);
+          }
+          return;
         }
-        logger.warn(`[PostPopup] postId=${postId} row=${row} col=${col} btn=${JSON.stringify(btn)} BUTTON_NOT_FOUND_OR_WRONG_TYPE`);
-        return ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+        logger.warn(`[POPUP_DEBUG] RETURN because button not found at position — btn=${JSON.stringify(btn)}`);
+        logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="❌ دکمه یافت نشد." callback_query_id=${cqId}`);
+        try {
+          await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+          logger.info(`[POPUP_DEBUG] answerCallbackQuery SUCCESS`);
+        } catch (ansErr: any) {
+          logger.error(`[POPUP_DEBUG] answerCallbackQuery ERROR error_code=${ansErr.code} description=${ansErr.description} stacktrace=${ansErr.stack}`);
+        }
+        return;
       }
-      logger.info(`[PostPopup] postId=${postId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP cq_id="${ctx.callbackQuery?.id}"`);
+
+      logger.info(`[POPUP_DEBUG] Popup Condition = TRUE — button.type=${btn.type}`);
+      logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="${(btn.value || '✅').substring(0, 100)}" callback_query_id=${cqId}`);
       try {
         await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
-        logger.info(`[PostPopup] postId=${postId} answerCbQuery SUCCEEDED`);
+        logger.info(`[POPUP_DEBUG] answerCallbackQuery SUCCESS`);
       } catch (ansErr: any) {
-        logger.error(`[PostPopup] postId=${postId} answerCbQuery FAILED: ${ansErr.message} code=${ansErr.code} description=${ansErr.description}`);
+        logger.error(`[POPUP_DEBUG] answerCallbackQuery ERROR error_code=${ansErr.code} description=${ansErr.description} stacktrace=${ansErr.stack}`);
       }
     } catch (err) {
-      logger.error(`[PostPopup] FAILED postId=${postId}:`, err);
+      logger.error(`[POPUP_DEBUG] CATCH postId=${postId}: ${err}`);
       await ctx.answerCbQuery('❌ خطا', { show_alert: true });
     }
   });
 
-  // ─── Scheduled Message POPUP Button routing ──────────────
+  // ════════════════════════════════════════════════════════════
+  // POPUP DEBUG — Scheduled Messages
+  // ════════════════════════════════════════════════════════════
   bot.action(/^sched:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     const schedMsgId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
-    logger.info(`[SchedPopup] HIT schedMsgId=${schedMsgId} row=${row} col=${col}`);
+    const cqId = ctx.callbackQuery?.id;
+    const cqData = ctx.callbackQuery?.data;
+    const chatId = ctx.chat?.id;
+    const msgId = ctx.callbackQuery?.message?.message_id;
+    const userId = ctx.from?.id;
+    logger.info(`[POPUP_DEBUG] Callback Received callback_query.id=${cqId} callback_data=${cqData} chat_id=${chatId} message_id=${msgId} user_id=${userId}`);
+
     try {
       const buttons = await prisma.scheduledMessageButton.findMany({
         where: { scheduledMessageId: schedMsgId },
         orderBy: [{ row: 'asc' }, { col: 'asc' }],
       });
-      // Build grid to find button at position
+
       const grid: any[][] = [];
-      for (const btn of buttons) {
-        const r = btn.row ?? 0;
-        const c = btn.col ?? 0;
+      for (const b of buttons) {
+        const r = b.row ?? 0;
+        const c = b.col ?? 0;
         if (!grid[r]) grid[r] = [];
-        grid[r][c] = btn;
+        grid[r][c] = b;
       }
+
       const btn = grid[row]?.[col];
+
+      logger.info(`[POPUP_DEBUG] Button Loaded button_id=${btn?.id} button_type=${btn?.type} action=${btn?.type === 'POPUP' ? 'popup' : btn?.type} popup=${btn?.type === 'POPUP'} show_alert=true alert_text="${(btn?.value || '').substring(0, 100)}" callback_data=${cqData}`);
+
       if (btn && (btn.type || '').toUpperCase() === 'POPUP') {
-        logger.info(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP cq_id="${ctx.callbackQuery?.id}"`);
+        logger.info(`[POPUP_DEBUG] Popup Condition = TRUE — button.type=${btn.type}`);
+        logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="${(btn.value || '✅').substring(0, 100)}" callback_query_id=${cqId}`);
         try {
           await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
-          logger.info(`[SchedPopup] schedMsgId=${schedMsgId} answerCbQuery SUCCEEDED`);
+          logger.info(`[POPUP_DEBUG] answerCallbackQuery SUCCESS`);
         } catch (ansErr: any) {
-          logger.error(`[SchedPopup] schedMsgId=${schedMsgId} answerCbQuery FAILED: ${ansErr.message} code=${ansErr.code} description=${ansErr.description}`);
+          logger.error(`[POPUP_DEBUG] answerCallbackQuery ERROR error_code=${ansErr.code} description=${ansErr.description} stacktrace=${ansErr.stack}`);
         }
       } else if (btn) {
-        logger.warn(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} type=${btn.type} FALLBACK_SHOWING`);
+        logger.warn(`[POPUP_DEBUG] Popup Condition = FALSE — reason: button.type=${btn.type} != POPUP — FALLBACK`);
+        logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="${(btn.value || btn.text || '✅').substring(0, 100)}" callback_query_id=${cqId}`);
         await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: true });
       } else {
-        logger.warn(`[SchedPopup] schedMsgId=${schedMsgId} row=${row} col=${col} BUTTON_NOT_FOUND`);
+        logger.warn(`[POPUP_DEBUG] RETURN because button not found at grid[${row}][${col}] — totalButtons=${buttons.length} gridRows=${grid.length}`);
+        logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="❌ دکمه یافت نشد." callback_query_id=${cqId}`);
         await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
       }
     } catch (err) {
-      logger.error(`[SchedPopup] FAILED schedMsgId=${schedMsgId}:`, err);
+      logger.error(`[POPUP_DEBUG] CATCH schedMsgId=${schedMsgId}: ${err}`);
       await ctx.answerCbQuery('❌ خطا', { show_alert: true });
     }
   });
 
-  // ─── Auto Reply POPUP Button routing ────────────────────────
+  // ════════════════════════════════════════════════════════════
+  // POPUP DEBUG — Auto Replies
+  // ════════════════════════════════════════════════════════════
   bot.action(/^ar:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     const autoReplyId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
-    logger.info(`[ArPopup] HIT autoReplyId=${autoReplyId} row=${row} col=${col}`);
+    const cqId = ctx.callbackQuery?.id;
+    const cqData = ctx.callbackQuery?.data;
+    const chatId = ctx.chat?.id;
+    const msgId = ctx.callbackQuery?.message?.message_id;
+    const userId = ctx.from?.id;
+    logger.info(`[POPUP_DEBUG] Callback Received callback_query.id=${cqId} callback_data=${cqData} chat_id=${chatId} message_id=${msgId} user_id=${userId}`);
+
     try {
       const buttons = await prisma.autoReplyButton.findMany({
         where: { autoReplyId },
         orderBy: [{ row: 'asc' }, { col: 'asc' }],
       });
+
       const grid: any[][] = [];
-      for (const btn of buttons) {
-        const r = btn.row ?? 0;
-        const c = btn.col ?? 0;
+      for (const b of buttons) {
+        const r = b.row ?? 0;
+        const c = b.col ?? 0;
         if (!grid[r]) grid[r] = [];
-        grid[r][c] = btn;
+        grid[r][c] = b;
       }
+
       const btn = grid[row]?.[col];
+
+      logger.info(`[POPUP_DEBUG] Button Loaded button_id=${btn?.id} button_type=${btn?.type} action=${btn?.type === 'POPUP' ? 'popup' : btn?.type} popup=${btn?.type === 'POPUP'} show_alert=true alert_text="${(btn?.value || '').substring(0, 100)}" callback_data=${cqData}`);
+
       if (btn && (btn.type || '').toUpperCase() === 'POPUP') {
-        logger.info(`[ArPopup] autoReplyId=${autoReplyId} row=${row} col=${col} value="${(btn.value || '').substring(0, 50)}" SHOWING_POPUP cq_id="${ctx.callbackQuery?.id}"`);
+        logger.info(`[POPUP_DEBUG] Popup Condition = TRUE — button.type=${btn.type}`);
+        logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="${(btn.value || '✅').substring(0, 100)}" callback_query_id=${cqId}`);
         try {
           await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
-          logger.info(`[ArPopup] autoReplyId=${autoReplyId} answerCbQuery SUCCEEDED`);
+          logger.info(`[POPUP_DEBUG] answerCallbackQuery SUCCESS`);
         } catch (ansErr: any) {
-          logger.error(`[ArPopup] autoReplyId=${autoReplyId} answerCbQuery FAILED: ${ansErr.message} code=${ansErr.code} description=${ansErr.description}`);
+          logger.error(`[POPUP_DEBUG] answerCallbackQuery ERROR error_code=${ansErr.code} description=${ansErr.description} stacktrace=${ansErr.stack}`);
         }
       } else if (btn) {
+        logger.warn(`[POPUP_DEBUG] Popup Condition = FALSE — reason: button.type=${btn.type} != POPUP — FALLBACK`);
+        logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="${(btn.value || btn.text || '✅').substring(0, 100)}" callback_query_id=${cqId}`);
         await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: true });
       } else {
-        logger.warn(`[ArPopup] autoReplyId=${autoReplyId} row=${row} col=${col} BUTTON_NOT_FOUND`);
+        logger.warn(`[POPUP_DEBUG] RETURN because button not found at grid[${row}][${col}] — totalButtons=${buttons.length} gridRows=${grid.length}`);
+        logger.info(`[POPUP_DEBUG] Calling answerCallbackQuery show_alert=true text="❌ دکمه یافت نشد." callback_query_id=${cqId}`);
         await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
       }
     } catch (err) {
-      logger.error(`[ArPopup] FAILED autoReplyId=${autoReplyId}:`, err);
+      logger.error(`[POPUP_DEBUG] CATCH autoReplyId=${autoReplyId}: ${err}`);
       await ctx.answerCbQuery('❌ خطا', { show_alert: true });
     }
   });
