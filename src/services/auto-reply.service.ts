@@ -5,6 +5,7 @@ import { autoReplyRepository } from '../repositories/auto-reply.repository';
 import { logger } from '../utils/logger';
 import { validateDbInput } from '../utils/unicode';
 import { buildTelegramKeyboard } from './renderer';
+import { sendSingleMessage, normalizeSingleMessage } from './post-message.service';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -182,55 +183,36 @@ class AutoReplyService {
     const chatId = ctx.chat.id;
     const threadId = ctx.message?.message_thread_id;
     const messages = ar.messages || [];
+    const allButtons = ar.buttons || [];
 
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
-      const buttonsFromDb = ar.buttons?.filter((b: any) => b.messageId === message.id) || [];
-      const keyboard = buttonsFromDb.length > 0 ? this.buildInlineKeyboard(buttonsFromDb) : [];
-      const inlineKeyboard = keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined;
+      const buttonsForMsg = allButtons.filter((b: any) => b.messageId === message.id);
+      const inlineKeyboard = buttonsForMsg.length > 0 ? this.buildInlineKeyboard(buttonsForMsg) : undefined;
 
-      const extra: any = {
-        reply_parameters: { message_id: ctx.message.message_id },
+      const row = {
+        ...message,
+        postId: ar.id,
+        order: message.order ?? i,
+        messageType: message.type ?? PostMessageType.text,
+        text: message.text ?? '',
+        entities: message.entities ?? [],
+        captionEntities: message.captionEntities ?? [],
+        replyMarkup: inlineKeyboard ? { inline_keyboard: inlineKeyboard } : (message.replyMarkup ?? null),
+        forwardSource: message.forwardSource ?? null,
+        delayMs: 0,
       };
+
+      const normalized = normalizeSingleMessage(row);
+
+      const extra: any = {};
       if (threadId) extra.message_thread_id = threadId;
-      if (inlineKeyboard) extra.reply_markup = inlineKeyboard;
-      if (message.entities && Array.isArray(message.entities) && message.entities.length > 0) {
-        extra.entities = message.entities;
-      }
+      if (i === 0) extra.reply_parameters = { message_id: ctx.message.message_id };
 
       try {
-        if (message.type === 'forward' && message.forwardSource) {
-          const fs = message.forwardSource;
-          const srcChatId = Number(fs.originChatId || fs.chatId);
-          const srcMsgId = Number(fs.originMessageId || fs.messageId);
-          if (srcChatId && srcMsgId && !isNaN(srcChatId) && !isNaN(srcMsgId)) {
-            try {
-              await this.bot.telegram.forwardMessage(chatId, srcChatId, srcMsgId);
-            } catch {
-              await this.bot.telegram.copyMessage(chatId, srcChatId, srcMsgId);
-            }
-          }
-        } else if (message.mediaFileId) {
-          const captionExtra: any = { ...extra };
-          if (message.captionEntities?.length > 0) captionExtra.caption_entities = message.captionEntities;
-          captionExtra.caption = message.text || '';
-
-          switch (message.type) {
-            case 'photo': await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, captionExtra); break;
-            case 'video': await this.bot.telegram.sendVideo(chatId, message.mediaFileId, captionExtra); break;
-            case 'document': await this.bot.telegram.sendDocument(chatId, message.mediaFileId, captionExtra); break;
-            case 'voice': await this.bot.telegram.sendVoice(chatId, message.mediaFileId, captionExtra); break;
-            case 'audio': await this.bot.telegram.sendAudio(chatId, message.mediaFileId, captionExtra); break;
-            case 'animation': await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, captionExtra); break;
-            case 'sticker': await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra); break;
-            case 'video_note': await this.bot.telegram.sendVideoNote(chatId, message.mediaFileId, extra); break;
-            default: await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
-          }
-        } else {
-          await this.bot.telegram.sendMessage(chatId, message.text || '(empty)', extra);
-        }
+        await sendSingleMessage(this.bot.telegram, chatId, normalized);
       } catch (sendErr: any) {
-        logger.error(`[AutoReply] SEND_ERROR msg=${ar.id} [${i + 1}] ${sendErr?.message}`);
+        logger.error(`[AutoReply] SEND_ERROR msg=${ar.id} [${i + 1}] type=${normalized.messageType} error=${sendErr?.message}`);
         throw sendErr;
       }
 
