@@ -44,7 +44,7 @@ export function autoReplyNewPostManagerReplyKeyboard() {
   ]).resize().persistent();
 }
 
-// ─── Post Editor Reply Keyboard ───────────────────────────
+// ─── Post Editor Reply Keyboard (shown at bottom of editor) ──
 
 export function autoReplyEditorReplyKeyboard(isPublished: boolean) {
   return Markup.keyboard([
@@ -68,7 +68,7 @@ export function autoReplyAddMessageKeyboard() {
   return Markup.keyboard([['❌ لغو']]).resize().persistent();
 }
 
-// ─── Message Edit Reply Keyboard ──────────────────────────
+// ─── Message Edit Reply Keyboard (per-message editing menu) ──
 
 export function autoReplyEditMessageReplyKeyboard() {
   return Markup.keyboard([
