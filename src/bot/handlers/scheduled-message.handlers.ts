@@ -716,14 +716,14 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   });
 
   // ─── Media handler — save ALL media data (mirrors Post importFromTelegram) ──
-  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice', 'video_note', 'sticker'], async (ctx: any) => {
+  bot.on(['photo', 'video', 'animation', 'document', 'audio', 'voice', 'video_note', 'sticker'], async (ctx: any, next: any) => {
     const userId = ctx.from.id;
     const isEditingContent = scheduledMessageState.isEditingContent(userId);
-    if (!isEditingContent) return;
+    if (!isEditingContent) return next();
 
     const editMsgId = scheduledMessageState.getEditingMessage(userId);
     const msgId = scheduledMessageState.getEditMode(userId);
-    if (!msgId) return;
+    if (!msgId) return next();
 
     const msg = ctx.message as any;
 
@@ -739,7 +739,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     else if (msg.video_note) { mediaFileId = msg.video_note.file_id; mediaType = 'video_note'; }
     else if (msg.sticker) { mediaFileId = msg.sticker.file_id; mediaType = 'sticker'; }
 
-    if (!mediaFileId) return;
+    if (!mediaFileId) return next();
 
     // Extract caption and entities (same as Post)
     const caption = msg.caption || '';
