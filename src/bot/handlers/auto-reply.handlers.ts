@@ -1410,7 +1410,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     autoReplyState.setButtonRow(userId, 0);
     autoReplyState.setButtonCol(userId, 0);
     
-    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+    await ctx.reply('⌨️', autoReplyEditMessageReplyKeyboard());
     
     const msgId = autoReplyState.getEditingMessage(userId);
     if (msgId) {
@@ -1463,8 +1463,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       }
       
       autoReplyState.setButtonEditWaiting(userId, 'menu');
-      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n🌐 آدرس: ${url}`);
-      
+      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n🌐 آدرس: ${url}`, autoReplyEditMessageReplyKeyboard());
+
       // Return to button editor
       const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
       await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
@@ -1499,8 +1499,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       }
       
       autoReplyState.setButtonEditWaiting(userId, 'menu');
-      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n📝 متن POP-UP: ${popupText}`);
-      
+      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n📝 متن POP-UP: ${popupText}`, autoReplyEditMessageReplyKeyboard());
+
       // Return to button editor
       const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
       await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
@@ -1535,8 +1535,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       }
       
       autoReplyState.setButtonEditWaiting(userId, 'menu');
-      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n⌨️ دستور: ${command}`);
-      
+      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n⌨️ دستور: ${command}`, autoReplyEditMessageReplyKeyboard());
+
       // Return to button editor
       const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
       await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
@@ -1565,7 +1565,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
     
     autoReplyState.setButtonEditWaiting(userId, 'menu');
-    await ctx.reply(`✅ رنگ دکمه بروزرسانی شد.`);
+    await ctx.reply(`✅ رنگ دکمه بروزرسانی شد.`, autoReplyEditMessageReplyKeyboard());
     
     // Return to button editor
     const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
