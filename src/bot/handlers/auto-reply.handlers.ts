@@ -962,11 +962,24 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
   // ─── Button editor callbacks ────────────────────────────
 
+  async function resolveAutoReplyForMessage(messageId: number): Promise<{ autoReplyId: number } | null> {
+    const msg = await prisma.autoReplyMessage.findUnique({ where: { id: messageId } });
+    if (!msg) return null;
+    return { autoReplyId: msg.autoReplyId };
+  }
+
   // Auto-add button: create button and re-render editor (no new message)
   bot.action(/^arbtn:autoadd:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id;
     const msgId = parseInt(ctx.match[1]);
+
+    const resolved = await resolveAutoReplyForMessage(msgId);
+    if (!resolved) {
+      logger.error(`[ButtonEditor:autoadd] AutoReplyMessage not found for id=${msgId}`);
+      return;
+    }
+    const { autoReplyId } = resolved;
 
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
@@ -976,7 +989,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       nextRow = grid.length;
     }
 
-    await autoReplyService.addButton(msgId, { text: 'Button', type: 'URL', value: '', row: nextRow, col: nextCol });
+    await autoReplyService.addButton(autoReplyId, { text: 'Button', type: 'URL', value: '', row: nextRow, col: nextCol, messageId: msgId });
 
     const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
     const refreshedGrid = buttonsToGrid(refreshedButtons);
@@ -1075,6 +1088,13 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const msgId = parseInt(ctx.match[2]);
 
     if (mode === 'create') {
+      const resolved = await resolveAutoReplyForMessage(msgId);
+      if (!resolved) {
+        logger.error(`[ButtonEditor:mode:create] AutoReplyMessage not found for id=${msgId}`);
+        return;
+      }
+      const { autoReplyId } = resolved;
+
       const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
       const grid = buttonsToGrid(buttons);
       let nextRow = 0;
@@ -1083,7 +1103,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         nextRow = grid.length;
       }
 
-      await autoReplyService.addButton(msgId, { text: 'Button', type: 'URL', value: '', row: nextRow, col: nextCol });
+      await autoReplyService.addButton(autoReplyId, { text: 'Button', type: 'URL', value: '', row: nextRow, col: nextCol, messageId: msgId });
 
       const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
       const refreshedGrid = buttonsToGrid(refreshedButtons);
@@ -1126,7 +1146,9 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (existing) {
       await autoReplyService.updateButton(existing.id, { type: btnType.toUpperCase() });
     } else {
-      await autoReplyService.addButton(msgId, { text: '', type: btnType.toUpperCase(), row, col });
+      const resolved = await resolveAutoReplyForMessage(msgId);
+      if (!resolved) return;
+      await autoReplyService.addButton(resolved.autoReplyId, { text: '', type: btnType.toUpperCase(), row, col, messageId: msgId });
     }
 
     autoReplyState.setButtonPreviousView(userId, autoReplyState.getButtonMode(userId) || 'edit');
@@ -1215,7 +1237,12 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (existingBtn?.id) {
       await autoReplyService.updateButton(existingBtn.id, { text: title, type: dbType, value });
     } else {
-      await autoReplyService.addButton(msgId, { text: title, type: dbType, value, row, col });
+      const resolved = await resolveAutoReplyForMessage(msgId);
+      if (!resolved) {
+        logger.error(`[ButtonEditor:wait_text] AutoReplyMessage not found for id=${msgId}`);
+        return;
+      }
+      await autoReplyService.addButton(resolved.autoReplyId, { text: title, type: dbType, value, row, col, messageId: msgId });
     }
 
     autoReplyState.setButtonState(userId, '');
@@ -1430,7 +1457,9 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       if (existing) {
         await autoReplyService.updateButton(existing.id, { text: title, type: 'URL', value: url });
       } else {
-        await autoReplyService.addButton(msgId, { text: title, type: 'URL', value: url, row, col });
+        const resolved = await resolveAutoReplyForMessage(msgId);
+        if (!resolved) return;
+        await autoReplyService.addButton(resolved.autoReplyId, { text: title, type: 'URL', value: url, row, col, messageId: msgId });
       }
       
       autoReplyState.setButtonEditWaiting(userId, 'menu');
@@ -1464,7 +1493,9 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       if (existing) {
         await autoReplyService.updateButton(existing.id, { text: title, type: 'CALLBACK', value: popupText });
       } else {
-        await autoReplyService.addButton(msgId, { text: title, type: 'CALLBACK', value: popupText, row, col });
+        const resolved = await resolveAutoReplyForMessage(msgId);
+        if (!resolved) return;
+        await autoReplyService.addButton(resolved.autoReplyId, { text: title, type: 'CALLBACK', value: popupText, row, col, messageId: msgId });
       }
       
       autoReplyState.setButtonEditWaiting(userId, 'menu');
@@ -1498,7 +1529,9 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       if (existing) {
         await autoReplyService.updateButton(existing.id, { text: title, type: 'COMMAND', value: command });
       } else {
-        await autoReplyService.addButton(msgId, { text: title, type: 'COMMAND', value: command, row, col });
+        const resolved = await resolveAutoReplyForMessage(msgId);
+        if (!resolved) return;
+        await autoReplyService.addButton(resolved.autoReplyId, { text: title, type: 'COMMAND', value: command, row, col, messageId: msgId });
       }
       
       autoReplyState.setButtonEditWaiting(userId, 'menu');
