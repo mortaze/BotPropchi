@@ -259,23 +259,13 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── Button management ──────────────────────────────────
-  bot.hears('🔘 مدیریت دکمه‌ها', async (ctx: any) => {
+  bot.hears('🔘 مدیریت دکمه‌ها', async (ctx: any, next) => {
     const userId = ctx.from.id;
     const msgId = autoReplyState.getEditingMessage(userId);
-    if (!msgId || msgId <= 0) return;
+    if (!msgId || msgId <= 0) return next();
 
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
-
-    if (buttons.length === 0) {
-      const sent = await ctx.reply('⌨️ مدیریت دکمه‌ها', {
-        reply_markup: { inline_keyboard: [[Markup.button.callback('➕', `arbtn:autoadd:${msgId}`)]] },
-      });
-      if (sent) autoReplyState.setButtonEditorMsgId(userId, sent.message_id);
-      autoReplyState.setButtonMode(userId, 'create');
-      return;
-    }
-
     const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, grid, 'create');
     const sent = await ctx.reply(text, { reply_markup });
     if (sent) autoReplyState.setButtonEditorMsgId(userId, sent.message_id);
@@ -978,6 +968,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const userId = ctx.from.id;
     const msgId = parseInt(ctx.match[1]);
 
+    // Calculate next position
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
     let nextRow = 0;
@@ -986,17 +977,32 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       nextRow = grid.length;
     }
 
-    const newBtn = await autoReplyService.addButton(msgId, { text: '', type: 'URL', value: '', row: nextRow, col: nextCol });
+    // Create button with defaults
+    const newBtn = await autoReplyService.addButton(msgId, { text: 'دکمه جدید', type: 'URL', value: '', row: nextRow, col: nextCol });
 
+    // Refresh the grid and enter edit mode
+    const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const refreshedGrid = buttonsToGrid(refreshedButtons);
+
+    // Edit the existing editor message with new grid
+    const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
+    if (editorMsgId) {
+      const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, refreshedGrid, 'edit', { row: nextRow, col: nextCol });
+      try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
+    }
+
+    // Set state for editing the new button
     autoReplyState.setButtonRow(userId, nextRow);
     autoReplyState.setButtonCol(userId, nextCol);
     autoReplyState.setButtonMode(userId, 'edit');
     autoReplyState.setButtonEditWaiting(userId, 'menu');
 
-    const typeLabel = '🔗 لینک';
+    // Show button editor reply keyboard
+    const newBtnData = refreshedGrid[nextRow]?.[nextCol];
+    const typeLabel = newBtnData ? '🔗 لینک' : '🔗 لینک';
     const colorText = '⚪ بدون رنگ';
     await ctx.reply(
-      `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 \nآدرس: (خالی)\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
+      `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${newBtnData?.text || 'دکمه جدید'}\nآدرس: (خالی)\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
       buildArbtnEditReplyKeyboard(),
     );
   });
@@ -1086,6 +1092,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const msgId = parseInt(ctx.match[2]);
 
     if (mode === 'create') {
+      // Calculate next position
       const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
       const grid = buttonsToGrid(buttons);
       let nextRow = 0;
@@ -1094,17 +1101,32 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         nextRow = grid.length;
       }
 
-      const newBtn = await autoReplyService.addButton(msgId, { text: '', type: 'URL', value: '', row: nextRow, col: nextCol });
+      // Create button with defaults
+      const newBtn = await autoReplyService.addButton(msgId, { text: 'دکمه جدید', type: 'URL', value: '', row: nextRow, col: nextCol });
 
+      // Refresh the grid and enter edit mode
+      const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
+      const refreshedGrid = buttonsToGrid(refreshedButtons);
+
+      // Edit the existing editor message with new grid
+      const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
+      if (editorMsgId) {
+        const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, refreshedGrid, 'edit', { row: nextRow, col: nextCol });
+        try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
+      }
+
+      // Set state for editing the new button
       autoReplyState.setButtonRow(userId, nextRow);
       autoReplyState.setButtonCol(userId, nextCol);
       autoReplyState.setButtonMode(userId, 'edit');
       autoReplyState.setButtonEditWaiting(userId, 'menu');
 
-      const typeLabel = '🔗 لینک';
+      // Show button editor reply keyboard
+      const newBtnData = refreshedGrid[nextRow]?.[nextCol];
+      const typeLabel = newBtnData ? '🔗 لینک' : '🔗 لینک';
       const colorText = '⚪ بدون رنگ';
       await ctx.reply(
-        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 \nآدرس: (خالی)\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
+        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${newBtnData?.text || 'دکمه جدید'}\nآدرس: (خالی)\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
         buildArbtnEditReplyKeyboard(),
       );
       return;
