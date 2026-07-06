@@ -1204,7 +1204,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const grid = buttonsToGrid(buttons);
     const existingBtn = grid[row]?.[col];
 
-    const dbType = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : 'CALLBACK';
+    const dbType = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : btnType === 'popup' ? 'POPUP' : 'CALLBACK';
 
     if (existingBtn?.id) {
       await autoReplyService.updateButton(existingBtn.id, { text: title, type: dbType, value });
@@ -1463,11 +1463,11 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       const existing = grid[row]?.[col];
       
       if (existing) {
-        await autoReplyService.updateButton(existing.id, { text: title, type: 'CALLBACK', value: popupText });
+        await autoReplyService.updateButton(existing.id, { text: title, type: 'POPUP', value: popupText });
       } else {
         const resolved = await resolveAutoReplyForMessage(msgId);
         if (!resolved) return;
-        await autoReplyService.addButton(resolved.autoReplyId, { text: title, type: 'CALLBACK', value: popupText, row, col, messageId: msgId });
+        await autoReplyService.addButton(resolved.autoReplyId, { text: title, type: 'POPUP', value: popupText, row, col, messageId: msgId });
       }
       
       autoReplyState.setButtonEditWaiting(userId, 'menu');
