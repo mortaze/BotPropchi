@@ -1512,6 +1512,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const savedView = cache.get<string>(pendingKey(ctx.from.id, 'previous_view'));
     clearButtonEditorState(ctx.from.id);
     cache.del(pendingKey(ctx.from.id, 'previous_view'));
+    if (!savedView && state === 'wait_color') {
+      // Cancel from color selection entered via pbedit:color (no previous_view set)
+      // Return to post edit menu with the correct reply keyboard
+      await ctx.reply('✏️ حالت ویرایش:', postEditMessageReplyKeyboard());
+      return;
+    }
     if (savedView === 'select_type') {
       cache.setPermanent(pendingKey(ctx.from.id, 'editor_mode'), 'create');
       cache.setPermanent(pendingKey(ctx.from.id, 'editor_state'), 'select_type');
