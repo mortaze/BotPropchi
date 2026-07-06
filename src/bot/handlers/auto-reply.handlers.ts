@@ -985,28 +985,20 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
+    const hasButtons = grid.length > 0 && grid.some(r => Array.isArray(r) && r.some(b => b));
 
-    let nextRow = afterRow;
-    let nextCol = afterCol + 1;
+    let newRow: number;
+    let newCol: number;
 
-    // If position is occupied, shift everything after afterRow down by 1
-    if (grid[nextRow]?.[nextCol]) {
-      for (let r = grid.length - 1; r > afterRow; r--) {
-        for (let c = (grid[r] || []).length - 1; c >= 0; c--) {
-          if (grid[r]?.[c]) {
-            await autoReplyService.updateButton(grid[r][c].id, { row: r + 1, col: c });
-          }
-        }
-      }
-      // Also shift buttons in the same row after afterCol
-      for (let c = (grid[afterRow] || []).length - 1; c > afterCol; c--) {
-        if (grid[afterRow]?.[c]) {
-          await autoReplyService.updateButton(grid[afterRow][c].id, { row: afterRow, col: c + 1 });
-        }
-      }
+    if (!hasButtons) {
+      newRow = 0;
+      newCol = 0;
+    } else {
+      newRow = afterRow + 1;
+      newCol = 0;
     }
 
-    await autoReplyService.addButton(autoReplyId, { text: 'دکمه جدید', type: 'URL', value: '', row: nextRow, col: nextCol, messageId: msgId });
+    await autoReplyService.addButton(autoReplyId, { text: 'دکمه جدید', type: 'URL', value: '', row: newRow, col: newCol, messageId: msgId });
 
     const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
     const refreshedGrid = buttonsToGrid(refreshedButtons);
