@@ -968,14 +968,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     return { autoReplyId: msg.autoReplyId };
   }
 
-  // Auto-add button: insert after clicked position, re-render (no new message)
-  bot.action(/^arbtn:autoadd:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const userId = ctx.from.id;
-    const msgId = parseInt(ctx.match[1]);
-    const afterRow = parseInt(ctx.match[2]);
-    const afterCol = parseInt(ctx.match[3]);
-
+  async function createButtonAfterIndex(ctx: any, userId: number, msgId: number, afterIndex: number) {
     const resolved = await resolveAutoReplyForMessage(msgId);
     if (!resolved) {
       logger.error(`[ButtonEditor:autoadd] AutoReplyMessage not found for id=${msgId}`);
@@ -984,21 +977,38 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const { autoReplyId } = resolved;
 
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
-    const hasButtons = grid.length > 0 && grid.some(r => Array.isArray(r) && r.some(b => b));
+    const flatButtons: any[] = [];
+    for (const btn of buttons) {
+      if (btn) flatButtons.push(btn);
+    }
 
+    const hasButtons = flatButtons.length > 0;
     let newRow: number;
-    let newCol: number;
 
     if (!hasButtons) {
       newRow = 0;
-      newCol = 0;
     } else {
-      newRow = afterRow + 1;
-      newCol = 0;
+      const clickedBtn = flatButtons[afterIndex];
+      if (!clickedBtn) return;
+      const clickedRow = clickedBtn.row;
+
+      // Shift all buttons with row > clickedRow down by 1
+      for (const btn of flatButtons) {
+        if (btn.row > clickedRow) {
+          await autoReplyService.updateButton(btn.id, { row: btn.row + 1, col: 0 });
+        }
+      }
+      newRow = clickedRow + 1;
     }
 
-    await autoReplyService.addButton(autoReplyId, { text: 'دکمه جدید', type: 'URL', value: '', row: newRow, col: newCol, messageId: msgId });
+    await autoReplyService.addButton(autoReplyId, {
+      text: 'دکمه جدید',
+      type: 'URL',
+      value: '',
+      row: newRow,
+      col: 0,
+      messageId: msgId,
+    });
 
     const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
     const refreshedGrid = buttonsToGrid(refreshedButtons);
@@ -1010,6 +1020,15 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
 
     autoReplyState.setButtonMode(userId, 'create');
+  }
+
+  // Auto-add button: insert after clicked index, re-render (no new message)
+  bot.action(/^arbtn:autoadd:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = parseInt(ctx.match[1]);
+    const afterIndex = parseInt(ctx.match[2]);
+    await createButtonAfterIndex(ctx, userId, msgId, afterIndex);
   });
 
   // Click on a button slot in the editor

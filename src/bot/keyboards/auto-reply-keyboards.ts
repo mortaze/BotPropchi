@@ -205,45 +205,38 @@ export function buildButtonEditorInlineKeyboard(
   prefix: string = 'arbtn',
 ): any[][] {
   const rows: any[][] = [];
-  const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
-
-  if (hasButtons) {
-    const icon = mode === 'edit' ? '✏️' : mode === 'delete' ? '❌' : mode === 'move' ? '↕️' : '+';
-    for (let r = 0; r < buttons.length; r++) {
-      const row = buttons[r];
-      if (!Array.isArray(row)) continue;
-      const rowButtons: any[] = [];
-      for (let c = 0; c < row.length; c++) {
-        const btn = row[c];
-        if (!btn) continue;
-        const label = (btn.text || 'بدون عنوان').substring(0, 13);
-        const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
-        if (mode === 'move') {
-          const moveIcon = isSelected ? '✅' : '↕️';
-          rowButtons.push(
-            Markup.button.callback(`${colorIndicator(btn.style)}{${moveIcon}} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
-          );
-        } else if (mode === 'edit') {
-          rowButtons.push(
-            Markup.button.callback(`${colorIndicator(btn.style)}{✏️} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
-          );
-        } else if (mode === 'delete') {
-          rowButtons.push(
-            Markup.button.callback(`${colorIndicator(btn.style)}{❌} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
-          );
-        } else {
-          rowButtons.push(
-            Markup.button.callback(`${colorIndicator(btn.style)}{+} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
-          );
-          rowButtons.push(
-            Markup.button.callback('{+}', `${prefix}:autoadd:${messageId}:${r}:${c}`),
-          );
-        }
-      }
-      if (rowButtons.length > 0) rows.push(rowButtons);
+  const flatButtons: any[] = [];
+  for (let r = 0; r < buttons.length; r++) {
+    const row = buttons[r];
+    if (!Array.isArray(row)) continue;
+    for (let c = 0; c < row.length; c++) {
+      if (row[c]) flatButtons.push(row[c]);
     }
+  }
+
+  if (flatButtons.length === 0) {
+    rows.push([Markup.button.callback('{+}', `${prefix}:autoadd:${messageId}:0`)]);
   } else {
-    rows.push([Markup.button.callback('{+}', `${prefix}:autoadd:${messageId}:0:0`)]);
+    for (let i = 0; i < flatButtons.length; i++) {
+      const btn = flatButtons[i];
+      const label = (btn.text || 'بدون عنوان').substring(0, 13);
+      const isSelected = mode === 'move' && selectedPos && selectedPos.row === i && selectedPos.col === 0;
+      const prefix_ = colorIndicator(btn.style);
+
+      if (mode === 'move') {
+        const moveIcon = isSelected ? '✅' : '↕️';
+        rows.push([Markup.button.callback(`${prefix_}{${moveIcon}} ${label}`, `${prefix}:click:${messageId}:${i}:0`)]);
+      } else if (mode === 'edit') {
+        rows.push([Markup.button.callback(`${prefix_}{✏️} ${label}`, `${prefix}:click:${messageId}:${i}:0`)]);
+      } else if (mode === 'delete') {
+        rows.push([Markup.button.callback(`${prefix_}{❌} ${label}`, `${prefix}:click:${messageId}:${i}:0`)]);
+      } else {
+        rows.push([
+          Markup.button.callback(`${prefix_}{✏️} ${label}`, `${prefix}:click:${messageId}:${i}:0`),
+          Markup.button.callback('{+}', `${prefix}:autoadd:${messageId}:${i}`),
+        ]);
+      }
+    }
   }
 
   if (mode !== 'move') {
