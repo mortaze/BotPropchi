@@ -223,7 +223,10 @@ export function buildButtonEditorInlineKeyboard(
       const isSelected = mode === 'move' && selectedPos && selectedPos.row === i && selectedPos.col === 0;
       const color = colorIndicator(btn.style);
       const icon = isSelected ? '✅' : mode === 'edit' ? '✏️' : mode === 'delete' ? '❌' : mode === 'move' ? '↕️' : '+';
-      rows.push([Markup.button.callback(`${color}{${icon}} ${label}`, `${prefix}:click:${messageId}:${i}:0`)]);
+      const cb = mode === 'create'
+        ? `${prefix}:autoadd:${messageId}:${i}`
+        : `${prefix}:click:${messageId}:${i}:0`;
+      rows.push([Markup.button.callback(`${color}{${icon}} ${label}`, cb)]);
     }
   }
 
