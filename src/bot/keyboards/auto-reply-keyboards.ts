@@ -221,21 +221,9 @@ export function buildButtonEditorInlineKeyboard(
       const btn = flatButtons[i];
       const label = (btn.text || 'بدون عنوان').substring(0, 13);
       const isSelected = mode === 'move' && selectedPos && selectedPos.row === i && selectedPos.col === 0;
-      const prefix_ = colorIndicator(btn.style);
-
-      if (mode === 'move') {
-        const moveIcon = isSelected ? '✅' : '↕️';
-        rows.push([Markup.button.callback(`${prefix_}{${moveIcon}} ${label}`, `${prefix}:click:${messageId}:${i}:0`)]);
-      } else if (mode === 'edit') {
-        rows.push([Markup.button.callback(`${prefix_}{✏️} ${label}`, `${prefix}:click:${messageId}:${i}:0`)]);
-      } else if (mode === 'delete') {
-        rows.push([Markup.button.callback(`${prefix_}{❌} ${label}`, `${prefix}:click:${messageId}:${i}:0`)]);
-      } else {
-        rows.push([
-          Markup.button.callback(`${prefix_}{✏️} ${label}`, `${prefix}:click:${messageId}:${i}:0`),
-          Markup.button.callback('{+}', `${prefix}:autoadd:${messageId}:${i}`),
-        ]);
-      }
+      const color = colorIndicator(btn.style);
+      const icon = isSelected ? '✅' : mode === 'edit' ? '✏️' : mode === 'delete' ? '❌' : mode === 'move' ? '↕️' : '+';
+      rows.push([Markup.button.callback(`${color}{${icon}} ${label}`, `${prefix}:click:${messageId}:${i}:0`)]);
     }
   }
 
