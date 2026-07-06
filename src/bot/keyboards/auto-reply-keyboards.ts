@@ -285,3 +285,29 @@ export function buildArbtnColorKeyboard(messageId: number, row: number, col: num
     [Markup.button.callback('❌ لغو', `arbtn:type:cancel:${messageId}`)],
   ]);
 }
+
+// ─── Button Editor Reply Keyboard (State Machine) ──────────
+
+export function buildArbtnEditReplyKeyboard() {
+  return Markup.keyboard([
+    ['🔗 لینک یا اشتراک'],
+    ['🪟 POP-UP'],
+    ['⌨️ دستور'],
+    ['🎨 رنگ'],
+    ['❌ لغو'],
+  ]).resize().persistent();
+}
+
+export function buildArbtnEditWaitingKeyboard() {
+  return Markup.keyboard([['❌ لغو']]).resize().persistent();
+}
+
+export function buildArbtnColorReplyKeyboard() {
+  return Markup.keyboard([
+    ['🔵 Primary (آبی)'],
+    ['🟢 Success (سبز)'],
+    ['🔴 Danger (قرمز)'],
+    ['⚪ Default'],
+    ['❌ لغو'],
+  ]).resize().persistent();
+}

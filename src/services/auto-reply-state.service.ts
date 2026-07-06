@@ -198,11 +198,25 @@ export const autoReplyState = {
     return raw ? JSON.parse(raw) : null;
   },
 
+  // ─── Button edit waiting state ─────────────────────────────
+
+  setButtonEditWaiting(userId: number, waiting: string | null) {
+    if (waiting) {
+      cache.setPermanent(arKey(userId, 'btn_edit_waiting'), waiting);
+    } else {
+      cache.del(arKey(userId, 'btn_edit_waiting'));
+    }
+  },
+  getButtonEditWaiting(userId: number): string | null {
+    return cache.get<string>(arKey(userId, 'btn_edit_waiting')) || null;
+  },
+
   clearButtonEditorState(userId: number) {
     const fields = [
       'pbedit_editor_msg_id', 'btn_mode', 'btn_state', 'btn_row', 'btn_col',
       'btn_type', 'btn_color', 'btn_previous_view', 'btn_move_active',
       'btn_move_row', 'btn_move_col', 'btn_pending_delete',
+      'btn_edit_waiting',
     ];
     for (const field of fields) {
       cache.del(arKey(userId, field));
@@ -218,6 +232,7 @@ export const autoReplyState = {
       'pbedit_editor_msg_id', 'btn_mode', 'btn_state', 'btn_row', 'btn_col',
       'btn_type', 'btn_color', 'btn_previous_view', 'btn_move_active',
       'btn_move_row', 'btn_move_col', 'btn_pending_delete',
+      'btn_edit_waiting',
     ];
     for (const field of fields) {
       cache.del(arKey(userId, field));

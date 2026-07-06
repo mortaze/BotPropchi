@@ -31,6 +31,9 @@ import {
   buildArbtnEditTypeKeyboard,
   buildArbtnColorKeyboard,
   buildArbtnMoveKeyboard,
+  buildArbtnEditReplyKeyboard,
+  buildArbtnEditWaitingKeyboard,
+  buildArbtnColorReplyKeyboard,
 } from '../keyboards/auto-reply-keyboards';
 
 function formatAutoReplyInfo(msg: any): string {
@@ -165,6 +168,11 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   bot.hears('❌ لغو', async (ctx: any, next) => {
     if (!ctx.from) return next();
     const userId = ctx.from.id;
+
+    // Button editor state machine - skip if in button editor
+    if (autoReplyState.getButtonEditWaiting(userId)) {
+      return next();
+    }
 
     if (autoReplyState.isCreating(userId)) {
       const msgId = autoReplyState.getEditingMessage(userId);
@@ -424,6 +432,12 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     const admin = await botAdminService.getActive(userId);
     if (!admin) return next();
+
+    // Button editor state machine - skip if in button editor waiting state
+    const btnEditWaiting = autoReplyState.getButtonEditWaiting(userId);
+    if (btnEditWaiting && btnEditWaiting !== 'menu') {
+      return next();
+    }
 
     const isCreating = autoReplyState.isCreating(userId);
     const isEditingTitle = autoReplyState.isEditingTitle(userId);
@@ -1004,9 +1018,14 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       const typeLabel = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : btn.type === 'URL' ? '🔗 لینک' : btn.type;
       const valueLabel = btn.type === 'URL' ? 'آدرس' : btn.type === 'COMMAND' ? 'دستور' : btn.type === 'POPUP' ? 'متن پنجره' : 'مقدار';
       const colorText = btn.style ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
-      await ctx.editMessageText(
-        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${btn.text}\n${valueLabel}: ${btn.value || '(خالی)'}\n${colorText}`,
-        buildArbtnEditTypeKeyboard(msgId, row, col, btn.style),
+      
+      // Store button info for state machine
+      autoReplyState.setButtonEditWaiting(userId, 'menu');
+      
+      // Send info message and show Reply Keyboard
+      await ctx.reply(
+        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${btn.text}\n${valueLabel}: ${btn.value || '(خالی)'}\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
+        buildArbtnEditReplyKeyboard(),
       );
       return;
     }
@@ -1203,6 +1222,310 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const kb = buildArbtnColorKeyboard(msgId, row, col);
     await ctx.reply('رنگ دکمه را انتخاب کنید:', kb);
   });
+
+  // ─── Button Editor Reply Keyboard Handlers (State Machine) ──
+
+  bot.hears('🔗 لینک یا اشتراک', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    if (waiting !== 'menu') return next();
+    
+    const msgId = autoReplyState.getEditingMessage(userId);
+    const row = autoReplyState.getButtonRow(userId);
+    const col = autoReplyState.getButtonCol(userId);
+    if (!msgId || row === undefined || col === undefined) return next();
+    
+    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const btn = grid[row]?.[col];
+    
+    autoReplyState.setButtonEditWaiting(userId, 'wait_link_title');
+    
+    await ctx.reply(
+      `🔗 داده‌های جدید را برای URL / دکمه اشتراک‌گذاری وارد کنید:\n\n🏷 عنوان دکمه\n🌐 آدرس جدید\n\n(هر کدام در یک خط جداگانه)`,
+      buildArbtnEditWaitingKeyboard(),
+    );
+  });
+
+  bot.hears('🪟 POP-UP', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    if (waiting !== 'menu') return next();
+    
+    const msgId = autoReplyState.getEditingMessage(userId);
+    const row = autoReplyState.getButtonRow(userId);
+    const col = autoReplyState.getButtonCol(userId);
+    if (!msgId || row === undefined || col === undefined) return next();
+    
+    autoReplyState.setButtonEditWaiting(userId, 'wait_popup_title');
+    
+    await ctx.reply(
+      `🪟 داده‌های جدید را برای POP-UP وارد کنید:\n\n🏷 عنوان دکمه\n📝 محتوای جدید\n\n(هر کدام در یک خط جداگانه)`,
+      buildArbtnEditWaitingKeyboard(),
+    );
+  });
+
+  bot.hears('⌨️ دستور', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    if (waiting !== 'menu') return next();
+    
+    const msgId = autoReplyState.getEditingMessage(userId);
+    const row = autoReplyState.getButtonRow(userId);
+    const col = autoReplyState.getButtonCol(userId);
+    if (!msgId || row === undefined || col === undefined) return next();
+    
+    autoReplyState.setButtonEditWaiting(userId, 'wait_command_title');
+    
+    await ctx.reply(
+      `⌨️ داده‌های جدید را برای دستور وارد کنید:\n\n🏷 عنوان دکمه\n⌨️ COMMAND جدید\n\n(هر کدام در یک خط جداگانه)`,
+      buildArbtnEditWaitingKeyboard(),
+    );
+  });
+
+  bot.hears('🎨 رنگ', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    if (waiting !== 'menu') return next();
+    
+    autoReplyState.setButtonEditWaiting(userId, 'wait_color');
+    
+    await ctx.reply(
+      '🎨 رنگ دکمه را انتخاب کنید:',
+      buildArbtnColorReplyKeyboard(),
+    );
+  });
+
+  // ─── Color selection from Reply Keyboard ──
+
+  bot.hears('🔵 Primary (آبی)', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    if (waiting !== 'wait_color') return next();
+    
+    await handleARBtnColorSelect(ctx, 'primary');
+  });
+
+  bot.hears('🟢 Success (سبز)', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    if (waiting !== 'wait_color') return next();
+    
+    await handleARBtnColorSelect(ctx, 'success');
+  });
+
+  bot.hears('🔴 Danger (قرمز)', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    if (waiting !== 'wait_color') return next();
+    
+    await handleARBtnColorSelect(ctx, 'danger');
+  });
+
+  bot.hears('⚪ Default', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    if (waiting !== 'wait_color') return next();
+    
+    await handleARBtnColorSelect(ctx, 'default');
+  });
+
+  // ─── Cancel handler for button editor ──
+
+  bot.hears('❌ لغو', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    
+    if (!waiting) return next();
+    
+    // If in waiting state (not menu), just return to menu
+    if (waiting !== 'menu') {
+      autoReplyState.setButtonEditWaiting(userId, 'menu');
+      const msgId = autoReplyState.getEditingMessage(userId);
+      const row = autoReplyState.getButtonRow(userId);
+      const col = autoReplyState.getButtonCol(userId);
+      
+      if (msgId && row !== undefined && col !== undefined) {
+        const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+        const grid = buttonsToGrid(buttons);
+        const btn = grid[row]?.[col];
+        
+        if (btn) {
+          const typeLabel = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : btn.type === 'URL' ? '🔗 لینک' : btn.type;
+          const valueLabel = btn.type === 'URL' ? 'آدرس' : btn.type === 'COMMAND' ? 'دستور' : btn.type === 'POPUP' ? 'متن پنجره' : 'مقدار';
+          const colorText = btn.style ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
+          
+          await ctx.reply(
+            `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${btn.text}\n${valueLabel}: ${btn.value || '(خالی)'}\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
+            buildArbtnEditReplyKeyboard(),
+          );
+          return;
+        }
+      }
+    }
+    
+    // If in menu state, clear everything and return to button editor
+    autoReplyState.setButtonEditWaiting(userId, null);
+    autoReplyState.setButtonMode(userId, 'create');
+    autoReplyState.setButtonState(userId, '');
+    autoReplyState.setButtonRow(userId, 0);
+    autoReplyState.setButtonCol(userId, 0);
+    
+    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+    
+    const msgId = autoReplyState.getEditingMessage(userId);
+    if (msgId) {
+      await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
+    }
+  });
+
+  // ─── Text input handler for link/command/popup fields ──
+
+  bot.on('text', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const waiting = autoReplyState.getButtonEditWaiting(userId);
+    
+    if (!waiting || waiting === 'menu' || waiting === 'wait_color') return next();
+    
+    const text = ctx.message.text;
+    const msgId = autoReplyState.getEditingMessage(userId);
+    const row = autoReplyState.getButtonRow(userId);
+    const col = autoReplyState.getButtonCol(userId);
+    
+    if (!msgId || row === undefined || col === undefined) return next();
+    
+    const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+    
+    if (waiting === 'wait_link_title') {
+      // Expect: title on first line, URL on second line
+      if (lines.length < 2) {
+        await ctx.reply('❌ حداقل دو خط وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: آدرس URL', buildArbtnEditWaitingKeyboard());
+        return;
+      }
+      
+      const title = lines[0];
+      const url = lines.slice(1).join('\n');
+      
+      if (!url.startsWith('http') && !url.startsWith('https') && !url.startsWith('t.me/') && !url.startsWith('tg://')) {
+        await ctx.reply('❌ آدرس نامعتبر است. باید با http://، https://، t.me/ یا tg:// شروع شود.', buildArbtnEditWaitingKeyboard());
+        return;
+      }
+      
+      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+      const grid = buttonsToGrid(buttons);
+      const existing = grid[row]?.[col];
+      
+      if (existing) {
+        await autoReplyService.updateButton(existing.id, { text: title, type: 'URL', value: url });
+      } else {
+        await autoReplyService.addButton(msgId, { text: title, type: 'URL', value: url, row, col });
+      }
+      
+      autoReplyState.setButtonEditWaiting(userId, 'menu');
+      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n🌐 آدرس: ${url}`);
+      
+      // Return to button editor
+      const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
+      await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+      return;
+    }
+    
+    if (waiting === 'wait_popup_title') {
+      // Expect: title on first line, popup text on second line
+      if (lines.length < 2) {
+        await ctx.reply('❌ حداقل دو خط وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: متن POP-UP', buildArbtnEditWaitingKeyboard());
+        return;
+      }
+      
+      const title = lines[0];
+      const popupText = lines.slice(1).join('\n');
+      
+      if (popupText.length > 200) {
+        await ctx.reply('❌ متن POP-UP نمی‌تواند بیش از ۲۰۰ کاراکتر باشد.', buildArbtnEditWaitingKeyboard());
+        return;
+      }
+      
+      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+      const grid = buttonsToGrid(buttons);
+      const existing = grid[row]?.[col];
+      
+      if (existing) {
+        await autoReplyService.updateButton(existing.id, { text: title, type: 'CALLBACK', value: popupText });
+      } else {
+        await autoReplyService.addButton(msgId, { text: title, type: 'CALLBACK', value: popupText, row, col });
+      }
+      
+      autoReplyState.setButtonEditWaiting(userId, 'menu');
+      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n📝 متن POP-UP: ${popupText}`);
+      
+      // Return to button editor
+      const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
+      await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+      return;
+    }
+    
+    if (waiting === 'wait_command_title') {
+      // Expect: title on first line, command on second line
+      if (lines.length < 2) {
+        await ctx.reply('❌ حداقل دو خط وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: دستور', buildArbtnEditWaitingKeyboard());
+        return;
+      }
+      
+      const title = lines[0];
+      const command = lines.slice(1).join('\n');
+      
+      if (!/^[a-z0-9_]+$/.test(command)) {
+        await ctx.reply('❌ دستور نامعتبر است. فقط حروف a-z، اعداد 0-9 و زیرخط (_) مجاز است.', buildArbtnEditWaitingKeyboard());
+        return;
+      }
+      
+      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+      const grid = buttonsToGrid(buttons);
+      const existing = grid[row]?.[col];
+      
+      if (existing) {
+        await autoReplyService.updateButton(existing.id, { text: title, type: 'COMMAND', value: command });
+      } else {
+        await autoReplyService.addButton(msgId, { text: title, type: 'COMMAND', value: command, row, col });
+      }
+      
+      autoReplyState.setButtonEditWaiting(userId, 'menu');
+      await ctx.reply(`✅ دکمه بروزرسانی شد.\n\n🏷 عنوان: ${title}\n⌨️ دستور: ${command}`);
+      
+      // Return to button editor
+      const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
+      await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+      return;
+    }
+    
+    return next();
+  });
+
+  // ─── Helper function for color selection ──
+
+  async function handleARBtnColorSelect(ctx: any, color: string) {
+    const userId = ctx.from.id;
+    const msgId = autoReplyState.getEditingMessage(userId);
+    const row = autoReplyState.getButtonRow(userId);
+    const col = autoReplyState.getButtonCol(userId);
+    
+    if (!msgId || row === undefined || col === undefined) return;
+    
+    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    const existing = grid[row]?.[col];
+    
+    if (existing) {
+      await autoReplyService.updateButton(existing.id, { style: color === 'default' ? undefined : color });
+    }
+    
+    autoReplyState.setButtonEditWaiting(userId, 'menu');
+    await ctx.reply(`✅ رنگ دکمه بروزرسانی شد.`);
+    
+    // Return to button editor
+    const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
+    await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+  }
 
   bot.action(/^arbtn:color:set:(\d+):(\d+):(\d+):(\w+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();

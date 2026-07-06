@@ -16,6 +16,7 @@ npm run dev              # ts-node-dev hot-reload
 npm run build            # tsc
 npm start                # node dist/index.js
 npm run test             # vitest run (pure unit, no DB/Redis)
+npx vitest run <pattern> # run single test file, e.g. npx vitest run src/__tests__/unicode.test.ts
 npm run db:push          # prisma db push (NOT migration-based)
 npm run db:generate      # regenerate Prisma client
 npm run db:seed          # seed (admin: admin/admin123)
@@ -29,7 +30,7 @@ No lint/typecheck at root. Only admin has lint.
 
 ## Key Docs (read these for deep context)
 
-- `ARCHITECTURE.md` — full system architecture, data model, API routes, deployment
+- `ARCHITECTURE.md` — full system architecture, data model, API routes, deployment (note: still references `wordpress-plugin/` which was removed)
 - `ADMIN_PANEL_AUDIT.md` — auth flow, panel page tree, legacy files, feature toggles
 - `CALLBACK_CROSS_CHECK.md` — all callback_data patterns vs handler regex, with dead-pattern history
 
@@ -113,11 +114,12 @@ Implications:
 - **Bot middleware**: `src/bot/middlewares/` except `membershipGuard` in `src/middleware/`
 - **Admin dead files**: `admin/src/index.ts`, `admin/src/api/`, `admin/src/scheduler.ts` — legacy, not used by Next.js. Admin `tsconfig.json` explicitly excludes them.
 - **Admin legacy bot scripts** in `admin/package.json`: `dev:bot`, `build:bot`, `start:bot` — ignore
+- **Admin unused dep**: `zustand` is in `admin/package.json` but never imported — stores use `useSyncExternalStore`
 - **Prisma client**: `src/prisma/client.ts` (singleton with dev query logging); generated in `node_modules/.prisma/client`
 - **Docker**: `docker-compose.yml` runs PostgreSQL 16 + Redis 7 only (bot service built via Dockerfile at deploy)
 - **No CI/CD, no husky, no prettier, no editorconfig**
 - **`docker-compose.yml` is commented out for bot service** — only postgres + redis active
-- **stray dir**: `src/tests/` exists but vitest only picks up `src/__tests__/*.test.ts`
+- **stray dir**: `src/tests/` exists (1 file) but vitest only picks up `src/__tests__/*.test.ts`
 - **TypeScript strictness differs**: root `tsconfig.json` has `strict: false` / `noImplicitAny: false`; admin has `strict: true`
 - **Path alias**: both root and admin use `@/*` → `src/*`
 
