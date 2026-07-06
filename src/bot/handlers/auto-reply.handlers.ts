@@ -261,21 +261,21 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   // ─── Button management ──────────────────────────────────
   bot.hears('🔘 مدیریت دکمه‌ها', async (ctx: any) => {
     const userId = ctx.from.id;
-    let msgId = autoReplyState.getEditingMessage(userId);
-    if (!msgId || msgId <= 0) {
-      const editMode = autoReplyState.getEditMode(userId);
-      if (editMode) {
-        const msgs = await autoReplyService.listMessages(editMode);
-        if (msgs.length > 0) {
-          msgId = msgs[0].id;
-          autoReplyState.setEditingMessage(userId, msgId);
-        }
-      }
-    }
+    const msgId = autoReplyState.getEditingMessage(userId);
     if (!msgId || msgId <= 0) return;
 
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
+
+    if (buttons.length === 0) {
+      const sent = await ctx.reply('⌨️ مدیریت دکمه‌ها', {
+        reply_markup: { inline_keyboard: [[Markup.button.callback('➕', `arbtn:autoadd:${msgId}`)]] },
+      });
+      if (sent) autoReplyState.setButtonEditorMsgId(userId, sent.message_id);
+      autoReplyState.setButtonMode(userId, 'create');
+      return;
+    }
+
     const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, grid, 'create');
     const sent = await ctx.reply(text, { reply_markup });
     if (sent) autoReplyState.setButtonEditorMsgId(userId, sent.message_id);
@@ -972,6 +972,35 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
   // ─── Button editor callbacks ────────────────────────────
 
+  // Auto-add button: create button automatically and enter editor
+  bot.action(/^arbtn:autoadd:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = parseInt(ctx.match[1]);
+
+    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
+    let nextRow = 0;
+    let nextCol = 0;
+    if (grid.length > 0) {
+      nextRow = grid.length;
+    }
+
+    const newBtn = await autoReplyService.addButton(msgId, { text: '', type: 'URL', value: '', row: nextRow, col: nextCol });
+
+    autoReplyState.setButtonRow(userId, nextRow);
+    autoReplyState.setButtonCol(userId, nextCol);
+    autoReplyState.setButtonMode(userId, 'edit');
+    autoReplyState.setButtonEditWaiting(userId, 'menu');
+
+    const typeLabel = '🔗 لینک';
+    const colorText = '⚪ بدون رنگ';
+    await ctx.reply(
+      `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 \nآدرس: (خالی)\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
+      buildArbtnEditReplyKeyboard(),
+    );
+  });
+
   // Click on a button slot in the editor
   bot.action(/^arbtn:click:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
@@ -1057,7 +1086,6 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const msgId = parseInt(ctx.match[2]);
 
     if (mode === 'create') {
-      // Directly enter button creation flow — find next available slot
       const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
       const grid = buttonsToGrid(buttons);
       let nextRow = 0;
@@ -1066,23 +1094,19 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         nextRow = grid.length;
       }
 
-      autoReplyState.setButtonState(userId, 'wait_text');
-      autoReplyState.setButtonType(userId, 'url');
-      autoReplyState.setButtonPreviousView(userId, 'create');
-      autoReplyState.setEditingMessage(userId, msgId);
+      const newBtn = await autoReplyService.addButton(msgId, { text: '', type: 'URL', value: '', row: nextRow, col: nextCol });
+
       autoReplyState.setButtonRow(userId, nextRow);
       autoReplyState.setButtonCol(userId, nextCol);
+      autoReplyState.setButtonMode(userId, 'edit');
+      autoReplyState.setButtonEditWaiting(userId, 'menu');
 
-      const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
-      if (editorMsgId) {
-        try {
-          await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null,
-            '📝 متن و مقدار دکمه را وارد کنید:\nخط اول: عنوان دکمه\nخط دوم: مقدار (لینک/دستور/متن)',
-            { reply_markup: { inline_keyboard: [[Markup.button.callback('❌ لغو', `arbtn:type:cancel:${msgId}`)]] } },
-          );
-        } catch {}
-      }
-      await ctx.reply('متن دکمه را ارسال کنید.', autoReplyCancelOnlyKeyboard());
+      const typeLabel = '🔗 لینک';
+      const colorText = '⚪ بدون رنگ';
+      await ctx.reply(
+        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 \nآدرس: (خالی)\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
+        buildArbtnEditReplyKeyboard(),
+      );
       return;
     }
 
