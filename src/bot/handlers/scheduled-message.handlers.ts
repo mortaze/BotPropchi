@@ -1005,7 +1005,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const userId = ctx.from.id;
 
     const msgId = scheduledMessageState.getEditingMessage(userId);
-    if (!msgId || msgId <= 0) return;
+    if (!msgId || msgId <= 0) return next();
 
     const buttons = await scheduledMessageRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
