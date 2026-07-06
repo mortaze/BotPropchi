@@ -208,6 +208,7 @@ export function buildButtonEditorInlineKeyboard(
   const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
 
   if (hasButtons) {
+    const icon = mode === 'edit' ? '✏️' : mode === 'delete' ? '❌' : mode === 'move' ? '↕️' : '+';
     for (let r = 0; r < buttons.length; r++) {
       const row = buttons[r];
       if (!Array.isArray(row)) continue;
@@ -217,16 +218,33 @@ export function buildButtonEditorInlineKeyboard(
         if (!btn) continue;
         const label = (btn.text || 'بدون عنوان').substring(0, 13);
         const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
-        const icon = isSelected ? '[✅]' : mode === 'edit' ? '[✏️]' : mode === 'delete' ? '[✖]' : mode === 'move' ? '[🔀]' : '[＋]';
-        rowButtons.push(
-          Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
-        );
+        if (mode === 'move') {
+          const moveIcon = isSelected ? '✅' : '↕️';
+          rowButtons.push(
+            Markup.button.callback(`${colorIndicator(btn.style)}{${moveIcon}} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
+          );
+        } else if (mode === 'edit') {
+          rowButtons.push(
+            Markup.button.callback(`${colorIndicator(btn.style)}{✏️} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
+          );
+        } else if (mode === 'delete') {
+          rowButtons.push(
+            Markup.button.callback(`${colorIndicator(btn.style)}{❌} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
+          );
+        } else {
+          rowButtons.push(
+            Markup.button.callback(`${colorIndicator(btn.style)}{+} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
+          );
+          rowButtons.push(
+            Markup.button.callback('{+}', `${prefix}:autoadd:${messageId}:${r}:${c}`),
+          );
+        }
       }
       if (rowButtons.length > 0) rows.push(rowButtons);
     }
+  } else {
+    rows.push([Markup.button.callback('{+}', `${prefix}:autoadd:${messageId}:0:0`)]);
   }
-
-  rows.push([Markup.button.callback('➕', `${prefix}:autoadd:${messageId}`)]);
 
   if (mode !== 'move') {
     rows.push([
