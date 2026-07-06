@@ -224,9 +224,9 @@ export function buildButtonEditorInlineKeyboard(
       }
       if (rowButtons.length > 0) rows.push(rowButtons);
     }
-  } else if (mode === 'create') {
-    rows.push([Markup.button.callback('➕ ایجاد دکمه جدید', `${prefix}:mode:create:${messageId}`)]);
   }
+
+  rows.push([Markup.button.callback('➕', `${prefix}:autoadd:${messageId}`)]);
 
   if (mode !== 'move') {
     rows.push([

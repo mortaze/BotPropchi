@@ -962,13 +962,12 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
   // ─── Button editor callbacks ────────────────────────────
 
-  // Auto-add button: create button automatically and enter editor
+  // Auto-add button: create button and re-render editor (no new message)
   bot.action(/^arbtn:autoadd:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id;
     const msgId = parseInt(ctx.match[1]);
 
-    // Calculate next position
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
     let nextRow = 0;
@@ -977,34 +976,18 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       nextRow = grid.length;
     }
 
-    // Create button with defaults
-    const newBtn = await autoReplyService.addButton(msgId, { text: 'دکمه جدید', type: 'URL', value: '', row: nextRow, col: nextCol });
+    await autoReplyService.addButton(msgId, { text: 'Button', type: 'URL', value: '', row: nextRow, col: nextCol });
 
-    // Refresh the grid and enter edit mode
     const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
     const refreshedGrid = buttonsToGrid(refreshedButtons);
 
-    // Edit the existing editor message with new grid
     const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
     if (editorMsgId) {
-      const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, refreshedGrid, 'edit', { row: nextRow, col: nextCol });
+      const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, refreshedGrid, 'create');
       try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
     }
 
-    // Set state for editing the new button
-    autoReplyState.setButtonRow(userId, nextRow);
-    autoReplyState.setButtonCol(userId, nextCol);
-    autoReplyState.setButtonMode(userId, 'edit');
-    autoReplyState.setButtonEditWaiting(userId, 'menu');
-
-    // Show button editor reply keyboard
-    const newBtnData = refreshedGrid[nextRow]?.[nextCol];
-    const typeLabel = newBtnData ? '🔗 لینک' : '🔗 لینک';
-    const colorText = '⚪ بدون رنگ';
-    await ctx.reply(
-      `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${newBtnData?.text || 'دکمه جدید'}\nآدرس: (خالی)\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
-      buildArbtnEditReplyKeyboard(),
-    );
+    autoReplyState.setButtonMode(userId, 'create');
   });
 
   // Click on a button slot in the editor
@@ -1092,7 +1075,6 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const msgId = parseInt(ctx.match[2]);
 
     if (mode === 'create') {
-      // Calculate next position
       const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
       const grid = buttonsToGrid(buttons);
       let nextRow = 0;
@@ -1101,34 +1083,18 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         nextRow = grid.length;
       }
 
-      // Create button with defaults
-      const newBtn = await autoReplyService.addButton(msgId, { text: 'دکمه جدید', type: 'URL', value: '', row: nextRow, col: nextCol });
+      await autoReplyService.addButton(msgId, { text: 'Button', type: 'URL', value: '', row: nextRow, col: nextCol });
 
-      // Refresh the grid and enter edit mode
       const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
       const refreshedGrid = buttonsToGrid(refreshedButtons);
 
-      // Edit the existing editor message with new grid
       const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
       if (editorMsgId) {
-        const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, refreshedGrid, 'edit', { row: nextRow, col: nextCol });
+        const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, refreshedGrid, 'create');
         try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
       }
 
-      // Set state for editing the new button
-      autoReplyState.setButtonRow(userId, nextRow);
-      autoReplyState.setButtonCol(userId, nextCol);
-      autoReplyState.setButtonMode(userId, 'edit');
-      autoReplyState.setButtonEditWaiting(userId, 'menu');
-
-      // Show button editor reply keyboard
-      const newBtnData = refreshedGrid[nextRow]?.[nextCol];
-      const typeLabel = newBtnData ? '🔗 لینک' : '🔗 لینک';
-      const colorText = '⚪ بدون رنگ';
-      await ctx.reply(
-        `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${newBtnData?.text || 'دکمه جدید'}\nآدرس: (خالی)\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
-        buildArbtnEditReplyKeyboard(),
-      );
+      autoReplyState.setButtonMode(userId, 'create');
       return;
     }
 
