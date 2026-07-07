@@ -5,7 +5,6 @@ import { autoReplyRepository } from '../repositories/auto-reply.repository';
 import { logger } from '../utils/logger';
 import { validateDbInput } from '../utils/unicode';
 import { buildTelegramKeyboard } from './renderer';
-import { sendSingleMessage, normalizeSingleMessage } from './post-message.service';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -190,29 +189,46 @@ class AutoReplyService {
       const buttonsForMsg = allButtons.filter((b: any) => b.messageId === message.id);
       const inlineKeyboard = buttonsForMsg.length > 0 ? this.buildInlineKeyboard(buttonsForMsg, ar.id) : undefined;
 
-      const row = {
-        ...message,
-        postId: ar.id,
-        order: message.order ?? i,
-        messageType: message.type ?? PostMessageType.text,
-        text: message.text ?? '',
-        entities: message.entities ?? [],
-        captionEntities: message.captionEntities ?? [],
-        replyMarkup: inlineKeyboard ? { inline_keyboard: inlineKeyboard } : (message.replyMarkup ?? null),
-        forwardSource: message.forwardSource ?? null,
-        delayMs: 0,
-      };
-
-      const normalized = normalizeSingleMessage(row);
-
       const extra: any = {};
       if (threadId) extra.message_thread_id = threadId;
       if (i === 0) extra.reply_parameters = { message_id: ctx.message.message_id };
+      if (inlineKeyboard) extra.reply_markup = { inline_keyboard: inlineKeyboard };
+
+      const text = message.text || '';
 
       try {
-        await sendSingleMessage(this.bot.telegram, chatId, normalized);
+        if (message.type === 'photo' && message.mediaFileId) {
+          await this.bot.telegram.sendPhoto(chatId, message.mediaFileId, { caption: text || undefined, caption_entities: message.captionEntities || undefined, ...extra });
+        } else if (message.type === 'video' && message.mediaFileId) {
+          await this.bot.telegram.sendVideo(chatId, message.mediaFileId, { caption: text || undefined, caption_entities: message.captionEntities || undefined, ...extra });
+        } else if (message.type === 'animation' && message.mediaFileId) {
+          await this.bot.telegram.sendAnimation(chatId, message.mediaFileId, { caption: text || undefined, caption_entities: message.captionEntities || undefined, ...extra });
+        } else if (message.type === 'document' && message.mediaFileId) {
+          await this.bot.telegram.sendDocument(chatId, message.mediaFileId, { caption: text || undefined, caption_entities: message.captionEntities || undefined, ...extra });
+        } else if (message.type === 'voice' && message.mediaFileId) {
+          await this.bot.telegram.sendVoice(chatId, message.mediaFileId, { caption: text || undefined, ...extra });
+        } else if (message.type === 'audio' && message.mediaFileId) {
+          await this.bot.telegram.sendAudio(chatId, message.mediaFileId, { caption: text || undefined, ...extra });
+        } else if (message.type === 'sticker' && message.mediaFileId) {
+          await this.bot.telegram.sendSticker(chatId, message.mediaFileId, extra);
+        } else if (message.type === 'forward' && message.forwardSource) {
+          const srcChatId = Number(message.forwardSource.chatId || message.forwardSource.originChatId);
+          const srcMsgId = Number(message.forwardSource.messageId || message.forwardSource.originMessageId);
+          if (srcChatId && srcMsgId) {
+            try {
+              await this.bot.telegram.forwardMessage(chatId, srcChatId, srcMsgId);
+            } catch {
+              await this.bot.telegram.copyMessage(chatId, srcChatId, srcMsgId);
+            }
+          }
+        } else {
+          await this.bot.telegram.sendMessage(chatId, text, {
+            entities: message.entities || undefined,
+            ...extra,
+          });
+        }
       } catch (sendErr: any) {
-        logger.error(`[AutoReply] SEND_ERROR msg=${ar.id} [${i + 1}] type=${normalized.messageType} error=${sendErr?.message}`);
+        logger.error(`[AutoReply] SEND_ERROR msg=${ar.id} [${i + 1}] type=${message.type} error=${sendErr?.message}`);
         throw sendErr;
       }
 

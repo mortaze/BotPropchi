@@ -1276,35 +1276,99 @@ export function registerHandlers(bot: Telegraf<Context>) {
     }
   });
 
-  // ─── Auto Reply POPUP Button routing ────────────────────────
+  // ─── Auto Reply Button routing (click / popup / cmd) ─────────
+  // Helper: resolve flat index to actual autoReplyButton
+  async function resolveArButton(autoReplyId: number, flatIdx: number) {
+    const buttons = await prisma.autoReplyButton.findMany({
+      where: { autoReplyId },
+      orderBy: [{ row: 'asc' }, { col: 'asc' }],
+    });
+    const grid: any[][] = [];
+    for (const btn of buttons) {
+      const r = btn.row ?? 0;
+      const c = btn.col ?? 0;
+      if (!grid[r]) grid[r] = [];
+      grid[r][c] = btn;
+    }
+    const flatButtons: any[] = [];
+    for (let r = 0; r < grid.length; r++) {
+      const row = grid[r];
+      if (!Array.isArray(row)) continue;
+      for (let c = 0; c < row.length; c++) {
+        if (row[c]) flatButtons.push(row[c]);
+      }
+    }
+    return flatButtons[flatIdx] || null;
+  }
+
+  // Auto Reply POPUP — show alert with the button's value
   bot.action(/^ar:user:popup:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     const autoReplyId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
-    logger.info(`[POPUP_TRACE] Handler=ArPopup Regex=/^ar:user:popup:(\\d+):(\\d+):(\\d+)$/ CallbackData=${ctx.callbackQuery?.data} Matched=true`);
+    const flatIdx = parseInt(ctx.match[2]);
+    logger.info(`[POPUP_TRACE] Handler=ArPopup autoReplyId=${autoReplyId} flatIdx=${flatIdx} CallbackData=${ctx.callbackQuery?.data}`);
     try {
-      const buttons = await prisma.autoReplyButton.findMany({
-        where: { autoReplyId },
-        orderBy: [{ row: 'asc' }, { col: 'asc' }],
-      });
-      const grid: any[][] = [];
-      for (const btn of buttons) {
-        const r = btn.row ?? 0;
-        const c = btn.col ?? 0;
-        if (!grid[r]) grid[r] = [];
-        grid[r][c] = btn;
-      }
-      const btn = grid[row]?.[col];
-      if (btn && (btn.type || '').toUpperCase() === 'POPUP') {
+      const btn = await resolveArButton(autoReplyId, flatIdx);
+      if (btn) {
         await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
-      } else if (btn) {
-        await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: true });
       } else {
         await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
       }
     } catch (err) {
       logger.error(`[ArPopup] FAILED autoReplyId=${autoReplyId}:`, err);
       await ctx.answerCbQuery('❌ خطا', { show_alert: true });
+    }
+  });
+
+  // Auto Reply CLICK — log analytics for CALLBACK/URL buttons
+  bot.action(/^ar:user:click:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    const autoReplyId = parseInt(ctx.match[1]);
+    const flatIdx = parseInt(ctx.match[2]);
+    await ctx.answerCbQuery();
+    try {
+      const btn = await resolveArButton(autoReplyId, flatIdx);
+      if (btn) {
+        const btnType = (btn.type || '').toUpperCase();
+        if (btnType === 'COMMAND' && btn.value) {
+          const cmdName = btn.value.startsWith('/') ? btn.value.slice(1).toLowerCase() : btn.value.toLowerCase();
+          const post = await postService.resolveCommand(cmdName);
+          if (post && post.status === 'PUBLISHED' && post.isPublished) {
+            await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+            await sendPostToUser(ctx, post);
+          }
+        } else if (btnType === 'POPUP') {
+          await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+        } else if (btn.value && btn.value.startsWith('http')) {
+          await ctx.answerCbQuery('✅', { show_alert: false });
+        } else {
+          await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: false });
+        }
+      } else {
+        await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+      }
+    } catch (err) {
+      logger.error(`[ArClick] FAILED autoReplyId=${autoReplyId}:`, err);
+    }
+  });
+
+  // Auto Reply COMMAND — resolve command and send the matching post
+  bot.action(/^ar:user:cmd:(.+)$/, async (ctx: any) => {
+    const t0 = Date.now();
+    const raw = ctx.match[1].trim().replace(/\s+/g, ' ');
+    const normalized = raw.startsWith('/') ? raw : `/${raw}`;
+    const cmdName = normalized.slice(1).toLowerCase();
+    logger.info(`[ArCMD] t=${t0} cmdName="${cmdName}" from user=${ctx.from?.id}`);
+    await ctx.answerCbQuery();
+    try {
+      const post = await postService.resolveCommand(cmdName);
+      if (post && post.status === 'PUBLISHED' && post.isPublished) {
+        await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
+        await sendPostToUser(ctx, post);
+        logger.info(`[ArCMD] t=${Date.now()} ✅ post#${post.id} sent`);
+      } else {
+        logger.warn(`[ArCMD] t=${Date.now()} command not found: "${cmdName}"`);
+      }
+    } catch (err: any) {
+      logger.error(`[ArCMD] t=${Date.now()} ERROR: ${err.message}`);
     }
   });
 
