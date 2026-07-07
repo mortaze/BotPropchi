@@ -1074,7 +1074,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       if (btn && btn.id) {
         await autoReplyService.deleteButton(btn.id);
         autoReplyState.setButtonMode(userId, 'create');
-        await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
+        await refreshButtonEditor(ctx, msgId);
       }
       return;
     }
@@ -1176,7 +1176,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     autoReplyState.setButtonMode(userId, prevMode);
     const msgId = parseInt(ctx.match[1]);
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-    await refreshButtonEditor(ctx, msgId, buttonsToGrid(buttons));
+    await refreshButtonEditor(ctx, msgId);
   });
 
   // ─── Button text input (wait_text state) ────────────────
@@ -1249,7 +1249,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     autoReplyState.setButtonMode(userId, 'edit');
     autoReplyState.setButtonRow(userId, row);
     autoReplyState.setButtonCol(userId, col);
-    await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
+    await refreshButtonEditor(ctx, msgId);
   });
 
   bot.action(/^arbtn:color:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
@@ -1413,7 +1413,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     
     const msgId = autoReplyState.getEditingMessage(userId);
     if (msgId) {
-      await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
+      await refreshButtonEditor(ctx, msgId);
     }
   });
 
@@ -1466,7 +1466,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
       // Return to button editor
       const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
-      await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+      await refreshButtonEditor(ctx, msgId);
       return;
     }
     
@@ -1502,7 +1502,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
       // Return to button editor
       const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
-      await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+      await refreshButtonEditor(ctx, msgId);
       return;
     }
     
@@ -1538,7 +1538,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
       // Return to button editor
       const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
-      await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+      await refreshButtonEditor(ctx, msgId);
       return;
     }
     
@@ -1568,7 +1568,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     
     // Return to button editor
     const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
-    await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+    await refreshButtonEditor(ctx, msgId);
   }
 
   bot.action(/^arbtn:color:set:(\d+):(\d+):(\d+):(\w+)$/, async (ctx: any) => {
@@ -1584,7 +1584,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       await autoReplyService.updateButton(existing.id, { style: color === 'default' ? undefined : color });
     }
     const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
-    await refreshButtonEditor(ctx, msgId, buttonsToGrid(refreshed));
+    await refreshButtonEditor(ctx, msgId);
   });
 
   // ─── Move direction handlers ────────────────────────────
@@ -1609,12 +1609,12 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await handleARMoveDirection(ctx, 'right');
   });
 
-  bot.hears('✅ تایید جابه‌جایی و بازگشت', async (ctx: any, next) => {
+  bot.hears('✅ تایید جابه‌جایی', async (ctx: any, next) => {
     try {
       const userId = ctx.from.id;
       if (!autoReplyState.isButtonMoveActive(userId)) return next();
       const msgId = autoReplyState.getEditingMessage(userId);
-      if (!msgId) return;
+      if (!msgId) return next();
 
       autoReplyState.setButtonMoveActive(userId, false);
       autoReplyState.setButtonMode(userId, 'create');
@@ -1630,31 +1630,37 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         link_preview_options: { is_disabled: true },
         ...autoReplyEditMessageReplyKeyboard(),
       });
-      await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
+      await refreshButtonEditor(ctx, msgId);
     } catch (err: any) {
       logger.error(`[ARMove] confirm error: ${err.message}`);
     }
   });
 
-  bot.hears('↩️ پایان جابه‌جایی', async (ctx: any, next) => {
-    const userId = ctx.from.id;
-    if (!autoReplyState.isButtonMoveActive(userId)) return next();
-    const msgId = autoReplyState.getEditingMessage(userId);
+  bot.hears('🔄 بازگشت', async (ctx: any, next) => {
+    try {
+      const userId = ctx.from.id;
+      if (!autoReplyState.isButtonMoveActive(userId)) return next();
+      const msgId = autoReplyState.getEditingMessage(userId);
 
-    autoReplyState.setButtonMoveActive(userId, false);
-    autoReplyState.setButtonMode(userId, 'create');
+      autoReplyState.setButtonMoveActive(userId, false);
+      autoReplyState.setButtonMode(userId, 'create');
+      autoReplyState.setButtonState(userId, '');
+      autoReplyState.setButtonRow(userId, 0);
+      autoReplyState.setButtonCol(userId, 0);
 
-    try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
-    await ctx.reply('↩️ بازگشت از حالت جابه‌جایی.');
-    if (msgId) {
-      const msg = await autoReplyRepository.findById(msgId);
-      await ctx.reply(formatAutoReplyInfo(msg), {
-        parse_mode: 'Markdown',
-        link_preview_options: { is_disabled: true },
-        ...autoReplyEditMessageReplyKeyboard(),
-      });
-      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-      await refreshButtonEditor(ctx, msgId, buttonsToGrid(buttons));
+      try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
+      await ctx.reply('↩️ بازگشت از حالت جابه‌جایی.');
+      if (msgId) {
+        const msg = await autoReplyRepository.findById(msgId);
+        await ctx.reply(formatAutoReplyInfo(msg), {
+          parse_mode: 'Markdown',
+          link_preview_options: { is_disabled: true },
+          ...autoReplyEditMessageReplyKeyboard(),
+        });
+        await refreshButtonEditor(ctx, msgId);
+      }
+    } catch (err: any) {
+      logger.error(`[ARMove] return error: ${err.message}`);
     }
   });
 
@@ -1679,7 +1685,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
           link_preview_options: { is_disabled: true },
           ...autoReplyEditMessageReplyKeyboard(),
         });
-        await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
+        await refreshButtonEditor(ctx, msgId);
       }
     } catch (err: any) {
       logger.error(`[ARMove] cancel error: ${err.message}`);
@@ -1699,56 +1705,105 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (grid[row] && col < grid[row].length - 1) horizRow.push('➡️ راست');
     if (horizRow.length > 0) rows.push(horizRow);
 
-    rows.push(['✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی']);
+    rows.push(['✅ تایید جابه‌جایی', '❌ لغو جابجایی']);
     return Markup.keyboard(rows).resize().persistent();
   }
 
-  async function handleARMoveDirection(ctx: any, direction: string) {
-    const userId = ctx.from.id;
-    const msgId = autoReplyState.getEditingMessage(userId);
-    if (!msgId) return;
+  async function handleARMoveDirection(ctx: any, direction: 'up' | 'down' | 'left' | 'right') {
+    try {
+      const userId = ctx.from.id;
+      if (!autoReplyState.isButtonMoveActive(userId)) return;
+      const msgId = autoReplyState.getEditingMessage(userId);
+      if (!msgId) return;
+      const moveSel = autoReplyState.getButtonMoveSelected(userId);
+      if (moveSel.row === undefined || moveSel.col === undefined) return;
 
-    const sel = autoReplyState.getButtonMoveSelected(userId);
-    if (sel.row === undefined || sel.col === undefined) return;
+      const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
 
-    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-    const grid = buttonsToGrid(buttons);
+      const rawGrid = buttonsToGrid(buttons);
+      const rawBtn = rawGrid[moveSel.row]?.[moveSel.col];
+      if (!rawBtn?.id) return;
+      const btnId = rawBtn.id;
 
-    let newRow = sel.row;
-    let newCol = sel.col;
+      let grid = normalizeGrid(rawGrid);
 
-    switch (direction) {
-      case 'up': newRow = Math.max(0, sel.row - 1); break;
-      case 'down': newRow = Math.min(grid.length - 1, sel.row + 1); break;
-      case 'left': newCol = Math.max(0, sel.col - 1); break;
-      case 'right': newCol = Math.min((grid[sel.row]?.length || 1) - 1, sel.col + 1); break;
-    }
+      const normPos = findButtonInGrid(grid, btnId);
+      if (!normPos) return;
+      const btn = grid[normPos.row][normPos.col];
+      let curRow = normPos.row;
+      let curCol = normPos.col;
 
-    if (grid[newRow]?.[newCol]) {
-      const other = grid[newRow][newCol];
-      const current = grid[sel.row]?.[sel.col];
-      if (current && other) {
-        await autoReplyService.updateButton(current.id, { row: newRow, col: newCol });
-        await autoReplyService.updateButton(other.id, { row: sel.row, col: sel.col });
+      if (direction === 'left') {
+        if (curCol <= 0) return;
+        [grid[curRow][curCol - 1], grid[curRow][curCol]] = [grid[curRow][curCol], grid[curRow][curCol - 1]];
+      } else if (direction === 'right') {
+        if (curCol >= grid[curRow].length - 1) return;
+        [grid[curRow][curCol], grid[curRow][curCol + 1]] = [grid[curRow][curCol + 1], grid[curRow][curCol]];
+      } else if (direction === 'down') {
+        const wasSingleton = grid[curRow].length === 1;
+        grid[curRow].splice(curCol, 1);
+        if (grid[curRow].length === 0) grid.splice(curRow, 1);
+
+        if (!wasSingleton) {
+          grid.splice(curRow + 1, 0, [btn]);
+        } else {
+          if (curRow < grid.length) {
+            grid[curRow].unshift(btn);
+          } else {
+            grid.push([btn]);
+          }
+        }
+      } else if (direction === 'up') {
+        const wasSingleton = grid[curRow].length === 1;
+        grid[curRow].splice(curCol, 1);
+        if (grid[curRow].length === 0) grid.splice(curRow, 1);
+
+        if (!wasSingleton) {
+          grid.splice(curRow, 0, [btn]);
+        } else {
+          if (curRow > 0) {
+            grid[curRow - 1].unshift(btn);
+          } else {
+            grid.unshift([btn]);
+          }
+        }
       }
-    } else if (grid[sel.row]?.[sel.col]) {
-      const current = grid[sel.row][sel.col];
-      await autoReplyService.updateButton(current.id, { row: newRow, col: newCol });
+
+      grid = normalizeGrid(grid);
+
+      for (let r = 0; r < grid.length; r++) {
+        const row = grid[r];
+        for (let c = 0; c < row.length; c++) {
+          const b = row[c];
+          if (b?.id) {
+            await autoReplyService.updateButton(b.id, { row: r, col: c });
+          }
+        }
+      }
+
+      const newPos = findButtonInGrid(grid, btnId);
+      const newRow = newPos ? newPos.row : 0;
+      const newCol = newPos ? newPos.col : 0;
+
+      autoReplyState.setButtonMoveSelected(userId, newRow, newCol);
+      autoReplyState.setButtonRow(userId, newRow);
+      autoReplyState.setButtonCol(userId, newCol);
+
+      await refreshButtonEditor(ctx, msgId);
+
+      const moveKb = buildDynamicMoveKeyboard(grid, newRow, newCol);
+      await ctx.reply(`🔀 "${btn.text || ''}" — جهت را انتخاب کنید:`, moveKb);
+    } catch (err: any) {
+      logger.error(`[ARMove] ${direction} error: ${err.message}`);
     }
-
-    autoReplyState.setButtonMoveSelected(userId, newRow, newCol);
-
-    const refreshed = await autoReplyRepository.findButtonsByMessage(msgId);
-    const newGrid = buttonsToGrid(refreshed);
-    const btn = newGrid[newRow]?.[newCol];
-    const moveKb = buildDynamicMoveKeyboard(newGrid, newRow, newCol);
-    await ctx.reply(`🔀 "${btn?.text || ''}" — جهت را انتخاب کنید:`, moveKb);
   }
 
-  async function refreshButtonEditor(ctx: any, msgId: number, grid: any[][]) {
+  async function refreshButtonEditor(ctx: any, msgId: number) {
     const userId = ctx.from.id;
     const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
     if (!editorMsgId) return;
+    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const grid = buttonsToGrid(buttons);
     const mode = autoReplyState.getButtonMode(userId) || 'create';
     const moveActive = autoReplyState.isButtonMoveActive(userId);
     const moveSel = moveActive ? autoReplyState.getButtonMoveSelected(userId) : undefined;
@@ -1853,4 +1908,26 @@ function buttonsToGrid(buttons: any[]): any[][] {
     grid[btn.row][btn.col] = btn;
   }
   return grid;
+}
+
+function normalizeGrid(grid: any[][]): any[][] {
+  const dense: any[][] = [];
+  for (let r = 0; r < grid.length; r++) {
+    if (!Array.isArray(grid[r]) || grid[r].length === 0) continue;
+    const row: any[] = [];
+    for (let c = 0; c < grid[r].length; c++) {
+      if (grid[r][c]) row.push(grid[r][c]);
+    }
+    if (row.length > 0) dense.push(row);
+  }
+  return dense;
+}
+
+function findButtonInGrid(grid: any[][], btnId: number): { row: number; col: number } | null {
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < grid[r].length; c++) {
+      if (grid[r][c]?.id === btnId) return { row: r, col: c };
+    }
+  }
+  return null;
 }

@@ -274,7 +274,7 @@ export function buildArbtnMoveKeyboard() {
   return Markup.keyboard([
     ['⬆️ بالا', '⬇️ پایین'],
     ['⬅️ چپ', '➡️ راست'],
-    ['✅ تایید جابه‌جایی و بازگشت', '❌ لغو جابجایی'],
+    ['✅ تایید جابه‌جایی', '❌ لغو جابجایی'],
   ]).resize().persistent();
 }
 
