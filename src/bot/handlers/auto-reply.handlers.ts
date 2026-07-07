@@ -1719,64 +1719,58 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       if (moveSel.row === undefined || moveSel.col === undefined) return;
 
       const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-
       const rawGrid = buttonsToGrid(buttons);
       const rawBtn = rawGrid[moveSel.row]?.[moveSel.col];
       if (!rawBtn?.id) return;
       const btnId = rawBtn.id;
 
       let grid = normalizeGrid(rawGrid);
-
       const normPos = findButtonInGrid(grid, btnId);
       if (!normPos) return;
       const btn = grid[normPos.row][normPos.col];
-      let curRow = normPos.row;
-      let curCol = normPos.col;
+      const curRow = normPos.row;
+      const curCol = normPos.col;
 
-      if (direction === 'left') {
-        if (curCol <= 0) return;
-        [grid[curRow][curCol - 1], grid[curRow][curCol]] = [grid[curRow][curCol], grid[curRow][curCol - 1]];
-      } else if (direction === 'right') {
-        if (curCol >= grid[curRow].length - 1) return;
-        [grid[curRow][curCol], grid[curRow][curCol + 1]] = [grid[curRow][curCol + 1], grid[curRow][curCol]];
+      if (direction === 'left' || direction === 'right') {
+        const targetCol = direction === 'left' ? curCol - 1 : curCol + 1;
+        if (targetCol < 0 || targetCol >= grid[curRow].length) return;
+        const temp = grid[curRow][curCol];
+        grid[curRow][curCol] = grid[curRow][targetCol];
+        grid[curRow][targetCol] = temp;
       } else if (direction === 'down') {
-        const wasSingleton = grid[curRow].length === 1;
+        const isSingleton = grid[curRow].length === 1;
         grid[curRow].splice(curCol, 1);
-        if (grid[curRow].length === 0) grid.splice(curRow, 1);
-
-        if (!wasSingleton) {
-          grid.splice(curRow + 1, 0, [btn]);
-        } else {
-          if (curRow < grid.length) {
-            grid[curRow].unshift(btn);
+        grid = grid.filter((r: any[]) => r.length > 0);
+        if (isSingleton) {
+          const nextIdx = curRow < grid.length ? curRow : -1;
+          if (nextIdx >= 0) {
+            grid[nextIdx].push(btn);
           } else {
             grid.push([btn]);
           }
+        } else {
+          grid.splice(curRow + 1, 0, [btn]);
         }
       } else if (direction === 'up') {
-        const wasSingleton = grid[curRow].length === 1;
+        const isSingleton = grid[curRow].length === 1;
         grid[curRow].splice(curCol, 1);
-        if (grid[curRow].length === 0) grid.splice(curRow, 1);
-
-        if (!wasSingleton) {
-          grid.splice(curRow, 0, [btn]);
-        } else {
-          if (curRow > 0) {
-            grid[curRow - 1].unshift(btn);
+        grid = grid.filter((r: any[]) => r.length > 0);
+        if (isSingleton) {
+          const prevIdx = curRow - 1;
+          if (prevIdx >= 0) {
+            grid[prevIdx].push(btn);
           } else {
             grid.unshift([btn]);
           }
+        } else {
+          grid.splice(curRow, 0, [btn]);
         }
       }
 
-      grid = normalizeGrid(grid);
-
       for (let r = 0; r < grid.length; r++) {
-        const row = grid[r];
-        for (let c = 0; c < row.length; c++) {
-          const b = row[c];
-          if (b?.id) {
-            await autoReplyService.updateButton(b.id, { row: r, col: c });
+        for (let c = 0; c < grid[r].length; c++) {
+          if (grid[r][c]?.id) {
+            await autoReplyService.updateButton(grid[r][c].id, { row: r, col: c });
           }
         }
       }
