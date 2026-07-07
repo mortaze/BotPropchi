@@ -205,29 +205,28 @@ export function buildButtonEditorInlineKeyboard(
   prefix: string = 'arbtn',
 ): any[][] {
   const rows: any[][] = [];
-  const flatButtons: any[] = [];
-  for (let r = 0; r < buttons.length; r++) {
-    const row = buttons[r];
-    if (!Array.isArray(row)) continue;
-    for (let c = 0; c < row.length; c++) {
-      if (row[c]) flatButtons.push(row[c]);
-    }
-  }
+  const hasButtons = buttons && buttons.length > 0 && buttons.some(r => Array.isArray(r) && r.length > 0);
 
-  if (flatButtons.length === 0) {
-    rows.push([Markup.button.callback('{+}', `${prefix}:autoadd:${messageId}:0`)]);
-  } else {
-    for (let i = 0; i < flatButtons.length; i++) {
-      const btn = flatButtons[i];
-      const label = (btn.text || 'بدون عنوان').substring(0, 13);
-      const isSelected = mode === 'move' && selectedPos && selectedPos.row === i && selectedPos.col === 0;
-      const color = colorIndicator(btn.style);
-      const icon = isSelected ? '✅' : mode === 'edit' ? '✏️' : mode === 'delete' ? '❌' : mode === 'move' ? '↕️' : '+';
-      const cb = mode === 'create'
-        ? `${prefix}:autoadd:${messageId}:${i}`
-        : `${prefix}:click:${messageId}:${i}:0`;
-      rows.push([Markup.button.callback(`${color}{${icon}} ${label}`, cb)]);
+  if (hasButtons) {
+    for (let r = 0; r < buttons.length; r++) {
+      const row = buttons[r];
+      if (!Array.isArray(row)) continue;
+      const rowButtons: any[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const btn = row[c];
+        if (!btn) continue;
+        const label = (btn.text || 'بدون عنوان').substring(0, 13);
+        const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
+        const color = colorIndicator(btn.style);
+        const icon = isSelected ? '✅' : mode === 'edit' ? '✏️' : mode === 'delete' ? '❌' : mode === 'move' ? '↕️' : '+';
+        rowButtons.push(
+          Markup.button.callback(`${color}{${icon}} ${label}`, `${prefix}:click:${messageId}:${r}:${c}`),
+        );
+      }
+      if (rowButtons.length > 0) rows.push(rowButtons);
     }
+  } else if (mode === 'create') {
+    rows.push([Markup.button.callback('＋', `${prefix}:click:${messageId}:0:0`)]);
   }
 
   if (mode !== 'move') {

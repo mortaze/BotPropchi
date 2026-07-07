@@ -968,93 +968,18 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     return { autoReplyId: msg.autoReplyId };
   }
 
-  async function createButtonAfterIndex(ctx: any, userId: number, msgId: number, afterIndex: number) {
-    const resolved = await resolveAutoReplyForMessage(msgId);
-    if (!resolved) {
-      logger.error(`[ButtonEditor:autoadd] AutoReplyMessage not found for id=${msgId}`);
-      return;
-    }
-    const { autoReplyId } = resolved;
-
-    const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
-    const flatButtons: any[] = [];
-    for (const btn of buttons) {
-      if (btn) flatButtons.push(btn);
-    }
-
-    const hasButtons = flatButtons.length > 0;
-    let newRow: number;
-
-    if (!hasButtons) {
-      newRow = 0;
-    } else {
-      const clickedBtn = flatButtons[afterIndex];
-      if (!clickedBtn) return;
-      const clickedRow = clickedBtn.row;
-
-      // Shift all buttons with row > clickedRow down by 1
-      for (const btn of flatButtons) {
-        if (btn.row > clickedRow) {
-          await autoReplyService.updateButton(btn.id, { row: btn.row + 1, col: 0 });
-        }
-      }
-      newRow = clickedRow + 1;
-    }
-
-    await autoReplyService.addButton(autoReplyId, {
-      text: 'دکمه جدید',
-      type: 'URL',
-      value: '',
-      row: newRow,
-      col: 0,
-      messageId: msgId,
-    });
-
-    const refreshedButtons = await autoReplyRepository.findButtonsByMessage(msgId);
-    const refreshedGrid = buttonsToGrid(refreshedButtons);
-
-    const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
-    if (editorMsgId) {
-      const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, refreshedGrid, 'create');
-      try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
-    }
-
-    autoReplyState.setButtonMode(userId, 'create');
-  }
-
-  // Auto-add button: insert after clicked index, re-render (no new message)
-  bot.action(/^arbtn:autoadd:(\d+):(\d+)$/, async (ctx: any) => {
-    await ctx.answerCbQuery();
-    const userId = ctx.from.id;
-    const msgId = parseInt(ctx.match[1]);
-    const afterIndex = parseInt(ctx.match[2]);
-    await createButtonAfterIndex(ctx, userId, msgId, afterIndex);
-  });
-
-  // Click on a button slot in the editor
-  // The callback param `flatIdx` is a sequential index from buildButtonEditorInlineKeyboard,
-  // NOT the actual grid row. We must resolve it against a flat array (same logic as the keyboard builder).
+  // Click on a button slot in the editor — callback params are grid positions (row, col)
   bot.action(/^arbtn:click:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id;
     const msgId = parseInt(ctx.match[1]);
-    const flatIdx = parseInt(ctx.match[2]);
-    const _col = parseInt(ctx.match[3]);
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
     const mode = autoReplyState.getButtonMode(userId) || 'create';
 
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
-
-    // Build flat list matching the keyboard builder's iteration order
-    const flatButtons: any[] = [];
-    for (let r = 0; r < grid.length; r++) {
-      const row = grid[r];
-      if (!Array.isArray(row)) continue;
-      for (let c = 0; c < row.length; c++) {
-        if (row[c]) flatButtons.push(row[c]);
-      }
-    }
-    const btn = flatButtons[flatIdx];
+    const btn = grid[row]?.[col];
 
     if (mode === 'move') {
       if (!btn) return;
@@ -1097,8 +1022,30 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       return;
     }
 
-    // Create mode — do nothing (buttons are created via {+} autoadd)
-    return;
+    // Create mode — insert new button below clicked one
+    if (!btn) return;
+    const resolved = await resolveAutoReplyForMessage(msgId);
+    if (!resolved) return;
+
+    const existingButtons = await autoReplyRepository.findButtonsByMessage(msgId);
+    const existingGrid = buttonsToGrid(existingButtons);
+    const shiftedButtons = existingButtons.filter((b: any) => b.row > row);
+    for (const b of shiftedButtons) {
+      await autoReplyService.updateButton(b.id, { row: b.row + 1, col: 0 });
+    }
+
+    await autoReplyService.addButton(resolved.autoReplyId, {
+      text: 'دکمه جدید',
+      type: 'URL',
+      value: '',
+      row: row + 1,
+      col: 0,
+      messageId: msgId,
+    });
+    autoReplyState.setButtonRow(userId, row + 1);
+    autoReplyState.setButtonCol(userId, 0);
+    autoReplyState.setButtonMode(userId, 'edit');
+    await refreshButtonEditor(ctx, msgId);
   });
 
   // Switch editor mode
