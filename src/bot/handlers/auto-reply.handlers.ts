@@ -182,6 +182,30 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       return;
     }
 
+    if (autoReplyState.isKeywordCreating(userId)) {
+      const msgId = autoReplyState.getEditMode(userId);
+      autoReplyState.setKeywordCreating(userId, false);
+      if (msgId) {
+        const keywords = await autoReplyService.listKeywords(msgId);
+        const page = renderKeywordPage(keywords, 'list');
+        await ctx.reply('❌ ایجاد کلمه لغو شد.', { reply_markup: page.reply_markup });
+      }
+      return;
+    }
+
+    const kwEditing = autoReplyState.getKeywordEditing(userId);
+    if (kwEditing) {
+      const msgId = autoReplyState.getEditMode(userId);
+      autoReplyState.setKeywordEditing(userId, 0);
+      autoReplyState.setKeywordMode(userId, 'list');
+      if (msgId) {
+        const keywords = await autoReplyService.listKeywords(msgId);
+        const page = renderKeywordPage(keywords, 'list');
+        await ctx.reply('❌ ویرایش کلمه لغو شد.', { reply_markup: page.reply_markup });
+      }
+      return;
+    }
+
     if (autoReplyState.isEditingContent(userId)) {
       autoReplyState.setEditingContent(userId, false);
       autoReplyState.setEditingMessage(userId, 0);
@@ -192,7 +216,6 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     if (autoReplyState.isEditingTitle(userId)) {
       autoReplyState.setEditingTitle(userId, false);
-      autoReplyState.setEditingMessage(userId, 0);
       const msgId = autoReplyState.getEditMode(userId);
       if (msgId) await showAutoReplyEditor(ctx, msgId);
       return;
@@ -450,7 +473,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (autoReplyState.isKeywordCreating(userId)) {
       const msgId = autoReplyState.getEditMode(userId);
       if (!msgId) return next();
-      if (text === 'لغو') {
+      if (text === 'لغو' || text === '❌ لغو') {
         autoReplyState.setKeywordCreating(userId, false);
         const keywords = await autoReplyService.listKeywords(msgId);
         const page = renderKeywordPage(keywords, 'list');
@@ -474,7 +497,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (kwEditing) {
       const msgId = autoReplyState.getEditMode(userId);
       if (!msgId) return next();
-      if (text === 'لغو') {
+      if (text === 'لغو' || text === '❌ لغو') {
         autoReplyState.setKeywordEditing(userId, 0);
         autoReplyState.setKeywordMode(userId, 'list');
         const keywords = await autoReplyService.listKeywords(msgId);
@@ -549,15 +572,18 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
 
     if (isEditingTitle) {
-      const editingMsgId = autoReplyState.getEditingMessage(userId);
-      if (editingMsgId) {
-        const title = validateDbInput(text, 'title');
-        await autoReplyService.update(editingMsgId, { title });
+      const editMode = autoReplyState.getEditMode(userId);
+      if (text === 'لغو' || text === '❌ لغو') {
         autoReplyState.setEditingTitle(userId, false);
-        autoReplyState.setEditingMessage(userId, 0);
-        await ctx.reply(`✅ عنوان بروزرسانی شد.`);
-        const editMode = autoReplyState.getEditMode(userId);
         if (editMode) await showAutoReplyEditor(ctx, editMode);
+        return;
+      }
+      if (editMode) {
+        const title = validateDbInput(text, 'title');
+        await autoReplyService.update(editMode, { title });
+        autoReplyState.setEditingTitle(userId, false);
+        await ctx.reply(`✅ عنوان بروزرسانی شد.`);
+        await showAutoReplyEditor(ctx, editMode);
       }
       return;
     }
