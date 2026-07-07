@@ -209,9 +209,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   // ─── Editor actions (Reply Keyboard) ────────────────────
 
   // ─── Add message — only set state, message created on content delivery ──
-  bot.hears('➕ افزودن پیام', async (ctx: any) => {
+  bot.hears('➕ افزودن پیام', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
-    if (!msgId) return;
+    if (!msgId) return next();
     // Don't create message yet — just set state to expect content
     scheduledMessageState.setEditingMessage(ctx.from.id, -1); // -1 = new message pending
     scheduledMessageState.setEditingContent(ctx.from.id, true);
@@ -230,9 +230,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   });
 
   // Bug #4: Group selection uses Reply Keyboard
-  bot.hears('👥 انتخاب گروه', async (ctx: any) => {
+  bot.hears('👥 انتخاب گروه', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
-    if (!msgId) return;
+    if (!msgId) return next();
     const groups = await prisma.telegramGroup.findMany({
       where: { status: 'APPROVED', botIsAdmin: true },
       orderBy: { addedAt: 'desc' },
@@ -266,13 +266,12 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await showPostEditor(ctx, msgId);
   });
 
-  bot.hears('✅ انتشار', async (ctx: any) => {
+  bot.hears('✅ انتشار', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
     logger.info(`[SchedMsg] Publish requested by userId=${ctx.from.id} editMode=${msgId}`);
     if (!msgId) {
       logger.warn(`[SchedMsg] Publish ABORTED: editMode is null`);
-      await ctx.reply('❌ پستی انتخاب نشده است.');
-      return;
+      return next();
     }
     const msg = await scheduledMessageRepository.findById(msgId);
     if (!msg) {
@@ -339,9 +338,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await showPostEditor(ctx, msgId);
   });
 
-  bot.hears('📊 آمار', async (ctx: any) => {
+  bot.hears('📊 آمار', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
-    if (!msgId) return;
+    if (!msgId) return next();
     const msg = await scheduledMessageRepository.findById(msgId);
     if (!msg) return;
     const logs = await scheduledMessageService.getLogs(msgId, 5);
@@ -393,9 +392,9 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await ctx.reply(text, { parse_mode: 'Markdown' });
   });
 
-  bot.hears('🗑 حذف پست', async (ctx: any) => {
+  bot.hears('🗑 حذف پست', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
-    if (!msgId) return;
+    if (!msgId) return next();
     const msg = await scheduledMessageRepository.findById(msgId);
     await ctx.reply(
       `⚠️ آیا از حذف "${msg?.title}" مطمئن هستید؟\n\nاین عملیات غیرقابل بازگشت است.`,
