@@ -1032,36 +1032,47 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // Click on a button slot in the editor
+  // The callback param `flatIdx` is a sequential index from buildButtonEditorInlineKeyboard,
+  // NOT the actual grid row. We must resolve it against a flat array (same logic as the keyboard builder).
   bot.action(/^arbtn:click:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id;
     const msgId = parseInt(ctx.match[1]);
-    const row = parseInt(ctx.match[2]);
-    const col = parseInt(ctx.match[3]);
+    const flatIdx = parseInt(ctx.match[2]);
+    const _col = parseInt(ctx.match[3]);
     const mode = autoReplyState.getButtonMode(userId) || 'create';
 
     const buttons = await autoReplyRepository.findButtonsByMessage(msgId);
     const grid = buttonsToGrid(buttons);
 
+    // Build flat list matching the keyboard builder's iteration order
+    const flatButtons: any[] = [];
+    for (let r = 0; r < grid.length; r++) {
+      const row = grid[r];
+      if (!Array.isArray(row)) continue;
+      for (let c = 0; c < row.length; c++) {
+        if (row[c]) flatButtons.push(row[c]);
+      }
+    }
+    const btn = flatButtons[flatIdx];
+
     if (mode === 'move') {
-      autoReplyState.setButtonMoveSelected(userId, row, col);
+      if (!btn) return;
+      autoReplyState.setButtonMoveSelected(userId, btn.row, btn.col);
       autoReplyState.setButtonMoveActive(userId, true);
       const editorMsgId = autoReplyState.getButtonEditorMsgId(userId);
       if (editorMsgId) {
-        const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, grid, 'move', { row, col });
+        const { text, reply_markup } = renderAutoReplyButtonEditor(msgId, grid, 'move', { row: btn.row, col: btn.col });
         try { await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup }); } catch {}
       }
-      const moveKb = buildDynamicMoveKeyboard(grid, row, col);
-      await ctx.reply(`🔀 "${grid[row]?.[col]?.text || ''}" انتخاب شد. جهت را انتخاب کنید:`, moveKb);
+      const moveKb = buildDynamicMoveKeyboard(grid, btn.row, btn.col);
+      await ctx.reply(`🔀 "${btn.text || ''}" انتخاب شد. جهت را انتخاب کنید:`, moveKb);
       return;
     }
 
     if (mode === 'delete') {
-      if (grid[row] && grid[row][col]) {
-        const btn = grid[row][col];
-        if (btn.id) {
-          await autoReplyService.deleteButton(btn.id);
-        }
+      if (btn && btn.id) {
+        await autoReplyService.deleteButton(btn.id);
         autoReplyState.setButtonMode(userId, 'create');
         await refreshButtonEditor(ctx, msgId, buttonsToGrid(await autoReplyRepository.findButtonsByMessage(msgId)));
       }
@@ -1069,19 +1080,16 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
 
     if (mode === 'edit') {
-      const btn = grid[row]?.[col];
       if (!btn) return;
-      autoReplyState.setButtonRow(userId, row);
-      autoReplyState.setButtonCol(userId, col);
+      autoReplyState.setButtonRow(userId, btn.row);
+      autoReplyState.setButtonCol(userId, btn.col);
       autoReplyState.setButtonMode(userId, 'edit');
       const typeLabel = btn.type === 'POPUP' ? '🪟 POP-UP' : btn.type === 'COMMAND' ? '⌨️ دستور' : btn.type === 'URL' ? '🔗 لینک' : btn.type;
       const valueLabel = btn.type === 'URL' ? 'آدرس' : btn.type === 'COMMAND' ? 'دستور' : btn.type === 'POPUP' ? 'متن پنجره' : 'مقدار';
       const colorText = btn.style ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
-      
-      // Store button info for state machine
+
       autoReplyState.setButtonEditWaiting(userId, 'menu');
-      
-      // Send info message and show Reply Keyboard
+
       await ctx.reply(
         `🔧 تنظیمات دکمه\n\nℹ️ مقدار فعلی:\n${typeLabel}\n🏷 ${btn.text}\n${valueLabel}: ${btn.value || '(خالی)'}\n${colorText}\n\nیکی از گزینه‌های زیر را انتخاب کنید:`,
         buildArbtnEditReplyKeyboard(),

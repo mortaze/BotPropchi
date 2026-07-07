@@ -28,6 +28,8 @@ cd admin && npm run lint # next lint — only lint in repo
 
 No lint/typecheck at root. Only admin has lint.
 
+**Prisma schema**: `prisma/schema.prisma`. The `prisma/migrations/` directory exists but the project uses `prisma db push`, not migration-based workflow. `npx prisma migrate dev` is not part of the standard flow.
+
 ## Key Docs (read for deep context)
 
 - `ARCHITECTURE.md` — full system architecture, data model, API routes, deployment (note: still references `wordpress-plugin/` which was removed)
@@ -119,7 +121,7 @@ Implications:
 - **Docker**: `docker-compose.yml` runs PostgreSQL 16 + Redis 7 only (bot service commented out — built via Dockerfile at deploy)
 - **Dockerfile** uses `CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]` — runs schema push before start
 - **No CI/CD, no husky, no prettier, no editorconfig**
-- **stray dir**: `src/tests/` (1 file) but vitest only picks up `src/__tests__/*.test.ts`
+- **stray dir**: `src/tests/` (1 file, `post-content-preservation.test.ts`) is NOT picked up by vitest — tests must be in `src/__tests__/`
 - **TypeScript strictness differs**: root `tsconfig.json` has `strict: false` / `noImplicitAny: false`; admin has `strict: true`
 - **Path alias**: both root and admin use `@/*` → `src/*`
 
