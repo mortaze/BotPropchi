@@ -173,17 +173,12 @@ async function bootstrap() {
   });
 
   // ─── Catch-all: unmatched callback_data ────────────────────
-  // If a callback reaches here, no bot.action() matched its data.
-  // Answer it so the user doesn't see a stuck loading indicator.
   bot.on('callback_query', (ctx) => {
     const cq = ctx.callbackQuery;
     const data = 'data' in cq ? cq.data : 'N/A';
     const userId = ctx.from?.id;
-    if (data && /:(user:popup:)/.test(data)) {
-      logger.warn(`[POPUP_TRACE] SECOND HANDLER DETECTED Handler=CatchAll — popup callback reached catch-all! data="${data}" user=${userId}`);
-    }
-    logger.warn(`[UNMATCHED_CALLBACK] user=${userId} data="${data}" — no handler matched`);
-    ctx.answerCbQuery('⚠️ این دکمه در دسترس نیست.', { show_alert: true }).catch(() => {});
+    logger.warn(`[UNMATCHED_CALLBACK] user=${userId} data="${data}" chat=${ctx.chat?.id} chatType=${ctx.chat?.type}`);
+    ctx.answerCbQuery('⚠️ این دکمه در این بخش در دسترس نیست.', { show_alert: true }).catch(() => {});
   });
 
   // اجرای API

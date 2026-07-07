@@ -232,6 +232,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   // Bug #4: Group selection uses Reply Keyboard
   bot.hears('👥 انتخاب گروه', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
+    logger.info(`[SCHED_AR_SELECT_GROUP] user=${ctx.from.id} schedEditMsg=${msgId}`);
     if (!msgId) return next();
     const groups = await prisma.telegramGroup.findMany({
       where: { status: 'APPROVED', botIsAdmin: true },
