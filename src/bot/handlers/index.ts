@@ -621,8 +621,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
       return next();
     }
 
-    logger.info(`[DYN_POST_ROUTER] text="${text}" user=${ctx.from.id}`);
-
     try {
       const layout = await settingsService.getResolvedMenuLayout(false);
       const textMap = settingsService.getMenuButtonTextMap(layout);
@@ -631,7 +629,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
         const postId = parseInt(match.ref.replace('post:', ''));
         const post = await postService.getPostMeta(postId);
         if (post && post.status === 'PUBLISHED' && post.isPublished) {
-          logger.info(`[DYN_POST_ROUTER] MATCHED post=${postId} for text="${text}"`);
           await sendPostToUser(ctx, post);
           return;
         }

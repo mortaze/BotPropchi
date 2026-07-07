@@ -243,7 +243,6 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
   bot.hears('👥 انتخاب گروه', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
-    logger.info(`[AR_SELECT_GROUP] user=${ctx.from.id} editMsg=${msgId}`);
     if (!msgId) return;
     const groups = await prisma.telegramGroup.findMany({
       where: { status: 'APPROVED', botIsAdmin: true },
@@ -443,10 +442,6 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (!ctx.from || ctx.chat?.type !== 'private') return next();
     const text = ctx.message.text;
     const userId = ctx.from.id;
-
-    const editMode = autoReplyState.getEditMode(userId);
-    const mgmtMode = autoReplyState.isManagementMode(userId);
-    logger.info(`[AR_TEXT] text="${text}" user=${userId} editMode=${editMode} mgmt=${mgmtMode}`);
 
     const admin = await botAdminService.getActive(userId);
     if (!admin) return next();
@@ -806,7 +801,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.editMessageText('💬 پاسخ‌های خودکار', autoReplyMainMenuKeyboard(result.items));
   });
 
-  bot.action(/^ar:group:(\d+)$/, async (ctx: any) => {
+  bot.action(/^ar:group:([\-\d]+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const chatId = BigInt(ctx.match[1]);
     const msgId = autoReplyState.getEditMode(ctx.from.id);
@@ -817,7 +812,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── Binding: select group ─────────────────────────────
-  bot.action(/^ar:bind:group:(\d+)$/, async (ctx: any) => {
+  bot.action(/^ar:bind:group:([\-\d]+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id;
     const chatId = BigInt(ctx.match[1]);
