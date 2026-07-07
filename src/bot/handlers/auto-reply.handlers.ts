@@ -1897,7 +1897,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       } else {
         const topicNames: string[] = [];
         for (const tid of topicIds) {
-          const topic = await prisma.forumTopic.findUnique({ where: { chatId_topicId: { chatId: BigInt(chatIdStr), topicId: tid } } });
+          const topic = await prisma.forumTopic.findUnique({ where: { chatId_topicId: { chatId: BigInt(chatIdStr), topicId: Number(tid) } } });
           topicNames.push(topic?.name || `Topic ${tid}`);
         }
         bindingLines.push(`  • ${groupName} → ${topicNames.join(', ')}`);
