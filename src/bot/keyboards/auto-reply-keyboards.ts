@@ -119,6 +119,36 @@ export function autoReplyTopicReplyKeyboard(topics: any[]) {
   return Markup.keyboard(rows).resize().persistent();
 }
 
+// ─── Group Selection (Inline Keyboard) ────────────────────
+
+export function buildGroupSelectKeyboard(groups: any[]) {
+  const rows: any[][] = groups.map((g: any) => [
+    Markup.button.callback(g.title, `ar:bind:group:${g.chatId}`),
+  ]);
+  rows.push([Markup.button.callback('❌ لغو', 'ar:bind:cancel')]);
+  return Markup.inlineKeyboard(rows);
+}
+
+// ─── Topic Multi-Select (Inline Keyboard) ─────────────────
+
+export function buildTopicSelectKeyboard(topics: any[], selectedIds: number[]) {
+  const rows: any[][] = [];
+  for (const t of topics) {
+    const check = selectedIds.includes(t.topicId) ? '✅' : '☐';
+    rows.push([Markup.button.callback(`${check} ${t.name}`, `ar:bind:topic:${t.topicId}`)]);
+  }
+  if (topics.length > 0) {
+    rows.push([
+      Markup.button.callback('📌 همه تاپیک‌ها', 'ar:bind:topic:all'),
+    ]);
+  }
+  rows.push([
+    Markup.button.callback('✅ ذخیره', 'ar:bind:save'),
+    Markup.button.callback('❌ لغو', 'ar:bind:cancel'),
+  ]);
+  return Markup.inlineKeyboard(rows);
+}
+
 // ─── Publish Validation Keyboard ──────────────────────────
 
 export function autoReplyPublishValidationKeyboard(missingFields: { key: string; label: string }[]) {

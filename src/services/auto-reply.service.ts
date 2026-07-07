@@ -33,7 +33,8 @@ class AutoReplyService {
   async publish(id: number) {
     const msg = await autoReplyRepository.findById(id);
     if (!msg) throw new Error('Post not found');
-    if (!msg.targetChatId) throw new Error('targetChatId is missing');
+    const bindings = await autoReplyRepository.getBindingsByAutoReply(id);
+    if (bindings.length === 0) throw new Error('At least one group binding is required');
     if ((msg.messages?.length || 0) === 0) throw new Error('No messages to send');
     if ((msg.keywords?.length || 0) === 0) throw new Error('At least one keyword is required');
 
@@ -137,7 +138,9 @@ class AutoReplyService {
     const text = ctx.message?.text || ctx.message?.caption;
     if (!text || !ctx.from || !ctx.message?.message_id) return false;
 
-    const published = await autoReplyRepository.getPublishedWithKeywords();
+    const chatId = BigInt(ctx.chat!.id);
+    const topicId = ctx.message?.message_thread_id ?? null;
+    const published = await autoReplyRepository.getPublishedForGroup(chatId, topicId);
     const lowerText = text.toLocaleLowerCase('fa-IR');
 
     for (const ar of published) {

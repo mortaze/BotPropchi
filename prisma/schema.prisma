@@ -1293,6 +1293,7 @@ model AutoReply {
   messages      AutoReplyMessage[]
   buttons       AutoReplyButton[]
   keywords      AutoReplyKeyword[]
+  bindings      AutoReplyBinding[]
   logs          AutoReplySendLog[]
 
   @@index([status])
@@ -1369,6 +1370,24 @@ model AutoReplyKeyword {
 
   @@index([autoReplyId])
   @@map("auto_reply_keywords")
+}
+
+// ─── Auto Reply Bindings (group+topic targeting) ─────────
+
+model AutoReplyBinding {
+  id            Int       @id @default(autoincrement())
+  autoReplyId   Int
+  chatId        BigInt
+  topicId       BigInt?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  autoReply     AutoReply @relation(fields: [autoReplyId], references: [id], onDelete: Cascade)
+
+  @@unique([autoReplyId, chatId, topicId])
+  @@index([chatId])
+  @@index([autoReplyId])
+  @@map("auto_reply_bindings")
 }
 
 // ─── Forum Topics (discovered from Telegram updates) ──────

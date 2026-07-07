@@ -93,6 +93,31 @@ export const autoReplyState = {
     return cache.get<number>(arKey(userId, 'kw_editing'));
   },
 
+  // ─── Binding selection state ────────────────────────────
+
+  setSelectedGroup(userId: number, chatId: bigint) {
+    cache.setPermanent(arKey(userId, 'bind_group'), chatId.toString());
+  },
+  getSelectedGroup(userId: number): bigint | null {
+    const v = cache.get<string>(arKey(userId, 'bind_group'));
+    return v ? BigInt(v) : null;
+  },
+
+  setPendingTopics(userId: number, topicIds: number[]) {
+    cache.setPermanent(arKey(userId, 'bind_topics'), JSON.stringify(topicIds));
+  },
+  getPendingTopics(userId: number): number[] {
+    const raw = cache.get<string>(arKey(userId, 'bind_topics'));
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setSelectingTopics(userId: number, value: boolean) {
+    cache.setPermanent(arKey(userId, 'selecting_topics'), value);
+  },
+  isSelectingTopics(userId: number) {
+    return cache.get<boolean>(arKey(userId, 'selecting_topics'));
+  },
+
   // ─── Button editor state ─────────────────────────────────
 
   setButtonEditorMode(userId: number, mode: string) {
@@ -228,6 +253,7 @@ export const autoReplyState = {
       'creating', 'editing_field', 'editing_message', 'selected_message',
       'editing_title', 'editing_content', 'edit_mode', 'delete_confirm',
       'mgmt_mode', 'kw_mode', 'kw_creating', 'kw_editing',
+      'bind_group', 'bind_topics', 'selecting_topics',
       'btn_editor_mode', 'btn_editor_row', 'btn_editor_col',
       'pbedit_editor_msg_id', 'btn_mode', 'btn_state', 'btn_row', 'btn_col',
       'btn_type', 'btn_color', 'btn_previous_view', 'btn_move_active',

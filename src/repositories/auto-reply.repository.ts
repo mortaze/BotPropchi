@@ -214,4 +214,51 @@ export const autoReplyRepository = {
       orderBy: { createdAt: 'asc' },
     });
   },
+
+  // ─── Binding CRUD ──────────────────────────────────────
+
+  async getBindingsByAutoReply(autoReplyId: number) {
+    return prisma.autoReplyBinding.findMany({
+      where: { autoReplyId, isActive: true },
+      orderBy: [{ chatId: 'asc' }, { topicId: 'asc' }],
+    });
+  },
+
+  async upsertBinding(autoReplyId: number, chatId: bigint, topicId: bigint | null) {
+    return prisma.autoReplyBinding.upsert({
+      where: { autoReplyId_chatId_topicId: { autoReplyId, chatId, topicId } },
+      create: { autoReplyId, chatId, topicId, isActive: true },
+      update: { isActive: true },
+    });
+  },
+
+  async removeBindingsForGroup(autoReplyId: number, chatId: bigint) {
+    return prisma.autoReplyBinding.deleteMany({
+      where: { autoReplyId, chatId },
+    });
+  },
+
+  async getPublishedForGroup(chatId: bigint, topicId: number | null) {
+    return prisma.autoReply.findMany({
+      where: {
+        isPublished: true,
+        status: PostStatus.PUBLISHED,
+        bindings: {
+          some: {
+            chatId,
+            isActive: true,
+            OR: [
+              { topicId: topicId != null ? BigInt(topicId) : null },
+              { topicId: null },
+            ],
+          },
+        },
+      },
+      include: {
+        messages: { orderBy: { order: 'asc' } },
+        keywords: true,
+        buttons: { orderBy: [{ row: 'asc' }, { col: 'asc' }] },
+      },
+    });
+  },
 };
