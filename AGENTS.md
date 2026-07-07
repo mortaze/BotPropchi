@@ -55,7 +55,7 @@ Background workers (`src/workers/`): membership + leaderboard via BullMQ (Redis)
 
 One-off scripts: `src/scripts/`, `scripts/` (not auto-run).
 
-Feature toggle keys (from code's DEFAULT_FEATURES + migration seeds): `lottery`, `referrals`, `force_join`, `auto_replies`, `reports`, `groups`, `leaderboard`, `points`, `posts`, `ticket_system`, `discount_codes`, `prop_firms`, `broadcasts`.
+Feature toggle keys (from `DEFAULT_FEATURES` in `src/services/settings.service.ts` + additional keys created via API): `lottery`, `referrals`, `force_join`, `auto_replies`, `reports`, `groups`, `leaderboard`, `points`, `posts`, `ticket_system`, `discount_codes`, `prop_firms`, `broadcasts`.
 
 Debug commands (admin only): `/debug_post_render <id>`, `/debug_compare_post <id>`, `/debug_delivery <id>`.
 
@@ -118,10 +118,10 @@ Implications:
 - **Admin legacy bot scripts** in `admin/package.json`: `dev:bot`, `build:bot`, `start:bot` — ignore
 - **Admin unused dep**: `zustand` in `admin/package.json` — stores use `useSyncExternalStore`
 - **Prisma client**: `src/prisma/client.ts` (singleton with dev query logging); generated in `node_modules/.prisma/client`
-- **Docker**: `docker-compose.yml` runs PostgreSQL 16 + Redis 7 only (bot service commented out — built via Dockerfile at deploy)
+- **Docker**: `docker-compose.yml` runs PostgreSQL 16 + Redis 7 only (bot service is commented out in the old section — built via Dockerfile at deploy)
 - **Dockerfile** uses `CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]` — runs schema push before start
 - **No CI/CD, no husky, no prettier, no editorconfig**
-- **stray dir**: `src/tests/` (1 file, `post-content-preservation.test.ts`) is NOT picked up by vitest — tests must be in `src/__tests__/`
+- **Stray dir**: `src/tests/` (1 file, `post-content-preservation.test.ts`) is NOT picked up by vitest — tests must be in `src/__tests__/`
 - **TypeScript strictness differs**: root `tsconfig.json` has `strict: false` / `noImplicitAny: false`; admin has `strict: true`
 - **Path alias**: both root and admin use `@/*` → `src/*`
 

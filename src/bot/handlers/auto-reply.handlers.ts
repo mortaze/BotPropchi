@@ -185,11 +185,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (autoReplyState.isKeywordCreating(userId)) {
       const msgId = autoReplyState.getEditMode(userId);
       autoReplyState.setKeywordCreating(userId, false);
-      if (msgId) {
-        const keywords = await autoReplyService.listKeywords(msgId);
-        const page = renderKeywordPage(keywords, 'list');
-        await ctx.reply('❌ ایجاد کلمه لغو شد.', { reply_markup: page.reply_markup });
-      }
+      autoReplyState.setKeywordMode(userId, '');
+      if (msgId) await showAutoReplyEditor(ctx, msgId);
       return;
     }
 
@@ -197,12 +194,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     if (kwEditing) {
       const msgId = autoReplyState.getEditMode(userId);
       autoReplyState.setKeywordEditing(userId, 0);
-      autoReplyState.setKeywordMode(userId, 'list');
-      if (msgId) {
-        const keywords = await autoReplyService.listKeywords(msgId);
-        const page = renderKeywordPage(keywords, 'list');
-        await ctx.reply('❌ ویرایش کلمه لغو شد.', { reply_markup: page.reply_markup });
-      }
+      autoReplyState.setKeywordMode(userId, '');
+      if (msgId) await showAutoReplyEditor(ctx, msgId);
       return;
     }
 
