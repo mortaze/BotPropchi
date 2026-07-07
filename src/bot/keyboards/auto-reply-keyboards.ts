@@ -172,7 +172,6 @@ export function renderKeywordPage(keywords: any[], mode: 'list' | 'edit' | 'dele
     Markup.button.callback('✏️ ویرایش', 'ar:kw:enter_edit'),
     Markup.button.callback('🗑 حذف', 'ar:kw:enter_delete'),
   ]);
-  rows.push([Markup.button.callback('🔙 بازگشت', 'ar:kw:back')]);
 
   const countLine = `تعداد کلمات کلیدی: ${keywords.length}`;
   const modeLabel = mode === 'edit' ? ' (حالت ویرایش)' : mode === 'delete' ? ' (حالت حذف)' : '';
@@ -235,9 +234,6 @@ export function buildButtonEditorInlineKeyboard(
       Markup.button.callback('✏️ ویرایش', `${prefix}:mode:edit:${messageId}`),
       Markup.button.callback('🗑 حذف', `${prefix}:mode:delete:${messageId}`),
       Markup.button.callback('🔀 جابجایی', `${prefix}:mode:move:${messageId}`),
-    ]);
-    rows.push([
-      Markup.button.callback('🔙 بازگشت', `ar:back:${messageId}`),
     ]);
   }
 

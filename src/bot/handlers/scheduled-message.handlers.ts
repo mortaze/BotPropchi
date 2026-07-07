@@ -198,7 +198,10 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     return next();
   });
 
-  bot.hears('🔙 بازگشت به لیست', async (ctx: any) => {
+  bot.hears('🔙 بازگشت به لیست', async (ctx: any, next) => {
+    const { autoReplyState } = require('../../services/auto-reply-state.service');
+    const isAR = autoReplyState.isManagementMode(ctx.from.id) || autoReplyState.getEditMode(ctx.from.id);
+    if (isAR) return next();
     scheduledMessageState.clearAll(ctx.from.id);
     await sendList(ctx, 1);
   });
