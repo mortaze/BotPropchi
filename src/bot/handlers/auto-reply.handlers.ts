@@ -1570,14 +1570,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       autoReplyState.setButtonCol(userId, 0);
 
       try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
-      await ctx.reply('✅ جابه‌جایی ذخیره شد.');
-      const msg = await autoReplyRepository.findById(msgId);
-      await ctx.reply(formatAutoReplyInfo(msg), {
-        parse_mode: 'Markdown',
-        link_preview_options: { is_disabled: true },
-        ...autoReplyEditMessageReplyKeyboard(),
-      });
       await refreshButtonEditor(ctx, msgId);
+      await ctx.reply('✅ جابه‌جایی ذخیره شد.', autoReplyEditMessageReplyKeyboard());
     } catch (err: any) {
       logger.error(`[ARMove] confirm error: ${err.message}`);
     }
@@ -1596,16 +1590,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       autoReplyState.setButtonCol(userId, 0);
 
       try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
-      await ctx.reply('↩️ بازگشت از حالت جابه‌جایی.');
-      if (msgId) {
-        const msg = await autoReplyRepository.findById(msgId);
-        await ctx.reply(formatAutoReplyInfo(msg), {
-          parse_mode: 'Markdown',
-          link_preview_options: { is_disabled: true },
-          ...autoReplyEditMessageReplyKeyboard(),
-        });
-        await refreshButtonEditor(ctx, msgId);
-      }
+      if (msgId) await refreshButtonEditor(ctx, msgId);
+      await ctx.reply('↩️ بازگشت از حالت جابه‌جایی.', autoReplyEditMessageReplyKeyboard());
     } catch (err: any) {
       logger.error(`[ARMove] return error: ${err.message}`);
     }
@@ -1624,16 +1610,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       autoReplyState.setButtonCol(userId, 0);
 
       try { await ctx.reply('⌨️', { reply_markup: { remove_keyboard: true } }); } catch {}
-      await ctx.reply('❌ جابه‌جایی لغو شد.');
-      if (msgId) {
-        const msg = await autoReplyRepository.findById(msgId);
-        await ctx.reply(formatAutoReplyInfo(msg), {
-          parse_mode: 'Markdown',
-          link_preview_options: { is_disabled: true },
-          ...autoReplyEditMessageReplyKeyboard(),
-        });
-        await refreshButtonEditor(ctx, msgId);
-      }
+      if (msgId) await refreshButtonEditor(ctx, msgId);
+      await ctx.reply('❌ جابه‌جایی لغو شد.', autoReplyEditMessageReplyKeyboard());
     } catch (err: any) {
       logger.error(`[ARMove] cancel error: ${err.message}`);
     }
