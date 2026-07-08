@@ -109,10 +109,10 @@ export function buildDestinationGroupKeyboard(groups: any[]) {
 }
 
 // ─── Destination: Topic Reply Keyboard ────────────────────
-// Includes "General" (topicId=0) for non-topic messages
+// Topics come from DB (ForumTopic table) — includes real general topic
 
-export function buildDestinationTopicKeyboard(topics: any[]) {
-  const rows: string[][] = [['📂 General']];
+export function buildDestinationTopicKeyboard(topics: { topicId: number; name: string }[]) {
+  const rows: string[][] = [];
   for (const t of topics) {
     rows.push([`📂 ${t.name}`]);
   }

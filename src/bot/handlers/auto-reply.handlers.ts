@@ -376,6 +376,19 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       where: { chatId: group.chatId, isClosed: false },
       orderBy: { topicId: 'asc' },
     });
+
+    // Ensure general topic (thread_id=1) always exists in the list
+    const hasGeneral = topics.some(t => t.topicId === 1);
+    if (!hasGeneral) {
+      const generalTopic = await prisma.forumTopic.upsert({
+        where: { chatId_topicId: { chatId: group.chatId, topicId: 1 } },
+        update: { name: 'General', isClosed: false },
+        create: { chatId: group.chatId, topicId: 1, name: 'General' },
+      });
+      topics.unshift(generalTopic);
+      logger.info(`[AutoReply] GENERAL_TOPIC_CREATED user=${userId} chatId=${group.chatId}`);
+    }
+
     for (const t of topics) {
       logger.info(`[AutoReply] TOPIC_FOUND user=${userId} threadId=${t.topicId} title=${t.name}`);
     }
@@ -431,21 +444,19 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const chatIdStr = autoReplyState.getCurrentGroupForTopic(userId);
     if (!chatIdStr) return next();
 
-    // Handle "General" topic (topicId=0)
-    let topicId = 0;
-    let topicName = 'General';
-    if (text !== '📂 General') {
-      const topic = await prisma.forumTopic.findFirst({
-        where: { chatId: BigInt(chatIdStr), name: text.replace(/^📂 /, ''), isClosed: false },
-      });
-      if (!topic) {
-        logger.info(`[AutoReply] TOPIC_NOT_FOUND user=${userId} text="${text}" chatId=${chatIdStr}`);
-        await ctx.reply('❌ تاپیک یافت نشد. دوباره انتخاب کنید.');
-        return;
-      }
-      topicId = topic.topicId;
-      topicName = topic.name;
+    // Strip 📂 prefix and find topic by name in DB
+    const cleanName = text.replace(/^📂 /, '');
+    const topic = await prisma.forumTopic.findFirst({
+      where: { chatId: BigInt(chatIdStr), name: cleanName, isClosed: false },
+    });
+    if (!topic) {
+      logger.info(`[AutoReply] TOPIC_NOT_FOUND user=${userId} text="${text}" chatId=${chatIdStr}`);
+      await ctx.reply('❌ تاپیک یافت نشد. دوباره انتخاب کنید.');
+      return;
     }
+
+    const topicId = topic.topicId;
+    const topicName = topic.name;
 
     const pending = autoReplyState.getPendingBindings(userId);
     const groupBinding = pending.find(b => b.chatId === chatIdStr);
