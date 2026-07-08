@@ -263,11 +263,9 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
   // ─── Destination Binding Flow ─────────────────────────────
   // State machine: SELECT_GROUP → SELECT_TOPIC → REVIEW → CONFIRM
-  // Uses Reply Keyboard for selection, Inline Keyboard for review
+  // Uses bot.on('text') with scene checks (NOT bot.hears regex)
 
-  const DESTINATION_EXCLUDE = /^(❌ لغو|🔙 بازگشت|➕ افزودن|✅ تایید|🗑 حذف|🔗 لینک|🪟 POP|⌨️ دستور|🎨 رنگ|🔵 |🟢 |🔴 |⚪ |⬆️ |⬇️ |⬅️ |➡️ |🔄 بازگشت|❌ جابجایی|✅ تایید جابه‌جایی|✏️ ویرایش|📝 ویرایش|🔘 مدیریت|➕ افزودن پیام|📊 آمار|🔙 بازگشت به|🏷 کلمات|💬 پاسخ|📋 لیست|➕ ایجاد پاسخ|💬 اتوماسیون|👥 انتخاب گروه)$/;
-
-  // ─── Start: 📂 Destination Groups ───────────────────────
+  // ─── Start: 👥 انتخاب گروه ─────────────────────────────
   bot.hears('👥 انتخاب گروه', async (ctx: any, next) => {
     const userId = ctx.from.id;
     const msgId = autoReplyState.getEditMode(userId);
@@ -287,31 +285,28 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
   });
 
-  // ─── Scene: SELECT_GROUP ─────────────────────────────────
-  bot.hears(DESTINATION_EXCLUDE, async (ctx: any, next) => {
+  // ─── Scene: SELECT_GROUP (bot.on text — catches ANY text) ──
+  bot.on('text', async (ctx: any, next) => {
     const userId = ctx.from.id;
-    if (autoReplyState.getBindingScene(userId) === 'SELECT_GROUP') {
-      const text = ctx.message.text;
-      if (text === '❌ لغو') {
-        autoReplyState.clearBindingScene(userId);
-        const msgId = autoReplyState.getEditMode(userId);
-        if (msgId) await showAutoReplyEditor(ctx, msgId);
-        else await ctx.reply('❌ لغو شد.', { reply_markup: { remove_keyboard: true } });
-        return;
-      }
-    }
-    return next();
-  });
+    const scene = autoReplyState.getBindingScene(userId);
+    if (scene !== 'SELECT_GROUP') return next();
 
-  bot.hears(DESTINATION_EXCLUDE, async (ctx: any, next) => {
-    const userId = ctx.from.id;
-    if (autoReplyState.getBindingScene(userId) !== 'SELECT_GROUP') return next();
     const text = ctx.message.text;
+    logger.info(`[AutoReply] ENTER_GROUP_CALLBACK user=${userId} text="${text}"`);
+
+    if (text === '❌ لغو') {
+      autoReplyState.clearBindingScene(userId);
+      const msgId = autoReplyState.getEditMode(userId);
+      if (msgId) await showAutoReplyEditor(ctx, msgId);
+      else await ctx.reply('❌ لغو شد.', { reply_markup: { remove_keyboard: true } });
+      return;
+    }
 
     const group = await prisma.telegramGroup.findFirst({
       where: { title: text, status: 'APPROVED', botIsAdmin: true },
     });
     if (!group) {
+      logger.info(`[AutoReply] GROUP_NOT_FOUND user=${userId} text="${text}"`);
       await ctx.reply('❌ گروه یافت نشد. دوباره انتخاب کنید.');
       return;
     }
@@ -333,6 +328,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       where: { chatId: group.chatId, isClosed: false },
       orderBy: { topicId: 'asc' },
     });
+    logger.info(`[AutoReply] TOPICS_IN_DB user=${userId} chatId=${group.chatId} count=${topics.length}`);
+
     if (topics.length === 0) {
       const pending = autoReplyState.getPendingBindings(userId);
       pending.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: true, topics: [] });
@@ -344,41 +341,38 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     autoReplyState.setCurrentGroupForTopic(userId, group.chatId.toString());
     autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
+    logger.info(`[AutoReply] SHOW_TOPIC_MENU user=${userId} chatId=${group.chatId} topics=${topics.length}`);
     await ctx.reply(
       `📎 تاپیک‌های «${group.title}» را انتخاب کنید:\n\nℹ️ هر تاپیک را بزنید تا انتخاب شود، سپس «✅ تایید» را بزنید.`,
       buildDestinationTopicKeyboard(topics),
     );
   });
 
-  // ─── Scene: SELECT_TOPIC ─────────────────────────────────
-  bot.hears(DESTINATION_EXCLUDE, async (ctx: any, next) => {
+  // ─── Scene: SELECT_TOPIC (bot.on text — catches ANY text) ──
+  bot.on('text', async (ctx: any, next) => {
     const userId = ctx.from.id;
-    if (autoReplyState.getBindingScene(userId) === 'SELECT_TOPIC') {
-      const text = ctx.message.text;
-      if (text === '❌ لغو') {
-        autoReplyState.clearBindingScene(userId);
-        const msgId = autoReplyState.getEditMode(userId);
-        if (msgId) await showAutoReplyEditor(ctx, msgId);
-        else await ctx.reply('❌ لغو شد.', { reply_markup: { remove_keyboard: true } });
-        return;
-      }
-      if (text === '🔙 بازگشت') {
-        autoReplyState.setBindingScene(userId, 'SELECT_GROUP');
-        const groups = await prisma.telegramGroup.findMany({
-          where: { status: 'APPROVED', botIsAdmin: true },
-          orderBy: { addedAt: 'desc' },
-        });
-        await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
-        return;
-      }
-    }
-    return next();
-  });
+    const scene = autoReplyState.getBindingScene(userId);
+    if (scene !== 'SELECT_TOPIC') return next();
 
-  bot.hears(DESTINATION_EXCLUDE, async (ctx: any, next) => {
-    const userId = ctx.from.id;
-    if (autoReplyState.getBindingScene(userId) !== 'SELECT_TOPIC') return next();
     const text = ctx.message.text;
+    logger.info(`[AutoReply] ENTER_TOPIC_CALLBACK user=${userId} text="${text}"`);
+
+    if (text === '❌ لغو') {
+      autoReplyState.clearBindingScene(userId);
+      const msgId = autoReplyState.getEditMode(userId);
+      if (msgId) await showAutoReplyEditor(ctx, msgId);
+      else await ctx.reply('❌ لغو شد.', { reply_markup: { remove_keyboard: true } });
+      return;
+    }
+    if (text === '🔙 بازگشت') {
+      autoReplyState.setBindingScene(userId, 'SELECT_GROUP');
+      const groups = await prisma.telegramGroup.findMany({
+        where: { status: 'APPROVED', botIsAdmin: true },
+        orderBy: { addedAt: 'desc' },
+      });
+      await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
+      return;
+    }
     if (text === '✅ تایید') {
       const chatIdStr = autoReplyState.getCurrentGroupForTopic(userId);
       if (!chatIdStr) return next();
@@ -400,6 +394,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       where: { chatId: BigInt(chatIdStr), name: text, isClosed: false },
     });
     if (!topic) {
+      logger.info(`[AutoReply] TOPIC_NOT_FOUND user=${userId} text="${text}" chatId=${chatIdStr}`);
       await ctx.reply('❌ تاپیک یافت نشد. دوباره انتخاب کنید.');
       return;
     }
