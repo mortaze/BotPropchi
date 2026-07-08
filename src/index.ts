@@ -104,6 +104,30 @@ async function bootstrap() {
   bot.use(groupAccessMiddleware(bot));
 
   // ثبت هندلرها
+
+  // ─── Global: بازگشت به پنل ادمین (highest priority) ─────
+  // Must fire BEFORE all automation handlers to guarantee exit from any state
+  bot.hears('🔙 بازگشت به پنل ادمین', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    const { autoReplyState } = await import('./services/auto-reply-state.service');
+    const { scheduledMessageState } = await import('./services/scheduled-message-state.service');
+    const { botAdminService } = await import('./services/bot-admin.service');
+    const { BotAdminRole } = await import('@prisma/client');
+    const { buildBotAdminPanelKeyboard } = await import('./bot/keyboards/index');
+    const { cache } = await import('./utils/cache');
+
+    autoReplyState.clearAll(userId);
+    autoReplyState.clearBindingScene(userId);
+    scheduledMessageState.clearAll(userId);
+    cache.del(`ar:${userId}:selecting_group`);
+
+    const admin = await botAdminService.getActive(userId);
+    const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+  });
+
   registerHandlers(bot);
   registerScheduledMessageHandlers(bot);
   registerAutoReplyHandlers(bot);
