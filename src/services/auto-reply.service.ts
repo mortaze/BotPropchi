@@ -224,10 +224,18 @@ class AutoReplyService {
           const srcChatId = Number(message.forwardSource.chatId || message.forwardSource.originChatId);
           const srcMsgId = Number(message.forwardSource.messageId || message.forwardSource.originMessageId);
           if (srcChatId && srcMsgId) {
+            logger.info(`[AutoReply] FORWARD_MSG autoReply=${ar.id} srcChat=${srcChatId} srcMsg=${srcMsgId} targetChat=${chatId} threadId=${threadId ?? 'none'}`);
             try {
-              await this.bot.telegram.forwardMessage(chatId, srcChatId, srcMsgId);
-            } catch {
-              await this.bot.telegram.copyMessage(chatId, srcChatId, srcMsgId);
+              // forwardMessage does NOT support message_thread_id — use copyMessage instead
+              const copyPayload: any = { chat_id: chatId, from_chat_id: srcChatId, message_id: srcMsgId };
+              if (threadId) copyPayload.message_thread_id = threadId;
+              if (i === 0 && originalMessageId) {
+                copyPayload.reply_parameters = { message_id: originalMessageId, allow_sending_without_reply: true };
+              }
+              await this.bot.telegram.copyMessage(chatId, srcChatId, srcMsgId, copyPayload);
+            } catch (err: any) {
+              logger.error(`[AutoReply] FORWARD_FAIL autoReply=${ar.id} error=${err.message}`);
+              throw err;
             }
           }
         } else {
