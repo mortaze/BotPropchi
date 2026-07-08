@@ -1533,7 +1533,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const existingBtn = grid[row]?.[col];
 
     // Map internal type names to DB type values
-    const dbType = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : 'CALLBACK';
+    const dbType = btnType === 'url' ? 'URL' : btnType === 'command' ? 'COMMAND' : btnType === 'popup' ? 'POPUP' : 'CALLBACK';
 
     if (existingBtn?.id) {
       // Update existing button
