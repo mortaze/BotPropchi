@@ -112,7 +112,7 @@ export function buildDestinationGroupKeyboard(groups: any[]) {
 // Includes "🌍 همه گروه‌ها" as global option + real topics from DB
 
 export function buildDestinationTopicKeyboard(topics: { topicId: number; name: string }[]) {
-  const rows: string[][] = [['🌍 همه گروه‌ها']];
+  const rows: string[][] = [];
   for (const t of topics) {
     rows.push([`📂 ${t.name}`]);
   }
