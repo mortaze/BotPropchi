@@ -1,15 +1,17 @@
 import { Telegraf, Markup } from 'telegraf';
-import { PostStatus, PostMessageType } from '@prisma/client';
+import { PostStatus, PostMessageType, BotAdminRole } from '@prisma/client';
 import { scheduledMessageService } from '../../services/scheduled-message.service';
 import { scheduledMessageState } from '../../services/scheduled-message-state.service';
 import { scheduledMessageRepository } from '../../repositories/scheduled-message.repository';
 import { botAdminService } from '../../services/bot-admin.service';
 import { forumTopicService } from '../../services/forum-topic.service';
+import { autoReplyState } from '../../services/auto-reply-state.service';
 import { prisma } from '../../prisma/client';
 import { logger } from '../../utils/logger';
 import { cache } from '../../utils/cache';
 import { validateDbInput, sanitizeTelegramText } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
+import { buildBotAdminPanelKeyboard } from '../keyboards/index';
 import {
   scheduledMessageMainMenuKeyboard,
   scheduledMessageAutomationKeyboard,
@@ -97,6 +99,10 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
   bot.hears('🔙 بازگشت به پنل ادمین', async (ctx: any, next) => {
     if (!scheduledMessageState.isManagementMode(ctx.from.id)) return next();
     scheduledMessageState.clearAll(ctx.from.id);
+    autoReplyState.clearBindingScene(ctx.from.id);
+    const admin = await botAdminService.getActive(ctx.from.id);
+    const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
 
   // ─── Create new scheduled post ──────────────────────────
