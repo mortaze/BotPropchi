@@ -47,11 +47,11 @@ export function autoReplyNewPostManagerReplyKeyboard() {
 // ─── Post Editor Reply Keyboard ───────────────────────────
 
 export function autoReplyEditorReplyKeyboard(isPublished: boolean) {
+  const publishBtn = isPublished ? '📤 لغو انتشار' : '✅ انتشار';
   return Markup.keyboard([
     ['➕ افزودن پیام'],
-    ['👥 انتخاب گروه', '🏷 کلمات کلیدی پاسخ'],
-    ['✅ انتشار', '📊 آمار'],
-    ['🗑 حذف پاسخ'],
+    ['👥 انتخاب گروه', '🏷 کلمه کلیدی'],
+    [publishBtn, '🗑 حذف'],
     ['🔙 بازگشت به لیست'],
   ]).resize().persistent();
 }

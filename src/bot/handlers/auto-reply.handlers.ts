@@ -64,7 +64,7 @@ function formatAutoReplyInfo(msg: any, bindingSummaryLines?: string[], statusTex
 
 function validatePublishReadiness(msg: any, bindings?: any[]): { ready: boolean; missing: { key: string; label: string }[] } {
   const missing: { key: string; label: string }[] = [];
-  if ((msg.keywords?.length || 0) === 0) missing.push({ key: 'keywords', label: '🏷 کلمات کلیدی پاسخ' });
+  if ((msg.keywords?.length || 0) === 0) missing.push({ key: 'keywords', label: '🏷 کلمه کلیدی' });
   if (!bindings || bindings.length === 0) missing.push({ key: 'group', label: '👥 انتخاب گروه' });
   if ((msg.messages?.length || 0) === 0) missing.push({ key: 'messages', label: '➕ افزودن پیام' });
   return { ready: missing.length === 0, missing };
@@ -588,7 +588,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     await ctx.reply(page.text, { reply_markup: page.reply_markup });
   }
 
-  bot.hears('🏷 کلمات کلیدی پاسخ', async (ctx: any) => {
+  bot.hears('🏷 کلمه کلیدی', async (ctx: any) => {
     if (!autoReplyState.getEditMode(ctx.from.id)) return;
     await showKeywordPage(ctx, 'list');
   });
@@ -708,9 +708,21 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
   });
 
+  bot.hears('📤 لغو انتشار', async (ctx: any) => {
+    const msgId = autoReplyState.getEditMode(ctx.from.id);
+    if (!msgId) return;
+    try {
+      await autoReplyService.unpublish(msgId);
+      await ctx.reply('📤 انتشار لغو شد.');
+      await showAutoReplyEditor(ctx, msgId);
+    } catch (err: any) {
+      await ctx.reply(`❌ خطا: ${err.message}`);
+    }
+  });
+
   // ─── Delete ─────────────────────────────────────────────
 
-  bot.hears('🗑 حذف پاسخ', async (ctx: any) => {
+  bot.hears('🗑 حذف', async (ctx: any) => {
     const msgId = autoReplyState.getEditMode(ctx.from.id);
     if (!msgId) return;
     const msg = await autoReplyRepository.findById(msgId);
