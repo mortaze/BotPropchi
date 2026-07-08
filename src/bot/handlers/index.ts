@@ -1249,22 +1249,37 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const schedMsgId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
-    logger.info(`[POPUP_TRACE] Callback schedMsgId=${schedMsgId} row=${row} col=${col} data="${ctx.callbackQuery?.data}"`);
+    logger.info(`[POPUP_TRACE] Handler=SchedPopup schedMsgId=${schedMsgId} row=${row} col=${col} CallbackData=${ctx.callbackQuery?.data}`);
     try {
+      // Query ALL buttons for this scheduled message (flat array)
       const buttons = await prisma.scheduledMessageButton.findMany({
         where: { scheduledMessageId: schedMsgId },
         orderBy: [{ row: 'asc' }, { col: 'asc' }],
       });
+
+      // Log every button in detail
       for (const b of buttons) {
-        logger.info(`[POPUP_TRACE] DB_BUTTON id=${b.id} schedMsgId=${b.scheduledMessageId} msgId=${b.messageId} row=${b.row} col=${b.col} type="${b.type}" text="${b.text}" value="${(b.value || '').substring(0, 50)}"`);
+        logger.info(`[POPUP_TRACE] DB_BUTTON id=${b.id} scheduledMsgId=${b.scheduledMessageId} messageId=${b.messageId} row=${b.row} col=${b.col} type="${b.type}" text="${b.text}" value="${(b.value || '').substring(0, 80)}"`);
       }
-      // Find by row+col using flat search (not grid index)
-      const btn = buttons.find(b => Number(b.row) === row && Number(b.col) === col);
+
+      // PRIMARY: find by DB row/col matching renderer loop indices
+      let btn = buttons.find(b => Number(b.row) === row && Number(b.col) === col);
+
+      // FALLBACK: if row/col don't match (e.g. sparse grid or shift), find ANY POPUP button
+      if (!btn && buttons.length === 1) {
+        btn = buttons[0];
+        logger.info(`[POPUP_TRACE] FALLBACK: single button found, using it regardless of row/col`);
+      }
+
       if (btn) {
-        logger.info(`[POPUP_TRACE] FOUND id=${btn.id} type="${btn.type}" value="${(btn.value || '').substring(0, 80)}"`);
+        logger.info(`[POPUP_TRACE] FOUND id=${btn.id} type="${btn.type}" row=${btn.row} col=${btn.col} value="${(btn.value || '').substring(0, 80)}"`);
         await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
       } else {
-        logger.warn(`[POPUP_TRACE] NOT_FOUND row=${row} col=${col} total=${buttons.length}`);
+        // Last resort: log the grid state for debugging
+        logger.warn(`[POPUP_TRACE] NOT_FOUND schedMsgId=${schedMsgId} searchedRow=${row} searchedCol=${col} totalButtons=${buttons.length}`);
+        for (const b of buttons) {
+          logger.warn(`[POPUP_TRACE] AVAILABLE id=${b.id} row=${b.row} col=${b.col} type=${b.type}`);
+        }
         await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
       }
     } catch (err) {
@@ -1406,8 +1421,16 @@ export function registerHandlers(bot: Telegraf<Context>) {
         where: { scheduledMessageId: schedMsgId },
         orderBy: [{ row: 'asc' }, { col: 'asc' }],
       });
-      // Find by row+col using flat search (not grid index)
-      const btn = buttons.find(b => Number(b.row) === row && Number(b.col) === col);
+      for (const b of buttons) {
+        logger.info(`[SchedClick] DB_BUTTON id=${b.id} scheduledMsgId=${b.scheduledMessageId} row=${b.row} col=${b.col} type="${b.type}" text="${b.text}"`);
+      }
+
+      let btn = buttons.find(b => Number(b.row) === row && Number(b.col) === col);
+      if (!btn && buttons.length === 1) {
+        btn = buttons[0];
+        logger.info(`[SchedClick] FALLBACK: single button, using it`);
+      }
+
       if (btn) {
         if ((btn.type || '').toUpperCase() === 'COMMAND') {
           const cmdName = (btn.value || '').replace(/^\//, '').toLowerCase();

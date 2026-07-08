@@ -53,16 +53,15 @@ function formatScheduledMessageInfo(msg: any): string {
     `📤 وضعیت: ${status}`,
     `⏰ زمان‌بندی: ${interval}`,
     `🕐 ساعت شروع: ${startTime}`,
-    `👥 گروه: ${msg._groupName || (msg.targetChatId ? String(msg.targetChatId) : '—')}`,
-    `📌 تاپیک: ${msg._topicName || (msg.targetTopicId ? `تاپیک ${msg.targetTopicId}` : (msg.targetChatId ? 'همه تاپیک‌ها' : '—'))}`,
+    `${msg._destinationLines || '👥 گروه: —'}`,
     `🔢 دفعات ارسال: ${sendCount}`,
   ].join('\n');
 }
 
-function validatePublishReadiness(msg: any): { ready: boolean; missing: { key: string; label: string }[] } {
+function validatePublishReadiness(msg: any, bindings?: any[]): { ready: boolean; missing: { key: string; label: string }[] } {
   const missing: { key: string; label: string }[] = [];
   if (!msg.intervalMinutes) missing.push({ key: 'schedule', label: '⏰ تنظیم زمان‌بندی' });
-  if (!msg.targetChatId) missing.push({ key: 'group', label: '👥 انتخاب گروه' });
+  if (!bindings || bindings.length === 0) missing.push({ key: 'group', label: '👥 انتخاب گروه' });
   if (!msg.startTime) missing.push({ key: 'schedule', label: '⏰ تنظیم ساعت شروع' });
   if ((msg.messages?.length || 0) === 0) missing.push({ key: 'messages', label: '➕ افزودن پیام' });
   return { ready: missing.length === 0, missing };
@@ -295,7 +294,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
     logger.info(`[SchedMsg] Publish pre-check msg=${msgId} interval=${msg.intervalMinutes}min startTime=${msg.startTime} chatId=${msg.targetChatId} topicId=${msg.targetTopicId} isPublished=${msg.isPublished} status=${msg.status} messages=${msg.messages?.length}`);
 
-    const { ready, missing } = validatePublishReadiness(msg);
+    const bindings = await scheduledMessageRepository.getBindingsByScheduledMessage(msgId);
+    const { ready, missing } = validatePublishReadiness(msg, bindings);
     if (!ready) {
       logger.warn(`[SchedMsg] Publish ABORTED: not ready. Missing: ${missing.map(m => m.key).join(', ')}`);
       const missingList = missing.map((m) => `❌ ${m.label.replace(/^[^\s]+ /, '')}`).join('\n');
@@ -1011,7 +1011,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     const msg = await scheduledMessageRepository.findById(id);
     if (!msg) return;
 
-    const { ready, missing } = validatePublishReadiness(msg);
+    const bindings = await scheduledMessageRepository.getBindingsByScheduledMessage(id);
+    const { ready, missing } = validatePublishReadiness(msg, bindings);
     if (!ready) {
       const missingList = missing.map((m) => `❌ ${m.label.replace(/^[^\s]+ /, '')}`).join('\n');
       await ctx.reply(
@@ -1864,41 +1865,53 @@ async function showPostEditor(ctx: any, id: number) {
   scheduledMessageState.setEditMode(ctx.from.id, id);
   scheduledMessageState.setManagementMode(ctx.from.id, true);
 
-  // Resolve group name from bindings table (source of truth)
-  let groupName = '';
-  let topicName = '';
+  // Resolve destinations from bindings table (source of truth)
   const bindings = await scheduledMessageRepository.getBindingsByScheduledMessage(id);
+  const destLines: string[] = [];
   if (bindings.length > 0) {
-    const firstBinding = bindings[0];
-    if (firstBinding.isGlobal) {
-      groupName = '🌍 همه گروه‌ها';
-    } else {
-      const group = await prisma.telegramGroup.findUnique({ where: { chatId: firstBinding.chatId } });
-      groupName = group?.title || String(firstBinding.chatId);
+    const groupedByChat = new Map<string, { chatTitle: string; topicNames: string[] }>();
+    for (const b of bindings) {
+      if (b.isGlobal) {
+        destLines.push('🌍 همه گروه‌ها (سراسری)');
+        continue;
+      }
+      const key = b.chatId.toString();
+      if (!groupedByChat.has(key)) {
+        const group = await prisma.telegramGroup.findUnique({ where: { chatId: b.chatId } });
+        groupedByChat.set(key, { chatTitle: group?.title || String(b.chatId), topicNames: [] });
+      }
+      if (b.topicId != null) {
+        const topic = await prisma.forumTopic.findUnique({
+          where: { chatId_topicId: { chatId: b.chatId, topicId: Number(b.topicId) } },
+        });
+        groupedByChat.get(key)!.topicNames.push(topic?.name || `Topic ${b.topicId}`);
+      }
     }
-    if (firstBinding.topicId != null) {
-      const topic = await prisma.forumTopic.findUnique({
-        where: { chatId_topicId: { chatId: firstBinding.chatId, topicId: Number(firstBinding.topicId) } },
-      });
-      topicName = topic?.name || `Topic ${firstBinding.topicId}`;
-    } else {
-      topicName = firstBinding.isGlobal ? '' : 'همه تاپیک‌ها';
+    for (const [, info] of groupedByChat) {
+      if (info.topicNames.length > 0) {
+        destLines.push(`📌 ${info.chatTitle}:`);
+        for (const t of info.topicNames) {
+          destLines.push(`  • ${t}`);
+        }
+      } else {
+        destLines.push(`📌 ${info.chatTitle} (همه تاپیک‌ها)`);
+      }
     }
   } else if (msg.targetChatId) {
-    // Fallback to old fields if no bindings exist
+    // Fallback to old fields
     const group = await prisma.telegramGroup.findUnique({ where: { chatId: msg.targetChatId } });
-    groupName = group?.title || String(msg.targetChatId);
+    const groupName = group?.title || String(msg.targetChatId);
     if (msg.targetTopicId) {
       const topic = await prisma.forumTopic.findUnique({
         where: { chatId_topicId: { chatId: msg.targetChatId, topicId: Number(msg.targetTopicId) } },
       });
-      topicName = topic?.name || `Topic ${msg.targetTopicId}`;
+      destLines.push(`📌 ${groupName}:`);
+      destLines.push(`  • ${topic?.name || `Topic ${msg.targetTopicId}`}`);
     } else {
-      topicName = 'همه تاپیک‌ها';
+      destLines.push(`📌 ${groupName} (همه تاپیک‌ها)`);
     }
   }
-  (msg as any)._groupName = groupName || '—';
-  (msg as any)._topicName = topicName || '—';
+  (msg as any)._destinationLines = destLines.length > 0 ? destLines.join('\n') : '👥 گروه: —';
 
   const text = formatScheduledMessageInfo(msg);
   const messages = msg.messages || [];
