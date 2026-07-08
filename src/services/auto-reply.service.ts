@@ -226,16 +226,19 @@ class AutoReplyService {
           if (srcChatId && srcMsgId) {
             logger.info(`[AutoReply] FORWARD_MSG autoReply=${ar.id} srcChat=${srcChatId} srcMsg=${srcMsgId} targetChat=${chatId} threadId=${threadId ?? 'none'}`);
             try {
-              // forwardMessage does NOT support message_thread_id — use copyMessage instead
-              const copyPayload: any = { chat_id: chatId, from_chat_id: srcChatId, message_id: srcMsgId };
-              if (threadId) copyPayload.message_thread_id = threadId;
-              if (i === 0 && originalMessageId) {
-                copyPayload.reply_parameters = { message_id: originalMessageId, allow_sending_without_reply: true };
+              // TRUE FORWARD: use forwardMessage with message_thread_id for topic
+              const forwardPayload: any = { chat_id: chatId, from_chat_id: srcChatId, message_id: srcMsgId };
+              if (threadId) forwardPayload.message_thread_id = threadId;
+              await this.bot.telegram.forwardMessage(chatId, srcChatId, srcMsgId, forwardPayload);
+            } catch (forwardErr: any) {
+              // If forward with thread fails (e.g. old API), try without thread
+              logger.warn(`[AutoReply] FORWARD_WITH_THREAD_FAILED autoReply=${ar.id} error=${forwardErr.message} — retrying without threadId`);
+              try {
+                await this.bot.telegram.forwardMessage(chatId, srcChatId, srcMsgId);
+              } catch (fallbackErr: any) {
+                logger.error(`[AutoReply] FORWARD_FAIL autoReply=${ar.id} error=${fallbackErr.message}`);
+                throw fallbackErr;
               }
-              await this.bot.telegram.copyMessage(chatId, srcChatId, srcMsgId, copyPayload);
-            } catch (err: any) {
-              logger.error(`[AutoReply] FORWARD_FAIL autoReply=${ar.id} error=${err.message}`);
-              throw err;
             }
           }
         } else {
