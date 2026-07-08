@@ -1249,27 +1249,22 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const schedMsgId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
-    logger.info(`[POPUP_TRACE] Handler=SchedPopup schedMsgId=${schedMsgId} row=${row} col=${col} CallbackData=${ctx.callbackQuery?.data}`);
+    logger.info(`[POPUP_TRACE] Callback schedMsgId=${schedMsgId} row=${row} col=${col} data="${ctx.callbackQuery?.data}"`);
     try {
-      // Query by scheduledMessageId (what the renderer uses as postId)
       const buttons = await prisma.scheduledMessageButton.findMany({
         where: { scheduledMessageId: schedMsgId },
         orderBy: [{ row: 'asc' }, { col: 'asc' }],
       });
-      logger.info(`[POPUP_TRACE] Found ${buttons.length} buttons for schedMsgId=${schedMsgId}`);
-      const grid: any[][] = [];
-      for (const btn of buttons) {
-        const r = btn.row ?? 0;
-        const c = btn.col ?? 0;
-        if (!grid[r]) grid[r] = [];
-        grid[r][c] = btn;
+      for (const b of buttons) {
+        logger.info(`[POPUP_TRACE] DB_BUTTON id=${b.id} schedMsgId=${b.scheduledMessageId} msgId=${b.messageId} row=${b.row} col=${b.col} type="${b.type}" text="${b.text}" value="${(b.value || '').substring(0, 50)}"`);
       }
-      const btn = grid[row]?.[col];
+      // Find by row+col using flat search (not grid index)
+      const btn = buttons.find(b => Number(b.row) === row && Number(b.col) === col);
       if (btn) {
-        logger.info(`[POPUP_TRACE] Button found: type=${btn.type} value="${(btn.value || '').substring(0, 80)}"`);
+        logger.info(`[POPUP_TRACE] FOUND id=${btn.id} type="${btn.type}" value="${(btn.value || '').substring(0, 80)}"`);
         await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
       } else {
-        logger.warn(`[POPUP_TRACE] Button NOT found at grid[${row}][${col}] for schedMsgId=${schedMsgId}`);
+        logger.warn(`[POPUP_TRACE] NOT_FOUND row=${row} col=${col} total=${buttons.length}`);
         await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
       }
     } catch (err) {
@@ -1411,16 +1406,9 @@ export function registerHandlers(bot: Telegraf<Context>) {
         where: { scheduledMessageId: schedMsgId },
         orderBy: [{ row: 'asc' }, { col: 'asc' }],
       });
-      const grid: any[][] = [];
-      for (const btn of buttons) {
-        const r = btn.row ?? 0;
-        const c = btn.col ?? 0;
-        if (!grid[r]) grid[r] = [];
-        grid[r][c] = btn;
-      }
-      const btn = grid[row]?.[col];
+      // Find by row+col using flat search (not grid index)
+      const btn = buttons.find(b => Number(b.row) === row && Number(b.col) === col);
       if (btn) {
-        // If it's a COMMAND type, resolve the command
         if ((btn.type || '').toUpperCase() === 'COMMAND') {
           const cmdName = (btn.value || '').replace(/^\//, '').toLowerCase();
           const post = await postService.resolveCommand(cmdName);
@@ -1430,7 +1418,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
           }
           return;
         }
-        // If it has a URL, open it
         if (btn.value && btn.value.startsWith('http')) {
           await ctx.answerCbQuery();
           return;
