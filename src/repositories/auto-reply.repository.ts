@@ -238,6 +238,20 @@ export const autoReplyRepository = {
     });
   },
 
+  async removeAllBindings(autoReplyId: number) {
+    return prisma.autoReplyBinding.deleteMany({
+      where: { autoReplyId },
+    });
+  },
+
+  async bulkCreateBindings(autoReplyId: number, bindings: { chatId: bigint; topicId: bigint | null }[]) {
+    if (bindings.length === 0) return;
+    await prisma.autoReplyBinding.deleteMany({ where: { autoReplyId } });
+    await prisma.autoReplyBinding.createMany({
+      data: bindings.map(b => ({ autoReplyId, chatId: b.chatId, topicId: b.topicId, isActive: true })),
+    });
+  },
+
   async getPublishedForGroup(chatId: bigint, topicId: number | null) {
     return prisma.autoReply.findMany({
       where: {

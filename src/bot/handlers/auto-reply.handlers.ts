@@ -35,6 +35,10 @@ import {
   buildArbtnColorReplyKeyboard,
   buildGroupSelectKeyboard,
   buildTopicSelectKeyboard,
+  buildDestinationGroupKeyboard,
+  buildDestinationTopicKeyboard,
+  buildDestinationReviewKeyboard,
+  buildDestinationRemoveKeyboard,
 } from '../keyboards/auto-reply-keyboards';
 
 function formatAutoReplyInfo(msg: any, bindingSummaryLines?: string[], statusText?: string): string {
@@ -133,6 +137,11 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const userId = ctx.from.id;
     cache.del(`ar:${userId}:selecting_group`);
 
+    const bindingScene = autoReplyState.getBindingScene(userId);
+    if (bindingScene) {
+      autoReplyState.clearBindingScene(userId);
+    }
+
     // If in per-message editing mode, go back to editor
     const editingMsgId = autoReplyState.getEditingMessage(userId);
     if (editingMsgId && editingMsgId > 0) {
@@ -174,6 +183,15 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   bot.hears('❌ لغو', async (ctx: any, next) => {
     if (!ctx.from) return next();
     const userId = ctx.from.id;
+
+    const bindingScene = autoReplyState.getBindingScene(userId);
+    if (bindingScene) {
+      autoReplyState.clearBindingScene(userId);
+      const msgId = autoReplyState.getEditMode(userId);
+      if (msgId) await showAutoReplyEditor(ctx, msgId);
+      else await ctx.reply('❌ انتخاب گروه لغو شد.');
+      return;
+    }
 
     // Button editor state machine - skip if in button editor
     if (autoReplyState.getButtonEditWaiting(userId)) {
@@ -255,7 +273,270 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       await ctx.reply('هیچ گروه تأییدشده‌ای وجود ندارد.');
       return;
     }
-    await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildGroupSelectKeyboard(groups));
+    autoReplyState.setBindingScene(ctx.from.id, 'selecting_group');
+    autoReplyState.setBindingSelectedGroups(ctx.from.id, []);
+    autoReplyState.setBindingSelectedTopics(ctx.from.id, []);
+    autoReplyState.setPendingBindings(ctx.from.id, []);
+    autoReplyState.setBindingRemoveMode(ctx.from.id, false);
+    logger.info(`[BindingScene] user=${ctx.from.id} START select_group msgId=${msgId}`);
+    await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
+  });
+
+  // ─── Destination Scene: Group Selection (Reply Keyboard) ──
+  bot.hears(/^(?!❌ لغو|🔙 بازگشت|➕ افزودن|✅ تایید|🗑 حذف|✅ بازگشت|🔗 لینک|🪟 POP|⌨️ دستور|🎨 رنگ|🔵 |🟢 |🔴 |⚪ |⬆️ |⬇️ |⬅️ |➡️ |🔄 بازگشت|❌ جابجایی|✅ تایید جابه‌جایی|✏️ ویرایش|📝 ویرایش|🔘 مدیریت|➕ افزودن پیام|📊 آمار|🔙 بازگشت به|🏷 کلمات|💬 پاسخ|📋 لیست|➕ ایجاد پاسخ|💬 اتوماسیون)/, async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const scene = autoReplyState.getBindingScene(userId);
+    if (scene !== 'selecting_group') return next();
+
+    const text = ctx.message.text;
+    if (text === '🔙 بازگشت') {
+      autoReplyState.clearBindingScene(userId);
+      const msgId = autoReplyState.getEditMode(userId);
+      if (msgId) await showAutoReplyEditor(ctx, msgId);
+      return;
+    }
+
+    const group = await prisma.telegramGroup.findFirst({
+      where: { title: text, status: 'APPROVED', botIsAdmin: true },
+    });
+    if (!group) {
+      await ctx.reply('❌ گروه یافت نشد. دوباره انتخاب کنید.');
+      return;
+    }
+
+    autoReplyState.setBindingCurrentGroup(userId, group.chatId.toString());
+    const topics = await prisma.forumTopic.findMany({
+      where: { chatId: group.chatId, isClosed: false },
+      orderBy: { topicId: 'asc' },
+    });
+
+    if (topics.length === 0) {
+      const pending = autoReplyState.getPendingBindings(userId);
+      pending.push({
+        chatId: group.chatId.toString(),
+        chatTitle: group.title,
+        topicId: null,
+        topicName: null,
+      });
+      autoReplyState.setPendingBindings(userId, pending);
+      autoReplyState.setBindingScene(userId, 'review');
+      logger.info(`[BindingScene] user=${userId} GROUP_SELECTED_NON_FORUM chatId=${group.chatId} title=${group.title}`);
+      await showDestinationReview(ctx, userId);
+      return;
+    }
+
+    autoReplyState.setBindingScene(userId, 'selecting_topic');
+    autoReplyState.setBindingSelectedTopics(userId, []);
+    logger.info(`[BindingScene] user=${userId} GROUP_SELECTED chatId=${group.chatId} title=${group.title} topics=${topics.length}`);
+    await ctx.reply(
+      `📎 تاپیک‌های «${group.title}» را انتخاب کنید:\n\nℹ️ یک تاپیک انتخاب کنید، سپس «✅ تایید» را بزنید.`,
+      buildDestinationTopicKeyboard(topics),
+    );
+  });
+
+  // ─── Destination Scene: Topic Selection (Reply Keyboard) ──
+  bot.hears(/^(?!❌ لغو|🔙 بازگشت|➕ افزودن|✅ تایید|🗑 حذف|✅ بازگشت|🔗 لینک|🪟 POP|⌨️ دستور|🎨 رنگ|🔵 |🟢 |🔴 |⚪ |⬆️ |⬇️ |⬅️ |➡️ |🔄 بازگشت|❌ جابجایی|✅ تایید جابه‌جایی|✏️ ویرایش|📝 ویرایش|🔘 مدیریت|➕ افزودن پیام|📊 آمار|🔙 بازگشت به|🏷 کلمات|💬 پاسخ|📋 لیست|➕ ایجاد پاسخ|💬 اتوماسیون|👥 انتخاب گروه)/, async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const scene = autoReplyState.getBindingScene(userId);
+    if (scene !== 'selecting_topic') return next();
+
+    const text = ctx.message.text;
+    if (text === '🔙 بازگشت') {
+      autoReplyState.setBindingScene(userId, 'selecting_group');
+      const groups = await prisma.telegramGroup.findMany({
+        where: { status: 'APPROVED', botIsAdmin: true },
+        orderBy: { addedAt: 'desc' },
+      });
+      await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
+      return;
+    }
+
+    const chatIdStr = autoReplyState.getBindingCurrentGroup(userId);
+    if (!chatIdStr) return next();
+
+    const group = await prisma.telegramGroup.findUnique({ where: { chatId: BigInt(chatIdStr) } });
+    if (!group) return next();
+
+    const topic = await prisma.forumTopic.findFirst({
+      where: { chatId: BigInt(chatIdStr), name: text, isClosed: false },
+    });
+    if (!topic) {
+      await ctx.reply('❌ تاپیک یافت نشد. دوباره انتخاب کنید.');
+      return;
+    }
+
+    const selectedTopics = autoReplyState.getBindingSelectedTopics(userId);
+    const idx = selectedTopics.indexOf(topic.topicId);
+    if (idx >= 0) {
+      selectedTopics.splice(idx, 1);
+    } else {
+      selectedTopics.push(topic.topicId);
+    }
+    autoReplyState.setBindingSelectedTopics(userId, selectedTopics);
+
+    const topics = await prisma.forumTopic.findMany({
+      where: { chatId: BigInt(chatIdStr), isClosed: false },
+      orderBy: { topicId: 'asc' },
+    });
+    const selectedNames = topics.filter(t => selectedTopics.includes(t.topicId)).map(t => `✅ ${t.name}`);
+    const summary = selectedNames.length > 0
+      ? `انتخاب‌شده: ${selectedNames.join(', ')}\n\nℹ️ تاپیک دیگری انتخاب کنید یا «✅ تایید» را بزنید.`
+      : 'ℹ️ یک تاپیک انتخاب کنید.';
+    await ctx.reply(summary, buildDestinationTopicKeyboard(topics));
+  });
+
+  // ─── Destination Scene: Confirm Topic Selection ──────────
+  bot.hears('✅ تایید', async (ctx: any, next) => {
+    const userId = ctx.from.id;
+    const scene = autoReplyState.getBindingScene(userId);
+    if (scene !== 'selecting_topic') return next();
+
+    const chatIdStr = autoReplyState.getBindingCurrentGroup(userId);
+    const selectedTopics = autoReplyState.getBindingSelectedTopics(userId);
+    if (!chatIdStr) return next();
+
+    const group = await prisma.telegramGroup.findUnique({ where: { chatId: BigInt(chatIdStr) } });
+    if (!group) return next();
+
+    if (selectedTopics.length === 0) {
+      const pending = autoReplyState.getPendingBindings(userId);
+      pending.push({
+        chatId: chatIdStr,
+        chatTitle: group.title,
+        topicId: null,
+        topicName: null,
+      });
+      autoReplyState.setPendingBindings(userId, pending);
+    } else {
+      const topics = await prisma.forumTopic.findMany({
+        where: { chatId: BigInt(chatIdStr), isClosed: false },
+      });
+      const pending = autoReplyState.getPendingBindings(userId);
+      for (const topicId of selectedTopics) {
+        const topic = topics.find(t => t.topicId === topicId);
+        pending.push({
+          chatId: chatIdStr,
+          chatTitle: group.title,
+          topicId,
+          topicName: topic?.name || `Topic ${topicId}`,
+        });
+      }
+      autoReplyState.setPendingBindings(userId, pending);
+    }
+
+    autoReplyState.setBindingScene(userId, 'review');
+    autoReplyState.setBindingRemoveMode(userId, false);
+    logger.info(`[BindingScene] user=${userId} TOPICS_CONFIRMED chatId=${chatIdStr} topics=${selectedTopics.length}`);
+    await showDestinationReview(ctx, userId);
+  });
+
+  // ─── Destination Scene: Review → Add Topic ──────────────
+  bot.action('ar:dest:add_topic', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const pending = autoReplyState.getPendingBindings(userId);
+    if (pending.length === 0) return;
+
+    const lastGroup = pending[pending.length - 1];
+    autoReplyState.setBindingCurrentGroup(userId, lastGroup.chatId);
+    autoReplyState.setBindingScene(userId, 'selecting_topic');
+    autoReplyState.setBindingSelectedTopics(userId, []);
+
+    const topics = await prisma.forumTopic.findMany({
+      where: { chatId: BigInt(lastGroup.chatId), isClosed: false },
+      orderBy: { topicId: 'asc' },
+    });
+    if (topics.length === 0) {
+      await ctx.reply('⚠️ این گروه تاپیکی ندارد.');
+      autoReplyState.setBindingScene(userId, 'review');
+      return;
+    }
+    await ctx.reply(
+      `📎 تاپیک‌های «${lastGroup.chatTitle}» را انتخاب کنید:`,
+      buildDestinationTopicKeyboard(topics),
+    );
+  });
+
+  // ─── Destination Scene: Review → Add Group ──────────────
+  bot.action('ar:dest:add_group', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    autoReplyState.setBindingScene(userId, 'selecting_group');
+    const groups = await prisma.telegramGroup.findMany({
+      where: { status: 'APPROVED', botIsAdmin: true },
+      orderBy: { addedAt: 'desc' },
+    });
+    await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
+  });
+
+  // ─── Destination Scene: Review → Remove Mode ────────────
+  bot.action('ar:dest:remove_mode', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const pending = autoReplyState.getPendingBindings(userId);
+    if (pending.length === 0) return;
+    autoReplyState.setBindingRemoveMode(userId, true);
+    logger.info(`[BindingScene] user=${userId} ENTER_REMOVE_MODE count=${pending.length}`);
+    const kb = buildDestinationRemoveKeyboard(pending.map(b => ({ chatTitle: b.chatTitle, topicName: b.topicName })));
+    try {
+      await ctx.editMessageReplyMarkup({ reply_markup: kb.reply_markup });
+    } catch {}
+  });
+
+  // ─── Destination Scene: Remove Specific Binding ─────────
+  bot.action(/^ar:dest:remove:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const idx = parseInt(ctx.match[1]);
+    const pending = autoReplyState.getPendingBindings(userId);
+    if (idx < 0 || idx >= pending.length) return;
+
+    const removed = pending.splice(idx, 1)[0];
+    autoReplyState.setPendingBindings(userId, pending);
+    logger.info(`[BindingScene] user=${userId} REMOVED idx=${idx} chat=${removed.chatTitle} topic=${removed.topicName}`);
+
+    if (pending.length === 0) {
+      autoReplyState.setBindingRemoveMode(userId, false);
+      autoReplyState.setBindingScene(userId, '');
+      await ctx.reply('⚠️ همه مقاصد حذف شدند. انتخاب گروه لغو شد.');
+      const msgId = autoReplyState.getEditMode(userId);
+      if (msgId) await showAutoReplyEditor(ctx, msgId);
+      return;
+    }
+
+    const kb = buildDestinationRemoveKeyboard(pending.map(b => ({ chatTitle: b.chatTitle, topicName: b.topicName })));
+    try {
+      await ctx.editMessageReplyMarkup({ reply_markup: kb.reply_markup });
+    } catch {}
+  });
+
+  // ─── Destination Scene: Back to Review ──────────────────
+  bot.action('ar:dest:back_to_review', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    autoReplyState.setBindingRemoveMode(userId, false);
+    await showDestinationReview(ctx, userId);
+  });
+
+  // ─── Destination Scene: Confirm & Persist ───────────────
+  bot.action('ar:dest:confirm', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = autoReplyState.getEditMode(userId);
+    const pending = autoReplyState.getPendingBindings(userId);
+    if (!msgId || pending.length === 0) return;
+
+    const bindingsData = pending.map(b => ({
+      chatId: BigInt(b.chatId),
+      topicId: b.topicId != null ? BigInt(b.topicId) : null,
+    }));
+
+    await autoReplyRepository.bulkCreateBindings(msgId, bindingsData);
+    autoReplyState.clearBindingScene(userId);
+
+    logger.info(`[BindingScene] user=${userId} PERSISTED msgId=${msgId} count=${bindingsData.length}`);
+    await ctx.reply(`✅ ${bindingsData.length} مقصد ذخیره شد.`);
+    await showAutoReplyEditor(ctx, msgId);
   });
 
   // ─── Content editing ─────────────────────────────────────
@@ -1079,10 +1360,11 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   bot.action(/^ar:goto:(\w+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const key = ctx.match[1];
-    const msgId = autoReplyState.getEditMode(ctx.from.id);
+    const userId = ctx.from.id;
+    const msgId = autoReplyState.getEditMode(userId);
     if (!msgId) return;
     if (key === 'keywords') {
-      autoReplyState.setKeywordMode(ctx.from.id, 'list');
+      autoReplyState.setKeywordMode(userId, 'list');
       await showKeywordPage(ctx, 'list');
     } else if (key === 'group') {
       const groups = await prisma.telegramGroup.findMany({
@@ -1093,10 +1375,15 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
         await ctx.reply('هیچ گروه تأییدشده‌ای وجود ندارد.');
         return;
       }
-      await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildGroupSelectKeyboard(groups));
+      autoReplyState.setBindingScene(userId, 'selecting_group');
+      autoReplyState.setBindingSelectedGroups(userId, []);
+      autoReplyState.setBindingSelectedTopics(userId, []);
+      autoReplyState.setPendingBindings(userId, []);
+      autoReplyState.setBindingRemoveMode(userId, false);
+      await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
     } else if (key === 'messages') {
-      autoReplyState.setEditingMessage(ctx.from.id, -1);
-      autoReplyState.setEditingContent(ctx.from.id, true);
+      autoReplyState.setEditingMessage(userId, -1);
+      autoReplyState.setEditingContent(userId, true);
       await ctx.reply('پیام جدید را ارسال کنید:', autoReplyAddMessageKeyboard());
     }
   });
@@ -1898,6 +2185,30 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     try {
       await ctx.telegram.editMessageText(ctx.chat.id, editorMsgId, null, text, { reply_markup });
     } catch {}
+  }
+
+  async function showDestinationReview(ctx: any, userId: number) {
+    const pending = autoReplyState.getPendingBindings(userId);
+    if (pending.length === 0) {
+      await ctx.reply('⚠️ هیچ مقصدی انتخاب نشده است.');
+      autoReplyState.setBindingScene(userId, '');
+      return;
+    }
+
+    const lines: string[] = ['📎 مقاصد انتخاب‌شده:', ''];
+    const grouped = new Map<string, { topicName: string | null }[]>();
+    for (const b of pending) {
+      if (!grouped.has(b.chatTitle)) grouped.set(b.chatTitle, []);
+      grouped.get(b.chatTitle)!.push({ topicName: b.topicName });
+    }
+    for (const [groupName, topics] of grouped) {
+      lines.push(`✅ ${groupName}`);
+      for (const t of topics) {
+        lines.push(t.topicName ? `  • ${t.topicName}` : '  • همه تاپیک‌ها');
+      }
+    }
+
+    await ctx.reply(lines.join('\n'), buildDestinationReviewKeyboard());
   }
 
   async function showAutoReplyEditor(ctx: any, id: number) {

@@ -6,6 +6,13 @@ function arKey(userId: number, field: string) {
   return `${PREFIX}${userId}:${field}`;
 }
 
+export interface PendingBinding {
+  chatId: string;
+  chatTitle: string;
+  topicId: number | null;
+  topicName: string | null;
+}
+
 export const autoReplyState = {
   setCreating(userId: number) {
     cache.setPermanent(arKey(userId, 'creating'), true);
@@ -93,7 +100,54 @@ export const autoReplyState = {
     return cache.get<number>(arKey(userId, 'kw_editing'));
   },
 
-  // ─── Binding selection state ────────────────────────────
+  // ─── Binding scene state ────────────────────────────────
+
+  setBindingScene(userId: number, step: string) {
+    cache.setPermanent(arKey(userId, 'binding_scene'), step);
+  },
+  getBindingScene(userId: number): string {
+    return cache.get<string>(arKey(userId, 'binding_scene')) || '';
+  },
+
+  setBindingSelectedGroups(userId: number, groups: string[]) {
+    cache.setPermanent(arKey(userId, 'binding_sel_groups'), JSON.stringify(groups));
+  },
+  getBindingSelectedGroups(userId: number): string[] {
+    const raw = cache.get<string>(arKey(userId, 'binding_sel_groups'));
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setBindingSelectedTopics(userId: number, topics: number[]) {
+    cache.setPermanent(arKey(userId, 'binding_sel_topics'), JSON.stringify(topics));
+  },
+  getBindingSelectedTopics(userId: number): number[] {
+    const raw = cache.get<string>(arKey(userId, 'binding_sel_topics'));
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setPendingBindings(userId: number, bindings: PendingBinding[]) {
+    cache.setPermanent(arKey(userId, 'binding_pending'), JSON.stringify(bindings));
+  },
+  getPendingBindings(userId: number): PendingBinding[] {
+    const raw = cache.get<string>(arKey(userId, 'binding_pending'));
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setBindingRemoveMode(userId: number, value: boolean) {
+    cache.setPermanent(arKey(userId, 'binding_remove_mode'), value);
+  },
+  isBindingRemoveMode(userId: number): boolean {
+    return cache.get<boolean>(arKey(userId, 'binding_remove_mode')) || false;
+  },
+
+  setBindingCurrentGroup(userId: number, chatId: string) {
+    cache.setPermanent(arKey(userId, 'binding_cur_group'), chatId);
+  },
+  getBindingCurrentGroup(userId: number): string {
+    return cache.get<string>(arKey(userId, 'binding_cur_group')) || '';
+  },
+
+  // ─── Legacy binding state (kept for backward compat) ─────
 
   setSelectedGroup(userId: number, chatId: bigint) {
     cache.setPermanent(arKey(userId, 'bind_group'), chatId.toString());
@@ -248,11 +302,24 @@ export const autoReplyState = {
     }
   },
 
+  clearBindingScene(userId: number) {
+    const fields = [
+      'binding_scene', 'binding_sel_groups', 'binding_sel_topics',
+      'binding_pending', 'binding_remove_mode', 'binding_cur_group',
+      'bind_group', 'bind_topics', 'selecting_topics',
+    ];
+    for (const field of fields) {
+      cache.del(arKey(userId, field));
+    }
+  },
+
   clearAll(userId: number) {
     const fields = [
       'creating', 'editing_field', 'editing_message', 'selected_message',
       'editing_title', 'editing_content', 'edit_mode', 'delete_confirm',
       'mgmt_mode', 'kw_mode', 'kw_creating', 'kw_editing',
+      'binding_scene', 'binding_sel_groups', 'binding_sel_topics',
+      'binding_pending', 'binding_remove_mode', 'binding_cur_group',
       'bind_group', 'bind_topics', 'selecting_topics',
       'btn_editor_mode', 'btn_editor_row', 'btn_editor_col',
       'pbedit_editor_msg_id', 'btn_mode', 'btn_state', 'btn_row', 'btn_col',

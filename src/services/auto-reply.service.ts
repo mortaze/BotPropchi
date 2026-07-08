@@ -184,6 +184,7 @@ class AutoReplyService {
 
     const chatId = ctx.chat.id;
     const threadId = ctx.message?.message_thread_id;
+    const originalMessageId = ctx.message?.message_id;
     const messages = ar.messages || [];
     const allButtons = ar.buttons || [];
 
@@ -194,7 +195,9 @@ class AutoReplyService {
 
       const extra: any = {};
       if (threadId) extra.message_thread_id = threadId;
-      if (i === 0) extra.reply_parameters = { message_id: ctx.message.message_id };
+      if (i === 0 && originalMessageId) {
+        extra.reply_parameters = { message_id: originalMessageId, allow_sending_without_reply: true };
+      }
       if (inlineKeyboard) extra.reply_markup = { inline_keyboard: inlineKeyboard };
 
       const text = message.text || '';

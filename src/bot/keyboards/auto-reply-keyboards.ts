@@ -100,7 +100,48 @@ export function autoReplySingleMessageInlineKeyboard(
   return Markup.inlineKeyboard(rows);
 }
 
-// ─── Group Selection (Reply Keyboard) ─────────────────────
+// ─── Destination Group Selection (Reply Keyboard) ────────
+
+export function buildDestinationGroupKeyboard(groups: any[]) {
+  const rows: string[][] = groups.map((g) => [g.title]);
+  rows.push(['🔙 بازگشت', '❌ لغو']);
+  return Markup.keyboard(rows).resize().persistent();
+}
+
+// ─── Destination Topic Selection (Reply Keyboard) ────────
+
+export function buildDestinationTopicKeyboard(topics: any[]) {
+  const rows: string[][] = [];
+  for (const t of topics) {
+    rows.push([t.name]);
+  }
+  rows.push(['🔙 بازگشت', '❌ لغو']);
+  return Markup.keyboard(rows).resize().persistent();
+}
+
+// ─── Destination Review (Inline Keyboard) ────────────────
+
+export function buildDestinationReviewKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('➕ افزودن تاپیک', 'ar:dest:add_topic')],
+    [Markup.button.callback('➕ افزودن گروه', 'ar:dest:add_group')],
+    [Markup.button.callback('🗑 حذف', 'ar:dest:remove_mode')],
+    [Markup.button.callback('✅ تایید', 'ar:dest:confirm')],
+  ]);
+}
+
+// ─── Destination Remove Mode (Inline Keyboard) ───────────
+
+export function buildDestinationRemoveKeyboard(bindings: { chatTitle: string; topicName: string | null }[]) {
+  const rows: any[][] = bindings.map((b, idx) => {
+    const label = b.topicName ? `${b.chatTitle} • ${b.topicName}` : b.chatTitle;
+    return [Markup.button.callback(`❌ ${label}`, `ar:dest:remove:${idx}`)];
+  });
+  rows.push([Markup.button.callback('✅ بازگشت', 'ar:dest:back_to_review')]);
+  return Markup.inlineKeyboard(rows);
+}
+
+// ─── Legacy Group Selection (Reply Keyboard) ─────────────
 
 export function autoReplyGroupReplyKeyboard(groups: any[]) {
   const rows: string[][] = groups.map((g) => [g.title]);
@@ -108,7 +149,7 @@ export function autoReplyGroupReplyKeyboard(groups: any[]) {
   return Markup.keyboard(rows).resize().persistent();
 }
 
-// ─── Topic Selection (Reply Keyboard) ─────────────────────
+// ─── Legacy Topic Selection (Reply Keyboard) ─────────────
 
 export function autoReplyTopicReplyKeyboard(topics: any[]) {
   const rows: string[][] = [['📌 همه تاپیک‌ها']];
@@ -119,7 +160,7 @@ export function autoReplyTopicReplyKeyboard(topics: any[]) {
   return Markup.keyboard(rows).resize().persistent();
 }
 
-// ─── Group Selection (Inline Keyboard) ────────────────────
+// ─── Legacy Group Selection (Inline Keyboard) ────────────
 
 export function buildGroupSelectKeyboard(groups: any[]) {
   const rows: any[][] = groups.map((g: any) => [
@@ -129,7 +170,7 @@ export function buildGroupSelectKeyboard(groups: any[]) {
   return Markup.inlineKeyboard(rows);
 }
 
-// ─── Topic Multi-Select (Inline Keyboard) ─────────────────
+// ─── Legacy Topic Multi-Select (Inline Keyboard) ─────────
 
 export function buildTopicSelectKeyboard(topics: any[], selectedIds: number[]) {
   const rows: any[][] = [];
