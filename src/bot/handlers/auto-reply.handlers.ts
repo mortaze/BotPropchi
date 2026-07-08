@@ -370,12 +370,12 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       return;
     }
 
-    // Step 4: Forum group — sync topics
+    // Step 4: Forum group — sync topics (exclude General topic, topicId=1)
     logger.info(`[AutoReply] TOPIC_SYNC_STARTED user=${userId} chatId=${group.chatId}`);
-    const topics = await prisma.forumTopic.findMany({
-      where: { chatId: group.chatId, isClosed: false },
+    const topics = (await prisma.forumTopic.findMany({
+      where: { chatId: group.chatId, isClosed: false, NOT: { topicId: 1 } },
       orderBy: { topicId: 'asc' },
-    });
+    })).filter(t => t.name !== 'General');
 
     for (const t of topics) {
       logger.info(`[AutoReply] TOPIC_FOUND user=${userId} threadId=${t.topicId} title=${t.name}`);
