@@ -1076,6 +1076,22 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     }
 
     await scheduledMessageRepository.bulkCreateBindings(msgId, bindingsData);
+
+    // Also update the ScheduledMessage record's targetChatId/targetTopicId
+    // from the first non-global binding (for backward compatibility)
+    const firstBinding = bindingsData.find(b => !b.isGlobal);
+    if (firstBinding) {
+      await scheduledMessageRepository.update(msgId, {
+        targetChatId: firstBinding.chatId,
+        targetTopicId: firstBinding.topicId != null ? BigInt(firstBinding.topicId) : null,
+      });
+    } else {
+      await scheduledMessageRepository.update(msgId, {
+        targetChatId: null,
+        targetTopicId: null,
+      });
+    }
+
     scheduledMessageState.clearBindingScene(userId);
 
     logger.info(`[SchedMsg] BINDING_UPDATED user=${userId} msgId=${msgId} total=${bindingsData.length}`);
@@ -1848,23 +1864,41 @@ async function showPostEditor(ctx: any, id: number) {
   scheduledMessageState.setEditMode(ctx.from.id, id);
   scheduledMessageState.setManagementMode(ctx.from.id, true);
 
-  // Resolve group name from DB
+  // Resolve group name from bindings table (source of truth)
   let groupName = '';
-  if (msg.targetChatId) {
+  let topicName = '';
+  const bindings = await scheduledMessageRepository.getBindingsByScheduledMessage(id);
+  if (bindings.length > 0) {
+    const firstBinding = bindings[0];
+    if (firstBinding.isGlobal) {
+      groupName = '🌍 همه گروه‌ها';
+    } else {
+      const group = await prisma.telegramGroup.findUnique({ where: { chatId: firstBinding.chatId } });
+      groupName = group?.title || String(firstBinding.chatId);
+    }
+    if (firstBinding.topicId != null) {
+      const topic = await prisma.forumTopic.findUnique({
+        where: { chatId_topicId: { chatId: firstBinding.chatId, topicId: Number(firstBinding.topicId) } },
+      });
+      topicName = topic?.name || `Topic ${firstBinding.topicId}`;
+    } else {
+      topicName = firstBinding.isGlobal ? '' : 'همه تاپیک‌ها';
+    }
+  } else if (msg.targetChatId) {
+    // Fallback to old fields if no bindings exist
     const group = await prisma.telegramGroup.findUnique({ where: { chatId: msg.targetChatId } });
     groupName = group?.title || String(msg.targetChatId);
+    if (msg.targetTopicId) {
+      const topic = await prisma.forumTopic.findUnique({
+        where: { chatId_topicId: { chatId: msg.targetChatId, topicId: Number(msg.targetTopicId) } },
+      });
+      topicName = topic?.name || `Topic ${msg.targetTopicId}`;
+    } else {
+      topicName = 'همه تاپیک‌ها';
+    }
   }
   (msg as any)._groupName = groupName || '—';
-
-  // Resolve topic name from DB
-  let topicName = '';
-  if (msg.targetTopicId && msg.targetChatId) {
-    const topic = await prisma.forumTopic.findUnique({
-      where: { chatId_topicId: { chatId: msg.targetChatId, topicId: Number(msg.targetTopicId) } },
-    });
-    topicName = topic?.name || `Topic ${msg.targetTopicId}`;
-  }
-  (msg as any)._topicName = msg.targetTopicId ? topicName : (msg.targetChatId ? 'همه تاپیک‌ها' : '—');
+  (msg as any)._topicName = topicName || '—';
 
   const text = formatScheduledMessageInfo(msg);
   const messages = msg.messages || [];
