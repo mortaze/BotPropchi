@@ -448,7 +448,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     }
 
     // Bug #8: If no state is active, pass through
-    if (!isCreating && !isEditingTitle && !isEditingContent && !scheduleStep) {
+    const bindingScene = scheduledMessageState.getBindingScene(userId);
+    if (!isCreating && !isEditingTitle && !isEditingContent && !scheduleStep && !bindingScene) {
       // Check if text matches a post title in the reply keyboard list
       if (scheduledMessageState.isManagementMode(userId) && !scheduledMessageState.getEditMode(userId)) {
         const listResult = await scheduledMessageRepository.findAll({ page: 1, limit: 100 });
