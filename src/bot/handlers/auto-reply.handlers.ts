@@ -381,8 +381,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
     logger.info(`[AutoReply] TOPIC_SYNC_COMPLETED user=${userId} chatId=${group.chatId} count=${topics.length}`);
 
-    // Step 5: If no topics in DB, they'll appear as user sends messages in the group
-    // Build pending binding with restored topics
+    // Step 5: ALWAYS show Reply Keyboard with all topics
+    // If existing selections exist, also show inline status message
     const pending = autoReplyState.getPendingBindings(userId);
     const filtered = pending.filter(b => b.chatId !== group.chatId.toString());
     filtered.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: true, topics: [...existingTopics] });
@@ -390,15 +390,15 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     autoReplyState.setCurrentGroupForTopic(userId, group.chatId.toString());
     autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
 
+    logger.info(`[AutoReply] SHOW_TOPIC_MENU user=${userId} chatId=${group.chatId} allTopics=${topics.length} existingSelections=${existingTopics.length}`);
+    await ctx.reply(`📎 تاپیک‌های «${group.title}» را انتخاب کنید:`, buildDestinationTopicKeyboard(topics));
+
     if (existingTopics.length > 0) {
       logger.info(`[AutoReply] RESTORED_FROM_DB user=${userId} chatId=${group.chatId} topics=${existingTopics.length}`);
       const statusText = buildTopicStatusText(group.title, existingTopics);
       const inlineKb = buildTopicStatusInlineKeyboard(existingTopics);
       const sent = await ctx.reply(statusText, inlineKb);
       autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
-    } else {
-      logger.info(`[AutoReply] SHOW_TOPIC_MENU user=${userId} chatId=${group.chatId} topics=${topics.length}`);
-      await ctx.reply(`📎 تاپیک‌های «${group.title}» را انتخاب کنید:`, buildDestinationTopicKeyboard(topics));
     }
   });
 
