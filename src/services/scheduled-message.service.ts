@@ -233,16 +233,40 @@ class ScheduledMessageService {
   }
 
   async sendToGroup(msg: any) {
-    if (!this.bot || !msg.targetChatId) {
-      logger.warn(`[SchedMsg] SKIP msg=${msg.id}: bot=${!!this.bot} chatId=${msg.targetChatId}`);
+    if (!this.bot) {
+      logger.warn(`[SchedMsg] SKIP msg=${msg.id}: bot not set`);
       return;
     }
 
-    const chatId = Number(msg.targetChatId);
-    const threadId = msg.targetTopicId ? Number(msg.targetTopicId) : undefined;
+    // Read all bindings from ScheduledMessageBinding table (multi-topic support)
+    const bindings = await prisma.scheduledMessageBinding.findMany({
+      where: { scheduledMessageId: msg.id, isActive: true },
+      orderBy: [{ chatId: 'asc' }, { topicId: 'asc' }],
+    });
 
-    logger.info(`[SchedMsg] SEND_START msg=${msg.id} chatId=${chatId} threadId=${threadId ?? 'none'} msgs=${msg.messages?.length || 0}`);
+    // Fallback to old single-target fields if no bindings exist
+    if (bindings.length === 0) {
+      if (!msg.targetChatId) {
+        logger.warn(`[SchedMsg] SKIP msg=${msg.id}: no bindings and no targetChatId`);
+        return;
+      }
+      const chatId = Number(msg.targetChatId);
+      const threadId = msg.targetTopicId ? Number(msg.targetTopicId) : undefined;
+      await this.sendToSingleTarget(msg, chatId, threadId);
+      return;
+    }
 
+    logger.info(`[SchedMsg] SEND_START msg=${msg.id} bindings=${bindings.length} msgs=${msg.messages?.length || 0}`);
+
+    for (const binding of bindings) {
+      const chatId = Number(binding.chatId);
+      const threadId = binding.topicId != null ? Number(binding.topicId) : undefined;
+      logger.info(`[SchedMsg] SEND_BINDING msg=${msg.id} chatId=${chatId} threadId=${threadId ?? 'none'}`);
+      await this.sendToSingleTarget(msg, chatId, threadId);
+    }
+  }
+
+  private async sendToSingleTarget(msg: any, chatId: number, threadId?: number) {
     try {
       const messages = msg.messages || [];
       for (let i = 0; i < messages.length; i++) {
@@ -412,10 +436,15 @@ class ScheduledMessageService {
   async testSend(id: number) {
     const msg = await scheduledMessageRepository.findById(id);
     if (!msg) throw new Error('Post not found');
-    if (!msg.targetChatId) throw new Error('targetChatId is missing');
+
+    // Check if bindings exist or fallback to targetChatId
+    const bindings = await prisma.scheduledMessageBinding.findMany({
+      where: { scheduledMessageId: id, isActive: true },
+    });
+    if (bindings.length === 0 && !msg.targetChatId) throw new Error('No bindings and no targetChatId');
     if ((msg.messages?.length || 0) === 0) throw new Error('No messages');
 
-    logger.info(`[SchedMsg] TEST_SEND msg=${id}`);
+    logger.info(`[SchedMsg] TEST_SEND msg=${id} bindings=${bindings.length}`);
     await this.sendToGroup(msg);
   }
 

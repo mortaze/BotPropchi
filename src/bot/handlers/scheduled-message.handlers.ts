@@ -730,11 +730,11 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
         return;
       }
 
-      // Forum group — sync topics
-      const topics = await prisma.forumTopic.findMany({
-        where: { chatId: matched.chatId, isClosed: false },
+      // Forum group — sync topics (exclude General topic, topicId=1)
+      const topics = (await prisma.forumTopic.findMany({
+        where: { chatId: matched.chatId, isClosed: false, NOT: { topicId: 1 } },
         orderBy: { topicId: 'asc' },
-      });
+      })).filter(t => t.name !== 'General');
       logger.info(`[SchedMsg] TOPIC_SYNC_COMPLETED user=${userId} chatId=${chatId} count=${topics.length}`);
 
       // Build pending binding with restored topics
