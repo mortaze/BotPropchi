@@ -1249,12 +1249,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const schedMsgId = parseInt(ctx.match[1]);
     const row = parseInt(ctx.match[2]);
     const col = parseInt(ctx.match[3]);
-    logger.info(`[POPUP_TRACE] Handler=SchedPopup Regex=/^sched:user:popup:(\\d+):(\\d+):(\\d+)$/ CallbackData=${ctx.callbackQuery?.data} Matched=true`);
+    logger.info(`[POPUP_TRACE] Handler=SchedPopup schedMsgId=${schedMsgId} row=${row} col=${col} CallbackData=${ctx.callbackQuery?.data}`);
     try {
+      // Query by scheduledMessageId (what the renderer uses as postId)
       const buttons = await prisma.scheduledMessageButton.findMany({
         where: { scheduledMessageId: schedMsgId },
         orderBy: [{ row: 'asc' }, { col: 'asc' }],
       });
+      logger.info(`[POPUP_TRACE] Found ${buttons.length} buttons for schedMsgId=${schedMsgId}`);
       const grid: any[][] = [];
       for (const btn of buttons) {
         const r = btn.row ?? 0;
@@ -1263,11 +1265,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
         grid[r][c] = btn;
       }
       const btn = grid[row]?.[col];
-      if (btn && (btn.type || '').toUpperCase() === 'POPUP') {
+      if (btn) {
+        logger.info(`[POPUP_TRACE] Button found: type=${btn.type} value="${(btn.value || '').substring(0, 80)}"`);
         await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
-      } else if (btn) {
-        await ctx.answerCbQuery(btn.value || btn.text || '✅', { show_alert: true });
       } else {
+        logger.warn(`[POPUP_TRACE] Button NOT found at grid[${row}][${col}] for schedMsgId=${schedMsgId}`);
         await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
       }
     } catch (err) {

@@ -250,8 +250,9 @@ class ScheduledMessageService {
         logger.info(`[SchedMsg] SEND msg=${msg.id} [${i + 1}/${messages.length}] type=${message.type} textLen=${(message.text || '').length} entities=${(message.entities as any[])?.length || 0}`);
 
         // Load buttons for this specific message from DB
+        // Buttons are stored with scheduledMessageId, not messageId
         const buttonsFromDb = await prisma.scheduledMessageButton.findMany({
-          where: { messageId: message.id },
+          where: { scheduledMessageId: msg.id },
           orderBy: [{ row: 'asc' }, { col: 'asc' }],
         });
 
