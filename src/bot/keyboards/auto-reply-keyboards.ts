@@ -115,40 +115,26 @@ export function buildDestinationTopicKeyboard(topics: any[]) {
   for (const t of topics) {
     rows.push([t.name]);
   }
-  rows.push(['🔙 بازگشت', '❌ لغو']);
+  rows.push(['⬅️ بازگشت']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
-// ─── Destination: Topic Review Inline Keyboard ────────────
+// ─── Destination: Status Message Inline Keyboard ──────────
+// Shows selected topics as ❌ remove buttons + ✅ confirm
 
-export function buildTopicReviewInlineKeyboard(topics: { topicId: number; topicName: string }[]) {
-  const rows: any[][] = [];
-  for (const t of topics) {
-    rows.push([Markup.button.callback(`✅ ${t.topicName}`, `ar:dest:topic noop:${t.topicId}`)]);
-  }
-  rows.push([
-    Markup.button.callback('✅ تایید', 'ar:dest:confirm_topics'),
-    Markup.button.callback('🗑 حذف', 'ar:dest:enter_remove'),
-  ]);
-  return Markup.inlineKeyboard(rows);
-}
-
-// ─── Destination: Remove Mode Inline Keyboard ─────────────
-
-export function buildTopicRemoveInlineKeyboard(topics: { topicId: number; topicName: string }[]) {
+export function buildTopicStatusInlineKeyboard(topics: { topicId: number; topicName: string }[]) {
   const rows: any[][] = [];
   for (const t of topics) {
     rows.push([Markup.button.callback(`❌ ${t.topicName}`, `ar:dest:remove_topic:${t.topicId}`)]);
   }
-  rows.push([Markup.button.callback('✅ بازگشت', 'ar:dest:exit_remove')]);
+  rows.push([Markup.button.callback('✅ تایید نهایی', 'ar:dest:final_confirm')]);
   return Markup.inlineKeyboard(rows);
 }
 
-// ─── Destination: Final Review Inline Keyboard ────────────
+// ─── Destination: Non-Forum Confirm Inline Keyboard ───────
 
-export function buildFinalReviewKeyboard() {
+export function buildNonForumConfirmKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('➕ افزودن گروه', 'ar:dest:add_group')],
     [Markup.button.callback('✅ تایید نهایی', 'ar:dest:final_confirm')],
   ]);
 }
