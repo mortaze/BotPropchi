@@ -744,17 +744,15 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       if (!msgId) return next();
       if (text === 'لغو' || text === '❌ لغو') {
         autoReplyState.setKeywordCreating(userId, false);
-        const keywords = await autoReplyService.listKeywords(msgId);
-        const page = renderKeywordPage(keywords, 'list');
-        await ctx.reply('❌ ایجاد کلمه لغو شد.', { reply_markup: page.reply_markup });
+        autoReplyState.setKeywordMode(userId, '');
+        await showAutoReplyEditor(ctx, msgId);
         return;
       }
       try {
         await autoReplyService.addKeyword(msgId, text);
         autoReplyState.setKeywordCreating(userId, false);
-        const keywords = await autoReplyService.listKeywords(msgId);
-        const page = renderKeywordPage(keywords, 'list');
-        await ctx.reply(`✅ کلمه "${text}" با موفقیت اضافه شد.`, { reply_markup: page.reply_markup });
+        autoReplyState.setKeywordMode(userId, '');
+        await showAutoReplyEditor(ctx, msgId);
       } catch (err: any) {
         await ctx.reply(`❌ خطا: ${err.message}`);
       }
@@ -768,19 +766,15 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       if (!msgId) return next();
       if (text === 'لغو' || text === '❌ لغو') {
         autoReplyState.setKeywordEditing(userId, 0);
-        autoReplyState.setKeywordMode(userId, 'list');
-        const keywords = await autoReplyService.listKeywords(msgId);
-        const page = renderKeywordPage(keywords, 'list');
-        await ctx.reply('❌ ویرایش کلمه لغو شد.', { reply_markup: page.reply_markup });
+        autoReplyState.setKeywordMode(userId, '');
+        await showAutoReplyEditor(ctx, msgId);
         return;
       }
       try {
         await autoReplyService.updateKeyword(kwEditing, text);
         autoReplyState.setKeywordEditing(userId, 0);
-        autoReplyState.setKeywordMode(userId, 'list');
-        const keywords = await autoReplyService.listKeywords(msgId);
-        const page = renderKeywordPage(keywords, 'list');
-        await ctx.reply(`✅ کلمه بروزرسانی شد.`, { reply_markup: page.reply_markup });
+        autoReplyState.setKeywordMode(userId, '');
+        await showAutoReplyEditor(ctx, msgId);
       } catch (err: any) {
         await ctx.reply(`❌ خطا: ${err.message}`);
       }
