@@ -1313,13 +1313,28 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       return;
     }
 
-    // Create mode — insert new button below clicked one
-    if (!btn) return;
+    // Create mode — insert new button
     const resolved = await resolveAutoReplyForMessage(msgId);
     if (!resolved) return;
 
+    if (!btn) {
+      // Empty grid: {+} was clicked — create first button at (0, 0)
+      await autoReplyService.addButton(resolved.autoReplyId, {
+        text: 'دکمه جدید',
+        type: 'URL',
+        value: '',
+        row: 0,
+        col: 0,
+        messageId: msgId,
+      });
+      autoReplyState.setButtonRow(userId, 0);
+      autoReplyState.setButtonCol(userId, 0);
+      autoReplyState.setButtonMode(userId, 'edit');
+      await refreshButtonEditor(ctx, msgId);
+      return;
+    }
+
     const existingButtons = await autoReplyRepository.findButtonsByMessage(msgId);
-    const existingGrid = buttonsToGrid(existingButtons);
     const shiftedButtons = existingButtons.filter((b: any) => b.row > row);
     for (const b of shiftedButtons) {
       await autoReplyService.updateButton(b.id, { row: b.row + 1, col: 0 });
