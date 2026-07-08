@@ -1379,6 +1379,7 @@ model AutoReplyBinding {
   autoReplyId   Int
   chatId        BigInt
   topicId       BigInt?
+  isGlobal      Boolean   @default(false)
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

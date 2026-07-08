@@ -212,19 +212,19 @@ export const autoReplyRepository = {
     return prisma.autoReplyBinding.deleteMany({ where: { autoReplyId } });
   },
 
-  async bulkCreateBindings(autoReplyId: number, bindings: { chatId: bigint; topicId: number | null }[]) {
+  async bulkCreateBindings(autoReplyId: number, bindings: { chatId: bigint; topicId: number | null; isGlobal?: boolean }[]) {
     if (bindings.length === 0) return;
     await prisma.autoReplyBinding.deleteMany({ where: { autoReplyId } });
     for (const b of bindings) {
-      if (b.topicId != null) {
-        await prisma.autoReplyBinding.create({
-          data: { autoReplyId, chatId: b.chatId, topicId: BigInt(b.topicId), isActive: true },
-        });
-      } else {
-        await prisma.autoReplyBinding.create({
-          data: { autoReplyId, chatId: b.chatId, topicId: null, isActive: true },
-        });
-      }
+      await prisma.autoReplyBinding.create({
+        data: {
+          autoReplyId,
+          chatId: b.chatId,
+          topicId: b.topicId != null ? BigInt(b.topicId) : null,
+          isGlobal: b.isGlobal ?? false,
+          isActive: true,
+        },
+      });
     }
   },
 
@@ -235,11 +235,16 @@ export const autoReplyRepository = {
         status: PostStatus.PUBLISHED,
         bindings: {
           some: {
-            chatId,
             isActive: true,
-            ...(topicId != null
-              ? { OR: [{ topicId: BigInt(topicId) }, { topicId: null }] }
-              : { topicId: null }),
+            OR: [
+              { isGlobal: true },
+              {
+                chatId,
+                ...(topicId != null
+                  ? { OR: [{ topicId: BigInt(topicId) }, { topicId: null }] }
+                  : { topicId: null }),
+              },
+            ],
           },
         },
       },

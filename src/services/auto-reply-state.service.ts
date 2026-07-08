@@ -11,6 +11,7 @@ export interface PendingBinding {
   chatTitle: string;
   isForum: boolean;
   topics: { topicId: number; topicName: string }[];
+  isGlobal?: boolean;
 }
 
 export const autoReplyState = {

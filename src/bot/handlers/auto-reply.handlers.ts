@@ -372,22 +372,10 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     // Step 4: Forum group — sync topics
     logger.info(`[AutoReply] TOPIC_SYNC_STARTED user=${userId} chatId=${group.chatId}`);
-    let topics = await prisma.forumTopic.findMany({
+    const topics = await prisma.forumTopic.findMany({
       where: { chatId: group.chatId, isClosed: false },
       orderBy: { topicId: 'asc' },
     });
-
-    // Ensure general topic (thread_id=1) always exists in the list
-    const hasGeneral = topics.some(t => t.topicId === 1);
-    if (!hasGeneral) {
-      const generalTopic = await prisma.forumTopic.upsert({
-        where: { chatId_topicId: { chatId: group.chatId, topicId: 1 } },
-        update: { name: 'General', isClosed: false },
-        create: { chatId: group.chatId, topicId: 1, name: 'General' },
-      });
-      topics.unshift(generalTopic);
-      logger.info(`[AutoReply] GENERAL_TOPIC_CREATED user=${userId} chatId=${group.chatId}`);
-    }
 
     for (const t of topics) {
       logger.info(`[AutoReply] TOPIC_FOUND user=${userId} threadId=${t.topicId} title=${t.name}`);
@@ -443,6 +431,22 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     const chatIdStr = autoReplyState.getCurrentGroupForTopic(userId);
     if (!chatIdStr) return next();
+
+    // Handle "🌍 همه گروه‌ها" — global binding (no group/topic)
+    if (text === '🌍 همه گروه‌ها') {
+      const pending = autoReplyState.getPendingBindings(userId);
+      // Remove any existing global binding
+      const filtered = pending.filter(b => !b.isGlobal);
+      filtered.push({ chatId: '0', chatTitle: '🌍 همه گروه‌ها', isForum: false, topics: [], isGlobal: true });
+      autoReplyState.setPendingBindings(userId, filtered);
+      autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
+      logger.info(`[AutoReply] GLOBAL_BINDING_SELECTED user=${userId}`);
+      const statusText = '🌍 پاسخ خودکار در تمام گروه‌های فعال اعمال خواهد شد.';
+      const inlineKb = buildTopicStatusInlineKeyboard([]);
+      const sent = await ctx.reply(statusText, inlineKb);
+      autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
+      return;
+    }
 
     // Strip 📂 prefix and find topic by name in DB
     const cleanName = text.replace(/^📂 /, '');
@@ -519,9 +523,11 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const pending = autoReplyState.getPendingBindings(userId);
     if (!msgId || pending.length === 0) return;
 
-    const bindingsData: { chatId: bigint; topicId: number | null }[] = [];
+    const bindingsData: { chatId: bigint; topicId: number | null; isGlobal?: boolean }[] = [];
     for (const b of pending) {
-      if (!b.isForum || b.topics.length === 0) {
+      if (b.isGlobal) {
+        bindingsData.push({ chatId: BigInt(0), topicId: null, isGlobal: true });
+      } else if (!b.isForum || b.topics.length === 0) {
         bindingsData.push({ chatId: BigInt(b.chatId), topicId: null });
       } else {
         for (const t of b.topics) {
@@ -2074,12 +2080,16 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   async function showDestinationSummary(ctx: any, userId: number, pending: any[]) {
     const lines = ['✅ مقصدهای انتخاب‌شده:', ''];
     for (const b of pending) {
-      lines.push(`📌 ${b.chatTitle}`);
-      if (!b.isForum || b.topics.length === 0) {
-        lines.push('  • (بدون تاپیک)');
+      if (b.isGlobal) {
+        lines.push('🌍 همه گروه‌ها (سراسری)');
       } else {
-        for (const t of b.topics) {
-          lines.push(`  • ${t.topicName}`);
+        lines.push(`📌 ${b.chatTitle}`);
+        if (!b.isForum || b.topics.length === 0) {
+          lines.push('  • (بدون تاپیک)');
+        } else {
+          for (const t of b.topics) {
+            lines.push(`  • ${t.topicName}`);
+          }
         }
       }
     }
@@ -2099,12 +2109,15 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const bindings = await autoReplyRepository.getBindingsByAutoReply(id);
     const bindingLines: string[] = [];
     const groupedByChat = new Map<string, bigint[]>();
+    let hasGlobal = false;
     for (const b of bindings) {
+      if (b.isGlobal) { hasGlobal = true; continue; }
       const key = b.chatId.toString();
       if (!groupedByChat.has(key)) groupedByChat.set(key, []);
       if (b.topicId != null) groupedByChat.get(key)!.push(b.topicId);
     }
 
+    if (hasGlobal) bindingLines.push('  🌍 همه گروه‌ها (سراسری)');
     for (const [chatIdStr, topicIds] of groupedByChat) {
       const group = await prisma.telegramGroup.findUnique({ where: { chatId: BigInt(chatIdStr) } });
       const groupName = group?.title || chatIdStr;
@@ -2124,6 +2137,7 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
 
     const bindingSummaryLines: string[] = [];
     if (bindings.length > 0) {
+      if (hasGlobal) bindingSummaryLines.push('🌍 همه گروه‌ها (سراسری)');
       for (const [chatIdStr, topicIds] of groupedByChat) {
         const group = await prisma.telegramGroup.findUnique({ where: { chatId: BigInt(chatIdStr) } });
         const groupName = group?.title || chatIdStr;

@@ -109,10 +109,10 @@ export function buildDestinationGroupKeyboard(groups: any[]) {
 }
 
 // ─── Destination: Topic Reply Keyboard ────────────────────
-// Topics come from DB (ForumTopic table) — includes real general topic
+// Includes "🌍 همه گروه‌ها" as global option + real topics from DB
 
 export function buildDestinationTopicKeyboard(topics: { topicId: number; name: string }[]) {
-  const rows: string[][] = [];
+  const rows: string[][] = [['🌍 همه گروه‌ها']];
   for (const t of topics) {
     rows.push([`📂 ${t.name}`]);
   }
