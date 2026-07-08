@@ -109,18 +109,18 @@ export function buildDestinationGroupKeyboard(groups: any[]) {
 }
 
 // ─── Destination: Topic Reply Keyboard ────────────────────
+// Includes "General" (topicId=0) for non-topic messages
 
 export function buildDestinationTopicKeyboard(topics: any[]) {
-  const rows: string[][] = [];
+  const rows: string[][] = [['📂 General']];
   for (const t of topics) {
-    rows.push([t.name]);
+    rows.push([`📂 ${t.name}`]);
   }
   rows.push(['⬅️ بازگشت']);
   return Markup.keyboard(rows).resize().persistent();
 }
 
 // ─── Destination: Status Message Inline Keyboard ──────────
-// Shows selected topics as ❌ remove buttons + ✅ confirm
 
 export function buildTopicStatusInlineKeyboard(topics: { topicId: number; topicName: string }[]) {
   const rows: any[][] = [];

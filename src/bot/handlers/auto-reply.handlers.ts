@@ -261,8 +261,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
   });
 
   // ─── Destination Binding Flow ─────────────────────────────
-  // SELECT_GROUP → SELECT_TOPIC → CONFIRM
-  // Reply Keyboard for selection, Inline Keyboard for management
+  // Idempotent: re-entry always restores from DB, never loses data
+  // Source of truth: AutoReplyBinding table, not session/cache
 
   // ─── Start: 👥 انتخاب گروه ─────────────────────────────
   bot.hears('👥 انتخاب گروه', async (ctx: any, next) => {
@@ -279,7 +279,6 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     }
     autoReplyState.clearBindingScene(userId);
     autoReplyState.setBindingScene(userId, 'SELECT_GROUP');
-    autoReplyState.setPendingBindings(userId, []);
     logger.info(`[AutoReply] SELECT_GROUP user=${userId} msgId=${msgId} groups=${groups.length}`);
     await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
   });
@@ -310,8 +309,8 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       return;
     }
 
-    logger.info(`[AutoReply] GROUP_SELECTED user=${userId} chatId=${group.chatId} title=${group.title}`);
-    logger.info(`[AutoReply] FORUM_STATUS_FROM_DB user=${userId} chatId=${group.chatId} isForum=${group.isForum}`);
+    const msgId = autoReplyState.getEditMode(userId);
+    logger.info(`[AutoReply] GROUP_SELECTED user=${userId} chatId=${group.chatId} title=${group.title} msgId=${msgId}`);
 
     // Step 1: Verify real forum status from Telegram API
     let realIsForum = group.isForum;
@@ -319,52 +318,88 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       const chatInfo = await ctx.telegram.getChat(group.chatId.toString());
       realIsForum = (chatInfo as any).is_forum ?? false;
       logger.info(`[AutoReply] FORUM_STATUS_FROM_TELEGRAM user=${userId} chatId=${group.chatId} isForum=${realIsForum}`);
-
       if (realIsForum !== group.isForum) {
-        logger.info(`[AutoReply] FORUM_STATUS_MISMATCH user=${userId} chatId=${group.chatId} db=${group.isForum} telegram=${realIsForum} — syncing`);
-        await prisma.telegramGroup.update({
-          where: { chatId: group.chatId },
-          data: { isForum: realIsForum },
-        });
+        await prisma.telegramGroup.update({ where: { chatId: group.chatId }, data: { isForum: realIsForum } });
       }
     } catch (err: any) {
-      logger.warn(`[AutoReply] FORUM_CHECK_FAILED user=${userId} chatId=${group.chatId} error=${err.message} — using DB value`);
+      logger.warn(`[AutoReply] FORUM_CHECK_FAILED user=${userId} chatId=${group.chatId} error=${err.message}`);
     }
 
-    // Step 2: Read topics from ForumTopic table (populated by incoming messages)
+    // Step 2: Load existing bindings from DB (source of truth)
+    let existingTopics: { topicId: number; topicName: string }[] = [];
+    if (msgId) {
+      const existingBindings = await autoReplyRepository.getBindingsByAutoReply(msgId);
+      const groupBindings = existingBindings.filter(b => b.chatId === group.chatId);
+      existingTopics = groupBindings
+        .filter(b => b.topicId != null)
+        .map(b => ({ topicId: Number(b.topicId), topicName: '' }));
+      // Resolve topic names
+      for (const et of existingTopics) {
+        const topic = await prisma.forumTopic.findFirst({ where: { chatId: group.chatId, topicId: et.topicId } });
+        et.topicName = topic?.name || `Topic ${et.topicId}`;
+      }
+      logger.info(`[AutoReply] DB_BINDINGS_LOADED user=${userId} chatId=${group.chatId} existingTopics=${existingTopics.length}`);
+    }
+
+    // Step 3: If not forum → non-forum path
+    if (!realIsForum) {
+      const pending = autoReplyState.getPendingBindings(userId);
+      // Remove old binding for this group if exists
+      const filtered = pending.filter(b => b.chatId !== group.chatId.toString());
+      filtered.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: false, topics: [] });
+      autoReplyState.setPendingBindings(userId, filtered);
+      autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
+      autoReplyState.setCurrentGroupForTopic(userId, group.chatId.toString());
+
+      if (existingTopics.length > 0) {
+        // Restore from DB
+        const groupBinding = filtered.find(b => b.chatId === group.chatId.toString());
+        if (groupBinding) groupBinding.topics = [...existingTopics];
+        autoReplyState.setPendingBindings(userId, filtered);
+        logger.info(`[AutoReply] RESTORED_FROM_DB user=${userId} chatId=${group.chatId} topics=${existingTopics.length}`);
+        const statusText = buildTopicStatusText(group.title, existingTopics);
+        const inlineKb = buildTopicStatusInlineKeyboard(existingTopics);
+        const sent = await ctx.reply(statusText, inlineKb);
+        autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
+      } else {
+        logger.info(`[AutoReply] NON_FORUM_NO_TOPICS user=${userId} chatId=${group.chatId}`);
+        const statusMsg = `✅ مقصد انتخاب شد\n\nگروه: ${group.title}\n(بدون تاپیک)`;
+        const sent = await ctx.reply(statusMsg, buildNonForumConfirmKeyboard());
+        autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
+      }
+      return;
+    }
+
+    // Step 4: Forum group — sync topics
     logger.info(`[AutoReply] TOPIC_SYNC_STARTED user=${userId} chatId=${group.chatId}`);
-    const topics = await prisma.forumTopic.findMany({
+    let topics = await prisma.forumTopic.findMany({
       where: { chatId: group.chatId, isClosed: false },
       orderBy: { topicId: 'asc' },
     });
-
     for (const t of topics) {
       logger.info(`[AutoReply] TOPIC_FOUND user=${userId} threadId=${t.topicId} title=${t.name}`);
     }
     logger.info(`[AutoReply] TOPIC_SYNC_COMPLETED user=${userId} chatId=${group.chatId} count=${topics.length}`);
 
-    // Step 3: If not forum or no topics found → non-forum path
-    if (!realIsForum || topics.length === 0) {
-      const pending = autoReplyState.getPendingBindings(userId);
-      pending.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: false, topics: [] });
-      autoReplyState.setPendingBindings(userId, pending);
-      autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
-      logger.info(`[AutoReply] BINDING_CREATED user=${userId} chatId=${group.chatId} type=non-forum topicsFound=${topics.length}`);
-      const statusMsg = `✅ مقصد انتخاب شد\n\nگروه: ${group.title}\n(بدون تاپیک)`;
-      const sent = await ctx.reply(statusMsg, buildNonForumConfirmKeyboard());
-      autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
-      return;
-    }
-
-    // Step 4: Forum group with topics → show topic picker
-    autoReplyState.setCurrentGroupForTopic(userId, group.chatId.toString());
+    // Step 5: If no topics in DB, they'll appear as user sends messages in the group
+    // Build pending binding with restored topics
     const pending = autoReplyState.getPendingBindings(userId);
-    pending.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: true, topics: [] });
-    autoReplyState.setPendingBindings(userId, pending);
+    const filtered = pending.filter(b => b.chatId !== group.chatId.toString());
+    filtered.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: true, topics: [...existingTopics] });
+    autoReplyState.setPendingBindings(userId, filtered);
+    autoReplyState.setCurrentGroupForTopic(userId, group.chatId.toString());
     autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
-    logger.info(`[AutoReply] SHOW_TOPIC_MENU user=${userId} chatId=${group.chatId} topics=${topics.length}`);
-    logger.info(`[AutoReply] REPLY_KEYBOARD_CREATED user=${userId} topics=${topics.length}`);
-    await ctx.reply(`📎 تاپیک‌های «${group.title}» را انتخاب کنید:`, buildDestinationTopicKeyboard(topics));
+
+    if (existingTopics.length > 0) {
+      logger.info(`[AutoReply] RESTORED_FROM_DB user=${userId} chatId=${group.chatId} topics=${existingTopics.length}`);
+      const statusText = buildTopicStatusText(group.title, existingTopics);
+      const inlineKb = buildTopicStatusInlineKeyboard(existingTopics);
+      const sent = await ctx.reply(statusText, inlineKb);
+      autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
+    } else {
+      logger.info(`[AutoReply] SHOW_TOPIC_MENU user=${userId} chatId=${group.chatId} topics=${topics.length}`);
+      await ctx.reply(`📎 تاپیک‌های «${group.title}» را انتخاب کنید:`, buildDestinationTopicKeyboard(topics));
+    }
   });
 
   // ─── Scene: SELECT_TOPIC ─────────────────────────────────
@@ -396,55 +431,55 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
     const chatIdStr = autoReplyState.getCurrentGroupForTopic(userId);
     if (!chatIdStr) return next();
 
-    const topic = await prisma.forumTopic.findFirst({
-      where: { chatId: BigInt(chatIdStr), name: text, isClosed: false },
-    });
-    if (!topic) {
-      logger.info(`[AutoReply] TOPIC_NOT_FOUND user=${userId} text="${text}" chatId=${chatIdStr}`);
-      await ctx.answerCbQuery?.('❌ تاپیک یافت نشد.', { show_alert: true }).catch(() => {});
-      await ctx.reply('❌ تاپیک یافت نشد. دوباره انتخاب کنید.');
-      return;
+    // Handle "General" topic (topicId=0)
+    let topicId = 0;
+    let topicName = 'General';
+    if (text !== '📂 General') {
+      const topic = await prisma.forumTopic.findFirst({
+        where: { chatId: BigInt(chatIdStr), name: text.replace(/^📂 /, ''), isClosed: false },
+      });
+      if (!topic) {
+        logger.info(`[AutoReply] TOPIC_NOT_FOUND user=${userId} text="${text}" chatId=${chatIdStr}`);
+        await ctx.reply('❌ تاپیک یافت نشد. دوباره انتخاب کنید.');
+        return;
+      }
+      topicId = topic.topicId;
+      topicName = topic.name;
     }
 
     const pending = autoReplyState.getPendingBindings(userId);
     const groupBinding = pending.find(b => b.chatId === chatIdStr);
     if (!groupBinding) return next();
 
-    const existingIdx = groupBinding.topics.findIndex(t => t.topicId === topic.topicId);
-    if (existingIdx >= 0) {
-      await ctx.answerCbQuery?.('این تاپیک قبلاً انتخاب شده است.', { show_alert: true }).catch(() => {});
-      logger.info(`[AutoReply] TOPIC_DUPLICATE user=${userId} topicId=${topic.topicId} name=${topic.name}`);
-      return;
-    }
-
-    groupBinding.topics.push({ topicId: topic.topicId, topicName: topic.name });
+    // No duplicate check — add always
+    groupBinding.topics.push({ topicId, topicName });
     autoReplyState.setPendingBindings(userId, pending);
-    logger.info(`[AutoReply] TOPIC_SELECTED user=${userId} topicId=${topic.topicId} name=${topic.name}`);
+    logger.info(`[AutoReply] TOPIC_SELECTED user=${userId} topicId=${topicId} name=${topicName}`);
 
-    const reviewMsgId = autoReplyState.getBindingReviewMsgId(userId);
+    // Send NEW message each time (don't edit old ones)
     const statusText = buildTopicStatusText(groupBinding.chatTitle, groupBinding.topics);
     const inlineKb = buildTopicStatusInlineKeyboard(groupBinding.topics);
-
-    if (reviewMsgId) {
-      try {
-        await ctx.telegram.editMessageText(ctx.chat.id, reviewMsgId, undefined, statusText, inlineKb);
-        return;
-      } catch {}
-    }
-
     const sent = await ctx.reply(statusText, inlineKb);
     autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
   });
 
-  // ─── Inline: Remove topic from selection ─────────────────
+  // ─── Inline: Remove topic — delete from DB immediately ──
   bot.action(/^ar:dest:remove_topic:(\d+)$/, async (ctx: any) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id;
     const topicId = parseInt(ctx.match[1]);
+    const msgId = autoReplyState.getEditMode(userId);
     const pending = autoReplyState.getPendingBindings(userId);
     const lastGroup = pending[pending.length - 1];
     if (!lastGroup) return;
 
+    // Delete from DB immediately
+    if (msgId) {
+      await autoReplyRepository.removeBindingsForTopic(msgId, BigInt(lastGroup.chatId), topicId);
+      logger.info(`[AutoReply] DB_BINDING_DELETED user=${userId} msgId=${msgId} chatId=${lastGroup.chatId} topicId=${topicId}`);
+    }
+
+    // Remove from session
     const idx = lastGroup.topics.findIndex(t => t.topicId === topicId);
     if (idx >= 0) {
       const removed = lastGroup.topics.splice(idx, 1)[0];
@@ -452,26 +487,16 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       logger.info(`[AutoReply] TOPIC_REMOVED user=${userId} topicId=${topicId} name=${removed.topicName}`);
     }
 
+    // Send NEW status message
     if (lastGroup.topics.length === 0) {
-      const reviewMsgId = autoReplyState.getBindingReviewMsgId(userId);
-      if (reviewMsgId) {
-        try {
-          await ctx.telegram.editMessageText(ctx.chat.id, reviewMsgId, undefined,
-            `✅ مقصد انتخاب شد\n\nگروه: ${lastGroup.chatTitle}\n(هیچ تاپیکی انتخاب نشده)`,
-            buildNonForumConfirmKeyboard(),
-          );
-        } catch {}
-      }
-      return;
-    }
-
-    const reviewMsgId = autoReplyState.getBindingReviewMsgId(userId);
-    if (reviewMsgId) {
+      const statusMsg = `✅ مقصد انتخاب شد\n\nگروه: ${lastGroup.chatTitle}\n(هیچ تاپیکی انتخاب نشده)`;
+      const sent = await ctx.reply(statusMsg, buildNonForumConfirmKeyboard());
+      autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
+    } else {
       const statusText = buildTopicStatusText(lastGroup.chatTitle, lastGroup.topics);
       const inlineKb = buildTopicStatusInlineKeyboard(lastGroup.topics);
-      try {
-        await ctx.telegram.editMessageText(ctx.chat.id, reviewMsgId, undefined, statusText, inlineKb);
-      } catch {}
+      const sent = await ctx.reply(statusText, inlineKb);
+      autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
     }
   });
 

@@ -202,6 +202,12 @@ export const autoReplyRepository = {
     return prisma.autoReplyBinding.deleteMany({ where: { autoReplyId, chatId } });
   },
 
+  async removeBindingsForTopic(autoReplyId: number, chatId: bigint, topicId: number) {
+    return prisma.autoReplyBinding.deleteMany({
+      where: { autoReplyId, chatId, topicId: BigInt(topicId) },
+    });
+  },
+
   async removeAllBindings(autoReplyId: number) {
     return prisma.autoReplyBinding.deleteMany({ where: { autoReplyId } });
   },
