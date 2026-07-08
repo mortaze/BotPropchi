@@ -751,7 +751,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
       if (existingTopics.length > 0) {
         const statusText = buildTopicStatusText(matched.title, existingTopics);
-        const inlineKb = buildTopicStatusInlineKeyboard(existingTopics);
+        const inlineKb = buildTopicStatusInlineKeyboard(existingTopics, 'sched');
         const sent = await ctx.reply(statusText, inlineKb);
         scheduledMessageState.setBindingReviewMsgId(userId, sent.message_id);
       }
@@ -798,7 +798,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
 
       // Send NEW message each time
       const statusText = buildTopicStatusText(groupBinding.chatTitle, groupBinding.topics);
-      const inlineKb = buildTopicStatusInlineKeyboard(groupBinding.topics);
+      const inlineKb = buildTopicStatusInlineKeyboard(groupBinding.topics, 'sched');
       const sent = await ctx.reply(statusText, inlineKb);
       scheduledMessageState.setBindingReviewMsgId(userId, sent.message_id);
       return;
@@ -1048,7 +1048,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       scheduledMessageState.setBindingReviewMsgId(userId, sent.message_id);
     } else {
       const statusText = buildTopicStatusText(lastGroup.chatTitle, lastGroup.topics);
-      const inlineKb = buildTopicStatusInlineKeyboard(lastGroup.topics);
+      const inlineKb = buildTopicStatusInlineKeyboard(lastGroup.topics, 'sched');
       const sent = await ctx.reply(statusText, inlineKb);
       scheduledMessageState.setBindingReviewMsgId(userId, sent.message_id);
     }

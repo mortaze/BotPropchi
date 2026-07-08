@@ -122,12 +122,12 @@ export function buildDestinationTopicKeyboard(topics: { topicId: number; name: s
 
 // ─── Destination: Status Message Inline Keyboard ──────────
 
-export function buildTopicStatusInlineKeyboard(topics: { topicId: number; topicName: string }[]) {
+export function buildTopicStatusInlineKeyboard(topics: { topicId: number; topicName: string }[], prefix: string = 'ar') {
   const rows: any[][] = [];
   for (const t of topics) {
-    rows.push([Markup.button.callback(`❌ ${t.topicName}`, `ar:dest:remove_topic:${t.topicId}`)]);
+    rows.push([Markup.button.callback(`❌ ${t.topicName}`, `${prefix}:dest:remove_topic:${t.topicId}`)]);
   }
-  rows.push([Markup.button.callback('✅ تایید نهایی', 'ar:dest:final_confirm')]);
+  rows.push([Markup.button.callback('✅ تایید نهایی', `${prefix}:dest:final_confirm`)]);
   return Markup.inlineKeyboard(rows);
 }
 
