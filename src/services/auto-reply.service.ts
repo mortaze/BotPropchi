@@ -38,6 +38,7 @@ class AutoReplyService {
     if ((msg.messages?.length || 0) === 0) throw new Error('No messages to send');
     if ((msg.keywords?.length || 0) === 0) throw new Error('At least one keyword is required');
 
+    logger.info(`[AutoReply] PUBLISH_SUCCESS autoReply=${id} bindings=${bindings.length}`);
     await autoReplyRepository.update(id, {
       status: PostStatus.PUBLISHED,
       isPublished: true,
@@ -132,7 +133,7 @@ class AutoReplyService {
     return autoReplyRepository.findKeywordsByAutoReply(autoReplyId);
   }
 
-  // ─── Keyword Matching ────────────────────────────────────
+  // ─── Keyword Matching (Runtime) ──────────────────────────
 
   async handleGroupMessage(ctx: any, telegramGroupId: number): Promise<boolean> {
     const text = ctx.message?.text || ctx.message?.caption;
@@ -150,13 +151,14 @@ class AutoReplyService {
       );
       if (!matched) continue;
 
-      logger.info(`[AutoReply] KEYWORD_MATCH autoReply=${ar.id} keyword="${matched.keyword}" user=${ctx.from.id} chat=${ctx.chat?.id}`);
+      logger.info(`[AutoReply] KEYWORD_MATCH autoReply=${ar.id} keyword="${matched.keyword}" user=${ctx.from.id} chat=${ctx.chat?.id} topic=${topicId}`);
 
       try {
         await this.sendReplyToGroup(ctx, ar);
         await autoReplyRepository.logDelivery({
           autoReplyId: ar.id,
           targetChatId: BigInt(ctx.chat!.id),
+          targetTopicId: topicId != null ? BigInt(topicId) : null,
           status: 'SUCCESS',
         });
         await prisma.autoReply.update({
@@ -168,6 +170,7 @@ class AutoReplyService {
         await autoReplyRepository.logDelivery({
           autoReplyId: ar.id,
           targetChatId: BigInt(ctx.chat!.id),
+          targetTopicId: topicId != null ? BigInt(topicId) : null,
           status: 'FAILED',
           errorMessage: err.message?.slice(0, 900),
         });

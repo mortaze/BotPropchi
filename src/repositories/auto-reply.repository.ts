@@ -44,7 +44,6 @@ export const autoReplyRepository = {
     const where: Prisma.AutoReplyWhereInput = {};
     if (params.status) where.status = params.status;
     if (params.search) where.title = { contains: params.search, mode: 'insensitive' };
-
     const [items, total] = await Promise.all([
       prisma.autoReply.findMany({
         where,
@@ -55,7 +54,6 @@ export const autoReplyRepository = {
       }),
       prisma.autoReply.count({ where }),
     ]);
-
     return { items, total, pages: Math.ceil(total / limit), page };
   },
 
@@ -93,27 +91,18 @@ export const autoReplyRepository = {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekStart = new Date(todayStart);
     weekStart.setDate(weekStart.getDate() - 7);
-
     const [activeReplies, todaySends, weekSends, errorCount] = await Promise.all([
       prisma.autoReply.count({ where: { isPublished: true, status: PostStatus.PUBLISHED } }),
       prisma.autoReplySendLog.count({ where: { sentAt: { gte: todayStart } } }),
       prisma.autoReplySendLog.count({ where: { sentAt: { gte: weekStart } } }),
       prisma.autoReplySendLog.count({ where: { status: 'FAILED' } }),
     ]);
-
     const activeGroups = await prisma.autoReply.findMany({
       where: { isPublished: true, status: PostStatus.PUBLISHED },
       distinct: ['targetChatId'],
       select: { targetChatId: true },
     });
-
-    return {
-      activeReplies,
-      todaySends,
-      weekSends,
-      activeGroups: activeGroups.length,
-      errorCount,
-    };
+    return { activeReplies, todaySends, weekSends, activeGroups: activeGroups.length, errorCount };
   },
 
   async disableAll() {
@@ -126,40 +115,18 @@ export const autoReplyRepository = {
   // ─── Button CRUD ─────────────────────────────────────────
 
   async createButton(data: {
-    autoReplyId: number;
-    messageId?: number;
-    row: number;
-    col: number;
-    text: string;
-    type?: string;
-    value?: string;
-    style?: string;
-    payload?: any;
+    autoReplyId: number; messageId?: number; row: number; col: number;
+    text: string; type?: string; value?: string; style?: string; payload?: any;
   }) {
     return prisma.autoReplyButton.create({
       data: {
-        autoReplyId: data.autoReplyId,
-        messageId: data.messageId,
-        row: data.row,
-        col: data.col,
-        text: data.text,
-        type: data.type ?? 'URL',
-        value: data.value,
-        style: data.style,
-        payload: data.payload,
+        autoReplyId: data.autoReplyId, messageId: data.messageId, row: data.row, col: data.col,
+        text: data.text, type: data.type ?? 'URL', value: data.value, style: data.style, payload: data.payload,
       },
     });
   },
 
-  async updateButton(id: number, data: {
-    text?: string;
-    type?: string;
-    value?: string;
-    style?: string;
-    row?: number;
-    col?: number;
-    payload?: any;
-  }) {
+  async updateButton(id: number, data: { text?: string; type?: string; value?: string; style?: string; row?: number; col?: number; payload?: any }) {
     return prisma.autoReplyButton.update({ where: { id }, data });
   },
 
@@ -168,17 +135,11 @@ export const autoReplyRepository = {
   },
 
   async findButtonsByMessage(messageId: number) {
-    return prisma.autoReplyButton.findMany({
-      where: { messageId },
-      orderBy: [{ row: 'asc' }, { col: 'asc' }],
-    });
+    return prisma.autoReplyButton.findMany({ where: { messageId }, orderBy: [{ row: 'asc' }, { col: 'asc' }] });
   },
 
   async findButtonsByAutoReply(autoReplyId: number) {
-    return prisma.autoReplyButton.findMany({
-      where: { autoReplyId },
-      orderBy: [{ row: 'asc' }, { col: 'asc' }],
-    });
+    return prisma.autoReplyButton.findMany({ where: { autoReplyId }, orderBy: [{ row: 'asc' }, { col: 'asc' }] });
   },
 
   async deleteButtonsByMessage(messageId: number) {
@@ -192,16 +153,11 @@ export const autoReplyRepository = {
   // ─── Keyword CRUD ────────────────────────────────────────
 
   async createKeyword(autoReplyId: number, keyword: string) {
-    return prisma.autoReplyKeyword.create({
-      data: { autoReplyId, keyword },
-    });
+    return prisma.autoReplyKeyword.create({ data: { autoReplyId, keyword } });
   },
 
   async updateKeyword(id: number, keyword: string) {
-    return prisma.autoReplyKeyword.update({
-      where: { id },
-      data: { keyword },
-    });
+    return prisma.autoReplyKeyword.update({ where: { id }, data: { keyword } });
   },
 
   async deleteKeyword(id: number) {
@@ -209,10 +165,7 @@ export const autoReplyRepository = {
   },
 
   async findKeywordsByAutoReply(autoReplyId: number) {
-    return prisma.autoReplyKeyword.findMany({
-      where: { autoReplyId },
-      orderBy: { createdAt: 'asc' },
-    });
+    return prisma.autoReplyKeyword.findMany({ where: { autoReplyId }, orderBy: { createdAt: 'asc' } });
   },
 
   // ─── Binding CRUD ──────────────────────────────────────
@@ -224,32 +177,49 @@ export const autoReplyRepository = {
     });
   },
 
-  async upsertBinding(autoReplyId: number, chatId: bigint, topicId: bigint | null) {
+  async upsertForumBinding(autoReplyId: number, chatId: bigint, topicId: number) {
+    const bigTopicId = BigInt(topicId);
     return prisma.autoReplyBinding.upsert({
-      where: { autoReplyId_chatId_topicId: { autoReplyId, chatId, topicId } },
-      create: { autoReplyId, chatId, topicId, isActive: true },
+      where: { autoReplyId_chatId_topicId: { autoReplyId, chatId, topicId: bigTopicId } },
+      create: { autoReplyId, chatId, topicId: bigTopicId, isActive: true },
       update: { isActive: true },
     });
   },
 
-  async removeBindingsForGroup(autoReplyId: number, chatId: bigint) {
-    return prisma.autoReplyBinding.deleteMany({
-      where: { autoReplyId, chatId },
+  async upsertNonForumBinding(autoReplyId: number, chatId: bigint) {
+    const existing = await prisma.autoReplyBinding.findFirst({
+      where: { autoReplyId, chatId, topicId: null },
     });
+    if (existing) {
+      return prisma.autoReplyBinding.update({ where: { id: existing.id }, data: { isActive: true } });
+    }
+    return prisma.autoReplyBinding.create({
+      data: { autoReplyId, chatId, topicId: null, isActive: true },
+    });
+  },
+
+  async removeBindingsForGroup(autoReplyId: number, chatId: bigint) {
+    return prisma.autoReplyBinding.deleteMany({ where: { autoReplyId, chatId } });
   },
 
   async removeAllBindings(autoReplyId: number) {
-    return prisma.autoReplyBinding.deleteMany({
-      where: { autoReplyId },
-    });
+    return prisma.autoReplyBinding.deleteMany({ where: { autoReplyId } });
   },
 
-  async bulkCreateBindings(autoReplyId: number, bindings: { chatId: bigint; topicId: bigint | null }[]) {
+  async bulkCreateBindings(autoReplyId: number, bindings: { chatId: bigint; topicId: number | null }[]) {
     if (bindings.length === 0) return;
     await prisma.autoReplyBinding.deleteMany({ where: { autoReplyId } });
-    await prisma.autoReplyBinding.createMany({
-      data: bindings.map(b => ({ autoReplyId, chatId: b.chatId, topicId: b.topicId, isActive: true })),
-    });
+    for (const b of bindings) {
+      if (b.topicId != null) {
+        await prisma.autoReplyBinding.create({
+          data: { autoReplyId, chatId: b.chatId, topicId: BigInt(b.topicId), isActive: true },
+        });
+      } else {
+        await prisma.autoReplyBinding.create({
+          data: { autoReplyId, chatId: b.chatId, topicId: null, isActive: true },
+        });
+      }
+    }
   },
 
   async getPublishedForGroup(chatId: bigint, topicId: number | null) {
@@ -261,10 +231,9 @@ export const autoReplyRepository = {
           some: {
             chatId,
             isActive: true,
-            OR: [
-              { topicId: topicId != null ? BigInt(topicId) : null },
-              { topicId: null },
-            ],
+            ...(topicId != null
+              ? { OR: [{ topicId: BigInt(topicId) }, { topicId: null }] }
+              : { topicId: null }),
           },
         },
       },
