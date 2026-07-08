@@ -310,44 +310,60 @@ export function registerAutoReplyHandlers(bot: Telegraf) {
       return;
     }
 
-    const isForum = group.isForum;
-    logger.info(`[AutoReply] GROUP_SELECTED user=${userId} chatId=${group.chatId} title=${group.title} isForum=${isForum}`);
+    logger.info(`[AutoReply] GROUP_SELECTED user=${userId} chatId=${group.chatId} title=${group.title}`);
+    logger.info(`[AutoReply] FORUM_STATUS_FROM_DB user=${userId} chatId=${group.chatId} isForum=${group.isForum}`);
 
-    if (!isForum) {
-      const pending = autoReplyState.getPendingBindings(userId);
-      pending.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: false, topics: [] });
-      autoReplyState.setPendingBindings(userId, pending);
-      autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
-      logger.info(`[AutoReply] BINDING_CREATED user=${userId} chatId=${group.chatId} type=non-forum`);
-      const statusMsg = `✅ مقصد انتخاب شد\n\nگروه: ${group.title}\n(بدون تاپیک)`;
-      const sent = await ctx.reply(statusMsg, buildNonForumConfirmKeyboard());
-      autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
-      return;
+    // Step 1: Verify real forum status from Telegram API
+    let realIsForum = group.isForum;
+    try {
+      const chatInfo = await ctx.telegram.getChat(group.chatId.toString());
+      realIsForum = (chatInfo as any).is_forum ?? false;
+      logger.info(`[AutoReply] FORUM_STATUS_FROM_TELEGRAM user=${userId} chatId=${group.chatId} isForum=${realIsForum}`);
+
+      if (realIsForum !== group.isForum) {
+        logger.info(`[AutoReply] FORUM_STATUS_MISMATCH user=${userId} chatId=${group.chatId} db=${group.isForum} telegram=${realIsForum} — syncing`);
+        await prisma.telegramGroup.update({
+          where: { chatId: group.chatId },
+          data: { isForum: realIsForum },
+        });
+      }
+    } catch (err: any) {
+      logger.warn(`[AutoReply] FORUM_CHECK_FAILED user=${userId} chatId=${group.chatId} error=${err.message} — using DB value`);
     }
 
+    // Step 2: Read topics from ForumTopic table (populated by incoming messages)
+    logger.info(`[AutoReply] TOPIC_SYNC_STARTED user=${userId} chatId=${group.chatId}`);
     const topics = await prisma.forumTopic.findMany({
       where: { chatId: group.chatId, isClosed: false },
       orderBy: { topicId: 'asc' },
     });
-    logger.info(`[AutoReply] TOPICS_IN_DB user=${userId} chatId=${group.chatId} count=${topics.length}`);
 
-    if (topics.length === 0) {
+    for (const t of topics) {
+      logger.info(`[AutoReply] TOPIC_FOUND user=${userId} threadId=${t.topicId} title=${t.name}`);
+    }
+    logger.info(`[AutoReply] TOPIC_SYNC_COMPLETED user=${userId} chatId=${group.chatId} count=${topics.length}`);
+
+    // Step 3: If not forum or no topics found → non-forum path
+    if (!realIsForum || topics.length === 0) {
       const pending = autoReplyState.getPendingBindings(userId);
-      pending.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: true, topics: [] });
+      pending.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: false, topics: [] });
       autoReplyState.setPendingBindings(userId, pending);
       autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
+      logger.info(`[AutoReply] BINDING_CREATED user=${userId} chatId=${group.chatId} type=non-forum topicsFound=${topics.length}`);
       const statusMsg = `✅ مقصد انتخاب شد\n\nگروه: ${group.title}\n(بدون تاپیک)`;
       const sent = await ctx.reply(statusMsg, buildNonForumConfirmKeyboard());
       autoReplyState.setBindingReviewMsgId(userId, sent.message_id);
       return;
     }
 
+    // Step 4: Forum group with topics → show topic picker
     autoReplyState.setCurrentGroupForTopic(userId, group.chatId.toString());
     const pending = autoReplyState.getPendingBindings(userId);
     pending.push({ chatId: group.chatId.toString(), chatTitle: group.title, isForum: true, topics: [] });
     autoReplyState.setPendingBindings(userId, pending);
     autoReplyState.setBindingScene(userId, 'SELECT_TOPIC');
     logger.info(`[AutoReply] SHOW_TOPIC_MENU user=${userId} chatId=${group.chatId} topics=${topics.length}`);
+    logger.info(`[AutoReply] REPLY_KEYBOARD_CREATED user=${userId} topics=${topics.length}`);
     await ctx.reply(`📎 تاپیک‌های «${group.title}» را انتخاب کنید:`, buildDestinationTopicKeyboard(topics));
   });
 
