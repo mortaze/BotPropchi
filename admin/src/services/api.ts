@@ -735,3 +735,26 @@ export const ticketCategoryApi = {
     return data;
   },
 };
+
+export const scheduledMessagesApi = {
+  async getAll(params?: { page?: number; limit?: number; status?: string }): Promise<any> {
+    const { data } = await api.get("/api/scheduled-messages", { params });
+    return data;
+  },
+  async getById(id: number): Promise<any> {
+    const { data } = await api.get(`/api/scheduled-messages/${id}`);
+    return data;
+  },
+  async getStats(): Promise<any> {
+    const { data } = await api.get("/api/scheduled-messages/stats");
+    return data;
+  },
+  async getLogs(id: number, limit?: number): Promise<any> {
+    const { data } = await api.get(`/api/scheduled-messages/${id}/logs`, { params: { limit } });
+    return data;
+  },
+  async update(id: number, payload: any): Promise<any> {
+    const { data } = await api.patch(`/api/scheduled-messages/${id}`, payload);
+    return data;
+  },
+};

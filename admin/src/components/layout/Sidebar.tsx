@@ -4,7 +4,7 @@ import { useState } from "react";
 import { BRAND_NAME } from "@/config/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Route, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X } from "lucide-react";
+import { BarChart3, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Route, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X, Zap, Clock, BarChart2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
 
@@ -42,7 +42,15 @@ const menuItems: MenuItem[] = [
     children: [
       { key: "force-join", label: "متن‌های عضویت اجباری", href: "/dashboard/force-join", icon: Settings },
       { key: "groups", label: "مدیریت گروه‌ها", href: "/dashboard/groups", icon: ShieldCheck },
-      { key: "keyword-replies", label: "پاسخ‌های خودکار", href: "/dashboard/keyword-replies", icon: MessageSquareReply },
+    ],
+  },
+  {
+    key: "automation", label: "اتوماسیون", href: "/dashboard/automation", icon: Zap,
+    children: [
+      { key: "auto-scheduled", label: "پیام‌های خودکار", href: "/dashboard/automation/scheduled", icon: Clock },
+      { key: "auto-replies", label: "پاسخ‌های خودکار", href: "/dashboard/automation/replies", icon: MessageSquareReply },
+      { key: "auto-analytics", label: "تحلیل و آمار", href: "/dashboard/automation/analytics", icon: BarChart2 },
+      { key: "auto-logs", label: "تاریخچه فعالیت‌ها", href: "/dashboard/automation/logs", icon: History },
     ],
   },
   { key: "analytics", label: "گزارشات", href: "/dashboard/analytics", icon: BarChart3,

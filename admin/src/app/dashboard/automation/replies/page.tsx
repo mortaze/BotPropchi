@@ -1,0 +1,135 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import { ArrowLeft, MessageSquareReply, CheckCircle, XCircle } from "lucide-react";
+import { Card, CardContent, CardHeader, Badge, StatCardSkeleton, EmptyState } from "@/components/ui";
+import { keywordRepliesApi } from "@/services/api";
+
+export default function AutoRepliesPage() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["automation", "replies"],
+    queryFn: () => keywordRepliesApi.getAll(),
+  });
+
+  const replies = data?.items || [];
+  const active = replies.filter((r: any) => r.isActive);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard/automation" className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">پاسخ‌های خودکار</h1>
+            <p className="text-sm text-muted-foreground">مدیریت کلمات کلیدی و پاسخ‌های خودکار</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {isLoading ? (
+          <>
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </>
+        ) : (
+          <>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">کل پاسخ‌ها</p>
+                    <p className="text-2xl font-bold">{replies.length}</p>
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
+                    <MessageSquareReply className="h-5 w-5 text-green-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">فعال</p>
+                    <p className="text-2xl font-bold text-green-500">{active.length}</p>
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">غیرفعال</p>
+                    <p className="text-2xl font-bold text-orange-500">{replies.length - active.length}</p>
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
+                    <XCircle className="h-5 w-5 text-orange-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+
+      {/* Replies Table */}
+      <Card>
+        <CardHeader>
+          <h3 className="text-lg font-semibold">لیست پاسخ‌های خودکار</h3>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />
+              ))}
+            </div>
+          ) : replies.length === 0 ? (
+            <EmptyState title="پاسخی ثبت نشده" description="هنوز پاسخ خودکاری ایجاد نشده است." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="data-table w-full">
+                <thead>
+                  <tr>
+                    <th>کلمه کلیدی</th>
+                    <th>نوع</th>
+                    <th>وضعیت</th>
+                    <th>پاسخ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {replies.map((reply: any) => (
+                    <tr key={reply.id}>
+                      <td className="font-medium text-foreground">
+                        <Badge variant="info">{reply.keyword}</Badge>
+                      </td>
+                      <td className="text-sm">{reply.responseType || "TEXT"}</td>
+                      <td>
+                        <Badge variant={reply.isActive ? "success" : "warning"}>
+                          {reply.isActive ? "فعال" : "غیرفعال"}
+                        </Badge>
+                      </td>
+                      <td className="text-sm text-muted-foreground max-w-xs truncate">
+                        {reply.response || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
