@@ -398,7 +398,7 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await ctx.reply(text, { parse_mode: 'Markdown' });
   });
 
-  bot.hears('🗑 حذف پست', async (ctx: any, next) => {
+  bot.hears('🗑 حذف', async (ctx: any, next) => {
     const msgId = scheduledMessageState.getEditMode(ctx.from.id);
     if (!msgId) return next();
     const msg = await scheduledMessageRepository.findById(msgId);
@@ -406,6 +406,18 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       `⚠️ آیا از حذف "${msg?.title}" مطمئن هستید؟\n\nاین عملیات غیرقابل بازگشت است.`,
       scheduledMessageDeleteConfirmKeyboard(msgId),
     );
+  });
+
+  bot.hears('📤 لغو انتشار', async (ctx: any, next) => {
+    const msgId = scheduledMessageState.getEditMode(ctx.from.id);
+    if (!msgId) return next();
+    try {
+      await scheduledMessageService.unpublish(msgId);
+      await ctx.reply('📤 انتشار لغو شد.');
+      await showPostEditor(ctx, msgId);
+    } catch (err: any) {
+      await ctx.reply(`❌ خطا: ${err.message}`);
+    }
   });
 
   // ─── Text input handler (with proper state isolation) ───
@@ -691,30 +703,29 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     // ── Topic selection via Reply Keyboard ──
     if (scheduleStep === 'select_topic') {
       let topicId: number | null = null;
-      if (text === '📌 همه تاپیک‌ها') {
-        topicId = null;
-      } else {
-        const targetGroup = scheduledMessageState.getTargetGroup(userId);
-        if (targetGroup) {
-          const topics = await forumTopicService.getTopicsForChat(targetGroup);
-          const topic = topics.find((t) => t.name === text);
-          if (topic) {
-            topicId = topic.topicId;
-          }
+      const targetGroup = scheduledMessageState.getTargetGroup(userId);
+      if (targetGroup) {
+        const topics = await forumTopicService.getTopicsForChat(targetGroup);
+        const topic = topics.find((t) => t.name === text);
+        if (topic) {
+          topicId = topic.topicId;
         }
+      }
+      if (topicId === null) {
+        await ctx.reply('❌ تاپیک یافت نشد. دوباره انتخاب کنید.');
+        return;
       }
       scheduledMessageState.setTargetTopic(userId, topicId);
       scheduledMessageState.setScheduleStep(userId, null as any);
 
-      // Save topic to DB individually
+      // Save topic to DB
       const msgId = scheduledMessageState.getEditMode(userId);
       if (msgId) {
         await scheduledMessageRepository.update(msgId, {
-          targetTopicId: topicId != null ? BigInt(topicId) : null,
+          targetTopicId: BigInt(topicId),
         });
         logger.info(`[SchedMsg] Saved targetTopicId=${topicId} to msg=${msgId}`);
-        const topicText = text === '📌 همه تاپیک‌ها' ? 'همه تاپیک‌ها' : text;
-        await ctx.reply(`✅ تاپیک "${topicText}" انتخاب شد.`);
+        await ctx.reply(`✅ تاپیک "${text}" انتخاب شد.`);
         await showPostEditor(ctx, msgId);
       }
       return;

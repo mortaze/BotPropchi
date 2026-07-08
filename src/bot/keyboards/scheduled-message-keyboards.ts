@@ -57,13 +57,12 @@ export function scheduledMessageNewPostManagerReplyKeyboard() {
 // ─── Post Editor Reply Keyboard (after selecting a post) ───
 
 export function scheduledMessageEditorReplyKeyboard(isPublished: boolean) {
+  const publishBtn = isPublished ? '📤 لغو انتشار' : '✅ انتشار';
   return Markup.keyboard([
     ['➕ افزودن پیام'],
     ['👥 انتخاب گروه', '⏰ تنظیم زمان‌بندی'],
-    ['📖 دستور'],
-    ['✅ انتشار', '📊 آمار'],
+    [publishBtn, '🗑 حذف'],
     ['🧪 ارسال تستی'],
-    ['🗑 حذف پست'],
     ['🔙 بازگشت به لیست'],
   ]).resize().persistent();
 }
@@ -162,7 +161,7 @@ export function scheduleGroupReplyKeyboard(groups: any[]) {
 // ─── Topic Selection (Reply Keyboard — Bug #5) ───────────
 
 export function scheduleTopicReplyKeyboard(topics: any[]) {
-  const rows: string[][] = [['📌 همه تاپیک‌ها']];
+  const rows: string[][] = [];
   for (const t of topics) {
     rows.push([t.name]);
   }
