@@ -131,6 +131,21 @@ export function buildTopicStatusInlineKeyboard(topics: { topicId: number; topicN
   return Markup.inlineKeyboard(rows);
 }
 
+// ─── Shared: build topic status text ──────────────────────
+
+export function buildTopicStatusText(groupTitle: string, topics: { topicId: number; topicName: string }[]): string {
+  const lines = ['✅ مقصد انتخاب شد', '', `گروه: ${groupTitle}`];
+  if (topics.length === 0) {
+    lines.push('(هیچ تاپیکی انتخاب نشده)');
+  } else {
+    lines.push('تاپیک‌های انتخاب‌شده:');
+    for (const t of topics) {
+      lines.push(`• ${t.topicName}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 // ─── Destination: Non-Forum Confirm Inline Keyboard ───────
 
 export function buildNonForumConfirmKeyboard() {

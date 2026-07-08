@@ -32,6 +32,12 @@ import {
   buildSmbtnEditTypeKeyboard,
   buildSmbtnColorKeyboard,
 } from '../keyboards/scheduled-message-keyboards';
+import {
+  buildDestinationGroupKeyboard,
+  buildDestinationTopicKeyboard,
+  buildTopicStatusInlineKeyboard,
+  buildTopicStatusText,
+} from '../keyboards/auto-reply-keyboards';
 
 function formatScheduledMessageInfo(msg: any): string {
   const status = msg.isPublished ? '🟢 فعال' : '⚪ غیرفعال';
@@ -247,8 +253,10 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       await ctx.reply('گروه تأییدشده‌ای که ربات در آن ادمین باشد وجود ندارد.');
       return;
     }
-    scheduledMessageState.setScheduleStep(ctx.from.id, 'select_group');
-    await ctx.reply('👥 گروه مقصد را انتخاب کنید:', scheduleGroupReplyKeyboard(groups));
+    scheduledMessageState.clearBindingScene(ctx.from.id);
+    scheduledMessageState.setBindingScene(ctx.from.id, 'SELECT_GROUP');
+    logger.info(`[SchedMsg] SELECT_GROUP user=${ctx.from.id} msgId=${msgId} groups=${groups.length}`);
+    await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
   });
 
   // Bug #11: Command management
@@ -664,70 +672,134 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
       return;
     }
 
-    // ── Group selection via Reply Keyboard ──
-    if (scheduleStep === 'select_group') {
+    // ── Group selection via Reply Keyboard (scene-based) ──
+    if (scheduleStep === 'select_group' || scheduledMessageState.getBindingScene(userId) === 'SELECT_GROUP') {
+      if (text === '❌ لغو') {
+        scheduledMessageState.clearBindingScene(userId);
+        const editMsgId = scheduledMessageState.getEditMode(userId);
+        if (editMsgId) await showPostEditor(ctx, editMsgId);
+        return;
+      }
       const groups = await prisma.telegramGroup.findMany({
         where: { status: 'APPROVED', botIsAdmin: true },
         orderBy: { addedAt: 'desc' },
       });
       const matched = groups.find((g) => g.title === text);
-      if (matched) {
-        const chatId = Number(matched.chatId);
-        scheduledMessageState.setTargetGroup(userId, chatId);
+      if (!matched) return next();
 
-        // Save group to DB immediately
-        const msgId = scheduledMessageState.getEditMode(userId);
-        if (msgId) {
-          await scheduledMessageRepository.update(msgId, { targetChatId: BigInt(chatId) });
-          logger.info(`[SchedMsg] Saved targetChatId=${chatId} to msg=${msgId}`);
-        }
+      const chatId = Number(matched.chatId);
+      const editMsgId = scheduledMessageState.getEditMode(userId);
+      logger.info(`[SchedMsg] GROUP_SELECTED user=${userId} chatId=${chatId} title=${matched.title}`);
 
-        // Check forum topics from ForumTopic table
-        const topics = await forumTopicService.getTopicsForChat(chatId);
-        if (topics.length > 0) {
-          scheduledMessageState.setScheduleStep(userId, 'select_topic');
-          await ctx.reply('📌 تاپیک مقصد را انتخاب کنید:', scheduleTopicReplyKeyboard(topics));
-          return;
+      // Verify forum status from Telegram API
+      let realIsForum = matched.isForum;
+      try {
+        const chatInfo = await ctx.telegram.getChat(matched.chatId.toString());
+        realIsForum = (chatInfo as any).is_forum ?? false;
+        if (realIsForum !== matched.isForum) {
+          await prisma.telegramGroup.update({ where: { chatId: matched.chatId }, data: { isForum: realIsForum } });
         }
+      } catch (err: any) {
+        logger.warn(`[SchedMsg] FORUM_CHECK_FAILED user=${userId} chatId=${chatId} error=${err.message}`);
+      }
 
-        // No topics — show editor with saved group
-        if (msgId) {
-          await ctx.reply(`✅ گروه "${matched.title}" انتخاب شد.`);
-          await showPostEditor(ctx, msgId);
+      // Load existing bindings from DB
+      let existingTopics: { topicId: number; topicName: string }[] = [];
+      if (editMsgId) {
+        const existingBindings = await scheduledMessageRepository.getBindingsByScheduledMessage(editMsgId);
+        const groupBindings = existingBindings.filter(b => b.chatId === matched.chatId);
+        existingTopics = groupBindings
+          .filter(b => b.topicId != null)
+          .map(b => ({ topicId: Number(b.topicId), topicName: '' }));
+        for (const et of existingTopics) {
+          const topic = await prisma.forumTopic.findFirst({ where: { chatId: matched.chatId, topicId: et.topicId } });
+          et.topicName = topic?.name || `Topic ${et.topicId}`;
         }
+        logger.info(`[SchedMsg] DB_BINDINGS_LOADED user=${userId} chatId=${chatId} existingTopics=${existingTopics.length}`);
+      }
+
+      if (!realIsForum) {
+        // Non-forum: save group directly
+        if (editMsgId) {
+          await scheduledMessageRepository.update(editMsgId, { targetChatId: matched.chatId });
+        }
+        scheduledMessageState.clearBindingScene(userId);
+        await ctx.reply(`✅ گروه "${matched.title}" انتخاب شد.`);
+        if (editMsgId) await showPostEditor(ctx, editMsgId);
         return;
       }
-      return next();
+
+      // Forum group — sync topics
+      const topics = await prisma.forumTopic.findMany({
+        where: { chatId: matched.chatId, isClosed: false },
+        orderBy: { topicId: 'asc' },
+      });
+      logger.info(`[SchedMsg] TOPIC_SYNC_COMPLETED user=${userId} chatId=${chatId} count=${topics.length}`);
+
+      // Build pending binding with restored topics
+      const pending = scheduledMessageState.getPendingBindings(userId);
+      const filtered = pending.filter((b: any) => b.chatId !== matched.chatId.toString());
+      filtered.push({ chatId: matched.chatId.toString(), chatTitle: matched.title, isForum: true, topics: [...existingTopics] });
+      scheduledMessageState.setPendingBindings(userId, filtered);
+      scheduledMessageState.setCurrentGroupForTopic(userId, matched.chatId.toString());
+      scheduledMessageState.setBindingScene(userId, 'SELECT_TOPIC');
+
+      // ALWAYS show Reply Keyboard with all topics
+      logger.info(`[SchedMsg] SHOW_TOPIC_MENU user=${userId} chatId=${chatId} allTopics=${topics.length} existingSelections=${existingTopics.length}`);
+      await ctx.reply(`📎 تاپیک‌های «${matched.title}» را انتخاب کنید:`, buildDestinationTopicKeyboard(topics));
+
+      if (existingTopics.length > 0) {
+        const statusText = buildTopicStatusText(matched.title, existingTopics);
+        const inlineKb = buildTopicStatusInlineKeyboard(existingTopics);
+        const sent = await ctx.reply(statusText, inlineKb);
+        scheduledMessageState.setBindingReviewMsgId(userId, sent.message_id);
+      }
+      return;
     }
 
-    // ── Topic selection via Reply Keyboard ──
-    if (scheduleStep === 'select_topic') {
-      let topicId: number | null = null;
-      const targetGroup = scheduledMessageState.getTargetGroup(userId);
-      if (targetGroup) {
-        const topics = await forumTopicService.getTopicsForChat(targetGroup);
-        const topic = topics.find((t) => t.name === text);
-        if (topic) {
-          topicId = topic.topicId;
-        }
+    // ── Topic selection via Reply Keyboard (scene-based) ──
+    if (scheduledMessageState.getBindingScene(userId) === 'SELECT_TOPIC') {
+      if (text === '❌ لغو') {
+        scheduledMessageState.clearBindingScene(userId);
+        const editMsgId = scheduledMessageState.getEditMode(userId);
+        if (editMsgId) await showPostEditor(ctx, editMsgId);
+        return;
       }
-      if (topicId === null) {
+      if (text === '⬅️ بازگشت') {
+        scheduledMessageState.setBindingScene(userId, 'SELECT_GROUP');
+        const groups = await prisma.telegramGroup.findMany({
+          where: { status: 'APPROVED', botIsAdmin: true },
+          orderBy: { addedAt: 'desc' },
+        });
+        await ctx.reply('👥 گروه مقصد را انتخاب کنید:', buildDestinationGroupKeyboard(groups));
+        return;
+      }
+
+      const chatIdStr = scheduledMessageState.getCurrentGroupForTopic(userId);
+      if (!chatIdStr) return next();
+
+      const cleanName = text.replace(/^📂 /, '');
+      const topic = await prisma.forumTopic.findFirst({
+        where: { chatId: BigInt(chatIdStr), name: cleanName, isClosed: false },
+      });
+      if (!topic) {
         await ctx.reply('❌ تاپیک یافت نشد. دوباره انتخاب کنید.');
         return;
       }
-      scheduledMessageState.setTargetTopic(userId, topicId);
-      scheduledMessageState.setScheduleStep(userId, null as any);
 
-      // Save topic to DB
-      const msgId = scheduledMessageState.getEditMode(userId);
-      if (msgId) {
-        await scheduledMessageRepository.update(msgId, {
-          targetTopicId: BigInt(topicId),
-        });
-        logger.info(`[SchedMsg] Saved targetTopicId=${topicId} to msg=${msgId}`);
-        await ctx.reply(`✅ تاپیک "${text}" انتخاب شد.`);
-        await showPostEditor(ctx, msgId);
-      }
+      const pending = scheduledMessageState.getPendingBindings(userId);
+      const groupBinding = pending.find((b: any) => b.chatId === chatIdStr);
+      if (!groupBinding) return next();
+
+      groupBinding.topics.push({ topicId: topic.topicId, topicName: topic.name });
+      scheduledMessageState.setPendingBindings(userId, pending);
+      logger.info(`[SchedMsg] TOPIC_SELECTED user=${userId} topicId=${topic.topicId} name=${topic.name}`);
+
+      // Send NEW message each time
+      const statusText = buildTopicStatusText(groupBinding.chatTitle, groupBinding.topics);
+      const inlineKb = buildTopicStatusInlineKeyboard(groupBinding.topics);
+      const sent = await ctx.reply(statusText, inlineKb);
+      scheduledMessageState.setBindingReviewMsgId(userId, sent.message_id);
       return;
     }
 
@@ -951,6 +1023,63 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     await scheduledMessageService.publish(id);
     await ctx.reply('✅ پست منتشر شد!');
     await showPostEditor(ctx, id);
+  });
+
+  // ─── Topic binding: remove topic from selection ──────────
+  bot.action(/^sched:dest:remove_topic:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const topicId = parseInt(ctx.match[1]);
+    const pending = scheduledMessageState.getPendingBindings(userId);
+    const lastGroup = pending[pending.length - 1];
+    if (!lastGroup) return;
+
+    const idx = lastGroup.topics.findIndex((t: any) => t.topicId === topicId);
+    if (idx >= 0) {
+      const removed = lastGroup.topics.splice(idx, 1)[0];
+      scheduledMessageState.setPendingBindings(userId, pending);
+      logger.info(`[SchedMsg] TOPIC_REMOVED user=${userId} topicId=${topicId} name=${removed.topicName}`);
+    }
+
+    if (lastGroup.topics.length === 0) {
+      const statusMsg = `✅ مقصد انتخاب شد\n\nگروه: ${lastGroup.chatTitle}\n(هیچ تاپیکی انتخاب نشده)`;
+      const sent = await ctx.reply(statusMsg, Markup.inlineKeyboard([[Markup.button.callback('✅ تایید نهایی', 'sched:dest:final_confirm')]]));
+      scheduledMessageState.setBindingReviewMsgId(userId, sent.message_id);
+    } else {
+      const statusText = buildTopicStatusText(lastGroup.chatTitle, lastGroup.topics);
+      const inlineKb = buildTopicStatusInlineKeyboard(lastGroup.topics);
+      const sent = await ctx.reply(statusText, inlineKb);
+      scheduledMessageState.setBindingReviewMsgId(userId, sent.message_id);
+    }
+  });
+
+  // ─── Topic binding: final confirm → persist to DB ────────
+  bot.action('sched:dest:final_confirm', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const msgId = scheduledMessageState.getEditMode(userId);
+    const pending = scheduledMessageState.getPendingBindings(userId);
+    if (!msgId || pending.length === 0) return;
+
+    const bindingsData: { chatId: bigint; topicId: number | null; isGlobal?: boolean }[] = [];
+    for (const b of pending) {
+      if (b.isGlobal) {
+        bindingsData.push({ chatId: BigInt(0), topicId: null, isGlobal: true });
+      } else if (!b.isForum || b.topics.length === 0) {
+        bindingsData.push({ chatId: BigInt(b.chatId), topicId: null });
+      } else {
+        for (const t of b.topics) {
+          bindingsData.push({ chatId: BigInt(b.chatId), topicId: t.topicId });
+        }
+      }
+    }
+
+    await scheduledMessageRepository.bulkCreateBindings(msgId, bindingsData);
+    scheduledMessageState.clearBindingScene(userId);
+
+    logger.info(`[SchedMsg] BINDING_UPDATED user=${userId} msgId=${msgId} total=${bindingsData.length}`);
+    await ctx.reply(`✅ ${bindingsData.length} مقصد ذخیره شد.`);
+    await showPostEditor(ctx, msgId);
   });
 
   // ─── Callback: Unpublish ────────────────────────────────

@@ -198,4 +198,39 @@ export const scheduledMessageRepository = {
   async deleteButtonsByScheduledMessage(scheduledMessageId: number) {
     return prisma.scheduledMessageButton.deleteMany({ where: { scheduledMessageId } });
   },
+
+  // ─── Binding CRUD ──────────────────────────────────────
+
+  async getBindingsByScheduledMessage(scheduledMessageId: number) {
+    return prisma.scheduledMessageBinding.findMany({
+      where: { scheduledMessageId, isActive: true },
+      orderBy: [{ chatId: 'asc' }, { topicId: 'asc' }],
+    });
+  },
+
+  async removeBindingsForGroup(scheduledMessageId: number, chatId: bigint) {
+    return prisma.scheduledMessageBinding.deleteMany({ where: { scheduledMessageId, chatId } });
+  },
+
+  async removeBindingsForTopic(scheduledMessageId: number, chatId: bigint, topicId: number) {
+    return prisma.scheduledMessageBinding.deleteMany({
+      where: { scheduledMessageId, chatId, topicId: BigInt(topicId) },
+    });
+  },
+
+  async bulkCreateBindings(scheduledMessageId: number, bindings: { chatId: bigint; topicId: number | null; isGlobal?: boolean }[]) {
+    if (bindings.length === 0) return;
+    await prisma.scheduledMessageBinding.deleteMany({ where: { scheduledMessageId } });
+    for (const b of bindings) {
+      await prisma.scheduledMessageBinding.create({
+        data: {
+          scheduledMessageId,
+          chatId: b.chatId,
+          topicId: b.topicId != null ? BigInt(b.topicId) : null,
+          isGlobal: b.isGlobal ?? false,
+          isActive: true,
+        },
+      });
+    }
+  },
 };

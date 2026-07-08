@@ -1208,6 +1208,7 @@ model ScheduledMessage {
   messages      ScheduledMessageMessage[]
   buttons       ScheduledMessageButton[]
   logs          ScheduledPostLog[]
+  bindings      ScheduledMessageBinding[]
 
   @@index([status])
   @@index([nextSendAt])
@@ -1239,24 +1240,43 @@ model ScheduledMessageMessage {
 }
 
 model ScheduledMessageButton {
-  id                 Int                  @id @default(autoincrement())
+  id                 Int               @id @default(autoincrement())
   scheduledMessageId Int
   messageId          Int?
-  row                Int                  @default(0)
-  col                Int                  @default(0)
+  row                Int               @default(0)
+  col                Int               @default(0)
   text               String
-  type               String               @default("URL")
+  type               String            @default("URL")
   value              String?
   style              String?
   payload            Json?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  scheduledMessage   ScheduledMessage     @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  scheduledMessage   ScheduledMessage  @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
   message            ScheduledMessageMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([scheduledMessageId])
   @@index([messageId])
   @@map("scheduled_message_buttons")
+}
+
+// ─── Scheduled Message Bindings (group+topic targeting) ──
+
+model ScheduledMessageBinding {
+  id                Int               @id @default(autoincrement())
+  scheduledMessageId Int
+  chatId            BigInt
+  topicId           BigInt?
+  isGlobal          Boolean           @default(false)
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  scheduledMessage  ScheduledMessage  @relation(fields: [scheduledMessageId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduledMessageId, chatId, topicId])
+  @@index([chatId])
+  @@index([scheduledMessageId])
+  @@map("scheduled_message_bindings")
 }
 
 model ScheduledPostLog {

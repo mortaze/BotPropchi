@@ -237,6 +237,49 @@ export const scheduledMessageState = {
       'interval_hours', 'start_time', 'target_group', 'target_topic',
       'edit_mode', 'delete_confirm', 'btn_editor_mode', 'btn_editor_row',
       'btn_editor_col', 'mgmt_mode',
+      'binding_scene', 'binding_pending', 'binding_cur_group',
+      'binding_review_msg',
+    ];
+    for (const field of fields) {
+      cache.del(schedKey(userId, field));
+    }
+  },
+
+  // ─── Binding scene state ────────────────────────────────
+
+  setBindingScene(userId: number, step: string) {
+    cache.setPermanent(schedKey(userId, 'binding_scene'), step);
+  },
+  getBindingScene(userId: number): string {
+    return cache.get<string>(schedKey(userId, 'binding_scene')) || '';
+  },
+
+  setPendingBindings(userId: number, bindings: any[]) {
+    cache.setPermanent(schedKey(userId, 'binding_pending'), JSON.stringify(bindings));
+  },
+  getPendingBindings(userId: number): any[] {
+    const raw = cache.get<string>(schedKey(userId, 'binding_pending'));
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setCurrentGroupForTopic(userId: number, chatId: string) {
+    cache.setPermanent(schedKey(userId, 'binding_cur_group'), chatId);
+  },
+  getCurrentGroupForTopic(userId: number): string {
+    return cache.get<string>(schedKey(userId, 'binding_cur_group')) || '';
+  },
+
+  setBindingReviewMsgId(userId: number, msgId: number) {
+    cache.setPermanent(schedKey(userId, 'binding_review_msg'), msgId);
+  },
+  getBindingReviewMsgId(userId: number): number {
+    return cache.get<number>(schedKey(userId, 'binding_review_msg')) || 0;
+  },
+
+  clearBindingScene(userId: number) {
+    const fields = [
+      'binding_scene', 'binding_pending', 'binding_cur_group',
+      'binding_review_msg', 'schedule_step', 'target_group', 'target_topic',
     ];
     for (const field of fields) {
       cache.del(schedKey(userId, field));
