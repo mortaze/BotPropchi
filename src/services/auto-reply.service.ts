@@ -5,6 +5,7 @@ import { autoReplyRepository } from '../repositories/auto-reply.repository';
 import { logger } from '../utils/logger';
 import { validateDbInput } from '../utils/unicode';
 import { buildTelegramKeyboard } from './renderer';
+import { automationService } from './automation.service';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -153,8 +154,22 @@ class AutoReplyService {
 
       logger.info(`[AutoReply] KEYWORD_MATCH autoReply=${ar.id} keyword="${matched.keyword}" user=${ctx.from.id} chat=${ctx.chat?.id} topic=${topicId}`);
 
+      automationService.logActivity({
+        eventType: 'KEYWORD_MATCH',
+        source: 'auto_reply',
+        sourceId: ar.id,
+        targetChatId: BigInt(ctx.chat!.id),
+        targetTopicId: topicId != null ? BigInt(topicId) : null,
+        userTelegramId: BigInt(ctx.from.id),
+        messageText: text.slice(0, 500),
+        keyword: matched.keyword,
+        status: 'SUCCESS',
+      });
+
       try {
+        const startTime = Date.now();
         await this.sendReplyToGroup(ctx, ar);
+        const executionTime = Date.now() - startTime;
         await autoReplyRepository.logDelivery({
           autoReplyId: ar.id,
           targetChatId: BigInt(ctx.chat!.id),
@@ -165,12 +180,34 @@ class AutoReplyService {
           where: { id: ar.id },
           data: { sendCount: { increment: 1 } },
         });
+        automationService.logActivity({
+          eventType: 'AUTO_REPLY_SENT',
+          source: 'auto_reply',
+          sourceId: ar.id,
+          targetChatId: BigInt(ctx.chat!.id),
+          targetTopicId: topicId != null ? BigInt(topicId) : null,
+          userTelegramId: BigInt(ctx.from.id),
+          keyword: matched.keyword,
+          status: 'SUCCESS',
+          executionTimeMs: executionTime,
+        });
       } catch (err: any) {
         logger.error(`[AutoReply] SEND_FAIL autoReply=${ar.id} error=${err.message}`);
         await autoReplyRepository.logDelivery({
           autoReplyId: ar.id,
           targetChatId: BigInt(ctx.chat!.id),
           targetTopicId: topicId != null ? BigInt(topicId) : null,
+          status: 'FAILED',
+          errorMessage: err.message?.slice(0, 900),
+        });
+        automationService.logActivity({
+          eventType: 'AUTO_REPLY_FAILED',
+          source: 'auto_reply',
+          sourceId: ar.id,
+          targetChatId: BigInt(ctx.chat!.id),
+          targetTopicId: topicId != null ? BigInt(topicId) : null,
+          userTelegramId: BigInt(ctx.from.id),
+          keyword: matched.keyword,
           status: 'FAILED',
           errorMessage: err.message?.slice(0, 900),
         });

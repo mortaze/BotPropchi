@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Clock, MessageSquareReply, BarChart2, History, Zap, ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, Badge, StatCardSkeleton } from "@/components/ui";
-import { analyticsApi, keywordRepliesApi } from "@/services/api";
+import { automationApi } from "@/services/api";
 
 const sections = [
   {
@@ -46,21 +46,11 @@ const sections = [
 ];
 
 export default function AutomationPage() {
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ["automation", "stats"],
+  const { data, isLoading } = useQuery({
+    queryKey: ["automation", "dashboard"],
     queryFn: async () => {
-      const [replies, logs] = await Promise.all([
-        keywordRepliesApi.getAll().catch(() => ({ items: [] as any[] })),
-        keywordRepliesApi.history().catch(() => ({ items: [] as any[] })),
-      ]);
-      const replyItems = (replies as any).items || [];
-      const logItems = (logs as any).items || [];
-      return {
-        totalReplies: replyItems.length,
-        activeReplies: replyItems.filter((r: any) => r.isActive).length,
-        totalLogs: logItems.length,
-        recentLogs: logItems.slice(0, 5),
-      };
+      const res = await automationApi.getDashboard();
+      return res.data;
     },
   });
 
@@ -80,7 +70,7 @@ export default function AutomationPage() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {statsLoading ? (
+        {isLoading ? (
           <>
             <StatCardSkeleton />
             <StatCardSkeleton />
@@ -94,27 +84,27 @@ export default function AutomationPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">پاسخ‌های خودکار</p>
-                    <p className="text-2xl font-bold">{stats?.totalReplies ?? 0}</p>
+                    <p className="text-2xl font-bold">{data?.autoReplies?.total ?? 0}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
                     <MessageSquareReply className="h-5 w-5 text-green-500" />
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{stats?.activeReplies ?? 0} فعال</p>
+                <p className="mt-1 text-xs text-muted-foreground">{data?.autoReplies?.active ?? 0} فعال</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">تعداد کل تریگرها</p>
-                    <p className="text-2xl font-bold">{stats?.totalLogs ?? 0}</p>
+                    <p className="text-sm text-muted-foreground">کل تریگرها</p>
+                    <p className="text-2xl font-bold">{data?.triggers?.total ?? 0}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
                     <Zap className="h-5 w-5 text-blue-500" />
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">کل فعالیت‌های ثبت‌شده</p>
+                <p className="mt-1 text-xs text-muted-foreground">امروز: {data?.triggers?.today ?? 0}</p>
               </CardContent>
             </Card>
             <Card>
@@ -122,13 +112,13 @@ export default function AutomationPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">کلمات کلیدی</p>
-                    <p className="text-2xl font-bold">{stats?.totalReplies ?? 0}</p>
+                    <p className="text-2xl font-bold">{data?.keywords?.total ?? 0}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10">
                     <BarChart2 className="h-5 w-5 text-purple-500" />
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">کلمات کلیدی ثبت‌شده</p>
+                <p className="mt-1 text-xs text-muted-foreground">نرخ موفقیت: {data?.triggers?.successRate ?? 0}%</p>
               </CardContent>
             </Card>
             <Card>
@@ -137,8 +127,8 @@ export default function AutomationPage() {
                   <div>
                     <p className="text-sm text-muted-foreground">آخرین فعالیت</p>
                     <p className="text-lg font-bold truncate">
-                      {stats?.recentLogs?.[0]
-                        ? new Date(stats.recentLogs[0].sentAt || stats.recentLogs[0].createdAt).toLocaleDateString("fa-IR")
+                      {data?.lastActivity
+                        ? new Date(data.lastActivity).toLocaleDateString("fa-IR")
                         : "—"}
                     </p>
                   </div>
@@ -146,7 +136,7 @@ export default function AutomationPage() {
                     <History className="h-5 w-5 text-orange-500" />
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">تاریخ آخرین ارسال</p>
+                <p className="mt-1 text-xs text-muted-foreground">هفته: {data?.triggers?.week ?? 0} تریگر</p>
               </CardContent>
             </Card>
           </>
@@ -180,43 +170,31 @@ export default function AutomationPage() {
         })}
       </div>
 
-      {/* Recent Activity */}
-      {stats?.recentLogs && stats.recentLogs.length > 0 && (
-        <Card>
-          <CardHeader>
-            <h3 className="text-lg font-semibold">آخرین فعالیت‌ها</h3>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="data-table w-full">
-                <thead>
-                  <tr>
-                    <th>زمان</th>
-                    <th>گروه</th>
-                    <th>کلمه</th>
-                    <th>کاربر</th>
-                    <th>وضعیت</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.recentLogs.map((log: any, i: number) => (
-                    <tr key={i}>
-                      <td className="text-sm">{new Date(log.sentAt || log.createdAt).toLocaleString("fa-IR")}</td>
-                      <td className="text-sm">{log.groupName || "—"}</td>
-                      <td className="text-sm"><Badge variant="info">{log.keyword || "—"}</Badge></td>
-                      <td className="text-sm">{log.userTelegramId || "—"}</td>
-                      <td>
-                        <Badge variant={log.status === "SUCCESS" ? "success" : "danger"}>
-                          {log.status === "SUCCESS" ? "موفق" : "ناموفق"}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Quick Stats Summary */}
+      {!isLoading && data && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground">پیام‌های خودکار</p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <p className="text-2xl font-bold">{data.scheduledMessages?.active ?? 0}</p>
+                <span className="text-sm text-muted-foreground">فعال از {data.scheduledMessages?.total ?? 0}</span>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground">تریگرهای ماهانه</p>
+              <p className="text-2xl font-bold">{data.triggers?.month ?? 0}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground">تریگرهای ناموفق</p>
+              <p className="text-2xl font-bold text-red-500">{data.triggers?.failed ?? 0}</p>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

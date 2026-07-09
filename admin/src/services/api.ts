@@ -736,6 +736,21 @@ export const ticketCategoryApi = {
   },
 };
 
+export const automationApi = {
+  async getDashboard(): Promise<any> {
+    const { data } = await api.get("/api/automation/dashboard");
+    return data;
+  },
+  async getActivity(params: { page?: number; limit?: number; eventType?: string; source?: string; status?: string; from?: string; to?: string; search?: string } = {}): Promise<any> {
+    const { data } = await api.get("/api/automation/activity", { params: { page: params.page ?? 1, limit: params.limit ?? 50, ...params } });
+    return data;
+  },
+  async getAnalytics(): Promise<any> {
+    const { data } = await api.get("/api/automation/analytics");
+    return data;
+  },
+};
+
 export const scheduledMessagesApi = {
   async getAll(params?: { page?: number; limit?: number; status?: string }): Promise<any> {
     const { data } = await api.get("/api/scheduled-messages", { params });

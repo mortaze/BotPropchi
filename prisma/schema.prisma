@@ -1428,3 +1428,28 @@ model ForumTopic {
   @@index([chatId])
   @@map("forum_topics")
 }
+
+// ─── Automation Activity Log ───────────────────────────────
+model AutomationActivityLog {
+  id              Int      @id @default(autoincrement())
+  eventType       String   // AUTO_REPLY_SENT, AUTO_REPLY_FAILED, SCHEDULED_SENT, SCHEDULED_FAILED, KEYWORD_MATCH, BUTTON_CLICK, POPUP_CLICK, COMMAND_CLICK
+  source          String   // auto_reply | scheduled_message | keyword_reply
+  sourceId        Int?     // ID of the source record (autoReplyId, scheduledMessageId, keywordReplyId)
+  targetChatId    BigInt?
+  targetTopicId   BigInt?
+  userTelegramId  BigInt?
+  messageText     String?
+  keyword         String?
+  status          String   @default("SUCCESS") // SUCCESS | FAILED
+  errorMessage    String?
+  metadata        Json?
+  executionTimeMs Int?
+  createdAt       DateTime @default(now())
+
+  @@index([eventType])
+  @@index([source])
+  @@index([createdAt])
+  @@index([status])
+  @@index([targetChatId])
+  @@map("automation_activity_logs")
+}

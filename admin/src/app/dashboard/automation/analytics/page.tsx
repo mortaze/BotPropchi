@@ -2,51 +2,35 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowLeft, BarChart2, TrendingUp, Users, MessageSquare, Hash } from "lucide-react";
+import { ArrowLeft, BarChart2, TrendingUp, Users, MessageSquare, Hash, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, Badge, StatCardSkeleton, EmptyState } from "@/components/ui";
-import { keywordRepliesApi } from "@/services/api";
+import { automationApi } from "@/services/api";
 
 export default function AutomationAnalyticsPage() {
-  const { data: repliesData, isLoading: repliesLoading } = useQuery({
-    queryKey: ["automation", "analytics", "replies"],
-    queryFn: () => keywordRepliesApi.getAll(),
+  const { data: dashboardData, isLoading: dashLoading } = useQuery({
+    queryKey: ["automation", "dashboard"],
+    queryFn: async () => {
+      const res = await automationApi.getDashboard();
+      return res.data;
+    },
   });
 
-  const { data: logsData, isLoading: logsLoading } = useQuery({
-    queryKey: ["automation", "analytics", "logs"],
-    queryFn: () => keywordRepliesApi.history(),
+  const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
+    queryKey: ["automation", "analytics-extra"],
+    queryFn: async () => {
+      const res = await automationApi.getAnalytics();
+      return res.data;
+    },
   });
 
-  const replies = repliesData?.items || [];
-  const logs = logsData?.items || [];
-  const isLoading = repliesLoading || logsLoading;
+  const isLoading = dashLoading || analyticsLoading;
 
-  // Keyword usage analysis
-  const keywordUsage: Record<string, number> = {};
-  const groupUsage: Record<string, number> = {};
-  const userUsage: Record<string, number> = {};
-  const dailyUsage: Record<string, number> = {};
-
-  for (const log of logs) {
-    const kw = log.matchedText || log.keywordReply?.keyword || "نامشخص";
-    keywordUsage[kw] = (keywordUsage[kw] || 0) + 1;
-
-    const group = log.telegramGroup?.title || String(log.telegramGroupId || "نامشخص");
-    groupUsage[group] = (groupUsage[group] || 0) + 1;
-
-    const user = log.userTelegramId || "نامشخص";
-    userUsage[user] = (userUsage[user] || 0) + 1;
-
-    const date = log.createdAt ? new Date(log.createdAt).toLocaleDateString("fa-IR") : "نامشخص";
-    dailyUsage[date] = (dailyUsage[date] || 0) + 1;
-  }
-
-  const sortedKeywords = Object.entries(keywordUsage).sort((a, b) => b[1] - a[1]);
-  const sortedGroups = Object.entries(groupUsage).sort((a, b) => b[1] - a[1]);
-  const sortedUsers = Object.entries(userUsage).sort((a, b) => b[1] - a[1]);
-  const unusedKeywords = replies.filter((r: any) => !keywordUsage[r.keyword]);
-
-  const maxKeywordCount = sortedKeywords.length > 0 ? sortedKeywords[0][1] : 1;
+  const topKeywords = dashboardData?.topKeywords || [];
+  const topGroups = dashboardData?.topGroups || [];
+  const topUsers = dashboardData?.topUsers || [];
+  const dailyStats = dashboardData?.dailyStats || [];
+  const unusedKeywords = analyticsData?.unusedKeywords || [];
+  const maxKeywordCount = topKeywords.length > 0 ? topKeywords[0].count : 1;
 
   return (
     <div className="space-y-6">
@@ -73,12 +57,13 @@ export default function AutomationAnalyticsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">کل تریگرها</p>
-                    <p className="text-2xl font-bold">{logs.length}</p>
+                    <p className="text-2xl font-bold">{dashboardData?.triggers?.total ?? 0}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
                     <BarChart2 className="h-5 w-5 text-blue-500" />
                   </div>
                 </div>
+                <p className="mt-1 text-xs text-muted-foreground">موفق: {dashboardData?.triggers?.success ?? 0} | ناموفق: {dashboardData?.triggers?.failed ?? 0}</p>
               </CardContent>
             </Card>
             <Card>
@@ -86,7 +71,7 @@ export default function AutomationAnalyticsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">کلمات کلیدی فعال</p>
-                    <p className="text-2xl font-bold">{sortedKeywords.length}</p>
+                    <p className="text-2xl font-bold">{topKeywords.length}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
                     <Hash className="h-5 w-5 text-green-500" />
@@ -99,7 +84,7 @@ export default function AutomationAnalyticsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">گروه‌های فعال</p>
-                    <p className="text-2xl font-bold">{sortedGroups.length}</p>
+                    <p className="text-2xl font-bold">{analyticsData?.activeGroupsCount ?? topGroups.length}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10">
                     <MessageSquare className="h-5 w-5 text-purple-500" />
@@ -112,7 +97,7 @@ export default function AutomationAnalyticsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">کاربران فعال</p>
-                    <p className="text-2xl font-bold">{sortedUsers.length}</p>
+                    <p className="text-2xl font-bold">{analyticsData?.activeUsersCount ?? topUsers.length}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
                     <Users className="h-5 w-5 text-orange-500" />
@@ -134,20 +119,24 @@ export default function AutomationAnalyticsPage() {
             </h3>
           </CardHeader>
           <CardContent>
-            {sortedKeywords.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 animate-pulse rounded bg-muted" />)}
+              </div>
+            ) : topKeywords.length === 0 ? (
               <EmptyState title="داده‌ای موجود نیست" description="هنوز تریگری ثبت نشده است." />
             ) : (
               <div className="space-y-3">
-                {sortedKeywords.slice(0, 10).map(([keyword, count]) => (
-                  <div key={keyword} className="flex items-center gap-3">
-                    <Badge variant="info" className="shrink-0">{keyword}</Badge>
+                {topKeywords.slice(0, 10).map((item: any) => (
+                  <div key={item.keyword} className="flex items-center gap-3">
+                    <Badge variant="info" className="shrink-0">{item.keyword}</Badge>
                     <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                       <div
                         className="h-full rounded-full bg-primary transition-all"
-                        style={{ width: `${(count / maxKeywordCount) * 100}%` }}
+                        style={{ width: `${(item.count / maxKeywordCount) * 100}%` }}
                       />
                     </div>
-                    <span className="text-sm font-medium text-muted-foreground w-12 text-left">{count}</span>
+                    <span className="text-sm font-medium text-muted-foreground w-12 text-left">{item.count}</span>
                   </div>
                 ))}
               </div>
@@ -164,14 +153,18 @@ export default function AutomationAnalyticsPage() {
             </h3>
           </CardHeader>
           <CardContent>
-            {sortedGroups.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 animate-pulse rounded bg-muted" />)}
+              </div>
+            ) : topGroups.length === 0 ? (
               <EmptyState title="داده‌ای موجود نیست" description="هنوز فعالیتی ثبت نشده است." />
             ) : (
               <div className="space-y-3">
-                {sortedGroups.slice(0, 10).map(([group, count]) => (
-                  <div key={group} className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground truncate">{group}</span>
-                    <Badge variant="outline">{count} بار</Badge>
+                {topGroups.slice(0, 10).map((item: any) => (
+                  <div key={item.chatId} className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-foreground truncate">{item.chatId}</span>
+                    <Badge variant="outline">{item.count} بار</Badge>
                   </div>
                 ))}
               </div>
@@ -188,14 +181,18 @@ export default function AutomationAnalyticsPage() {
             </h3>
           </CardHeader>
           <CardContent>
-            {sortedUsers.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 animate-pulse rounded bg-muted" />)}
+              </div>
+            ) : topUsers.length === 0 ? (
               <EmptyState title="داده‌ای موجود نیست" description="هنوز فعالیتی ثبت نشده است." />
             ) : (
               <div className="space-y-3">
-                {sortedUsers.slice(0, 10).map(([user, count]) => (
-                  <div key={user} className="flex items-center justify-between">
-                    <span className="text-sm font-mono text-foreground">{user}</span>
-                    <Badge variant="outline">{count} بار</Badge>
+                {topUsers.slice(0, 10).map((item: any) => (
+                  <div key={item.telegramId} className="flex items-center justify-between">
+                    <span className="text-sm font-mono text-foreground">{item.telegramId}</span>
+                    <Badge variant="outline">{item.count} بار</Badge>
                   </div>
                 ))}
               </div>
@@ -207,18 +204,22 @@ export default function AutomationAnalyticsPage() {
         <Card>
           <CardHeader>
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Hash className="h-5 w-5 text-red-500" />
+              <XCircle className="h-5 w-5 text-red-500" />
               کلمات کلیدی بدون استفاده
             </h3>
           </CardHeader>
           <CardContent>
-            {unusedKeywords.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 animate-pulse rounded bg-muted" />)}
+              </div>
+            ) : unusedKeywords.length === 0 ? (
               <EmptyState title="عالی!" description="تمام کلمات کلیدی حداقل یک بار استفاده شده‌اند." />
             ) : (
               <div className="space-y-2">
-                {unusedKeywords.map((r: any) => (
-                  <div key={r.id} className="flex items-center justify-between">
-                    <Badge variant="warning">{r.keyword}</Badge>
+                {unusedKeywords.map((item: any) => (
+                  <div key={item.autoReplyId} className="flex items-center justify-between">
+                    <Badge variant="warning">{item.keyword}</Badge>
                     <span className="text-xs text-muted-foreground">بدون تریگر</span>
                   </div>
                 ))}
@@ -227,6 +228,31 @@ export default function AutomationAnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Daily Stats */}
+      {!isLoading && dailyStats.length > 0 && (
+        <Card>
+          <CardHeader>
+            <h3 className="text-lg font-semibold">آمار روزانه (۳۰ روز اخیر)</h3>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {dailyStats.slice(0, 15).map((day: any) => (
+                <div key={day.date} className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground w-24">{day.date}</span>
+                  <div className="flex-1 h-4 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary/80 transition-all"
+                      style={{ width: `${(day.count / (dailyStats[0]?.count || 1)) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground w-10 text-left">{day.count}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

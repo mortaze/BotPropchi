@@ -2,18 +2,29 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowLeft, MessageSquareReply, CheckCircle, XCircle } from "lucide-react";
+import { ArrowLeft, MessageSquareReply, CheckCircle, XCircle, Hash } from "lucide-react";
 import { Card, CardContent, CardHeader, Badge, StatCardSkeleton, EmptyState } from "@/components/ui";
-import { keywordRepliesApi } from "@/services/api";
+import { automationApi } from "@/services/api";
 
 export default function AutoRepliesPage() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["automation", "replies"],
-    queryFn: () => keywordRepliesApi.getAll(),
+  const { data: dashboardData, isLoading: dashLoading } = useQuery({
+    queryKey: ["automation", "dashboard"],
+    queryFn: async () => {
+      const res = await automationApi.getDashboard();
+      return res.data;
+    },
   });
 
-  const replies = data?.items || [];
-  const active = replies.filter((r: any) => r.isActive);
+  const { data: repliesData, isLoading: repliesLoading } = useQuery({
+    queryKey: ["automation", "replies-list"],
+    queryFn: async () => {
+      const { data } = await import("@/services/api").then(m => m.default.get("/api/keyword-replies"));
+      return data;
+    },
+  });
+
+  const replies = repliesData?.items || [];
+  const isLoading = dashLoading || repliesLoading;
 
   return (
     <div className="space-y-6">
@@ -30,13 +41,9 @@ export default function AutoRepliesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         {isLoading ? (
-          <>
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-          </>
+          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
             <Card>
@@ -44,7 +51,7 @@ export default function AutoRepliesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">کل پاسخ‌ها</p>
-                    <p className="text-2xl font-bold">{replies.length}</p>
+                    <p className="text-2xl font-bold">{dashboardData?.autoReplies?.total ?? 0}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
                     <MessageSquareReply className="h-5 w-5 text-green-500" />
@@ -57,7 +64,7 @@ export default function AutoRepliesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">فعال</p>
-                    <p className="text-2xl font-bold text-green-500">{active.length}</p>
+                    <p className="text-2xl font-bold text-green-500">{dashboardData?.autoReplies?.active ?? 0}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
                     <CheckCircle className="h-5 w-5 text-green-500" />
@@ -70,10 +77,25 @@ export default function AutoRepliesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">غیرفعال</p>
-                    <p className="text-2xl font-bold text-orange-500">{replies.length - active.length}</p>
+                    <p className="text-2xl font-bold text-orange-500">
+                      {(dashboardData?.autoReplies?.total ?? 0) - (dashboardData?.autoReplies?.active ?? 0)}
+                    </p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
                     <XCircle className="h-5 w-5 text-orange-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">کلمات کلیدی</p>
+                    <p className="text-2xl font-bold">{dashboardData?.keywords?.total ?? 0}</p>
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10">
+                    <Hash className="h-5 w-5 text-purple-500" />
                   </div>
                 </div>
               </CardContent>

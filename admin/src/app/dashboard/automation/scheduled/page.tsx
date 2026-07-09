@@ -2,19 +2,26 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Clock, ArrowLeft, ExternalLink, CheckCircle, XCircle, Pause } from "lucide-react";
+import { Clock, ArrowLeft, CheckCircle, XCircle, Pause } from "lucide-react";
 import { Card, CardContent, CardHeader, Badge, StatCardSkeleton, EmptyState } from "@/components/ui";
-import { scheduledMessagesApi } from "@/services/api";
+import { automationApi, scheduledMessagesApi } from "@/services/api";
 
 export default function ScheduledMessagesPage() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["automation", "scheduled"],
+  const { data: dashboardData, isLoading: dashLoading } = useQuery({
+    queryKey: ["automation", "dashboard"],
+    queryFn: async () => {
+      const res = await automationApi.getDashboard();
+      return res.data;
+    },
+  });
+
+  const { data, isLoading: listLoading } = useQuery({
+    queryKey: ["automation", "scheduled-list"],
     queryFn: () => scheduledMessagesApi.getAll({ page: 1, limit: 100 }),
   });
 
   const messages = data?.items || [];
-  const published = messages.filter((m: any) => m.isPublished);
-  const drafts = messages.filter((m: any) => !m.isPublished);
+  const isLoading = dashLoading || listLoading;
 
   return (
     <div className="space-y-6">
@@ -31,13 +38,9 @@ export default function ScheduledMessagesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
-          <>
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-          </>
+          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
             <Card>
@@ -45,7 +48,7 @@ export default function ScheduledMessagesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">کل پیام‌ها</p>
-                    <p className="text-2xl font-bold">{messages.length}</p>
+                    <p className="text-2xl font-bold">{dashboardData?.scheduledMessages?.total ?? messages.length}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
                     <Clock className="h-5 w-5 text-blue-500" />
@@ -58,7 +61,7 @@ export default function ScheduledMessagesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">فعال</p>
-                    <p className="text-2xl font-bold text-green-500">{published.length}</p>
+                    <p className="text-2xl font-bold text-green-500">{dashboardData?.scheduledMessages?.active ?? 0}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
                     <CheckCircle className="h-5 w-5 text-green-500" />
@@ -71,10 +74,27 @@ export default function ScheduledMessagesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">پیش‌نویس</p>
-                    <p className="text-2xl font-bold text-orange-500">{drafts.length}</p>
+                    <p className="text-2xl font-bold text-orange-500">{dashboardData?.scheduledMessages?.draft ?? 0}</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
                     <Pause className="h-5 w-5 text-orange-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">آخرین ارسال</p>
+                    <p className="text-lg font-bold truncate">
+                      {messages.find((m: any) => m.lastSentAt)
+                        ? new Date(messages.find((m: any) => m.lastSentAt).lastSentAt).toLocaleDateString("fa-IR")
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10">
+                    <Clock className="h-5 w-5 text-purple-500" />
                   </div>
                 </div>
               </CardContent>
@@ -107,6 +127,7 @@ export default function ScheduledMessagesPage() {
                     <th>گروه</th>
                     <th>برنامه</th>
                     <th>تعداد ارسال</th>
+                    <th>آخرین ارسال</th>
                     <th>زمان ایجاد</th>
                   </tr>
                 </thead>
@@ -124,6 +145,9 @@ export default function ScheduledMessagesPage() {
                         {msg.intervalMinutes ? `هر ${msg.intervalMinutes} دقیقه` : "—"}
                       </td>
                       <td className="text-sm">{msg.sendCount || 0}</td>
+                      <td className="text-sm text-muted-foreground">
+                        {msg.lastSentAt ? new Date(msg.lastSentAt).toLocaleDateString("fa-IR") : "—"}
+                      </td>
                       <td className="text-sm text-muted-foreground">
                         {new Date(msg.createdAt).toLocaleDateString("fa-IR")}
                       </td>

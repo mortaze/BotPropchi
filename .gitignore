@@ -14,6 +14,7 @@ coverage
 # Logs
 logs
 *.log
+!admin/src/app/dashboard/automation/logs
 
 # Environment
 .env

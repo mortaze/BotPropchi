@@ -28,6 +28,7 @@ import { setBotInstance } from '../notifications';
 import { setTicketBotInstance } from '../ticket-notification.service';
 import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../services/post-renderer.service';
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
+import { automationService } from '../../services/automation.service';
 import { safeEdit, sendPostToUser } from '../shared';
 import {
   lotteryHistoryKeyboard,
@@ -1268,6 +1269,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
       const btn = compacted[row]?.[col];
       if (btn) {
         logger.info(`[POPUP_TRACE] FOUND id=${btn.id} type="${btn.type}" value="${(btn.value || '').substring(0, 80)}"`);
+        automationService.logActivity({
+          eventType: 'POPUP_CLICK',
+          source: 'scheduled_message',
+          sourceId: schedMsgId,
+          userTelegramId: ctx.from?.id ? BigInt(ctx.from.id) : undefined,
+          keyword: btn.text,
+          status: 'SUCCESS',
+        });
         await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
       } else {
         logger.warn(`[POPUP_TRACE] NOT_FOUND row=${row} col=${col} buttons=${buttons.length} compacted=${compacted.length}x${compacted[0]?.length || 0}`);
@@ -1312,6 +1321,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     try {
       const btn = await resolveArButton(autoReplyId, flatIdx);
       if (btn) {
+        automationService.logActivity({
+          eventType: 'POPUP_CLICK',
+          source: 'auto_reply',
+          sourceId: autoReplyId,
+          userTelegramId: ctx.from?.id ? BigInt(ctx.from.id) : undefined,
+          keyword: btn.text,
+          status: 'SUCCESS',
+        });
         await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
       } else {
         await ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
@@ -1360,6 +1377,13 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const normalized = raw.startsWith('/') ? raw : `/${raw}`;
     const cmdName = normalized.slice(1).toLowerCase();
     logger.info(`[ArCMD] t=${t0} cmdName="${cmdName}" from user=${ctx.from?.id}`);
+    automationService.logActivity({
+      eventType: 'COMMAND_CLICK',
+      source: 'auto_reply',
+      userTelegramId: ctx.from?.id ? BigInt(ctx.from.id) : undefined,
+      keyword: cmdName,
+      status: 'SUCCESS',
+    });
     await ctx.answerCbQuery();
     try {
       const post = await postService.resolveCommand(cmdName);

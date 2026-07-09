@@ -5,6 +5,7 @@ import { scheduledMessageRepository } from '../repositories/scheduled-message.re
 import { logger } from '../utils/logger';
 import { sanitizeTelegramText, sanitizeTelegramExtra, validateDbInput } from '../utils/unicode';
 import { buildTelegramKeyboard } from './renderer';
+import { automationService } from './automation.service';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -387,9 +388,30 @@ class ScheduledMessageService {
       await scheduledMessageRepository.logDelivery({
         scheduledMessageId: msg.id, targetChatId: msg.targetChatId, targetTopicId: msg.targetTopicId, status: 'SUCCESS',
       });
+
+      automationService.logActivity({
+        eventType: 'SCHEDULED_SENT',
+        source: 'scheduled_message',
+        sourceId: msg.id,
+        targetChatId: msg.targetChatId,
+        targetTopicId: msg.targetTopicId,
+        status: 'SUCCESS',
+        metadata: { title: msg.title, messageCount: messages.length },
+      });
     } catch (error: any) {
       const errMsg = error?.message || String(error);
       logger.error(`[SchedMsg] SEND_FAIL msg=${msg.id} error="${errMsg}"`);
+
+      automationService.logActivity({
+        eventType: 'SCHEDULED_FAILED',
+        source: 'scheduled_message',
+        sourceId: msg.id,
+        targetChatId: msg.targetChatId,
+        targetTopicId: msg.targetTopicId,
+        status: 'FAILED',
+        errorMessage: errMsg.slice(0, 900),
+        metadata: { title: msg.title },
+      });
 
       if (error?.response?.parameters?.retry_after) {
         const waitSec = error.response.parameters.retry_after;

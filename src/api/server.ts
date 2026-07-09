@@ -46,6 +46,7 @@ import { userDeleteRouter } from "./routes/user-delete.routes";
 import { userEventRouter } from "./routes/user-event.routes";
 import { ticketRouter } from "./routes/ticket.routes";
 import { ticketCategoryRouter } from "./routes/ticket-category.routes";
+import { automationRouter } from "./routes/automation.routes";
 
 import { authMiddleware, requireFeature, requireOwner } from "./middlewares/auth.middleware";
 
@@ -226,6 +227,9 @@ export function startAdminApi(bot?: Telegraf) {
   // ───────────────── TICKET ROUTES ────────────────────────────
   app.use("/api/tickets", authMiddleware, ticketRouter);
   app.use("/api/ticket-categories", authMiddleware, ticketCategoryRouter);
+
+  // ───────────────── AUTOMATION ROUTES ────────────────────────
+  app.use("/api/automation", authMiddleware, automationRouter);
 
   // ───────────────── 404 HANDLER ─────────────────
   app.use(
