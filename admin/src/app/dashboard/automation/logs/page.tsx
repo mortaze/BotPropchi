@@ -4,85 +4,83 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, History, Search, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, Badge, EmptyState } from "@/components/ui";
-import { automationApi } from "@/services/api";
+import { keywordRepliesApi, scheduledMessagesApi } from "@/services/api";
 import { useState } from "react";
 
-const EVENT_TYPES = [
-  { value: "", label: "همه انواع" },
-  { value: "AUTO_REPLY_SENT", label: "ارسال پاسخ خودکار" },
-  { value: "AUTO_REPLY_FAILED", label: "خطای پاسخ خودکار" },
-  { value: "SCHEDULED_SENT", label: "ارسال پیام زمان‌بندی" },
-  { value: "SCHEDULED_FAILED", label: "خطای پیام زمان‌بندی" },
-  { value: "KEYWORD_MATCH", label: "تطبیق کلمه کلیدی" },
-  { value: "BUTTON_CLICK", label: "کلیک دکمه" },
-  { value: "POPUP_CLICK", label: "کلیک پاپ‌آپ" },
-  { value: "COMMAND_CLICK", label: "کلیک دستور" },
-];
-
-const SOURCES = [
-  { value: "", label: "همه منابع" },
-  { value: "auto_reply", label: "پاسخ خودکار" },
-  { value: "scheduled_message", label: "پیام زمان‌بندی" },
-  { value: "keyword_reply", label: "کلمه کلیدی" },
-];
-
 export default function ActivityLogsPage() {
-  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [eventType, setEventType] = useState("");
-  const [source, setSource] = useState("");
-  const [status, setStatus] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [appliedFilters, setAppliedFilters] = useState({ eventType: "", source: "", status: "", from: "", to: "" });
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["automation", "activity", page, appliedSearch, appliedFilters],
-    queryFn: () => automationApi.getActivity({
-      page,
-      limit: 25,
-      search: appliedSearch || undefined,
-      eventType: appliedFilters.eventType || undefined,
-      source: appliedFilters.source || undefined,
-      status: appliedFilters.status || undefined,
-      from: appliedFilters.from || undefined,
-      to: appliedFilters.to || undefined,
-    }),
+  const { data: kwHistory, isLoading: kwLoading } = useQuery({
+    queryKey: ["automation", "keyword-history"],
+    queryFn: () => keywordRepliesApi.history(),
   });
 
-  const logs = data?.items || [];
-  const totalPages = data?.pages || 1;
+  const { data: schedData, isLoading: schedLoading } = useQuery({
+    queryKey: ["automation", "scheduled-logs-all"],
+    queryFn: async () => {
+      const list = await scheduledMessagesApi.getAll({ page: 1, limit: 100 });
+      const allLogs: any[] = [];
+      for (const msg of (list?.items || [])) {
+        try {
+          const logs = await scheduledMessagesApi.getLogs(msg.id, 50);
+          for (const log of (logs?.logs || [])) {
+            allLogs.push({ ...log, sourceName: msg.title, source: "scheduled_message" });
+          }
+        } catch {}
+      }
+      return allLogs;
+    },
+  });
 
-  const handleApplyFilters = () => {
-    setPage(1);
-    setAppliedSearch(search);
-    setAppliedFilters({ eventType, source, status, from: dateFrom, to: dateTo });
-  };
+  const isLoading = kwLoading || schedLoading;
 
-  const handleReset = () => {
-    setSearch("");
-    setEventType("");
-    setSource("");
-    setStatus("");
-    setDateFrom("");
-    setDateTo("");
-    setAppliedSearch("");
-    setAppliedFilters({ eventType: "", source: "", status: "", from: "", to: "" });
-    setPage(1);
-  };
+  // Combine all logs
+  const kwLogs = (kwHistory?.items || []).map((l: any) => ({
+    id: `kw_${l.id}`,
+    type: "KEYWORD_MATCH",
+    source: "keyword_reply",
+    keyword: l.keywordReply?.keyword || null,
+    groupName: l.telegramGroup?.title || String(l.telegramGroupId || "—"),
+    userTelegramId: l.userTelegramId,
+    matchedText: l.matchedText,
+    status: "SUCCESS",
+    createdAt: l.createdAt,
+    sourceName: l.keywordReply?.keyword,
+  }));
 
-  const getEventLabel = (type: string) => {
-    const found = EVENT_TYPES.find(e => e.value === type);
-    return found?.label || type;
-  };
+  const schedLogs = (schedData || []).map((l: any) => ({
+    id: `sched_${l.id}`,
+    type: l.status === "SUCCESS" ? "SCHEDULED_SENT" : "SCHEDULED_FAILED",
+    source: "scheduled_message",
+    keyword: null,
+    groupName: String(l.targetChatId || "—"),
+    userTelegramId: null,
+    matchedText: null,
+    status: l.status,
+    createdAt: l.sentAt,
+    sourceName: l.sourceName,
+    errorMessage: l.errorMessage,
+  }));
 
-  const getEventColor = (type: string) => {
-    if (type.includes("FAILED")) return "danger";
-    if (type.includes("SENT")) return "success";
-    if (type.includes("MATCH")) return "info";
-    return "outline";
-  };
+  const allLogs = [...kwLogs, ...schedLogs].sort((a, b) => {
+    const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return db - da;
+  });
+
+  const filtered = allLogs.filter((log) => {
+    const matchesSearch = !search ||
+      (log.keyword || "").includes(search) ||
+      (log.groupName || "").includes(search) ||
+      String(log.userTelegramId || "").includes(search) ||
+      (log.matchedText || "").includes(search) ||
+      (log.sourceName || "").includes(search);
+    const matchesStatus = statusFilter === "all" || log.status === statusFilter;
+    const matchesSource = sourceFilter === "all" || log.source === sourceFilter;
+    return matchesSearch && matchesStatus && matchesSource;
+  });
 
   return (
     <div className="space-y-6">
@@ -96,196 +94,93 @@ export default function ActivityLogsPage() {
             <p className="text-sm text-muted-foreground">مشاهده تاریخچه تمام فعالیت‌های سیستم اتوماسیون</p>
           </div>
         </div>
-        <Badge variant="outline">{data?.total ?? 0} رکورد</Badge>
+        <Badge variant="outline">{filtered.length} رکورد</Badge>
       </div>
 
-      {/* Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="relative">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex-1 relative">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 className="input w-full pr-9"
-                placeholder="جستجو در کلمه، متن پیام..."
+                placeholder="جستجو در کلمه، گروه، کاربر..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleApplyFilters()}
-              />
-            </div>
-            <select
-              className="input w-full"
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value)}
-            >
-              {EVENT_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-            <select
-              className="input w-full"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-            >
-              {SOURCES.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
-            <select
-              className="input w-full"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="">همه وضعیت‌ها</option>
-              <option value="SUCCESS">موفق</option>
-              <option value="FAILED">ناموفق</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row mt-3">
-            <div className="flex gap-2 flex-1">
-              <input
-                type="date"
-                className="input flex-1"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                placeholder="از تاریخ"
-              />
-              <input
-                type="date"
-                className="input flex-1"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                placeholder="تا تاریخ"
               />
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={handleApplyFilters}
-                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-              >
-                <Filter className="h-4 w-4 inline ml-1" />
-                اعمال فیلتر
-              </button>
-              <button
-                onClick={handleReset}
-                className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium hover:bg-muted/80 transition-colors"
-              >
-                پاک کردن
-              </button>
+              <select className="input" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+                <option value="all">همه منابع</option>
+                <option value="keyword_reply">کلمه کلیدی</option>
+                <option value="scheduled_message">پیام زمان‌بندی</option>
+              </select>
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">همه وضعیت‌ها</option>
+                <option value="SUCCESS">موفق</option>
+                <option value="FAILED">ناموفق</option>
+              </select>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Logs Table */}
       <Card>
         <CardContent>
           {isLoading ? (
             <div className="space-y-3">
-              {Array.from({ length: 10 }).map((_, i) => (
+              {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
               ))}
             </div>
-          ) : logs.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <EmptyState
               title="تاریخچه‌ای ثبت نشده"
-              description={appliedSearch || Object.values(appliedFilters).some(Boolean)
+              description={search || statusFilter !== "all" || sourceFilter !== "all"
                 ? "نتیجه‌ای با فیلترهای اعمال‌شده یافت نشد."
                 : "هنوز فعالیتی ثبت نشده است."}
             />
           ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="data-table w-full">
-                  <thead>
-                    <tr>
-                      <th>زمان</th>
-                      <th>نوع فعالیت</th>
-                      <th>منبع</th>
-                      <th>گروه</th>
-                      <th>کاربر</th>
-                      <th>کلمه کلیدی</th>
-                      <th>وضعیت</th>
-                      <th>جزئیات</th>
+            <div className="overflow-x-auto">
+              <table className="data-table w-full">
+                <thead>
+                  <tr>
+                    <th>زمان</th>
+                    <th>نوع</th>
+                    <th>منبع</th>
+                    <th>گروه</th>
+                    <th>کاربر</th>
+                    <th>کلمه/موضوع</th>
+                    <th>وضعیت</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.slice(0, 100).map((log: any) => (
+                    <tr key={log.id}>
+                      <td className="text-sm whitespace-nowrap">
+                        {log.createdAt ? new Date(log.createdAt).toLocaleString("fa-IR") : "—"}
+                      </td>
+                      <td>
+                        <Badge variant={log.type?.includes("FAILED") ? "danger" : log.type?.includes("KEYWORD") ? "info" : "success"}>
+                          {log.type === "KEYWORD_MATCH" ? "تطبیق کلمه" : log.type === "SCHEDULED_SENT" ? "ارسال زمان‌بندی" : log.type === "SCHEDULED_FAILED" ? "خطای زمان‌بندی" : log.type}
+                        </Badge>
+                      </td>
+                      <td className="text-sm">{log.sourceName || log.source}</td>
+                      <td className="text-sm text-muted-foreground">{log.groupName}</td>
+                      <td className="text-sm font-mono">{log.userTelegramId ? String(log.userTelegramId) : "—"}</td>
+                      <td className="text-sm">
+                        {log.keyword ? <Badge variant="info">{log.keyword}</Badge> : log.matchedText || "—"}
+                      </td>
+                      <td>
+                        <Badge variant={log.status === "SUCCESS" ? "success" : "danger"}>
+                          {log.status === "SUCCESS" ? "موفق" : "ناموفق"}
+                        </Badge>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {logs.map((log: any) => (
-                      <tr key={log.id}>
-                        <td className="text-sm whitespace-nowrap">
-                          {new Date(log.createdAt).toLocaleString("fa-IR")}
-                        </td>
-                        <td>
-                          <Badge variant={getEventColor(log.eventType)}>
-                            {getEventLabel(log.eventType)}
-                          </Badge>
-                        </td>
-                        <td className="text-sm">{log.source}</td>
-                        <td className="text-sm text-muted-foreground font-mono">
-                          {log.targetChatId ? String(log.targetChatId) : "—"}
-                        </td>
-                        <td className="text-sm font-mono">
-                          {log.userTelegramId ? String(log.userTelegramId) : "—"}
-                        </td>
-                        <td className="text-sm">
-                          {log.keyword ? <Badge variant="info">{log.keyword}</Badge> : "—"}
-                        </td>
-                        <td>
-                          <Badge variant={log.status === "SUCCESS" ? "success" : "danger"}>
-                            {log.status === "SUCCESS" ? "موفق" : "ناموفق"}
-                          </Badge>
-                        </td>
-                        <td className="text-sm text-muted-foreground max-w-[200px] truncate">
-                          {log.errorMessage || log.messageText || "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <span className="text-sm text-muted-foreground">
-                    صفحه {page} از {totalPages}
-                  </span>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
-                      disabled={page <= 1}
-                      className="px-3 py-2 rounded-lg bg-muted text-sm font-medium hover:bg-muted/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      const pageNum = Math.max(1, Math.min(page - 2, totalPages - 4)) + i;
-                      if (pageNum > totalPages) return null;
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => setPage(pageNum)}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            page === pageNum
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted text-muted-foreground hover:bg-muted/80"
-                          }`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
-                    <button
-                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                      disabled={page >= totalPages}
-                      className="px-3 py-2 rounded-lg bg-muted text-sm font-medium hover:bg-muted/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
