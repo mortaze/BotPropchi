@@ -4,16 +4,17 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, MessageSquareReply, CheckCircle, XCircle, Hash } from "lucide-react";
 import { Card, CardContent, CardHeader, Badge, StatCardSkeleton, EmptyState } from "@/components/ui";
-import { keywordRepliesApi } from "@/services/api";
+import { autoRepliesApi } from "@/services/api";
 
 export default function AutoRepliesPage() {
   const { data: repliesData, isLoading } = useQuery({
     queryKey: ["automation", "replies-list"],
-    queryFn: () => keywordRepliesApi.getAll(),
+    queryFn: () => autoRepliesApi.getAll({ page: 1, limit: 100 }),
   });
 
   const replies = repliesData?.items || [];
-  const active = replies.filter((r: any) => r.isActive);
+  const active = replies.filter((r: any) => r.isPublished);
+  const totalKeywords = replies.reduce((sum: number, r: any) => sum + (r.keywords?.length || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -68,11 +69,11 @@ export default function AutoRepliesPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">غیرفعال</p>
-                    <p className="text-2xl font-bold text-orange-500">{replies.length - active.length}</p>
+                    <p className="text-sm text-muted-foreground">کلمات کلیدی</p>
+                    <p className="text-2xl font-bold">{totalKeywords}</p>
                   </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
-                    <XCircle className="h-5 w-5 text-orange-500" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10">
+                    <Hash className="h-5 w-5 text-purple-500" />
                   </div>
                 </div>
               </CardContent>
@@ -99,26 +100,31 @@ export default function AutoRepliesPage() {
               <table className="data-table w-full">
                 <thead>
                   <tr>
-                    <th>کلمه کلیدی</th>
-                    <th>نوع</th>
+                    <th>عنوان</th>
+                    <th>کلمات کلیدی</th>
                     <th>وضعیت</th>
-                    <th>پاسخ</th>
+                    <th>تعداد ارسال</th>
+                    <th>زمان ایجاد</th>
                   </tr>
                 </thead>
                 <tbody>
                   {replies.map((reply: any) => (
                     <tr key={reply.id}>
-                      <td className="font-medium text-foreground">
-                        <Badge variant="info">{reply.keyword}</Badge>
+                      <td className="font-medium text-foreground">{reply.title}</td>
+                      <td className="text-sm">
+                        {reply.keywords?.map((kw: any) => (
+                          <Badge key={kw.id} variant="info" className="ml-1">{kw.keyword}</Badge>
+                        ))}
+                        {(!reply.keywords || reply.keywords.length === 0) && <span className="text-muted-foreground">—</span>}
                       </td>
-                      <td className="text-sm">{reply.responseType || "TEXT"}</td>
                       <td>
-                        <Badge variant={reply.isActive ? "success" : "warning"}>
-                          {reply.isActive ? "فعال" : "غیرفعال"}
+                        <Badge variant={reply.isPublished ? "success" : "warning"}>
+                          {reply.isPublished ? "فعال" : "پیش‌نویس"}
                         </Badge>
                       </td>
-                      <td className="text-sm text-muted-foreground max-w-xs truncate">
-                        {reply.response || "—"}
+                      <td className="text-sm">{reply.sendCount || 0}</td>
+                      <td className="text-sm text-muted-foreground">
+                        {new Date(reply.createdAt).toLocaleDateString("fa-IR")}
                       </td>
                     </tr>
                   ))}

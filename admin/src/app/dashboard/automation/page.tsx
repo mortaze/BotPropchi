@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Clock, MessageSquareReply, BarChart2, History, Zap, ArrowLeft } from "lucide-react";
 import { Card, CardContent, Badge, StatCardSkeleton } from "@/components/ui";
-import { scheduledMessagesApi, keywordRepliesApi } from "@/services/api";
+import { scheduledMessagesApi, autoRepliesApi } from "@/services/api";
 
 const sections = [
   { key: "scheduled", label: "پیام‌های خودکار", description: "مدیریت و مشاهده پیام‌های زمان‌بندی‌شده", href: "/dashboard/automation/scheduled", icon: Clock, color: "text-blue-500", bg: "bg-blue-500/10" },
@@ -21,20 +21,16 @@ export default function AutomationPage() {
 
   const { data: repliesData, isLoading: repliesLoading } = useQuery({
     queryKey: ["automation", "replies-list"],
-    queryFn: () => keywordRepliesApi.getAll(),
+    queryFn: () => autoRepliesApi.getAll({ page: 1, limit: 100 }),
   });
 
-  const { data: schedStats, isLoading: statsLoading } = useQuery({
-    queryKey: ["automation", "scheduled-stats"],
-    queryFn: () => scheduledMessagesApi.getStats(),
-  });
-
-  const isLoading = schedLoading || repliesLoading || statsLoading;
+  const isLoading = schedLoading || repliesLoading;
 
   const messages = scheduledData?.items || [];
   const replies = repliesData?.items || [];
   const activeScheduled = messages.filter((m: any) => m.isPublished).length;
-  const activeReplies = replies.filter((r: any) => r.isActive).length;
+  const activeReplies = replies.filter((r: any) => r.isPublished).length;
+  const totalKeywords = replies.reduce((sum: number, r: any) => sum + (r.keywords?.length || 0), 0);
   const totalSends = messages.reduce((sum: number, m: any) => sum + (m.sendCount || 0), 0);
   const lastSentMsg = messages.find((m: any) => m.lastSentAt);
   const lastActivity = lastSentMsg?.lastSentAt || null;
@@ -102,7 +98,7 @@ export default function AutomationPage() {
                     <BarChart2 className="h-5 w-5 text-purple-500" />
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{activeScheduled} فعال</p>
+                <p className="mt-1 text-xs text-muted-foreground">{activeScheduled} فعال · {totalKeywords} کلمه کلیدی</p>
               </CardContent>
             </Card>
             <Card>

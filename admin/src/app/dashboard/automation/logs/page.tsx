@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, History, Search, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, Badge, EmptyState } from "@/components/ui";
-import { keywordRepliesApi, scheduledMessagesApi } from "@/services/api";
+import { autoRepliesApi, scheduledMessagesApi } from "@/services/api";
 import { useState } from "react";
 
 export default function ActivityLogsPage() {
@@ -12,9 +12,21 @@ export default function ActivityLogsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
-  const { data: kwHistory, isLoading: kwLoading } = useQuery({
-    queryKey: ["automation", "keyword-history"],
-    queryFn: () => keywordRepliesApi.history(),
+  const { data: arLogsData, isLoading: arLoading } = useQuery({
+    queryKey: ["automation", "auto-reply-logs-all"],
+    queryFn: async () => {
+      const list = await autoRepliesApi.getAll({ page: 1, limit: 100 });
+      const allLogs: any[] = [];
+      for (const ar of (list?.items || [])) {
+        try {
+          const logs = await autoRepliesApi.getLogs(ar.id, 50);
+          for (const log of (logs?.logs || [])) {
+            allLogs.push({ ...log, sourceName: ar.title, source: "auto_reply" });
+          }
+        } catch {}
+      }
+      return allLogs;
+    },
   });
 
   const { data: schedData, isLoading: schedLoading } = useQuery({
@@ -34,20 +46,21 @@ export default function ActivityLogsPage() {
     },
   });
 
-  const isLoading = kwLoading || schedLoading;
+  const isLoading = arLoading || schedLoading;
 
-  // Combine all logs
-  const kwLogs = (kwHistory?.items || []).map((l: any) => ({
-    id: `kw_${l.id}`,
-    type: "KEYWORD_MATCH",
-    source: "keyword_reply",
-    keyword: l.keywordReply?.keyword || null,
-    groupName: l.telegramGroup?.title || String(l.telegramGroupId || "—"),
-    userTelegramId: l.userTelegramId,
-    matchedText: l.matchedText,
-    status: "SUCCESS",
-    createdAt: l.createdAt,
-    sourceName: l.keywordReply?.keyword,
+  // Auto reply logs
+  const arLogs = (arLogsData || []).map((l: any) => ({
+    id: `arl_${l.id}`,
+    type: l.status === "SUCCESS" ? "AUTO_REPLY_SENT" : "AUTO_REPLY_FAILED",
+    source: "auto_reply",
+    keyword: null,
+    groupName: String(l.targetChatId || "—"),
+    userTelegramId: null,
+    matchedText: null,
+    status: l.status,
+    createdAt: l.sentAt,
+    sourceName: l.sourceName,
+    errorMessage: l.errorMessage,
   }));
 
   const schedLogs = (schedData || []).map((l: any) => ({
@@ -64,7 +77,7 @@ export default function ActivityLogsPage() {
     errorMessage: l.errorMessage,
   }));
 
-  const allLogs = [...kwLogs, ...schedLogs].sort((a, b) => {
+  const allLogs = [...arLogs, ...schedLogs].sort((a, b) => {
     const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return db - da;

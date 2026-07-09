@@ -773,3 +773,22 @@ export const scheduledMessagesApi = {
     return data;
   },
 };
+
+export const autoRepliesApi = {
+  async getAll(params?: { page?: number; limit?: number }): Promise<any> {
+    const { data } = await api.get("/api/auto-replies", { params });
+    return data;
+  },
+  async getById(id: number): Promise<any> {
+    const { data } = await api.get(`/api/auto-replies/${id}`);
+    return data;
+  },
+  async getStats(): Promise<any> {
+    const { data } = await api.get("/api/auto-replies/stats");
+    return data;
+  },
+  async getLogs(id: number, limit?: number): Promise<any> {
+    const { data } = await api.get(`/api/auto-replies/${id}/logs`, { params: { limit } });
+    return data;
+  },
+};

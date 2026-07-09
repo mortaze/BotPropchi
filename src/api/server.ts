@@ -34,6 +34,7 @@ import { createMiniAppRouter } from "./routes/mini-app.routes";
 import { miniAppLogRouter } from "./routes/mini-app-log.routes";
 import { postRouter } from "./routes/post.routes";
 import { scheduledMessageRoutes } from "./routes/scheduled-message.routes";
+import { autoReplyRoutes } from "./routes/auto-reply.routes";
 import { menuRouter } from "./routes/menu.routes";
 import { forcedMembershipRouter } from "./routes/forced-membership.routes";
 import { forceJoinRouter } from "./routes/force-join.routes";
@@ -214,6 +215,9 @@ export function startAdminApi(bot?: Telegraf) {
 
   // ───────────────── SCHEDULED MESSAGE ROUTES ─────────────────
   app.use("/api/scheduled-messages", authMiddleware, scheduledMessageRoutes);
+
+  // ───────────────── AUTO REPLY ROUTES ───────────────────────
+  app.use("/api/auto-replies", authMiddleware, autoReplyRoutes);
 
   // ───────────────── MENU ROUTES ─────────────────
   app.use("/api/menu", authMiddleware, menuRouter);

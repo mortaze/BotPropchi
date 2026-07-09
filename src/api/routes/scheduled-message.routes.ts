@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { scheduledMessageRepository } from '../../repositories/scheduled-message.repository';
 import { scheduledMessageService } from '../../services/scheduled-message.service';
+import { serializeBigInts } from '../../utils/serialize';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ router.get('/', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const status = req.query.status as string | undefined;
     const result = await scheduledMessageRepository.findAll({ page, limit, status: status as any });
-    res.json({ success: true, ...result });
+    res.json({ success: true, ...serializeBigInts(result) });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -34,7 +35,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const msg = await scheduledMessageRepository.findById(id);
     if (!msg) return res.status(404).json({ success: false, error: 'یافت نشد' });
-    res.json({ success: true, message: msg });
+    res.json({ success: true, message: serializeBigInts(msg) });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -46,7 +47,7 @@ router.get('/:id/logs', async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const limit = parseInt(req.query.limit as string) || 50;
     const logs = await scheduledMessageService.getLogs(id, limit);
-    res.json({ success: true, logs });
+    res.json({ success: true, logs: serializeBigInts(logs) });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
