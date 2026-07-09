@@ -9,6 +9,7 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -21,7 +22,6 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
   horizontalListSortingStrategy,
-  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Badge, Button, Card, CardContent, CardHeader } from "@/components/ui";
@@ -62,17 +62,21 @@ function SortableButton({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex min-w-[200px] max-w-none flex-[1_0_200px] items-start gap-2 rounded-xl border p-3 ${
+      className={`flex w-full items-start gap-2 rounded-xl border p-3 sm:w-auto sm:min-w-[200px] sm:flex-[1_0_200px] sm:max-w-none ${
         isDragging
           ? "border-primary/50 shadow-md ring-2 ring-primary/20 bg-background"
           : "border-border bg-background/60"
       }`}
       title={displayText}
     >
-      <button className="cursor-grab touch-none rounded p-1 hover:bg-accent" {...attributes} {...listeners}>
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      <button
+        className="flex h-11 w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg hover:bg-accent"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-5 w-5 text-muted-foreground" />
       </button>
-      <Badge variant={isPostRef(btn.ref) ? "info" : "outline"} className="shrink-0 text-xs">
+      <Badge variant={isPostRef(btn.ref) ? "info" : "outline"} className="hidden shrink-0 text-xs sm:inline-flex">
         {isPostRef(btn.ref) ? "پست" : "سیستم"}
       </Badge>
       <div className="min-w-0 flex-1">
@@ -80,12 +84,18 @@ function SortableButton({
         <p className="break-all text-xs text-muted-foreground" dir="ltr">{btn.ref}</p>
       </div>
       <div className="flex shrink-0 gap-1">
-        <Button size="sm" variant="ghost" onClick={() => onToggleVisibility(btn.id!)}>
-          {(btn.visible ?? true) ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-        </Button>
-        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => onDelete(btn)}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <button
+          className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent"
+          onClick={() => onToggleVisibility(btn.id!)}
+        >
+          {(btn.visible ?? true) ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+        </button>
+        <button
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
+          onClick={() => onDelete(btn)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
     </div>
   );
@@ -95,7 +105,7 @@ function DroppableRow({
   rowIndex,
   buttons,
   isOver,
-  onAddRow,
+  onAddRowAt,
   onDeleteRow,
   onToggleVisibility,
   onDeleteButton,
@@ -103,7 +113,7 @@ function DroppableRow({
   rowIndex: number;
   buttons: MenuLayoutButton[];
   isOver: boolean;
-  onAddRow: () => void;
+  onAddRowAt: (index: number) => void;
   onDeleteRow: (rowIndex: number) => void;
   onToggleVisibility: (btnId: string) => void;
   onDeleteButton: (btn: MenuLayoutButton) => void;
@@ -112,36 +122,32 @@ function DroppableRow({
 
   return (
     <div ref={setNodeRef} className="space-y-2">
-      {rowIndex === 0 && (
-        <button
-          onClick={onAddRow}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
-        >
-          <Plus className="h-4 w-4" />
-          افزودن ردیف جدید
-        </button>
-      )}
+      <button
+        onClick={() => onAddRowAt(rowIndex)}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary active:bg-accent"
+      >
+        <Plus className="h-4 w-4" />
+        افزودن ردیف جدید
+      </button>
 
       <Card className={`border-l-4 transition-all ${isOver ? "border-l-primary shadow-lg ring-2 ring-primary/20" : "border-l-border"}`}>
         <CardHeader className="py-2">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-muted-foreground">ردیف {rowIndex + 1}</h3>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
+            <button
+              className="flex h-11 items-center gap-1 rounded-lg px-3 text-sm text-destructive hover:bg-destructive/10 active:bg-destructive/20"
               onClick={() => onDeleteRow(rowIndex)}
             >
-              <Trash2 className="h-3.5 w-3.5 mr-1" />
-              حذف ردیف
-            </Button>
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">حذف ردیف</span>
+            </button>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
           <SortableContext items={buttons.map((b) => `btn-${b.id}`)} strategy={horizontalListSortingStrategy}>
-            <div className={`flex min-w-max flex-nowrap gap-3 overflow-x-auto pb-2 min-h-[48px] rounded-lg transition-colors ${isOver ? "bg-primary/5" : ""}`}>
+            <div className={`flex flex-wrap gap-3 rounded-lg p-1 transition-colors min-h-[48px] ${isOver ? "bg-primary/5" : ""}`}>
               {buttons.length === 0 ? (
-                <div className="flex w-full items-center justify-center rounded-lg border border-dashed border-muted-foreground/20 py-6 text-sm text-muted-foreground/50">
+                <div className="flex w-full items-center justify-center rounded-lg border border-dashed border-muted-foreground/20 py-8 text-sm text-muted-foreground/50">
                   دکمه‌ای اینجا نیست — بکشید و رها کنید
                 </div>
               ) : (
@@ -158,14 +164,6 @@ function DroppableRow({
           </SortableContext>
         </CardContent>
       </Card>
-
-      <button
-        onClick={onAddRow}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
-      >
-        <Plus className="h-4 w-4" />
-        افزودن ردیف جدید
-      </button>
     </div>
   );
 }
@@ -187,7 +185,8 @@ export default function MenuPage() {
   }, []);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -261,7 +260,6 @@ export default function MenuPage() {
     if (row.length > 0) {
       const confirmed = window.confirm("این ردیف دارای دکمه است. آیا مطمئن هستید؟");
       if (!confirmed) return;
-      // Delete buttons from server if they have IDs
       for (const btn of row) {
         if (btn.id) {
           deleteMutation.mutate(btn.id);
@@ -271,8 +269,12 @@ export default function MenuPage() {
     setLayout((prev) => prev.filter((_, i) => i !== rowIndex));
   }
 
-  function handleAddRow() {
-    setLayout((prev) => [...prev, []]);
+  function handleAddRowAt(index: number) {
+    setLayout((prev) => {
+      const next = [...prev];
+      next.splice(index, 0, []);
+      return next;
+    });
   }
 
   function handleToggleVisibility(btnId: string) {
@@ -297,13 +299,11 @@ export default function MenuPage() {
   }
 
   function findRowAtPosition(overId: string): { rowIdx: number; insertIdx: number } | null {
-    // Check if over a button
     if (overId.startsWith("btn-")) {
       const overBtnId = overId.replace("btn-", "");
       const pos = findButtonAndRow(overBtnId);
       if (pos) return { rowIdx: pos.rowIdx, insertIdx: pos.btnIdx };
     }
-    // Check if over a row droppable
     if (overId.startsWith("row-")) {
       const rowIdx = parseInt(overId.replace("row-", ""));
       if (!isNaN(rowIdx) && layoutRef.current[rowIdx]) {
@@ -323,6 +323,8 @@ export default function MenuPage() {
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
+    document.body.style.touchAction = "none";
+    document.body.style.overflow = "hidden";
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -343,6 +345,9 @@ export default function MenuPage() {
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
     setOverRowId(null);
+    document.body.style.touchAction = "";
+    document.body.style.overflow = "";
+
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -363,16 +368,13 @@ export default function MenuPage() {
       const btn = next[activePos.rowIdx][activePos.btnIdx];
       if (!btn) return prev;
 
-      // Remove from source
       next[activePos.rowIdx] = next[activePos.rowIdx].filter((_, i) => i !== activePos.btnIdx);
 
-      // Adjust insert index if same row and source was before target
       let insertIdx = target.insertIdx;
       if (activePos.rowIdx === target.rowIdx && activePos.btnIdx < target.insertIdx) {
         insertIdx--;
       }
 
-      // Insert at target
       next[target.rowIdx].splice(Math.max(0, insertIdx), 0, btn);
 
       return next;
@@ -381,38 +383,46 @@ export default function MenuPage() {
     autoSave();
   }
 
-  // Flatten all button IDs for the SortableContext
   const allButtonIds = layout.flatMap((row) => row.map((btn) => `btn-${btn.id}`));
 
   return (
-    <div className="w-full max-w-full space-y-6 px-1 lg:max-w-none xl:max-w-none">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="w-full space-y-4 px-3 sm:px-4 md:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">مدیریت منو</h1>
-          <p className="text-sm text-muted-foreground">ویرایش چیدمان دکمه‌های منوی ربات</p>
+          <h1 className="text-xl font-bold sm:text-2xl">مدیریت منو</h1>
+          <p className="text-xs text-muted-foreground sm:text-sm">ویرایش چیدمان دکمه‌های منوی ربات</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">نسخه {version}</Badge>
-          <Button variant="outline" size="sm" onClick={() => rollbackMutation.mutate()} loading={rollbackMutation.isPending}><RotateCcw className="h-4 w-4" />بازگشت</Button>
-          <Button variant="outline" size="sm" onClick={() => syncMutation.mutate()} loading={syncMutation.isPending}><RefreshCw className="h-4 w-4" />همگام‌سازی پست‌ها</Button>
-          <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}><Save className="h-4 w-4" />ذخیره تغییرات</Button>
+          <Badge variant="outline" className="text-xs">نسخه {version}</Badge>
+          <Button variant="outline" size="sm" className="h-11 min-w-[44px]" onClick={() => rollbackMutation.mutate()} loading={rollbackMutation.isPending}>
+            <RotateCcw className="h-4 w-4" />
+            <span className="hidden sm:inline">بازگشت</span>
+          </Button>
+          <Button variant="outline" size="sm" className="h-11 min-w-[44px]" onClick={() => syncMutation.mutate()} loading={syncMutation.isPending}>
+            <RefreshCw className="h-4 w-4" />
+            <span className="hidden sm:inline">همگام‌سازی پست‌ها</span>
+          </Button>
+          <Button size="sm" className="h-11 min-w-[44px]" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
+            <Save className="h-4 w-4" />
+            <span className="hidden sm:inline">ذخیره تغییرات</span>
+          </Button>
         </div>
       </div>
 
       {layoutQuery.isLoading ? <div className="skeleton h-64" /> : (
         <>
-          <Card>
-            <CardHeader><h2 className="font-semibold">پیش‌نمایش</h2></CardHeader>
-            <CardContent>
+          <Card className="hidden sm:block">
+            <CardHeader className="py-3"><h2 className="font-semibold">پیش‌نمایش</h2></CardHeader>
+            <CardContent className="pt-0">
               <div className="overflow-x-auto rounded-xl border border-border bg-background/60 p-4 text-sm">
                 {layout.length === 0 ? (
                   <p className="text-center text-muted-foreground">منو خالی است</p>
                 ) : (
                   <div className="space-y-1">
                     {layout.map((row, ri) => (
-                      <div key={ri} className="flex min-w-max flex-nowrap gap-2">
+                      <div key={ri} className="flex flex-wrap gap-2">
                         {row.map((btn, bi) => (
-                          <span key={bi} className={`min-w-[120px] max-w-[360px] flex-1 whitespace-normal break-words rounded border px-3 py-1.5 text-center text-xs ${
+                          <span key={bi} className={`min-w-[80px] max-w-[360px] flex-1 whitespace-normal break-words rounded border px-3 py-1.5 text-center text-xs ${
                             (btn.visible ?? true)
                               ? "border-border bg-background"
                               : "border-dashed border-muted-foreground/30 text-muted-foreground/50"
@@ -436,14 +446,14 @@ export default function MenuPage() {
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={allButtonIds} strategy={horizontalListSortingStrategy}>
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {layout.map((row, ri) => (
                   <DroppableRow
                     key={`row-${ri}`}
                     rowIndex={ri}
                     buttons={row}
                     isOver={overRowId === `row-${ri}`}
-                    onAddRow={handleAddRow}
+                    onAddRowAt={handleAddRowAt}
                     onDeleteRow={handleDeleteRow}
                     onToggleVisibility={handleToggleVisibility}
                     onDeleteButton={handleDeleteButton}
@@ -451,8 +461,8 @@ export default function MenuPage() {
                 ))}
                 {layout.length === 0 && (
                   <button
-                    onClick={handleAddRow}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 py-4 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                    onClick={() => handleAddRowAt(0)}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 py-4 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary active:bg-accent"
                   >
                     <Plus className="h-4 w-4" />
                     افزودن ردیف جدید
