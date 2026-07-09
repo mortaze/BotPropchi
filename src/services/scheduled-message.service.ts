@@ -269,44 +269,45 @@ class ScheduledMessageService {
   private async sendToSingleTarget(msg: any, chatId: number, threadId?: number) {
     try {
       const messages = msg.messages || [];
+
+      // Load ALL buttons for this scheduled message ONCE (before the loop)
+      const allButtons = await scheduledMessageRepository.findButtonsByScheduledMessage(msg.id);
+
       for (let i = 0; i < messages.length; i++) {
         const message = messages[i];
         logger.info(`[SchedMsg] SEND msg=${msg.id} [${i + 1}/${messages.length}] type=${message.type} textLen=${(message.text || '').length} entities=${(message.entities as any[])?.length || 0}`);
 
-        // Load buttons for this specific message from DB
-        // Buttons are stored with scheduledMessageId, not messageId
-        const buttonsFromDb = await prisma.scheduledMessageButton.findMany({
-          where: { scheduledMessageId: msg.id },
-          orderBy: [{ row: 'asc' }, { col: 'asc' }],
-        });
+        // Filter buttons to ONLY this specific child message
+        const buttonsForMsg = allButtons.filter((b: any) => b.messageId === message.id);
 
-        const keyboard = buttonsFromDb.length > 0
-          ? this.buildInlineKeyboard(buttonsFromDb, msg.id)
+        const keyboard = buttonsForMsg.length > 0
+          ? this.buildInlineKeyboard(buttonsForMsg, message.id)
           : [];
         const inlineKeyboard = keyboard.length > 0
           ? { inline_keyboard: keyboard }
           : undefined;
 
-        // Comprehensive keyboard logging
-        if (buttonsFromDb.length > 0) {
-          const btnTypes = buttonsFromDb.map(b => (b.type || 'URL').toUpperCase());
-          const popupCount = btnTypes.filter(t => t === 'POPUP').length;
-          const cmdCount = btnTypes.filter(t => t === 'COMMAND').length;
-          const urlCount = btnTypes.filter(t => t === 'URL').length;
-          const rows = keyboard.length;
-          const cols = Math.max(...keyboard.map(r => r.length), 0);
-          logger.info(`[SchedMsg] KEYBOARD msg=${msg.id} [${i + 1}] count=${buttonsFromDb.length} rows=${rows} cols=${cols} types=${btnTypes.join(',')} popup=${popupCount} cmd=${cmdCount} url=${urlCount}`);
-          for (let b = 0; b < buttonsFromDb.length; b++) {
-            const btn = buttonsFromDb[b];
+        // Media group items cannot have reply_markup
+        const isMediaGroup = !!message.mediaGroupId;
+        const finalInlineKeyboard = isMediaGroup ? undefined : inlineKeyboard;
+
+        // Keyboard logging per message
+        if (buttonsForMsg.length > 0) {
+          const btnTypes = buttonsForMsg.map(b => (b.type || 'URL').toUpperCase());
+          logger.info(`[SchedMsg] KEYBOARD msg=${msg.id} [${i + 1}/${messages.length}] childMsgId=${message.id} buttonCount=${buttonsForMsg.length} types=${btnTypes.join(',')} hasReplyMarkup=${!!inlineKeyboard} replyMarkupGenerated=${!!inlineKeyboard} buttonSourceMessageId=${message.id}`);
+          for (let b = 0; b < buttonsForMsg.length; b++) {
+            const btn = buttonsForMsg[b];
             const cb = keyboard.flat().find((k: any) => k?.text?.includes(btn.text))?.callback_data || keyboard.flat().find((k: any) => k?.text?.includes(btn.text))?.url || '(none)';
-            logger.info(`[SchedMsg] BUTTON #${b + 1} msg=${msg.id} [${i + 1}] type=${(btn.type || 'URL').toUpperCase()} text="${btn.text}" value="${(btn.value || '').substring(0, 80)}" callback="${cb}"`);
+            logger.info(`[SchedMsg] BUTTON #${b + 1} msg=${msg.id} [${i + 1}] childMsgId=${message.id} type=${(btn.type || 'URL').toUpperCase()} text="${btn.text}" value="${(btn.value || '').substring(0, 80)}" callback="${cb}"`);
           }
+        } else {
+          logger.info(`[SchedMsg] KEYBOARD msg=${msg.id} [${i + 1}/${messages.length}] childMsgId=${message.id} buttonCount=0 hasReplyMarkup=false replyMarkupGenerated=false`);
         }
 
         // Build extra with thread, entities, reply_markup — pass directly to Telegram
         const extra: any = {};
         if (threadId) extra.message_thread_id = threadId;
-        if (inlineKeyboard) extra.reply_markup = inlineKeyboard;
+        if (finalInlineKeyboard) extra.reply_markup = finalInlineKeyboard;
 
         // Pass entities directly — do NOT sanitize (entities are stored as-is)
         if (message.entities && Array.isArray(message.entities) && message.entities.length > 0) {
@@ -314,7 +315,7 @@ class ScheduledMessageService {
         }
 
         // Log generated reply_markup before sending
-        logger.info(`[SchedMsg] PRE_SEND msg=${msg.id} [${i + 1}] method=${message.mediaFileId ? message.type : 'sendMessage'} hasReplyMarkup=${!!inlineKeyboard} reply_markup=${JSON.stringify(inlineKeyboard || {}).substring(0, 200)}`);
+        logger.info(`[SchedMsg] PRE_SEND msg=${msg.id} [${i + 1}/${messages.length}] method=${message.mediaFileId ? message.type : 'sendMessage'} hasReplyMarkup=${!!finalInlineKeyboard} keyboardSource=childMsg:${message.id} buttons=${buttonsForMsg.length} reply_markup=${JSON.stringify(finalInlineKeyboard || {}).substring(0, 200)}`);
 
         try {
           // Handle forward messages — same as Post sendSingleMessage
@@ -410,10 +411,11 @@ class ScheduledMessageService {
    * Uses the same renderer as Post system (buildTelegramKeyboard from telegram-native-renderer).
    */
   private buildInlineKeyboard(buttons: any[], entityId?: number): any[][] {
-    // Transform ScheduledMessageButton records into the grid format
-    // that buildTelegramKeyboard expects: array of arrays of button objects
+    // Build DENSE grid (no sparse arrays) to match renderer loop indices
+    // Sort by row, col first to ensure proper placement
+    const sorted = [...buttons].sort((a, b) => (a.row ?? 0) - (b.row ?? 0) || (a.col ?? 0) - (b.col ?? 0));
     const grid: any[] = [];
-    for (const btn of buttons) {
+    for (const btn of sorted) {
       const row = btn.row ?? 0;
       const col = btn.col ?? 0;
       if (!grid[row]) grid[row] = [];
@@ -424,11 +426,13 @@ class ScheduledMessageService {
         style: btn.style || undefined,
       };
     }
-    // Filter empty rows and columns
-    const cleaned = grid.filter(Boolean).map(row => row.filter(Boolean));
-    if (cleaned.length === 0) return [];
-    // Use the Post system's shared renderer with 'sched' prefix for callbacks
-    return buildTelegramKeyboard(cleaned, entityId ?? 0, 'sched');
+    // Compact: remove empty rows and columns to ensure dense array for renderer
+    const compacted = grid
+      .filter(Boolean)
+      .map(row => row.filter(Boolean));
+    if (compacted.length === 0) return [];
+    logger.info(`[SchedMsgKB] Built keyboard grid: ${compacted.length} rows, types=${sorted.map(b => (b.type || 'URL').toUpperCase()).join(',')}`);
+    return buildTelegramKeyboard(compacted, entityId ?? 0, 'sched');
   }
 
   // ─── Test Send (same pipeline) ──────────────────────────

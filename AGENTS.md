@@ -55,7 +55,7 @@ Background workers (`src/workers/`): membership + leaderboard via BullMQ (Redis)
 
 One-off scripts: `src/scripts/`, `scripts/` (not auto-run).
 
-Feature toggle keys (from `DEFAULT_FEATURES` in `src/services/settings.service.ts` + additional keys created via API): `lottery`, `referrals`, `force_join`, `auto_replies`, `reports`, `groups`, `leaderboard`, `points`, `posts`, `ticket_system`, `discount_codes`, `prop_firms`, `broadcasts`.
+Feature toggle keys (from `DEFAULT_FEATURES` in `src/services/settings.service.ts`): `lottery`, `referrals`, `force_join`, `auto_replies`, `reports`, `groups`, `leaderboard`, `points`, `posts`, `ticket_system`.
 
 Debug commands (admin only): `/debug_post_render <id>`, `/debug_compare_post <id>`, `/debug_delivery <id>`.
 
