@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Card, CardContent, EmptyState, StatCardSkeleton } from "@/components/ui";
+import { TimeRangeSelector } from "@/components/shared/TimeRangeSelector";
 import { analyticsApi } from "@/services/api";
 import { formatNumber } from "@/lib/utils";
 import {
@@ -12,11 +13,6 @@ import {
 import { Users, TrendingUp, UserCheck, UserX } from "lucide-react";
 
 // ─── Persian Date Helpers ───────────────────────────────────
-const PERSIAN_MONTHS_FA = [
-  "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-  "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
-];
-
 function gregorianToJalali(gy: number, gm: number, gd: number): [number, number, number] {
   const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
   let gy2 = gy;
@@ -41,29 +37,6 @@ function isoToJalaliFull(iso: string): string {
   } catch { return iso; }
 }
 
-function jalaliToGregorian(jy: number, jm: number, jd: number): Date {
-  const j_d_m = [0, 31, 62, 93, 124, 155, 186, 216, 246, 276, 306, 336];
-  const jd2 = jd + (jm < 7 ? 0 : j_d_m[jm - 7]);
-  let gy = jy + 621;
-  let gd: number; let gm: number;
-  const daysFromJalaliEpoch = jd2 + 365 * jy + Math.floor(jy / 33) * 8 + Math.floor(((jy % 33) + 3) / 4) + 4 + (jy > 0 ? -94 : -95);
-  const daysFromGregorianEpoch = daysFromJalaliEpoch + 79;
-  const g4 = daysFromGregorianEpoch + 1;
-  const y1 = Math.floor((g4 - 1) / 146097);
-  const y2 = Math.floor((g4 - 1 - y1 * 146097) / 36524);
-  const y3 = Math.floor((g4 - 1 - y1 * 146097 - y2 * 36524) / 1461);
-  const y4 = Math.floor((g4 - 1 - y1 * 146097 - y2 * 36524 - y3 * 1461) / 365);
-  gy = y1 * 100 + y2 * 4 + y3 + y4;
-  if (y4 === 4) { gm = 12; gd = 31; } else {
-    const doy = g4 - 1 - y1 * 146097 - y2 * 36524 - y3 * 1461 - y4 * 365;
-    const daysInMonth = [31, 28 + (y4 === 0 && (y1 !== 0 || y2 !== 0 || y3 % 4 !== 3) ? 0 : 1), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let md = doy; gm = 1;
-    for (let i = 0; i < 12; i++) { if (md < daysInMonth[i]) break; md -= daysInMonth[i]; gm = i + 2; }
-    gd = md + 1;
-  }
-  return new Date(Date.UTC(gy, gm - 1, gd, 12, 0, 0, 0));
-}
-
 const nowIso = () => new Date().toISOString().slice(0, 10);
 const daysAgoIso = (n: number) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 
@@ -79,37 +52,6 @@ const SOURCE_ICONS: Record<string, string> = {
   utm: "📊",
   unknown: "❓",
 };
-
-// ─── JalaliDatePicker ───────────────────────────────────────
-function JalaliDatePicker({ value, onChange, label }: { value: string; onChange: (iso: string) => void; label: string }) {
-  const [jy, jm, jd] = useMemo(() => {
-    try {
-      const d = new Date(value + "T12:00:00.000Z");
-      return gregorianToJalali(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
-    } catch { return [1404, 1, 1]; }
-  }, [value]);
-  const [editY, setEditY] = useState(String(jy));
-  const [editM, setEditM] = useState(String(jm));
-  const [editD, setEditD] = useState(String(jd));
-  const apply = () => {
-    const y = parseInt(editY, 10), m = parseInt(editM, 10), d = parseInt(editD, 10);
-    if (isNaN(y) || isNaN(m) || isNaN(d) || m < 1 || m > 12 || d < 1 || d > 31) return;
-    onChange(jalaliToGregorian(y, m, d).toISOString().slice(0, 10));
-  };
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex items-center gap-1 rounded-lg border border-input bg-background px-2 py-1.5">
-        <input type="text" value={editD} onChange={(e) => setEditD(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} className="w-8 text-center text-xs bg-transparent outline-none" maxLength={2} />
-        <span className="text-xs text-muted-foreground">/</span>
-        <input type="text" value={editM} onChange={(e) => setEditM(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} className="w-8 text-center text-xs bg-transparent outline-none" maxLength={2} />
-        <span className="text-xs text-muted-foreground">/</span>
-        <input type="text" value={editY} onChange={(e) => setEditY(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} className="w-12 text-center text-xs bg-transparent outline-none" maxLength={4} />
-      </div>
-      <span className="text-[10px] text-muted-foreground">{PERSIAN_MONTHS_FA[(parseInt(editM, 10) || 1) - 1] ?? ""}</span>
-    </div>
-  );
-}
 
 // ─── Custom Tooltip ─────────────────────────────────────────
 function CustomTooltip({ active, payload }: any) {
@@ -182,20 +124,15 @@ export default function AcquisitionPage() {
       </div>
 
       {/* Time Range */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
-          {presets.map((p, i) => (
-            <button key={i} onClick={() => { setActivePreset(i); setStartDate(p.start); setEndDate(p.end); }}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-all ${
-                activePreset === i ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}>{p.label}</button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <JalaliDatePicker value={startDate} onChange={(v) => { setStartDate(v); setActivePreset(null); }} label="از:" />
-          <JalaliDatePicker value={endDate} onChange={(v) => { setEndDate(v); setActivePreset(null); }} label="تا:" />
-        </div>
-      </div>
+      <TimeRangeSelector
+        presets={presets}
+        startDate={startDate}
+        endDate={endDate}
+        activePreset={activePreset}
+        onStartChange={(v) => { setStartDate(v); setActivePreset(null); }}
+        onEndChange={(v) => { setEndDate(v); setActivePreset(null); }}
+        onPresetSelect={(i, p) => { setActivePreset(i); setStartDate(p.start); setEndDate(p.end); }}
+      />
 
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

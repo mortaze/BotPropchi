@@ -65,6 +65,7 @@ Registered in `src/index.ts`:
 ```
 callback trace logger (BEFORE all middleware)
 → middleware chain
+→ "🔙 بازگشت به پنل ادمین" hears (global, highest priority — clears all automation state)
 → registerHandlers(bot)
 → registerScheduledMessageHandlers(bot)
 → registerAutoReplyHandlers(bot)
@@ -92,7 +93,7 @@ my_chat_member / new_chat_members
 Implications:
 - Dynamic Post Button Routing only skips when `post_mgmt_mode`, `menu:edit_mode`, or `post:editor:{userId}:active` is set
 - `bot.on('text')` in post-handlers has 12+ early returns consuming messages without `next()` — any `bot.hears` after it is unreachable
-- Three large handler files: `handlers/index.ts`, `post-handlers.ts`, `scheduled-message.handlers.ts`
+- Three large handler files: `handlers/index.ts` (~2000 lines), `post-handlers.ts` (~3700 lines), `scheduled-message.handlers.ts`
 
 ## Callback Rules (Production Bugs)
 
@@ -106,11 +107,19 @@ Implications:
 
 `scheduled-message.handlers.ts` and `auto-reply.handlers.ts`: button grids use `normalizeGrid()` (dense `[{id,text},...][]`) before any move/swap — `buttonsToGrid()` can produce sparse arrays that crash on index access. `findButtonInGrid()` locates by DB `id` after normalization shifts positions.
 
+## Two Auto-Reply Systems (CRITICAL)
+
+Bot has TWO separate systems — do NOT confuse them:
+- **`KeywordReply`** model (old, empty on production) — legacy, not used
+- **`AutoReply`** model (current, active) — uses `AutoReplyBinding`, `AutoReplyKeyword`, `AutoReplyMessage` sub-models
+
+Admin panel MUST query `AutoReply` tables. Querying `KeywordReply` produces zero results on production.
+
 ## Key Constraints & Gotchas
 
 - **BigInt serialization**: Prisma BigInt in `JSON.stringify` paths → use `src/utils/serialize.ts:serializeBigInts` or BigInt replacer
 - **Do NOT refactor command architecture**: command bugs are runtime issues, not architectural. No new repositories, no command resolution redesign.
-- **Admin auth**: cookies (`admin_token` + `admin_user`), root API uses JWT Bearer. Admin stores use `useSyncExternalStore` (auth.store.ts + ui.store.ts), not Zustand.
+- **Admin auth**: cookies (`admin_token` + `admin_user`), root API uses JWT Bearer. Admin stores use `useSyncExternalStore` (auth.store.ts + ui.store.ts), not Zustand (despite zustand in admin/package.json).
 - **Redis optional**: falls back to `node-cache` in-memory when `REDIS_URL` not set
 - **All user-facing strings**: Persian (Farsi)
 - **Bot middleware**: `src/bot/middlewares/` except `membershipGuard` in `src/middleware/`

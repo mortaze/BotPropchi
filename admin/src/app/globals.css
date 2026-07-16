@@ -76,6 +76,11 @@
   ::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground; }
 }
 
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
 @layer utilities {
   .glass { @apply bg-card/80 backdrop-blur-md border border-border/50; }
   .gradient-text { @apply bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent; }
@@ -91,4 +96,16 @@
   .skeleton { @apply bg-muted animate-pulse rounded-md; }
   .page-header { @apply flex items-center justify-between mb-6; }
   .section-title { @apply text-xl font-bold text-foreground; }
+
+  .login-input {
+    @apply w-full h-12 px-4 pr-11 rounded-xl border bg-background text-sm transition-all duration-200
+           placeholder:text-muted-foreground/50
+           focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary;
+  }
+  .login-input-error {
+    @apply border-destructive focus:ring-destructive/20 focus:border-destructive;
+  }
+  .login-label {
+    @apply block text-sm font-medium text-foreground mb-1.5;
+  }
 }
