@@ -67,7 +67,6 @@ const menuItems: MenuItem[] = [
       { key: "admin-users", label: "مدیریت ادمین‌ها", href: "/dashboard/admin-users", icon: UserCog },
       { key: "system-integrity", label: "سلامت سیستم", href: "/dashboard/system-integrity", icon: Shield },
       { key: "broadcast-diagnostics", label: "آنالیز پیام همگانی", href: "/dashboard/broadcast-diagnostics", icon: BarChart3 },
-      { key: "broadcast-trace", label: "Delivery Trace", href: "/dashboard/broadcast-diagnostics/trace", icon: BarChart3 },
       { key: "broadcast-rca", label: "Root Cause Analysis", href: "/dashboard/broadcast-diagnostics/rca", icon: BarChart3 },
       { key: "system-logs", label: "لاگ سیستم", href: "/dashboard/system-logs", icon: FileText },
     ],

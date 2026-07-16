@@ -21,7 +21,7 @@ export const DEFAULT_FEATURES = [
 ];
 
 export function isOwnerRole(role?: string | null) {
-  return role === AdminRole.OWNER || role === 'SUPER_ADMIN';
+  return role === AdminRole.OWNER || role === 'SUPER_ADMIN' || role === AdminRole.ADMIN;
 }
 
 export interface MenuEditSession {

@@ -20,7 +20,7 @@ export function middleware(request: NextRequest) {
       const rawAdmin = request.cookies.get("admin_user")?.value;
       let role = "";
       try { role = rawAdmin ? JSON.parse(rawAdmin).role : ""; } catch { role = ""; }
-      if (!["OWNER", "SUPER_ADMIN"].includes(role)) return NextResponse.redirect(new URL("/dashboard", request.url));
+      if (!["OWNER", "SUPER_ADMIN", "ADMIN"].includes(role)) return NextResponse.redirect(new URL("/dashboard", request.url));
     }
   }
 
