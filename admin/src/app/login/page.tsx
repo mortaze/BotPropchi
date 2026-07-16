@@ -59,8 +59,8 @@ export default function LoginPage() {
               try {
                 const res = await authApi.login(values.username, values.password);
                 login(res.token, res.admin);
-                toast.success("خوش آمدید");
                 router.replace("/dashboard");
+                toast.success("خوش آمدید");
               } catch (error) {
                 toast.error(getApiError(error, "خطا در ورود"));
               }
