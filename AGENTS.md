@@ -26,7 +26,7 @@ cd admin && npm run build
 cd admin && npm run lint # next lint — only lint in repo
 ```
 
-No lint/typecheck at root. Only admin has lint.
+No lint/typecheck at root. Only admin has lint (`next lint`).
 
 **Prisma schema**: `prisma/schema.prisma`. The `prisma/migrations/` directory exists but the project uses `prisma db push`, not migration-based workflow. `npx prisma migrate dev` is not part of the standard flow.
 
@@ -120,6 +120,7 @@ Admin panel MUST query `AutoReply` tables. Querying `KeywordReply` produces zero
 - **BigInt serialization**: Prisma BigInt in `JSON.stringify` paths → use `src/utils/serialize.ts:serializeBigInts` or BigInt replacer
 - **Do NOT refactor command architecture**: command bugs are runtime issues, not architectural. No new repositories, no command resolution redesign.
 - **Admin auth**: cookies (`admin_token` + `admin_user`), root API uses JWT Bearer. Admin stores use `useSyncExternalStore` (auth.store.ts + ui.store.ts), not Zustand (despite zustand in admin/package.json).
+- **`isOwnerRole()`** in `src/services/settings.service.ts:23` includes `OWNER`, `SUPER_ADMIN`, **and `ADMIN`** — broader than the `requireOwner` name suggests. Used by both API `requireOwner` middleware and panel route guards.
 - **Redis optional**: falls back to `node-cache` in-memory when `REDIS_URL` not set
 - **All user-facing strings**: Persian (Farsi)
 - **Bot middleware**: `src/bot/middlewares/` except `membershipGuard` in `src/middleware/`
@@ -133,6 +134,7 @@ Admin panel MUST query `AutoReply` tables. Querying `KeywordReply` produces zero
 - **Stray dir**: `src/tests/` (1 file, `post-content-preservation.test.ts`) is NOT picked up by vitest — tests must be in `src/__tests__/`
 - **TypeScript strictness differs**: root `tsconfig.json` has `strict: false` / `noImplicitAny: false`; admin has `strict: true`
 - **Path alias**: both root and admin use `@/*` → `src/*`
+- **Admin strict excludes**: `admin/tsconfig.json` excludes `src/api/`, `src/index.ts`, `src/scheduler.ts` from compilation
 
 ## Env Variables
 

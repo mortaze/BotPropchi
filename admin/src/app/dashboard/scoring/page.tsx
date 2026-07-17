@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Button, Card, CardContent, CardHeader, Input, Textarea, Toggle } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, Input } from "@/components/ui";
 import { getApiError, scoringApi } from "@/services/api";
 
 const schema = z.object({
@@ -28,7 +28,7 @@ type Values = z.infer<typeof schema>;
 export default function ScoringPage() {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["scoring-settings"], queryFn: scoringApi.getSettings });
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<Values>({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
       startPoints: 0,
@@ -77,16 +77,6 @@ export default function ScoringPage() {
             <Input type="number" label="امتیاز کلیک لینک خرید" error={errors.linkClickPoints?.message} {...register("linkClickPoints")} />
             <Input type="number" label="امتیاز دعوت موفق" error={errors.referralRewardPoints?.message} {...register("referralRewardPoints")} />
             <Input type="number" label="امتیاز تکمیل پروفایل" error={errors.profileCompletionPoints?.message} {...register("profileCompletionPoints")} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><h2 className="font-semibold">پیام خوش‌آمدگویی</h2></CardHeader>
-          <CardContent className="space-y-4">
-            <Toggle checked={watch("isWelcomeMessageEnabled")} onChange={(v) => setValue("isWelcomeMessageEnabled", v, { shouldDirty: true })} label="ارسال پیام خوش‌آمدگویی فعال باشد" />
-            <Textarea rows={5} label="متن پیام اولین ورود" error={errors.welcomeMessageText?.message} {...register("welcomeMessageText")} />
-            <Textarea rows={3} label="متن پیام دریافت امتیاز اولیه" error={errors.initialPointsMessageText?.message} {...register("initialPointsMessageText")} />
-            <p className="text-xs text-muted-foreground">متغیرهای قابل استفاده: <span dir="ltr">{"{name}"}</span> و <span dir="ltr">{"{points}"}</span></p>
           </CardContent>
         </Card>
 
