@@ -124,5 +124,6 @@
   }
   .login-label {
     @apply block text-sm font-medium text-foreground mb-1.5;
+    
   }
 }
