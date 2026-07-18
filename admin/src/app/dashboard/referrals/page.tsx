@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Gift, Search, ToggleLeft, Trophy, Users, Copy, RefreshCw } from "lucide-react";
+import { Gift, Search, ToggleLeft, Trophy, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Pagination, TableRowSkeleton, Textarea, Toggle } from "@/components/ui";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
@@ -18,7 +18,6 @@ const userLabel = (user?: { firstName?: string; lastName?: string | null; userna
 export default function ReferralsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [codeInput, setCodeInput] = useState("");
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["referrals", page], queryFn: () => referralsApi.getAdmin({ page, limit: 20 }) });
 
@@ -42,20 +41,6 @@ export default function ReferralsPage() {
     },
     onError: (error) => toast.error(getApiError(error, "خطا در ذخیره تنظیمات دعوت")),
   });
-
-  const handleCodeSubmit = () => {
-    if (!codeInput.trim()) {
-      toast.error("لطفاً کد دعوت را وارد کنید");
-      return;
-    }
-    toast.success("کد دعوت با موفقیت اعمال شد");
-    setCodeInput("");
-  };
-
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(codeInput || "BOTPROPCHI");
-    toast.success("کد کپی شد");
-  };
 
   return (
     <div className="space-y-6">
@@ -108,38 +93,6 @@ export default function ReferralsPage() {
             </div>
           </div>
         </CardHeader>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Gift className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">کد دعوت</h2>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              کد دعوت اختصاصی خود را وارد کنید یا کد پیش‌فرض را کپی کنید.
-            </p>
-            <div className="flex gap-2">
-              <Input
-                placeholder="کد دعوت را وارد کنید..."
-                value={codeInput}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCodeInput(e.target.value)}
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && handleCodeSubmit()}
-              />
-              <Button onClick={handleCodeSubmit}>اعمال</Button>
-              <Button variant="outline" onClick={handleCopyCode}>
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <RefreshCw className="h-4 w-4" />
-              <span>کد پیش‌فرض: <strong>BOTPROPCHI</strong></span>
-            </div>
-          </div>
-        </CardContent>
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-3">
