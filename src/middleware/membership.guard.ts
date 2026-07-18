@@ -4,9 +4,6 @@ import { membershipService } from '../services/membership/membership.service';
 import { requiredChannelsService } from '../services/requiredChannels.service';
 import { buildForceJoinKeyboard } from '../bot/keyboards';
 
-const NOT_JOINED_MESSAGE = `🔒 برای استفاده از ربات، ابتدا عضو شوید:`;
-const CHECK_BUTTON_TEXT = '✅ بررسی عضویت';
-
 export function membershipGuard(bot: Telegraf) {
   return async (ctx: Context, next: () => Promise<void>) => {
     if (!ctx.from) return next();
@@ -38,10 +35,10 @@ export function membershipGuard(bot: Telegraf) {
       }
 
       const channelList = result.notJoined
-        .map((ch, i) => `${i + 1}. ${ch.displayTitle || ch.title}`)
+        .map((ch, i) => `${i + 1}. *${ch.displayTitle || ch.title}*`)
         .join('\n');
 
-      const message = `${NOT_JOINED_MESSAGE}\n${channelList}\n\n✅ پس از عضویت روی دکمه زیر کلیک کنید.`;
+      const message = `🔒 *برای استفاده از ربات، ابتدا عضو شوید:*\n\n${channelList}\n\n✅ *پس از عضویت کلیک کنید:*`;
 
       const keyboard = buildForceJoinKeyboard(
         result.notJoined.map((ch) => ({
@@ -53,7 +50,7 @@ export function membershipGuard(bot: Telegraf) {
       );
 
       try {
-        await ctx.reply(message, { reply_markup: keyboard.reply_markup });
+        await ctx.reply(message, { parse_mode: 'Markdown', reply_markup: keyboard.reply_markup });
       } catch {}
     } catch (err) {
       logger.error(`[MembershipGuard] Error for user ${telegramId}:`, err);

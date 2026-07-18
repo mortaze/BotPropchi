@@ -59,9 +59,9 @@ async function processCheckMembership(data: { type: 'CHECK_MEMBERSHIP'; telegram
   if (notJoined.length > 0) {
     try {
       const channelList = notJoined
-        .map((ch, i) => `${i + 1}. ${ch.displayTitle || ch.title}`)
+        .map((ch, i) => `${i + 1}. *${ch.displayTitle || ch.title}*`)
         .join('\n');
-      const message = `🔒 برای استفاده از ربات، ابتدا عضو شوید:\n${channelList}\n\n✅ پس از عضویت روی دکمه زیر کلیک کنید.`;
+      const message = `🔒 *برای استفاده از ربات، ابتدا عضو شوید:*\n\n${channelList}\n\n✅ *پس از عضویت کلیک کنید:*`;
       const keyboard = buildForceJoinKeyboard(
         notJoined.map((ch) => ({
           title: ch.title,
@@ -71,6 +71,7 @@ async function processCheckMembership(data: { type: 'CHECK_MEMBERSHIP'; telegram
         })),
       );
       await bot.telegram.sendMessage(telegramId, message, {
+        parse_mode: 'Markdown',
         reply_markup: keyboard.reply_markup,
       });
     } catch {

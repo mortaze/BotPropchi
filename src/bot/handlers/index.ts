@@ -1883,10 +1883,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
       const result = await membershipService.checkMembershipConcurrent(telegramId, channels);
 
       if (result.isMember) {
-        await ctx.answerCbQuery('✅ عضویت شما با موفقیت تأیید شد.', { show_alert: false }).catch(() => {});
+        await ctx.answerCbQuery('✅ عضویت شما تأیید شد.', { show_alert: false }).catch(() => {});
 
         try {
-          await ctx.editMessageText('✅ عضویت شما با موفقیت تأیید شد.', { reply_markup: undefined });
+          await ctx.editMessageText('✅ عضویت شما تأیید شد.', { reply_markup: undefined });
         } catch {}
 
         userService.processPendingReferral(BigInt(telegramId)).catch(() => {});
