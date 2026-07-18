@@ -332,7 +332,7 @@ export const analyticsService = {
       lotteries: {
         total: lotteryCount,
         participants: lotteryParticipants,
-        ticketsSold: 0,
+        chancesSold: 0,
         pointsSpent: 0,
         totalChance: 0,
         topLottery: null,

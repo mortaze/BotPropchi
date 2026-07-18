@@ -65,7 +65,7 @@ export default function LotteriesPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <Ticket className="h-5 w-5 text-blue-500" />
-              <h2 className="font-semibold">کل بلیت‌ها</h2>
+              <h2 className="font-semibold">کل شانس‌ها</h2>
             </div>
           </CardHeader>
           <CardContent>
@@ -112,7 +112,7 @@ export default function LotteriesPage() {
                 <th>عنوان</th>
                 <th>جایزه</th>
                 <th>شرکت‌کنندگان</th>
-                <th>کل بلیت‌ها</th>
+                <th>کل شانس‌ها</th>
                 <th>برندگان</th>
                 <th>وضعیت</th>
                 <th>عملیات</th>

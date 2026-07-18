@@ -53,7 +53,7 @@ export default function LotteryDetailsPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Metric title="جایزه" value={lottery.prize} />
         <Metric title="شرکت‌کنندگان" value={formatNumber(stats?.participants ?? lottery._count?.entries ?? 0)} />
-        <Metric title="کل بلیت‌ها" value={formatNumber(stats?.totalTickets ?? 0)} />
+        <Metric title="کل شانس‌ها" value={formatNumber(stats?.totalTickets ?? 0)} />
         <Metric title="شانس کل" value={formatNumber(stats?.totalChance ?? 0)} />
         <Metric title="وضعیت" value={lottery.isCompleted ? "تکمیل" : lottery.isActive ? "فعال" : "غیرفعال"} />
         {lottery.startAt && (
@@ -85,7 +85,7 @@ export default function LotteryDetailsPage() {
                       <span className="text-xs text-muted-foreground">{safeDateFormat(entry.createdAt)}</span>
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                      <span>بلیت: {formatNumber(entry.ticketCount)}</span>
+                      <span>شانس: {formatNumber(entry.ticketCount)}</span>
                       <span>امتیاز: {formatNumber(entry.pointsSpent)}</span>
                       <span>شانس: {formatNumber(entry.chanceWeight)}</span>
                     </div>

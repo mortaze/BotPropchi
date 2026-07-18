@@ -199,7 +199,7 @@ export function buildReferralShareKeyboard(shareUrl: string) {
 }
 
 // ─── قرعه‌کشی ─────────────────────────────────────────────
-export function lotteryKeyboard(lotteryId: number, currentTickets = 0) {
+export function lotteryKeyboard(lotteryId: number, currentChances = 0) {
   const buttons = [
     [
       Markup.button.callback('🏆 برندگان', `lottery:winners:${lotteryId}`),
@@ -207,7 +207,7 @@ export function lotteryKeyboard(lotteryId: number, currentTickets = 0) {
     ],
   ];
 
-  buttons.unshift([Markup.button.callback(currentTickets ? `🎟 خرید بلیت بیشتر (فعلی: ${currentTickets})` : '🎰 خرید بلیت', `lottery:enter:${lotteryId}`)]);
+  buttons.unshift([Markup.button.callback(currentChances > 0 ? `🎯 شرکت در قرعه‌کشی (شانس فعلی: ${currentChances})` : '🎰 شرکت در قرعه‌کشی', `lottery:enter:${lotteryId}`)]);
 
   return Markup.inlineKeyboard(buttons);
 }

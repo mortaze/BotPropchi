@@ -71,10 +71,10 @@ export const lotteryService = {
     }
     if (user.points < lottery.minPoints) return { success: false, message: `برای شرکت حداقل ${lottery.minPoints} امتیاز لازم است`, options: [] as number[] };
     const entryCost = lottery.entryCost || 0;
-    const maxTickets = entryCost > 0 ? Math.floor(user.points / entryCost) : 10;
-    if (maxTickets < 1) return { success: false, message: 'امتیاز شما برای خرید بلیت کافی نیست', options: [] as number[] };
-    const options = Array.from({ length: Math.min(maxTickets, 10) }, (_, index) => index + 1);
-    return { success: true, options, message: `🎟 تعداد بلیت را انتخاب کنید.\n⭐️ امتیاز شما: ${user.points}\n🎟 هزینه هر بلیت: ${entryCost}\n✅ حداکثر قابل خرید در این مرحله: ${maxTickets}` };
+    const maxChances = entryCost > 0 ? Math.floor(user.points / entryCost) : 10;
+    if (maxChances < 1) return { success: false, message: 'امتیاز شما برای شرکت در قرعه‌کشی کافی نیست', options: [] as number[] };
+    const options = Array.from({ length: Math.min(maxChances, 10) }, (_, index) => index + 1);
+    return { success: true, options, message: `🎯 تعداد شانس‌ها را انتخاب کنید.\n⭐️ امتیاز شما: ${user.points}\n🎯 هزینه هر شانس: ${entryCost} امتیاز\n✅ حداکثر قابل خرید در این مرحله: ${maxChances}` };
   },
 
   /** ثبت نام در قرعه کشی */
@@ -117,25 +117,25 @@ export const lotteryService = {
       return { success: false, message: `برای شرکت حداقل ${lottery.minPoints} امتیاز لازم است` };
     }
 
-    const normalizedTicketCount = Math.max(1, Math.floor(Number(ticketCount) || 1));
+    const normalizedChances = Math.max(1, Math.floor(Number(ticketCount) || 1));
     const entryCost = lottery.entryCost || 0;
-    const totalCost = entryCost * normalizedTicketCount;
+    const totalCost = entryCost * normalizedChances;
 
     if (user.points < totalCost) {
-      return { success: false, message: 'امتیاز شما برای خرید این تعداد بلیت کافی نیست' };
+      return { success: false, message: 'امتیاز شما برای شرکت با این تعداد شانس کافی نیست' };
     }
 
     if (totalCost > 0) {
-      await userRepository.deductPoints(user.id, totalCost, `خرید ${normalizedTicketCount} بلیت قرعه کشی ${lottery.title}`);
+      await userRepository.deductPoints(user.id, totalCost, `شرکت در قرعه کشی ${lottery.title} (${normalizedChances} شانس)`);
     }
 
-    const entry = await lotteryRepository.enter(user.id, lotteryId, normalizedTicketCount, totalCost);
+    const entry = await lotteryRepository.enter(user.id, lotteryId, normalizedChances, totalCost);
 
     return {
       success: true,
       message: totalCost > 0
-        ? `✅ ${normalizedTicketCount} بلیت ثبت شد و ${totalCost} امتیاز کسر شد.\n🎟 بلیت‌های شما: ${entry.ticketCount}\n📊 شانس کل شما: ${entry.chanceWeight}`
-        : `✅ ${normalizedTicketCount} بلیت رایگان ثبت شد.\n🎟 بلیت‌های شما: ${entry.ticketCount}`,
+        ? `✅ ${normalizedChances} شانس ثبت شد و ${totalCost} امتیاز کسر شد.\n🎯 شانس‌های شما: ${entry.ticketCount}\n📊 شانس کل شما: ${entry.chanceWeight}`
+        : `✅ ${normalizedChances} شانس رایگان ثبت شد.\n🎯 شانس‌های شما: ${entry.ticketCount}`,
     };
   },
 

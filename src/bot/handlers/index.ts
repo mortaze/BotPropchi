@@ -951,7 +951,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       `🆕 کاربران جدید ماه: ${report.users.newUsers}`,
       `👥 دعوت‌ها: ${report.referrals.totalInvites} | موفق: ${report.referrals.successful} | نرخ تبدیل: ${report.referrals.conversionRate}%`,
       `📢 عضویت اجباری: ${report.forceJoin.channels} کانال | ${report.forceJoin.groups} گروه`,
-      `🎰 قرعه‌کشی: ${report.lotteries.participants} شرکت‌کننده | ${report.lotteries.ticketsSold} بلیت`,
+      `🎰 قرعه‌کشی: ${report.lotteries.participants} شرکت‌کننده | ${report.lotteries.ticketsSold} شانس`,
     ].join('\n'));
   });
 
@@ -1585,10 +1585,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
       `🎰 *${lottery.title}*\n\n` +
         `🏆 جایزه: ${lottery.prize}\n` +
         `👥 شرکت‌کنندگان: ${entriesCount} نفر\n` +
-        `🎟 کل بلیت‌ها: ${totalTickets}\n` +
-        `🎫 بلیت‌های شما: ${userEntry?.ticketCount ?? 0}\n` +
+        `🎯 کل شانس‌ها: ${totalTickets}\n` +
+        `🎯 شانس‌های شما: ${userEntry?.ticketCount ?? 0}\n` +
         `⭐️ حداقل امتیاز: ${lottery.minPoints}\n` +
-        `🎟 هزینه هر بلیت: ${lottery.entryCost} امتیاز\n` +
+        `🎯 هزینه هر شانس: ${lottery.entryCost} امتیاز\n` +
         `⏳ پایان: ${endDate}`,
       { parse_mode: 'Markdown', ...lotteryKeyboard(lottery.id, userEntry?.ticketCount ?? 0) }
     );
@@ -1599,8 +1599,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const lotteryId = parseInt(ctx.match[1]);
     const options = await lotteryService.getTicketOptions(BigInt(ctx.from.id), lotteryId);
     if (!options.success) return ctx.reply(options.message);
+    const lottery = await lotteryService.getById(lotteryId);
+    const entryCost = lottery?.entryCost || 0;
     await ctx.reply(options.message, {
-      ...Markup.inlineKeyboard(options.options.map((count: number) => [Markup.button.callback(`🎟 ${count} بلیت`, `lottery:buy:${lotteryId}:${count}`)])),
+      ...Markup.inlineKeyboard(options.options.map((count: number) => {
+        const totalCost = count * entryCost;
+        const label = entryCost > 0 ? `🎯 ${count} شانس — ${totalCost} امتیاز` : `🎯 ${count} شانس رایگان`;
+        return [Markup.button.callback(label, `lottery:buy:${lotteryId}:${count}`)];
+      })),
     });
   });
 
