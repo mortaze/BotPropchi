@@ -1870,7 +1870,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
   bot.action('check:membership', async (ctx) => {
     const telegramId = ctx.from!.id;
-    await ctx.answerCbQuery().catch(() => {});
 
     try {
       await membershipService.invalidateAll(telegramId);
