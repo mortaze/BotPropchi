@@ -19,6 +19,7 @@ function getChannelTitleCacheKey(channelId: string): string {
 interface ChannelCheckResult {
   channelId: string;
   title: string;
+  displayTitle: string | null;
   inviteLink: string | null;
   isMember: boolean;
 }
@@ -91,22 +92,22 @@ class MembershipService {
 
     const cached = await this.getCached<boolean>(cacheKey);
     if (cached !== undefined) {
-      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember: cached };
+      return { channelId: channel.chatId, title: channel.title, displayTitle: channel.displayTitle, inviteLink: channel.inviteLink, isMember: cached };
     }
 
     if (!this.bot) {
-      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember: false };
+      return { channelId: channel.chatId, title: channel.title, displayTitle: channel.displayTitle, inviteLink: channel.inviteLink, isMember: false };
     }
 
     try {
       const member = await this.bot.telegram.getChatMember(channel.chatId as any, telegramId);
       const isMember = VALID_MEMBER_STATUSES.has(member.status);
       await this.setCache(cacheKey, isMember);
-      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember };
+      return { channelId: channel.chatId, title: channel.title, displayTitle: channel.displayTitle, inviteLink: channel.inviteLink, isMember };
     } catch (err) {
       const desc = (err as any)?.response?.description || (err as Error).message || 'Unknown error';
       logger.warn(`[Membership] getChatMember failed user=${telegramId} channel=${channel.chatId}: ${desc}`);
-      return { channelId: channel.chatId, title: channel.title, inviteLink: channel.inviteLink, isMember: true };
+      return { channelId: channel.chatId, title: channel.title, displayTitle: channel.displayTitle, inviteLink: channel.inviteLink, isMember: true };
     }
   }
 
