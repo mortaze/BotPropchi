@@ -7,6 +7,7 @@ export interface RequiredChannelInfo {
   id: number;
   chatId: string;
   title: string;
+  displayTitle: string | null;
   inviteLink: string | null;
   botStatus: string | null;
   isActive: boolean;
@@ -40,6 +41,7 @@ class RequiredChannelsService {
             id: -id,
             chatId: String(id),
             title: (chat as any).title || String(id),
+            displayTitle: null,
             inviteLink: (chat as any).username ? `https://t.me/${(chat as any).username}` : null,
             botStatus: memberStatus,
             isActive: true,
@@ -57,6 +59,7 @@ class RequiredChannelsService {
           id: ch.id,
           chatId: ch.chatId || ch.channelId,
           title: ch.displayTitle || ch.title,
+          displayTitle: ch.displayTitle,
           inviteLink: ch.inviteLink || (ch.username ? `https://t.me/${ch.username}` : null),
           botStatus: ch.botStatus,
           isActive: ch.isActive,

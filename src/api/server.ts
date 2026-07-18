@@ -36,8 +36,7 @@ import { postRouter } from "./routes/post.routes";
 import { scheduledMessageRoutes } from "./routes/scheduled-message.routes";
 import { autoReplyRoutes } from "./routes/auto-reply.routes";
 import { menuRouter } from "./routes/menu.routes";
-import { forcedMembershipRouter } from "./routes/forced-membership.routes";
-import { forceJoinRouter } from "./routes/force-join.routes";
+
 import { searchRouter } from "./routes/search.routes";
 import { attributionRouter } from "./routes/attribution.routes";
 import { broadcastDiagnosticsRouter } from "./routes/broadcast-diagnostics.routes";
@@ -221,12 +220,6 @@ export function startAdminApi(bot?: Telegraf) {
 
   // ───────────────── MENU ROUTES ─────────────────
   app.use("/api/menu", authMiddleware, menuRouter);
-
-  // ───────────────── FORCED MEMBERSHIP SETTINGS ─────────────────
-  app.use("/api/admin/membership", forcedMembershipRouter);
-
-  // ───────────────── FORCE JOIN SETTINGS ────────────────────────
-  app.use("/api/admin/force-join", forceJoinRouter);
 
   // ───────────────── TICKET ROUTES ────────────────────────────
   app.use("/api/tickets", authMiddleware, ticketRouter);

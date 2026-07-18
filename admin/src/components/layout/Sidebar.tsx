@@ -39,7 +39,6 @@ const menuItems: MenuItem[] = [
   {
     key: "required-channels", label: "عضویت اجباری", href: "/dashboard/required-channels", icon: RadioTower,
     children: [
-      { key: "force-join", label: "متن‌های عضویت اجباری", href: "/dashboard/force-join", icon: Settings },
       { key: "groups", label: "مدیریت گروه‌ها", href: "/dashboard/groups", icon: ShieldCheck },
     ],
   },

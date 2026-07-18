@@ -683,28 +683,6 @@ export const searchApi = {
 
 
 
-export const forceJoinApi = {
-  async get(): Promise<any> {
-    const { data } = await api.get("/api/admin/force-join");
-    return data;
-  },
-  async getSettings(): Promise<any> {
-    const { data } = await api.get("/api/admin/force-join");
-    return data;
-  },
-  async update(settings: any): Promise<any> {
-    const { data } = await api.put("/api/admin/force-join", settings);
-    return data;
-  },
-  async updateSettings(settings: any): Promise<any> {
-    const { data } = await api.put("/api/admin/force-join", settings);
-    return data;
-  },
-  async resetToDefaults(): Promise<any> {
-    const { data } = await api.post("/api/admin/force-join/reset");
-    return data;
-  },
-};
 
 export const ticketCategoryApi = {
   async listAll(): Promise<any[]> {

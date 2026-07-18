@@ -6,7 +6,6 @@ import { redisClient } from '../utils/redis';
 import { cache } from '../utils/cache';
 import { requiredChannelsService, type RequiredChannelInfo } from '../services/requiredChannels.service';
 import { membershipService } from '../services/membership/membership.service';
-import { forcedMembershipSettingsService } from '../services/membership/forcedMembership.service';
 import { buildForceJoinKeyboard } from '../bot/keyboards';
 import type { MembershipJobData } from '../queue/membership.queue';
 
@@ -59,17 +58,19 @@ async function processCheckMembership(data: { type: 'CHECK_MEMBERSHIP'; telegram
 
   if (notJoined.length > 0) {
     try {
-      const settings = await forcedMembershipSettingsService.getSettings();
+      const channelList = notJoined
+        .map((ch, i) => `${i + 1}. ${ch.displayTitle || ch.title}`)
+        .join('\n');
+      const message = `🔒 برای استفاده از ربات، ابتدا عضو شوید:\n${channelList}\n\n✅ پس از عضویت روی دکمه زیر کلیک کنید.`;
       const keyboard = buildForceJoinKeyboard(
         notJoined.map((ch) => ({
           title: ch.title,
+          displayTitle: ch.displayTitle,
           inviteLink: ch.inviteLink,
           channelId: ch.chatId,
         })),
-        settings.joinButtonText,
-        settings.checkButtonText
       );
-      await bot.telegram.sendMessage(telegramId, settings.notJoinedMessage, {
+      await bot.telegram.sendMessage(telegramId, message, {
         reply_markup: keyboard.reply_markup,
       });
     } catch {

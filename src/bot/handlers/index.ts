@@ -16,7 +16,6 @@ import { scoringService } from '../../services/scoring.service';
 import { userService } from '../../services/user.service';
 import { redisClient } from '../../utils/redis';
 import { membershipService } from '../../services/membership/membership.service';
-import { forcedMembershipSettingsService } from '../../services/membership/forcedMembership.service';
 import { requiredChannelsService } from '../../services/requiredChannels.service';
 import { DEFAULT_BOT_USERNAME } from '../../constants';
 import { postService } from '../../services/post.service';
@@ -1884,22 +1883,47 @@ export function registerHandlers(bot: Telegraf<Context>) {
       const result = await membershipService.checkMembershipConcurrent(telegramId, channels);
 
       if (result.isMember) {
-        const settings = await forcedMembershipSettingsService.getSettings();
+        await ctx.answerCbQuery('✅ عضویت شما با موفقیت تأیید شد.', { show_alert: false }).catch(() => {});
+
         try {
-          await ctx.editMessageText(settings.verifiedMessage, { reply_markup: undefined });
-        } catch {
-          await ctx.reply(settings.verifiedMessage, await adminReplyOptions(ctx.from?.id));
-        }
-        await ctx.answerCbQuery('✅').catch(() => {});
+          await ctx.editMessageText('✅ عضویت شما با موفقیت تأیید شد.', { reply_markup: undefined });
+        } catch {}
 
         userService.processPendingReferral(BigInt(telegramId)).catch(() => {});
+
+        const name = ctx.from?.first_name || 'کاربر';
+        const scoring = await scoringService.getSettings();
+        clearAllPostStates(telegramId);
+
+        const profile = await userService.getProfile(BigInt(telegramId));
+        const startPost = await postService.getOrCreateStartPost();
+        if (startPost) {
+          const vars = {
+            first_name: ctx.from?.first_name || '',
+            last_name: ctx.from?.last_name || '',
+            username: ctx.from?.username || '',
+            user_id: String(ctx.from?.id || ''),
+            join_date: profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('fa-IR') : '',
+            bot_name: DEFAULT_BOT_USERNAME || 'ربات',
+          };
+          const adminOpts = await adminReplyOptions(ctx.from?.id);
+          await sendPostToUser(ctx, { id: startPost.id }, vars, adminOpts.reply_markup);
+        } else {
+          const adminOpts = await adminReplyOptions(ctx.from?.id);
+          if (!scoring.startOnlyMode && scoring.isWelcomeMessageEnabled) {
+            await ctx.reply(
+              scoringService.formatTemplate(scoring.welcomeMessageText, { name, points: scoring.startPoints }),
+              { parse_mode: 'Markdown', link_preview_options: { is_disabled: true }, ...adminOpts }
+            );
+          } else if (!scoring.startOnlyMode) {
+            await ctx.reply('از منوی زیر انتخاب کنید:', { link_preview_options: { is_disabled: true }, ...adminOpts });
+          }
+        }
       } else {
-        const settings = await forcedMembershipSettingsService.getSettings();
-        await ctx.answerCbQuery(settings.retryMessage, { show_alert: true });
+        await ctx.answerCbQuery('❌ هنوز عضو تمام کانال‌ها یا گروه‌های الزامی نشده‌اید.', { show_alert: true });
       }
     } catch {
-      const settings = await forcedMembershipSettingsService.getSettings().catch(() => null);
-      await ctx.answerCbQuery(settings?.errorMessage || 'خطا در بررسی عضویت', { show_alert: true });
+      await ctx.answerCbQuery('خطا در بررسی عضویت', { show_alert: true });
     }
   });
 

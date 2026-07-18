@@ -2,8 +2,10 @@ import { Context, Telegraf } from 'telegraf';
 import { logger } from '../utils/logger';
 import { membershipService } from '../services/membership/membership.service';
 import { requiredChannelsService } from '../services/requiredChannels.service';
-import { forcedMembershipSettingsService } from '../services/membership/forcedMembership.service';
 import { buildForceJoinKeyboard } from '../bot/keyboards';
+
+const NOT_JOINED_MESSAGE = `🔒 برای استفاده از ربات، ابتدا عضو شوید:`;
+const CHECK_BUTTON_TEXT = '✅ بررسی عضویت';
 
 export function membershipGuard(bot: Telegraf) {
   return async (ctx: Context, next: () => Promise<void>) => {
@@ -26,25 +28,28 @@ export function membershipGuard(bot: Telegraf) {
 
       if (ctx.callbackQuery) {
         try {
-          await ctx.answerCbQuery('لطفاً ابتدا در کانال‌های زیر عضو شوید.', { show_alert: true });
+          await ctx.answerCbQuery('❌ هنوز عضو تمام کانال‌ها یا گروه‌های الزامی نشده‌اید.', { show_alert: true });
         } catch {}
         return;
       }
 
-      const settings = await forcedMembershipSettingsService.getSettings();
+      const channelList = result.notJoined
+        .map((ch, i) => `${i + 1}. ${ch.displayTitle || ch.title}`)
+        .join('\n');
+
+      const message = `${NOT_JOINED_MESSAGE}\n${channelList}\n\n✅ پس از عضویت روی دکمه زیر کلیک کنید.`;
 
       const keyboard = buildForceJoinKeyboard(
         result.notJoined.map((ch) => ({
           title: ch.title,
+          displayTitle: ch.displayTitle,
           inviteLink: ch.inviteLink,
           channelId: ch.channelId,
         })),
-        settings.joinButtonText,
-        settings.checkButtonText
       );
 
       try {
-        await ctx.reply(settings.notJoinedMessage, { reply_markup: keyboard.reply_markup });
+        await ctx.reply(message, { reply_markup: keyboard.reply_markup });
       } catch {}
     } catch (err) {
       logger.error(`[MembershipGuard] Error for user ${telegramId}:`, err);
