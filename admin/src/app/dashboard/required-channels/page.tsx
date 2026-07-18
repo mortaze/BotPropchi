@@ -1,96 +1,187 @@
 "use client";
 
-import { BRAND_NAME } from "@/config/brand";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, RadioTower, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Pencil, RadioTower, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Select, Skeleton, Toggle } from "@/components/ui";
-import { getApiError, requiredChannelsApi, type RequiredChannelPayload } from "@/services/api";
+import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Modal, Skeleton } from "@/components/ui";
+import { getApiError, requiredChannelsApi } from "@/services/api";
 import type { RequiredChannel } from "@/types";
-
-const emptyForm: RequiredChannelPayload = { title: "", displayTitle: "", chatId: "", username: "", type: "CHANNEL", inviteLink: "", buttonText: "", isActive: true };
 
 function syncBackendCache() {
   requiredChannelsApi.refreshCache().catch(() => {});
 }
 
-function TableSkeleton() {
+function CardSkeleton() {
   return (
-    <div className="p-4 space-y-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 3 }).map((_, i) => (
-        <Skeleton key={i} className="h-12 w-full" />
+        <Skeleton key={i} className="h-40 w-full rounded-xl" />
       ))}
     </div>
   );
 }
 
+function EditModal({ channel, onClose, onSave }: { channel: RequiredChannel; onClose: () => void; onSave: (displayTitle: string, inviteLink: string) => void }) {
+  const [displayTitle, setDisplayTitle] = useState(channel.displayTitle ?? channel.title);
+  const [inviteLink, setInviteLink] = useState(channel.inviteLink ?? "");
+
+  return (
+    <Modal open={true} onClose={onClose} title="ویرایش اطلاعات" size="sm">
+      <div className="space-y-4">
+        <div>
+          <label className="text-sm text-muted-foreground block mb-1">نام کانال/گروه</label>
+          <p className="text-sm font-medium">{channel.title}</p>
+        </div>
+        <div>
+          <label className="text-sm text-muted-foreground block mb-1">Chat ID</label>
+          <p className="text-sm font-mono" dir="ltr">{channel.chatId || channel.channelId}</p>
+        </div>
+        <Input label="عنوان نمایشی در ربات" value={displayTitle} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisplayTitle(e.target.value)} />
+        <Input label="لینک دعوت" dir="ltr" value={inviteLink} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInviteLink(e.target.value)} placeholder="https://t.me/..." />
+      </div>
+      <div className="flex justify-end gap-2 mt-6">
+        <Button variant="outline" onClick={onClose}>انصراف</Button>
+        <Button onClick={() => onSave(displayTitle, inviteLink)}>ذخیره</Button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function RequiredChannelsPage() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<RequiredChannelPayload>(emptyForm);
-  const query = useQuery({ queryKey: ["required-channels"], queryFn: () => requiredChannelsApi.getAll() });
-  const create = useMutation({
-    mutationFn: requiredChannelsApi.create,
-    onSuccess: () => {
-      toast.success("کانال/گروه اضافه شد");
-      setForm(emptyForm);
-      queryClient.invalidateQueries({ queryKey: ["required-channels"] });
-      syncBackendCache();
-    },
-    onError: (error) => toast.error(getApiError(error)),
-  });
-  const update = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: Partial<RequiredChannelPayload> }) => requiredChannelsApi.update(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["required-channels"] });
-      syncBackendCache();
-    },
-    onError: (error) => toast.error(getApiError(error)),
-  });
-  const refresh = useMutation({ mutationFn: requiredChannelsApi.refreshBotStatus, onSuccess: () => { toast.success("وضعیت ربات بروزرسانی شد"); queryClient.invalidateQueries({ queryKey: ["required-channels"] }); }, onError: (error) => toast.error(getApiError(error)) });
-  const remove = useMutation({ mutationFn: requiredChannelsApi.delete, onSuccess: () => { toast.success("حذف شد"); queryClient.invalidateQueries({ queryKey: ["required-channels"] }); syncBackendCache(); } });
+  const [editing, setEditing] = useState<RequiredChannel | null>(null);
 
-  const patch = (id: number, payload: Partial<RequiredChannelPayload>) => update.mutate({ id, payload });
+  const query = useQuery({ queryKey: ["required-channels"], queryFn: () => requiredChannelsApi.getAll() });
+
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => requiredChannelsApi.update(id, payload as any),
+    onSuccess: () => {
+      toast.success("تغییرات ذخیره شد");
+      setEditing(null);
+      queryClient.invalidateQueries({ queryKey: ["required-channels"] });
+      syncBackendCache();
+    },
+    onError: (error) => toast.error(getApiError(error)),
+  });
+
+  const refresh = useMutation({
+    mutationFn: requiredChannelsApi.refreshBotStatus,
+    onSuccess: () => { toast.success("وضعیت ربات بروزرسانی شد"); queryClient.invalidateQueries({ queryKey: ["required-channels"] }); },
+    onError: (error) => toast.error(getApiError(error)),
+  });
+
+  const remove = useMutation({
+    mutationFn: requiredChannelsApi.delete,
+    onSuccess: () => { toast.success("حذف شد"); queryClient.invalidateQueries({ queryKey: ["required-channels"] }); syncBackendCache(); },
+  });
 
   const items = query.data?.items;
   const showEmpty = !query.isLoading && !query.isError && (!items || items.length === 0);
 
-  return <div className="space-y-6">
-    <div className="page-header"><div><h1 className="section-title">مدیریت عضویت اجباری</h1><p className="text-sm text-muted-foreground">برای رفع خطای chat not found، شناسه عددی واقعی کانال با پیشوند -100 را ذخیره کنید و وضعیت ربات را از همین صفحه بررسی کنید.</p></div></div>
-    <Card>
-      <CardHeader><h2 className="font-semibold">افزودن کانال یا گروه</h2></CardHeader>
-      <CardContent>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Input label="نام واقعی" value={form.title} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, title: e.target.value })} />
-          <Input label="عنوان نمایشی در ربات" value={form.displayTitle ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, displayTitle: e.target.value })} placeholder={`مثلاً کانال اطلاع‌رسانی ${BRAND_NAME}`} />
-          <Input label="Chat ID عددی" dir="ltr" value={form.chatId} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, chatId: e.target.value })} placeholder="-1001234567890" />
-          <Input label="Username" dir="ltr" value={form.username ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, username: e.target.value })} />
-          <Select label="نوع" value={form.type} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setForm({ ...form, type: e.target.value as RequiredChannelPayload["type"] })}><option value="CHANNEL">کانال</option><option value="GROUP">گروه</option></Select>
-          <Input label="لینک دعوت" dir="ltr" value={form.inviteLink ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, inviteLink: e.target.value })} />
-          <Input label="متن دکمه" value={form.buttonText ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, buttonText: e.target.value })} placeholder="عضویت در کانال اطلاع‌رسانی" />
-          <div className="flex items-end"><Toggle checked={Boolean(form.isActive)} onChange={(v) => setForm({ ...form, isActive: v })} label="فعال" /></div>
+  const statusVariant = (s: string) => s === "APPROVED" ? "success" : s === "PENDING" ? "warning" : s === "DISABLED" ? "danger" : "outline";
+  const botVariant = (s: string | null | undefined) => s === "administrator" || s === "creator" ? "success" : s?.includes("ERROR") ? "danger" : "outline";
+
+  return (
+    <div className="space-y-6">
+      <div className="page-header">
+        <div>
+          <h1 className="section-title">مدیریت عضویت اجباری</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            ربات را در کانال یا گروه موردنظر عضو کرده و به آن دسترسی Administrator بدهید، سپس از بخش پایین روی دکمه «تأیید» کلیک کنید تا وضعیت اتصال و دسترسی ربات بررسی شود.
+          </p>
         </div>
-        <div className="mt-4"><Button loading={create.isPending} onClick={() => create.mutate(form)}>ثبت</Button></div>
-      </CardContent>
-    </Card>
-    <Card><CardHeader><h2 className="font-semibold">لیست عضویت اجباری</h2></CardHeader><CardContent className="p-0">
-      {query.isLoading ? <TableSkeleton /> : query.isError ? (
-        <div className="p-8 text-center text-red-500">
-          <AlertTriangle className="mx-auto h-8 w-8 mb-2" />
-          <p>خطا در دریافت لیست. اطمینان حاصل کنید که سرویس عضویت اجباری در تنظیمات فعال است.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>عنوان</th><th>شناسه</th><th>دعوت و دکمه</th><th>وضعیت ربات</th><th>چرخه تایید</th><th>فعال</th><th>عملیات</th></tr></thead><tbody>{items?.map((item: RequiredChannel) => <tr key={item.id}>
-      <td className="min-w-64"><Input label="نام واقعی" value={item.title} onChange={(e: React.ChangeEvent<HTMLInputElement>) => patch(item.id, { title: e.target.value })} /><Input label="عنوان نمایشی" value={item.displayTitle ?? item.title} onChange={(e: React.ChangeEvent<HTMLInputElement>) => patch(item.id, { displayTitle: e.target.value })} /></td>
-      <td className="min-w-56"><Input label="Chat ID" dir="ltr" value={item.chatId || item.channelId} onChange={(e: React.ChangeEvent<HTMLInputElement>) => patch(item.id, { chatId: e.target.value })} /><div className="mt-2"><Badge variant="info">{item.type === "CHANNEL" ? "کانال" : "گروه"}</Badge></div></td>
-      <td className="min-w-64"><Input label="لینک دعوت" dir="ltr" value={item.inviteLink ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => patch(item.id, { inviteLink: e.target.value })} /><Input label="متن دکمه" value={item.buttonText ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => patch(item.id, { buttonText: e.target.value })} /></td>
-      <td><Badge variant={item.botStatus === "administrator" || item.botStatus === "creator" ? "success" : item.botStatus?.includes("ERROR") || item.lastError ? "danger" : "outline"}>{item.botStatus || "بررسی نشده"}</Badge>{item.lastError && <p className="mt-2 flex max-w-xs items-start gap-1 text-xs text-red-500"><AlertTriangle className="h-4 w-4 shrink-0" />{item.lastError}</p>}<Button className="mt-2" size="sm" variant="outline" loading={refresh.isPending} onClick={() => refresh.mutate(item.id)}><RefreshCw className="h-4 w-4" /> بررسی</Button></td>
-      <td><Badge variant={item.status === "APPROVED" ? "success" : item.status === "PENDING" ? "warning" : "outline"}>{item.status}</Badge><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => patch(item.id, { status: "APPROVED" })}>تایید</Button><Button size="sm" variant="outline" onClick={() => patch(item.id, { status: "REJECTED" })}>رد</Button><Button size="sm" variant="outline" onClick={() => patch(item.id, { status: "DISABLED" })}>غیرفعال</Button></div></td>
-      <td><Toggle checked={item.isActive} onChange={(v) => patch(item.id, { isActive: v })} /></td>
-      <td><button className="text-red-500" onClick={() => remove.mutate(item.id)}><Trash2 className="h-4 w-4" /></button></td>
-    </tr>)}</tbody></table></div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <h2 className="font-semibold">لیست عضویت اجباری</h2>
+        </CardHeader>
+        <CardContent>
+          {query.isLoading ? (
+            <CardSkeleton />
+          ) : query.isError ? (
+            <div className="p-8 text-center text-red-500">
+              <AlertTriangle className="mx-auto h-8 w-8 mb-2" />
+              <p>خطا در دریافت لیست. اطمینان حاصل کنید که سرویس عضویت اجباری در تنظیمات فعال است.</p>
+            </div>
+          ) : showEmpty ? (
+            <EmptyState icon={<RadioTower />} title="موردی ثبت نشده" />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {items?.map((ch: RequiredChannel) => (
+                <div key={ch.id} className="rounded-xl border border-border bg-background/60 p-4 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">{ch.title}</p>
+                      {ch.displayTitle && ch.displayTitle !== ch.title && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">نمایش در ربات: {ch.displayTitle}</p>
+                      )}
+                    </div>
+                    <Badge variant={statusVariant(ch.status)} className="shrink-0 ml-2">{ch.status === "APPROVED" ? "تأیید شده" : ch.status === "PENDING" ? "در انتظار" : ch.status === "DISABLED" ? "غیرفعال" : ch.status}</Badge>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-16 shrink-0">شناسه:</span>
+                      <span className="font-mono" dir="ltr">{ch.chatId || ch.channelId}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-16 shrink-0">نوع:</span>
+                      <Badge variant="info" className="text-[10px]">{ch.type === "CHANNEL" ? "کانال" : "گروه"}</Badge>
+                    </div>
+                    {ch.inviteLink && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-16 shrink-0">دعوت:</span>
+                        <a href={ch.inviteLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate">{ch.inviteLink}</a>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                    <Badge variant={botVariant(ch.botStatus)} className="text-[10px]">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: ch.botStatus === "administrator" || ch.botStatus === "creator" ? "#22c55e" : ch.botStatus?.includes("ERROR") ? "#ef4444" : "#a1a1aa" }} />
+                      {ch.botStatus || "بررسی نشده"}
+                    </Badge>
+                    {ch.lastError && (
+                      <span className="text-[10px] text-red-500 truncate flex-1" title={ch.lastError}>{ch.lastError}</span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" loading={refresh.isPending} onClick={() => refresh.mutate(ch.id)}>
+                      <RefreshCw className="h-3 w-3" /> بررسی
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => update.mutate({ id: ch.id, payload: { status: "APPROVED" } })}>
+                      <Check className="h-3 w-3" /> تأیید
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => update.mutate({ id: ch.id, payload: { status: "REJECTED" } })}>
+                      <X className="h-3 w-3" /> رد
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => update.mutate({ id: ch.id, payload: { status: "DISABLED" } })}>
+                      <ShieldCheck className="h-3 w-3" /> غیرفعال
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setEditing(ch)}>
+                      <Pencil className="h-3 w-3" /> ویرایش
+                    </Button>
+                    <Button size="sm" variant="danger" className="h-7 text-xs gap-1" loading={remove.isPending} onClick={() => { if (confirm("آیا از حذف این مورد مطمئن هستید؟")) remove.mutate(ch.id); }}>
+                      <Trash2 className="h-3 w-3" /> حذف
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {editing && (
+        <EditModal
+          channel={editing}
+          onClose={() => setEditing(null)}
+          onSave={(displayTitle, inviteLink) => update.mutate({ id: editing.id, payload: { displayTitle, inviteLink } })}
+        />
       )}
-      {showEmpty && <EmptyState icon={<RadioTower />} title="موردی ثبت نشده" />}
-    </CardContent></Card>
-  </div>;
+    </div>
+  );
 }
