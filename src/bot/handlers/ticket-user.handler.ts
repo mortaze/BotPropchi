@@ -15,13 +15,9 @@ interface TicketState {
 }
 
 const STATE_TTL = 1800;
-const COOLDOWN_TTL = 300;
 
 function stateKey(telegramId: number) {
   return `ticket:state:${telegramId}`;
-}
-function cooldownKey(telegramId: number) {
-  return `ticket:cooldown:${telegramId}`;
 }
 
 async function getState(telegramId: number): Promise<TicketState | undefined> {
@@ -109,8 +105,13 @@ export function registerTicketUserHandlers(bot: Telegraf) {
     const isEnabled = await settingsService.isFeatureEnabled('ticket_system');
     if (!isEnabled) return ctx.reply('❌ سیستم پشتیبانی غیرفعال است.');
 
-    const cd = await redisClient.get<boolean>(cooldownKey(telegramId));
-    if (cd) return ctx.reply('⏳ لطفاً چند دقیقه صبر کنید قبل از ارسال تیکت جدید.');
+    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(telegramId) } });
+    if (user) {
+      const hasActive = await ticketService.hasActiveTicket(user.id);
+      if (hasActive) {
+        return ctx.reply('⚠️ شما در حال حاضر یک تیکت فعال دارید. لطفاً ابتدا منتظر پاسخ باشید یا پس از بسته شدن این تیکت، تیکت جدید ثبت کنید.');
+      }
+    }
 
     const categories = await ticketCategoryService.list();
     await setState(telegramId, { step: 'SELECT_CATEGORY' });
@@ -203,7 +204,6 @@ export function registerTicketUserHandlers(bot: Telegraf) {
       await ticketService.addUserMessage(ticketId!, user.id, { messageType, text, ...fileData });
       const category = await ticketCategoryService.findById(state.categoryId);
       if (isFirstMessage) {
-        await redisClient.set(cooldownKey(telegramId), true, COOLDOWN_TTL);
         await ctx.reply('\u2705 تیکت شما ثبت شد.', ticketViewKeyboard(ticketId!));
         notifyAdminsNewTicket({
           ticketId: ticketId!,
@@ -232,8 +232,8 @@ export function registerTicketUserHandlers(bot: Telegraf) {
       }
     } catch (err: any) {
       logger.error(`[TicketUser] message handler error telegramId=${telegramId}`, err);
-      if (err.message === 'TOO_MANY_OPEN_TICKETS') {
-        await ctx.reply('⚠️ شما بیش از ۳ تیکت باز دارید.');
+      if (err.message === 'ACTIVE_TICKET_EXISTS') {
+        await ctx.reply('⚠️ شما در حال حاضر یک تیکت فعال دارید. لطفاً ابتدا منتظر پاسخ باشید یا پس از بسته شدن این تیکت، تیکت جدید ثبت کنید.');
       } else if (err.message === 'TICKET_NOT_FOUND_OR_CLOSED') {
         await ctx.reply('❌ تیکت یافت نشد یا بسته شده است.');
       } else {

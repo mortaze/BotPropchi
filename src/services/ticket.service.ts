@@ -11,12 +11,17 @@ export const ticketService = {
     return active ?? null;
   },
 
+  async hasActiveTicket(userId: number): Promise<boolean> {
+    const count = await ticketRepository.countOpenByUserId(userId);
+    return count > 0;
+  },
+
   async createTicket(userId: number, categoryId: number) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('USER_NOT_FOUND');
 
     const openCount = await ticketRepository.countOpenByUserId(userId);
-    if (openCount >= 3) throw new Error('TOO_MANY_OPEN_TICKETS');
+    if (openCount >= 1) throw new Error('ACTIVE_TICKET_EXISTS');
 
     const ticket = await ticketRepository.create({ userId, categoryId });
 

@@ -64,6 +64,13 @@ export const ticketRepository = {
     return prisma.ticket.count({ where: { userId, status: 'OPEN' } });
   },
 
+  async findOpenTicketByUserId(userId: number) {
+    return prisma.ticket.findFirst({
+      where: { userId, status: 'OPEN' },
+      orderBy: { createdAt: 'desc' },
+    });
+  },
+
   async create(data: { userId: number; categoryId: number }) {
     return prisma.ticket.create({ data });
   },
