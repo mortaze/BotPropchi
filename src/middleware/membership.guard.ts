@@ -16,6 +16,10 @@ export function membershipGuard(bot: Telegraf) {
 
     if (ctx.chat && ctx.chat.type !== 'private') return next();
 
+    if (ctx.callbackQuery && 'data' in ctx.callbackQuery && ctx.callbackQuery.data === 'check:membership') {
+      return next();
+    }
+
     const telegramId = ctx.from.id;
 
     try {
