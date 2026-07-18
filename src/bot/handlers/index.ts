@@ -1886,7 +1886,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
         await ctx.answerCbQuery('✅ عضویت شما تأیید شد.', { show_alert: false }).catch(() => {});
 
         try {
-          await ctx.editMessageText('✅ عضویت شما تأیید شد.', { reply_markup: undefined });
+          await ctx.deleteMessage().catch(() => {});
         } catch {}
 
         userService.processPendingReferral(BigInt(telegramId)).catch(() => {});
@@ -1920,7 +1920,23 @@ export function registerHandlers(bot: Telegraf<Context>) {
           }
         }
       } else {
-        await ctx.answerCbQuery('❌ هنوز عضو تمام کانال‌ها یا گروه‌های الزامی نشده‌اید.', { show_alert: true });
+        const remaining = result.notJoined;
+        const channelList = remaining
+          .map((ch, i) => `${i + 1}. *${ch.displayTitle || ch.title}*`)
+          .join('\n');
+        const updatedMessage = `🔒 *برای استفاده از ربات، ابتدا عضو شوید:*\n\n${channelList}\n\n✅ *پس از عضویت کلیک کنید:*`;
+        const updatedKeyboard = buildForceJoinKeyboard(
+          remaining.map((ch) => ({
+            title: ch.title,
+            displayTitle: ch.displayTitle,
+            inviteLink: ch.inviteLink,
+            channelId: ch.channelId,
+          })),
+        );
+        try {
+          await ctx.editMessageText(updatedMessage, { parse_mode: 'Markdown', reply_markup: updatedKeyboard.reply_markup });
+        } catch {}
+        await ctx.answerCbQuery('❌ هنوز عضو نشده‌اید.', { show_alert: true }).catch(() => {});
       }
     } catch {
       await ctx.answerCbQuery('خطا در بررسی عضویت', { show_alert: true });
