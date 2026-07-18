@@ -221,11 +221,10 @@ searchRouter.get('/lotteries', asyncHandler(async (req, res) => {
     { title: { contains: q, mode: 'insensitive' } },
     { prize: { contains: q, mode: 'insensitive' } },
   ];
-  if (filter_status === 'active') where.isActive = true;
-  else if (filter_status === 'completed') where.isCompleted = true;
-  else if (filter_status === 'inactive') where.isActive = false;
+  if (filter_status === 'completed') where.isCompleted = true;
+  else if (filter_status === 'active') where.isCompleted = false;
 
-  const validSortKeys = ['id', 'title', 'startAt', 'endAt', 'createdAt'];
+  const validSortKeys = ['id', 'title', 'createdAt'];
   const orderBy: any = validSortKeys.includes(sortKey || '')
     ? { [sortKey!]: sortDir === 'asc' ? 'asc' : 'desc' }
     : { createdAt: 'desc' };

@@ -52,10 +52,10 @@ export default function LotteriesPage() {
           <CardContent>
             <div className="text-center">
               <p className="text-3xl font-bold text-primary">
-                {query.data?.items?.find(l => l.isActive && !l.isCompleted)?.prize ?? "—"}
+                {query.data?.items?.find(l => !l.isCompleted)?.prize ?? "—"}
               </p>
               <p className="text-sm text-muted-foreground mt-2">
-                {query.data?.items?.filter(l => l.isActive && !l.isCompleted).length ?? 0} قرعه‌کشی فعال
+                {query.data?.items?.filter(l => !l.isCompleted).length ?? 0} قرعه‌کشی فعال
               </p>
             </div>
           </CardContent>
@@ -133,8 +133,8 @@ export default function LotteriesPage() {
                   <td>{lottery.ticketStats?.totalTickets ?? 0}</td>
                   <td>{lottery._count?.winners ?? 0} / {lottery.winnersCount}</td>
                   <td>
-                    <Badge variant={lottery.isCompleted ? "outline" : lottery.isActive ? "success" : "warning"}>
-                      {lottery.isCompleted ? "تکمیل" : lottery.isActive ? "فعال" : "غیرفعال"}
+                    <Badge variant={lottery.isCompleted ? "outline" : "success"}>
+                      {lottery.isCompleted ? "تکمیل" : "فعال"}
                     </Badge>
                   </td>
                   <td>

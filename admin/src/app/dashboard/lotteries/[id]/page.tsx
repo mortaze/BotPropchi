@@ -33,7 +33,7 @@ export default function LotteryDetailsPage() {
             </Link>
             <h1 className="text-2xl font-bold">{lottery.title}</h1>
           </div>
-          <p className="text-sm text-muted-foreground">{lottery.description ?? "بدون توضیح"}</p>
+          <p className="text-sm text-muted-foreground">قرعه‌کشی</p>
         </div>
         <div className="flex gap-2">
           <Link href={`/dashboard/lotteries/edit/${id}`}>
@@ -55,13 +55,7 @@ export default function LotteryDetailsPage() {
         <Metric title="شرکت‌کنندگان" value={formatNumber(stats?.participants ?? lottery._count?.entries ?? 0)} />
         <Metric title="کل شانس‌ها" value={formatNumber(stats?.totalTickets ?? 0)} />
         <Metric title="شانس کل" value={formatNumber(stats?.totalChance ?? 0)} />
-        <Metric title="وضعیت" value={lottery.isCompleted ? "تکمیل" : lottery.isActive ? "فعال" : "غیرفعال"} />
-        {lottery.startAt && (
-          <Metric title="شروع" value={safeDateFormat(lottery.startAt, { dateStyle: "medium", timeStyle: "short" })} />
-        )}
-        {lottery.endAt && (
-          <Metric title="پایان" value={safeDateFormat(lottery.endAt, { dateStyle: "medium", timeStyle: "short" })} />
-        )}
+        <Metric title="وضعیت" value={lottery.isCompleted ? "تکمیل" : "فعال"} />
         <Metric title="ایجاد شده" value={safeDateFormat(lottery.createdAt, { dateStyle: "medium", timeStyle: "short" })} />
       </div>
 

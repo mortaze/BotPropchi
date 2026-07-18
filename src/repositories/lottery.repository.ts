@@ -48,16 +48,9 @@ export const lotteryRepository = {
   },
 
   async getActive() {
-    const now = new Date();
-
     const lottery = await prisma.lottery.findFirst({
       where: {
-        isActive: true,
         isCompleted: false,
-        OR: [
-          { startAt: null },
-          { startAt: { lte: now } },
-        ],
       },
       orderBy: { createdAt: 'desc' },
       include: lotteryInclude,
@@ -92,17 +85,10 @@ export const lotteryRepository = {
     return attachTicketStats(await prisma.lottery.create({
       data: {
         title: data.title,
-        description: data.description ?? null,
         prize: data.prize,
-        startAt: data.startAt ? new Date(data.startAt) : null,
-        endAt: data.endAt ? new Date(data.endAt) : null,
         winnersCount: Number(data.winnersCount ?? 1),
-        minPoints: Number(data.minPoints ?? 0),
         entryCost: Number(data.entryCost ?? 10),
-        isActive: data.isActive ?? true,
         isCompleted: data.isCompleted ?? false,
-        announcementMsg: data.announcementMsg ?? null,
-        winnerMessage: data.winnerMessage ?? null,
       },
       include: lotteryInclude,
     }));
@@ -110,10 +96,7 @@ export const lotteryRepository = {
 
   async update(id: number, data: Prisma.LotteryUpdateInput | any) {
     const normalized = { ...data };
-    if (normalized.startAt) normalized.startAt = new Date(normalized.startAt);
-    if (normalized.endAt) normalized.endAt = new Date(normalized.endAt);
     if (normalized.winnersCount !== undefined) normalized.winnersCount = Number(normalized.winnersCount);
-    if (normalized.minPoints !== undefined) normalized.minPoints = Number(normalized.minPoints);
     if (normalized.entryCost !== undefined) normalized.entryCost = Number(normalized.entryCost);
     return attachTicketStats(await prisma.lottery.update({ where: { id }, data: normalized, include: lotteryInclude }));
   },
@@ -161,7 +144,7 @@ export const lotteryRepository = {
         }));
       }
 
-      await tx.lottery.update({ where: { id: lotteryId }, data: { isCompleted: true, isActive: false } });
+        await tx.lottery.update({ where: { id: lotteryId }, data: { isCompleted: true } });
       return winners;
     });
   },
@@ -297,7 +280,7 @@ export const lotteryRepository = {
 
       const isCompleted = remaining === 0;
       if (isCompleted) {
-        await tx.lottery.update({ where: { id: lotteryId }, data: { isCompleted: true, isActive: false } });
+      await tx.lottery.update({ where: { id: lotteryId }, data: { isCompleted: true } });
       }
 
       return { winner, remainingParticipants: remaining, isCompleted };
@@ -307,7 +290,7 @@ export const lotteryRepository = {
   async completeLottery(lotteryId: number) {
     return prisma.lottery.update({
       where: { id: lotteryId },
-      data: { isCompleted: true, isActive: false },
+      data: { isCompleted: true },
     });
   },
 
@@ -325,14 +308,6 @@ export const lotteryRepository = {
       where: { userId_lotteryId: { userId, lotteryId } },
       data: { ticketCount: 0, chanceWeight: 0 },
     });
-  },
-
-  async getWinnerMessage(lotteryId: number) {
-    const lottery = await prisma.lottery.findUnique({
-      where: { id: lotteryId },
-      select: { winnerMessage: true },
-    });
-    return lottery?.winnerMessage ?? "تبریک 🎉\nشما برنده قرعه‌کشی شدید.\nبرای دریافت جایزه با پشتیبانی تماس بگیرید.";
   },
 
   async markNotificationSent(lotteryId: number, userId: number) {

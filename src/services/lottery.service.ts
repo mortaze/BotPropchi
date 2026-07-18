@@ -60,16 +60,7 @@ export const lotteryService = {
     const user = await userRepository.findByTelegramId(telegramId);
     if (!user) return { success: false, message: 'کاربر یافت نشد', options: [] as number[] };
     const lottery = await lotteryRepository.findById(lotteryId);
-    if (!lottery || !lottery.isActive || lottery.isCompleted) return { success: false, message: 'این قرعه کشی فعال نیست', options: [] as number[] };
-    if (lottery.startAt) {
-      const now = new Date();
-      if (now < lottery.startAt) return { success: false, message: 'قرعه کشی هنوز شروع نشده است', options: [] as number[] };
-    }
-    if (lottery.endAt) {
-      const now = new Date();
-      if (now > lottery.endAt) return { success: false, message: 'زمان ثبت نام به پایان رسیده است', options: [] as number[] };
-    }
-    if (user.points < lottery.minPoints) return { success: false, message: `برای شرکت حداقل ${lottery.minPoints} امتیاز لازم است`, options: [] as number[] };
+    if (!lottery || lottery.isCompleted) return { success: false, message: 'این قرعه کشی فعال نیست', options: [] as number[] };
     const entryCost = lottery.entryCost || 0;
     const maxChances = entryCost > 0 ? Math.floor(user.points / entryCost) : 10;
     if (maxChances < 1) return { success: false, message: 'امتیاز شما برای شرکت در قرعه‌کشی کافی نیست', options: [] as number[] };
@@ -95,26 +86,8 @@ export const lotteryService = {
       return { success: false, message: 'قرعه کشی یافت نشد' };
     }
 
-    if (!lottery.isActive || lottery.isCompleted) {
+    if (!lottery || lottery.isCompleted) {
       return { success: false, message: 'این قرعه کشی فعال نیست' };
-    }
-
-    if (lottery.startAt) {
-      const now = new Date();
-      if (now < lottery.startAt) {
-        return { success: false, message: 'قرعه کشی هنوز شروع نشده است' };
-      }
-    }
-
-    if (lottery.endAt) {
-      const now = new Date();
-      if (now > lottery.endAt) {
-        return { success: false, message: 'زمان ثبت نام به پایان رسیده است' };
-      }
-    }
-
-    if (user.points < lottery.minPoints) {
-      return { success: false, message: `برای شرکت حداقل ${lottery.minPoints} امتیاز لازم است` };
     }
 
     const normalizedChances = Math.max(1, Math.floor(Number(ticketCount) || 1));
@@ -155,10 +128,6 @@ export const lotteryService = {
 
     if (lottery.isCompleted) {
       throw new Error('قرعه کشی قبلاً برگزار شده');
-    }
-
-    if (!force && lottery.endAt && new Date() < lottery.endAt) {
-      throw new Error('هنوز زمان برگزاری نرسیده است');
     }
 
     const winners = await lotteryRepository.drawWinners(lottery.id, lottery.winnersCount);
@@ -227,7 +196,6 @@ export const lotteryService = {
 
   async sendWinnerNotifications(lotteryId: number) {
     const winners = await lotteryRepository.getUnnotifiedWinners(lotteryId);
-    const winnerMessage = await lotteryRepository.getWinnerMessage(lotteryId);
     let sentCount = 0;
 
     for (const winner of winners) {

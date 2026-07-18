@@ -61,17 +61,10 @@ export interface LotteryCount {
 export interface Lottery {
   id: number;
   title: string;
-  description?: string | null;
   prize: string;
-  startAt?: string | null;
-  endAt?: string | null;
   winnersCount: number;
-  minPoints: number;
   entryCost: number;
-  isActive: boolean;
   isCompleted: boolean;
-  announcementMsg?: string | null;
-  winnerMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: LotteryCount;

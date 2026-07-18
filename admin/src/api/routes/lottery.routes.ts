@@ -10,12 +10,8 @@ export const lotteryRouter = Router();
 
 const createSchema = z.object({
   title: z.string().min(2),
-  description: z.string().optional(),
   prize: z.string().min(2),
-  startAt: z.string().datetime(),
-  endAt: z.string().datetime(),
   winnersCount: z.number().int().min(1).default(1),
-  minPoints: z.number().int().min(0).default(0),
 });
 
 // ایجاد قرعه‌کشی جدید
@@ -23,7 +19,7 @@ lotteryRouter.post('/', async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
- const lottery = await lotteryRepository.create({ ...(parsed.data as any), startAt: new Date(parsed.data.startAt), endAt: new Date(parsed.data.endAt), });
+  const lottery = await lotteryRepository.create(parsed.data);
   res.status(201).json(lottery);
 });
 

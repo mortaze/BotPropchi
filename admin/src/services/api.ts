@@ -86,16 +86,9 @@ export const usersApi = {
 
 export interface LotteryPayload {
   title: string;
-  description?: string | null;
   prize: string;
-  startAt?: string | null;
-  endAt?: string | null;
   winnersCount: number;
-  minPoints: number;
   entryCost: number;
-  isActive: boolean;
-  announcementMsg?: string | null;
-  winnerMessage?: string | null;
 }
 
 export const lotteriesApi = {

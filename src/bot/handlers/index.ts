@@ -1579,7 +1579,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
     const userEntry = await lotteryService.getUserEntry(BigInt(ctx.from.id), lottery.id);
     const entriesCount = await lotteryService.getEntriesCount(lottery.id);
     const totalTickets = await lotteryService.getTicketsCount(lottery.id);
-    const endDate = new Date(lottery.endAt).toLocaleString('fa-IR');
 
     await ctx.reply(
       `🎰 *${lottery.title}*\n\n` +
@@ -1587,9 +1586,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
         `👥 شرکت‌کنندگان: ${entriesCount} نفر\n` +
         `🎯 کل شانس‌ها: ${totalTickets}\n` +
         `🎯 شانس‌های شما: ${userEntry?.ticketCount ?? 0}\n` +
-        `⭐️ حداقل امتیاز: ${lottery.minPoints}\n` +
-        `🎯 هزینه هر شانس: ${lottery.entryCost} امتیاز\n` +
-        `⏳ پایان: ${endDate}`,
+        `🎯 هزینه هر شانس: ${lottery.entryCost} امتیاز`,
       { parse_mode: 'Markdown', ...lotteryKeyboard(lottery.id, userEntry?.ticketCount ?? 0) }
     );
   });

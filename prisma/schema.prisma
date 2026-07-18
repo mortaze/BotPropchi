@@ -220,16 +220,9 @@ model ReferralSettings {
 model Lottery {
   id              Int                 @id @default(autoincrement())
   title           String
-  description     String?
   prize           String
-  startAt         DateTime?
-  endAt           DateTime?
   winnersCount    Int                 @default(1)
-  minPoints       Int                 @default(0)
-  isActive        Boolean             @default(true)
   isCompleted     Boolean             @default(false)
-  announcementMsg String?
-  winnerMessage   String?             @default("تبریک 🎉\nشما برنده قرعه‌کشی شدید.\nبرای دریافت جایزه با پشتیبانی تماس بگیرید.")
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   entryCost       Int                 @default(10)

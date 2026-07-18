@@ -15,7 +15,7 @@ export default function DashboardPage() {
 
   const lotteryItems = lotteries.data?.items ?? [];
   const completed = lotteryItems.filter((item) => item.isCompleted).length;
-  const active = lotteryItems.filter((item) => item.isActive && !item.isCompleted).length;
+  const active = lotteryItems.filter((item) => !item.isCompleted).length;
   const winners = lotteryItems.flatMap((item) => item.winners ?? []).slice(0, 5);
 
   return (

@@ -9,20 +9,12 @@ import { logger } from '../../utils/logger';
 const router = Router();
 
 const numberField = z.coerce.number().int();
-const dateField = z.coerce.date();
 
 const lotterySchema = z.object({
   title: z.string().min(2),
-  description: z.string().optional().nullable(),
   prize: z.string().min(1),
-  startAt: dateField.optional().nullable(),
-  endAt: dateField.optional().nullable(),
   winnersCount: numberField.positive().default(1),
-  minPoints: numberField.min(0).default(0),
   entryCost: numberField.min(0).default(10),
-  isActive: z.boolean().default(true),
-  announcementMsg: z.string().optional().nullable(),
-  winnerMessage: z.string().optional().nullable(),
 });
 
 function serializeBigInts(value: any): any {
@@ -182,7 +174,7 @@ router.post('/:id/wheel/record-winner', async (req, res) => {
 
 router.post('/:id/wheel/complete', async (req, res) => {
   try {
-    await lotteryService.updateLottery(Number(req.params.id), { isCompleted: true, isActive: false });
+    await lotteryService.updateLottery(Number(req.params.id), { isCompleted: true });
     return res.json({ success: true, message: 'قرعه‌کشی پایان یافت' });
   } catch (error: any) {
     logger.error('❌ COMPLETE LOTTERY ERROR', error);
