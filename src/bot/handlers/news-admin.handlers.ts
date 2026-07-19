@@ -1,4 +1,5 @@
 import { Telegraf } from 'telegraf';
+import { Markup } from 'telegraf';
 import { newsService } from '../../services/news.service';
 import { newsState } from '../../services/news-state.service';
 import { scheduledMessageState } from '../../services/scheduled-message-state.service';
@@ -43,27 +44,24 @@ function calendarText(todayKey: string, displayMonth: string) {
   ].join('\n');
 }
 
-function mergeReplyMarkup(...km: any[]) {
-  const merged: any = { reply_markup: {} };
-  for (const k of km) {
-    const rm = k?.reply_markup;
-    if (!rm) continue;
-    if (rm.inline_keyboard) merged.reply_markup.inline_keyboard = rm.inline_keyboard;
-    if (rm.keyboard) merged.reply_markup.keyboard = rm.keyboard;
-    if (rm.resize !== undefined) merged.reply_markup.resize = rm.resize;
-    if (rm.persistent !== undefined) merged.reply_markup.persistent = rm.persistent;
-  }
-  return merged;
-}
-
-async function showCalendar(ctx: any, ym: string) {
+async function buildCalendarWithReply(ym: string) {
   const [y, m] = ym.split('-').map(Number);
   const todayKey = getTodayDateKey();
   const contentDates = await newsService.getDatesWithContentInMonth(y, m);
   const inlineKb = newsCalendarKeyboard(y, m, todayKey, contentDates);
   const text = calendarText(todayKey, ym);
-  const replyKb = newsCalendarReplyKeyboard();
-  return { text, inlineKb, merged: mergeReplyMarkup(inlineKb, replyKb) };
+  const replyRows = [['◀️ ماه قبل', '📍 ماه جاری', 'ماه بعد ▶️'], ['🔙 پنل ادمین']];
+  return {
+    text,
+    extra: {
+      reply_markup: {
+        inline_keyboard: inlineKb.reply_markup!.inline_keyboard,
+        keyboard: replyRows,
+        resize_keyboard: true,
+        is_persistent: true,
+      },
+    },
+  };
 }
 
 export function registerNewsAdminHandlers(bot: Telegraf) {
@@ -88,8 +86,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const ym = `${y}-${String(m).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, ym);
 
-    const { text, merged } = await showCalendar(ctx, ym);
-    await ctx.reply(text, merged);
+    const { text, extra } = await buildCalendarWithReply(ym);
+    await ctx.reply(text, extra);
   });
 
   // ─── Reply keyboard: ماه قبل ──────────────────────────
@@ -104,8 +102,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const prevYm = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, prevYm);
 
-    const { text, merged } = await showCalendar(ctx, prevYm);
-    await ctx.reply(text, merged);
+    const { text, extra } = await buildCalendarWithReply(prevYm);
+    await ctx.reply(text, extra);
   });
 
   // ─── Reply keyboard: ماه بعد ──────────────────────────
@@ -120,8 +118,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const nextYm = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, nextYm);
 
-    const { text, merged } = await showCalendar(ctx, nextYm);
-    await ctx.reply(text, merged);
+    const { text, extra } = await buildCalendarWithReply(nextYm);
+    await ctx.reply(text, extra);
   });
 
   // ─── Reply keyboard: ماه جاری ─────────────────────────
@@ -134,8 +132,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const ym = `${y}-${String(m).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, ym);
 
-    const { text, merged } = await showCalendar(ctx, ym);
-    await ctx.reply(text, merged);
+    const { text, extra } = await buildCalendarWithReply(ym);
+    await ctx.reply(text, extra);
   });
 
   // ─── Reply keyboard: بازگشت به تقویم (from day editor) ──
@@ -147,8 +145,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
 
     newsState.setEditing(userId, '');
 
-    const { text, merged } = await showCalendar(ctx, state.currentMonth);
-    await ctx.reply(text, merged);
+    const { text, extra } = await buildCalendarWithReply(state.currentMonth);
+    await ctx.reply(text, extra);
   });
 
   // ─── Reply keyboard: ویرایش متن (from day editor) ─────
@@ -193,7 +191,11 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return;
 
     newsState.setCurrentMonth(userId, ym);
-    const { text, inlineKb } = await showCalendar(ctx, ym);
+    const [y, m] = ym.split('-').map(Number);
+    const todayKey = getTodayDateKey();
+    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
+    const inlineKb = newsCalendarKeyboard(y, m, todayKey, contentDates);
+    const text = calendarText(todayKey, ym);
     await safeEdit(ctx, text, { reply_markup: inlineKb.reply_markup });
   });
 
@@ -206,7 +208,9 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const ym = `${y}-${String(m).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, ym);
 
-    const { text, inlineKb } = await showCalendar(ctx, ym);
+    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
+    const inlineKb = newsCalendarKeyboard(y, m, todayKey, contentDates);
+    const text = calendarText(todayKey, ym);
     await safeEdit(ctx, text, { reply_markup: inlineKb.reply_markup });
   });
 
@@ -313,13 +317,17 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
       if (dateKey) {
         const entry = await newsService.getEntry(dateKey);
         if (entry) {
-          const merged = mergeReplyMarkup(newsDayContentKeyboard(dateKey), newsDayEditorReplyKeyboard());
-          await ctx.reply(entry.text as string, { entities: entry.entities as any, ...merged });
+          const kb = newsDayContentKeyboard(dateKey);
+          await ctx.reply(entry.text as string, {
+            entities: entry.entities as any,
+            ...kb,
+            ...newsDayEditorReplyKeyboard(),
+          });
         } else {
-          const merged = mergeReplyMarkup(newsDayEmptyKeyboard(dateKey), newsDayEditorReplyKeyboard());
+          const kb = newsDayEmptyKeyboard(dateKey);
           await ctx.reply(
             `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`,
-            merged,
+            { ...kb, ...newsDayEditorReplyKeyboard() },
           );
         }
       } else {
@@ -361,13 +369,16 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
       }
 
       if (entry) {
-        const merged = mergeReplyMarkup(newsDayContentKeyboard(dateKey), newsDayEditorReplyKeyboard());
-        await ctx.reply(entry.text as string, { entities: entry.entities as any, ...merged });
+        await ctx.reply(entry.text as string, {
+          entities: entry.entities as any,
+          ...newsDayContentKeyboard(dateKey),
+          ...newsDayEditorReplyKeyboard(),
+        });
       } else {
-        const merged = mergeReplyMarkup(newsDayEmptyKeyboard(dateKey), newsDayEditorReplyKeyboard());
+        const kb = newsDayEmptyKeyboard(dateKey);
         await ctx.reply(
           `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`,
-          merged,
+          { ...kb, ...newsDayEditorReplyKeyboard() },
         );
       }
     } catch (err: any) {
