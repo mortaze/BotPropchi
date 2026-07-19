@@ -141,10 +141,11 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const kb = newsCalendarKeyboard(y, m, todayK, contentDates);
     const text = calendarText(todayK, state.currentMonth);
     await ctx.reply(text, kb);
+    await ctx.reply('', newsCalendarReplyKeyboard());
   });
 
-  // ─── Reply keyboard: ویرایش متن (from day editor) ─────
-  bot.hears('✏️ ویرایش متن', async (ctx: any) => {
+  // ─── Reply keyboard: افزودن پیام (from day editor) ─────
+  bot.hears('➕ افزودن پیام', async (ctx: any) => {
     const userId = ctx.from?.id;
     if (!userId) return;
     const state = newsState.getState(userId);
@@ -157,8 +158,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     );
   });
 
-  // ─── Reply keyboard: حذف متن (from day editor) ────────
-  bot.hears('🗑 حذف متن', async (ctx: any) => {
+  // ─── Reply keyboard: حذف پیام (from day editor) ────────
+  bot.hears('🗑 حذف پیام', async (ctx: any) => {
     const userId = ctx.from?.id;
     if (!userId) return;
     const state = newsState.getState(userId);

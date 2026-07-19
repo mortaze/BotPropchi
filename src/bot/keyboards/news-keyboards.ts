@@ -127,7 +127,7 @@ export function newsCalendarReplyKeyboard() {
 // ─── Reply keyboard for day editor (Issue 3) ────────────
 export function newsDayEditorReplyKeyboard() {
   return Markup.keyboard([
-    ['✏️ ویرایش متن', '🗑 حذف متن'],
+    ['➕ افزودن پیام', '🗑 حذف پیام'],
     ['◀️ بازگشت به تقویم', '🔙 پنل ادمین'],
   ]).resize().persistent();
 }
