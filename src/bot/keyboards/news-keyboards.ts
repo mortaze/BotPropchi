@@ -116,6 +116,22 @@ export function newsCancelKeyboard() {
   return Markup.keyboard([['❌ لغو']]).resize();
 }
 
+// ─── Reply keyboard for calendar (Issue 2) ──────────────
+export function newsCalendarReplyKeyboard() {
+  return Markup.keyboard([
+    ['◀️ ماه قبل', '📍 ماه جاری', 'ماه بعد ▶️'],
+    ['🔙 پنل ادمین'],
+  ]).resize().persistent();
+}
+
+// ─── Reply keyboard for day editor (Issue 3) ────────────
+export function newsDayEditorReplyKeyboard() {
+  return Markup.keyboard([
+    ['✏️ ویرایش متن', '🗑 حذف متن'],
+    ['◀️ بازگشت به تقویم', '🔙 پنل ادمین'],
+  ]).resize().persistent();
+}
+
 // ─── User: yesterday/today/tomorrow (section 7.1) ───────
 export function newsUserKeyboard(
   yesterday: DateKey,

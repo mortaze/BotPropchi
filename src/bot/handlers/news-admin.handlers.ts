@@ -3,8 +3,7 @@ import { newsService } from '../../services/news.service';
 import { newsState } from '../../services/news-state.service';
 import { scheduledMessageState } from '../../services/scheduled-message-state.service';
 import { botAdminService } from '../../services/bot-admin.service';
-import { isValidDateKey, getTodayDateKey, addMonths } from '../../utils/news-date';
-import { getYesterdayTodayTomorrow } from '../../utils/news-date';
+import { isValidDateKey, getTodayDateKey } from '../../utils/news-date';
 import { logger } from '../../utils/logger';
 import { BotAdminRole } from '@prisma/client';
 import {
@@ -13,6 +12,8 @@ import {
   newsDayEmptyKeyboard,
   newsDeleteConfirmKeyboard,
   newsCancelKeyboard,
+  newsCalendarReplyKeyboard,
+  newsDayEditorReplyKeyboard,
 } from '../keyboards/news-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards/index';
 
@@ -27,6 +28,28 @@ async function safeEdit(ctx: any, text: string, extra?: any) {
 
 async function safeAnswerCbQuery(ctx: any, text?: string, extra?: any) {
   try { await ctx.answerCbQuery(text, extra); } catch {}
+}
+
+function calendarText(todayKey: string, displayMonth: string) {
+  return [
+    '📰 مدیریت اخبار فارکس',
+    '',
+    `🗓 امروز: ${todayKey}`,
+    '',
+    `در حال نمایش: ${displayMonth}`,
+    '',
+    'روی هر روز بزنید تا محتوای آن تاریخ را مدیریت کنید.',
+    '🟢 = این روز محتوا دارد   ⚪️ = این روز خالی است',
+  ].join('\n');
+}
+
+async function showCalendar(ctx: any, ym: string) {
+  const [y, m] = ym.split('-').map(Number);
+  const todayKey = getTodayDateKey();
+  const contentDates = await newsService.getDatesWithContentInMonth(y, m);
+  const inlineKb = newsCalendarKeyboard(y, m, todayKey, contentDates);
+  const text = calendarText(todayKey, ym);
+  return { text, inlineKb, replyKb: newsCalendarReplyKeyboard() };
 }
 
 export function registerNewsAdminHandlers(bot: Telegraf) {
@@ -48,111 +71,162 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
 
     const todayKey = getTodayDateKey();
     const [y, m] = todayKey.split('-').map(Number);
-    newsState.setCurrentMonth(userId, `${y}-${String(m).padStart(2, '0')}`);
+    const ym = `${y}-${String(m).padStart(2, '0')}`;
+    newsState.setCurrentMonth(userId, ym);
 
-    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
-    const kb = newsCalendarKeyboard(y, m, todayKey, contentDates);
+    const { text, inlineKb, replyKb } = await showCalendar(ctx, ym);
+    await ctx.reply(text, { ...inlineKb, ...replyKb });
+  });
 
-    const text = [
-      '📰 مدیریت اخبار فارکس',
-      '',
-      `🗓 امروز: ${todayKey}`,
-      '',
-      `در حال نمایش: ${newsState.getState(userId).currentMonth}`,
-      '',
-      'روی هر روز بزنید تا محتوای آن تاریخ را مدیریت کنید.',
-      '🟢 = این روز محتوا دارد   ⚪️ = این روز خالی است',
-    ].join('\n');
+  // ─── Reply keyboard: ماه قبل ──────────────────────────
+  bot.hears('◀️ ماه قبل', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const state = newsState.getState(userId);
+    if (!state.currentMonth) return;
 
-    await ctx.reply(text, kb);
+    const [y, m] = state.currentMonth.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 2, 1));
+    const prevYm = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+    newsState.setCurrentMonth(userId, prevYm);
+
+    const { text, inlineKb, replyKb } = await showCalendar(ctx, prevYm);
+    await ctx.reply(text, { ...inlineKb, ...replyKb });
+  });
+
+  // ─── Reply keyboard: ماه بعد ──────────────────────────
+  bot.hears('ماه بعد ▶️', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const state = newsState.getState(userId);
+    if (!state.currentMonth) return;
+
+    const [y, m] = state.currentMonth.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m, 1));
+    const nextYm = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+    newsState.setCurrentMonth(userId, nextYm);
+
+    const { text, inlineKb, replyKb } = await showCalendar(ctx, nextYm);
+    await ctx.reply(text, { ...inlineKb, ...replyKb });
+  });
+
+  // ─── Reply keyboard: ماه جاری ─────────────────────────
+  bot.hears('📍 ماه جاری', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    const todayKey = getTodayDateKey();
+    const [y, m] = todayKey.split('-').map(Number);
+    const ym = `${y}-${String(m).padStart(2, '0')}`;
+    newsState.setCurrentMonth(userId, ym);
+
+    const { text, inlineKb, replyKb } = await showCalendar(ctx, ym);
+    await ctx.reply(text, { ...inlineKb, ...replyKb });
+  });
+
+  // ─── Reply keyboard: بازگشت به تقویم (from day editor) ──
+  bot.hears('◀️ بازگشت به تقویم', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const state = newsState.getState(userId);
+    if (!state.currentMonth) return;
+
+    newsState.setEditing(userId, '');
+
+    const { text, inlineKb, replyKb } = await showCalendar(ctx, state.currentMonth);
+    await ctx.reply(text, { ...inlineKb, ...replyKb });
+  });
+
+  // ─── Reply keyboard: ویرایش متن (from day editor) ─────
+  bot.hears('✏️ ویرایش متن', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const state = newsState.getState(userId);
+    if (!state.editingDate) return;
+
+    newsState.setAwaitingText(userId, true);
+    await ctx.reply(
+      '✍️ متن جدید را با هر فرمتی که می‌خواهید (بولد، ایتالیک، لینک، اسپویلر و ...) ارسال کنید.\n\nبرای انصراف، دکمهٔ «❌ لغو» را بزنید.',
+      newsCancelKeyboard(),
+    );
+  });
+
+  // ─── Reply keyboard: حذف متن (from day editor) ────────
+  bot.hears('🗑 حذف متن', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const state = newsState.getState(userId);
+    if (!state.editingDate) return;
+
+    const dateKey = state.editingDate;
+    const entry = await newsService.getEntry(dateKey);
+    if (!entry) {
+      await ctx.reply('🈳 برای این تاریخ محتوایی وجود ندارد.');
+      return;
+    }
+
+    await ctx.reply(
+      `آیا از حذف محتوای تاریخ ${dateKey} اطمینان دارید؟`,
+      newsDeleteConfirmKeyboard(dateKey),
+    );
   });
 
   // ─── Calendar navigation: news:cal:{YYYY-MM} ─────────
   bot.action(/^news:cal:(\d{4}-\d{2})$/, async (ctx: any) => {
+    await safeAnswerCbQuery(ctx);
     const userId = ctx.from?.id;
     const ym = ctx.match[1];
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) {
-      return safeAnswerCbQuery(ctx, 'تاریخ نامعتبر', { show_alert: true });
-    }
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return;
 
-    const [y, m] = ym.split('-').map(Number);
     newsState.setCurrentMonth(userId, ym);
-    const todayKey = getTodayDateKey();
-    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
-    const kb = newsCalendarKeyboard(y, m, todayKey, contentDates);
-
-    const text = [
-      '📰 مدیریت اخبار فارکس',
-      '',
-      `🗓 امروز: ${todayKey}`,
-      '',
-      `در حال نمایش: ${ym}`,
-      '',
-      'روی هر روز بزنید تا محتوای آن تاریخ را مدیریت کنید.',
-      '🟢 = این روز محتوا دارد   ⚪️ = این روز خالی است',
-    ].join('\n');
-
-    await safeEdit(ctx, text, { reply_markup: kb.reply_markup });
-    await safeAnswerCbQuery(ctx);
+    const { text, inlineKb } = await showCalendar(ctx, ym);
+    await safeEdit(ctx, text, { reply_markup: inlineKb.reply_markup });
   });
 
   // ─── Calendar: news:cal:current ───────────────────────
   bot.action('news:cal:current', async (ctx: any) => {
+    await safeAnswerCbQuery(ctx);
     const userId = ctx.from?.id;
     const todayKey = getTodayDateKey();
     const [y, m] = todayKey.split('-').map(Number);
-    newsState.setCurrentMonth(userId, `${y}-${String(m).padStart(2, '0')}`);
-    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
-    const kb = newsCalendarKeyboard(y, m, todayKey, contentDates);
+    const ym = `${y}-${String(m).padStart(2, '0')}`;
+    newsState.setCurrentMonth(userId, ym);
 
-    const text = [
-      '📰 مدیریت اخبار فارکس',
-      '',
-      `🗓 امروز: ${todayKey}`,
-      '',
-      `در حال نمایش: ${y}-${String(m).padStart(2, '0')}`,
-      '',
-      'روی هر روز بزنید تا محتوای آن تاریخ را مدیریت کنید.',
-      '🟢 = این روز محتوا دارد   ⚪️ = این روز خالی است',
-    ].join('\n');
-
-    await safeEdit(ctx, text, { reply_markup: kb.reply_markup });
-    await safeAnswerCbQuery(ctx);
+    const { text, inlineKb } = await showCalendar(ctx, ym);
+    await safeEdit(ctx, text, { reply_markup: inlineKb.reply_markup });
   });
 
   // ─── Day page: news:day:{YYYY-MM-DD} (section 6.2) ──
   bot.action(/^news:day:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
+    await safeAnswerCbQuery(ctx);
+    const userId = ctx.from?.id;
     const dateKey = ctx.match[1];
-    if (!isValidDateKey(dateKey)) {
-      return safeAnswerCbQuery(ctx, 'تاریخ نامعتبر', { show_alert: true });
-    }
+    if (!isValidDateKey(dateKey)) return;
+
+    newsState.setEditing(userId, dateKey);
 
     const entry = await newsService.getEntry(dateKey);
     if (entry) {
       const kb = newsDayContentKeyboard(dateKey);
-      await ctx.editMessageText(entry.text as string, {
+      await safeEdit(ctx, entry.text as string, {
         entities: entry.entities as any,
         reply_markup: kb.reply_markup,
-      }).catch((err: any) => {
-        if (err?.response?.description !== 'Bad Request: message is not modified') throw err;
       });
+      await ctx.reply('', newsDayEditorReplyKeyboard());
     } else {
       const kb = newsDayEmptyKeyboard(dateKey);
-      const text = `�️ برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
-      await ctx.editMessageText(text, { reply_markup: kb.reply_markup }).catch((err: any) => {
-        if (err?.response?.description !== 'Bad Request: message is not modified') throw err;
-      });
+      const text = `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
+      await safeEdit(ctx, text, { reply_markup: kb.reply_markup });
+      await ctx.reply('', newsDayEditorReplyKeyboard());
     }
-    await safeAnswerCbQuery(ctx);
   });
 
   // ─── Edit/add text: news:edit:{YYYY-MM-DD} (section 6.3) ──
   bot.action(/^news:edit:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
+    await safeAnswerCbQuery(ctx);
     const userId = ctx.from?.id;
     const dateKey = ctx.match[1];
-    if (!isValidDateKey(dateKey)) {
-      return safeAnswerCbQuery(ctx, 'تاریخ نامعتبر', { show_alert: true });
-    }
+    if (!isValidDateKey(dateKey)) return;
 
     newsState.setEditing(userId, dateKey);
     newsState.setAwaitingText(userId, true);
@@ -160,55 +234,48 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
 
     await safeEdit(ctx, '✍️ متن جدید را با هر فرمتی که می‌خواهید (بولد، ایتالیک، لینک، اسپویلر و ...) ارسال کنید.\n\nبرای انصراف، دکمهٔ «❌ لغو» را بزنید.');
     await ctx.reply('', newsCancelKeyboard());
-    await safeAnswerCbQuery(ctx);
   });
 
-  // ─── Clear confirmation: news:clear:confirm:{dateKey} (BEFORE general clear) ──
+  // ─── Clear confirmation: news:clear:confirm:{dateKey} ──
   bot.action(/^news:clear:confirm:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
+    await safeAnswerCbQuery(ctx, '✅ محتوا حذف شد');
+    const userId = ctx.from?.id;
     const dateKey = ctx.match[1];
-    if (!isValidDateKey(dateKey)) {
-      return safeAnswerCbQuery(ctx, 'تاریخ نامعتبر', { show_alert: true });
-    }
+    if (!isValidDateKey(dateKey)) return;
 
     await newsService.clearEntry(dateKey);
     const kb = newsDayEmptyKeyboard(dateKey);
-    const text = `�️ برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
+    const text = `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
     await safeEdit(ctx, text, { reply_markup: kb.reply_markup });
-    await safeAnswerCbQuery(ctx, '✅ محتوا حذف شد');
   });
 
-  // ─── Clear cancel: news:clear:cancel:{dateKey} (BEFORE general clear) ──
+  // ─── Clear cancel: news:clear:cancel:{dateKey} ──────────
   bot.action(/^news:clear:cancel:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
+    await safeAnswerCbQuery(ctx);
     const dateKey = ctx.match[1];
-    if (!isValidDateKey(dateKey)) {
-      return safeAnswerCbQuery(ctx, 'تاریخ نامعتبر', { show_alert: true });
-    }
+    if (!isValidDateKey(dateKey)) return;
 
     const kb = newsDayContentKeyboard(dateKey);
     await safeEdit(ctx, ctx.callbackQuery.message?.text ?? '', { reply_markup: kb.reply_markup });
-    await safeAnswerCbQuery(ctx);
   });
 
   // ─── Clear entry: news:clear:{dateKey} (section 6.4) ──
   bot.action(/^news:clear:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
+    await safeAnswerCbQuery(ctx);
     const dateKey = ctx.match[1];
-    if (!isValidDateKey(dateKey)) {
-      return safeAnswerCbQuery(ctx, 'تاریخ نامعتبر', { show_alert: true });
-    }
+    if (!isValidDateKey(dateKey)) return;
 
     const kb = newsDeleteConfirmKeyboard(dateKey);
     await safeEdit(ctx, ctx.callbackQuery.message?.text ?? '', { reply_markup: kb.reply_markup });
-    await safeAnswerCbQuery(ctx);
   });
 
   // ─── Back to admin panel: news:back:admin (section 6.5) ──
   bot.action('news:back:admin', async (ctx: any) => {
+    await safeAnswerCbQuery(ctx);
     const userId = ctx.from?.id;
     if (!userId) return;
 
     newsState.clearAll(userId);
-    await safeAnswerCbQuery(ctx);
-
     try { await ctx.editMessageReplyMarkup(undefined); } catch {}
 
     const admin = await botAdminService.getActive(userId);
@@ -228,10 +295,27 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
 
     if (text === '❌ لغو') {
       newsState.setAwaitingText(userId, false);
-      newsState.setEditing(userId, '');
-      const admin = await botAdminService.getActive(userId);
-      const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
-      await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+      const dateKey = state.editingDate;
+      if (dateKey) {
+        const entry = await newsService.getEntry(dateKey);
+        if (entry) {
+          await ctx.reply(entry.text as string, {
+            entities: entry.entities as any,
+            ...newsDayContentKeyboard(dateKey),
+            ...newsDayEditorReplyKeyboard(),
+          });
+        } else {
+          const kb = newsDayEmptyKeyboard(dateKey);
+          await ctx.reply(
+            `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`,
+            { ...kb, ...newsDayEditorReplyKeyboard() },
+          );
+        }
+      } else {
+        const admin = await botAdminService.getActive(userId);
+        const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
+        await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+      }
       return;
     }
 
@@ -250,7 +334,6 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
       await newsService.upsertEntry(dateKey, text, entities, BigInt(userId));
 
       newsState.setAwaitingText(userId, false);
-      newsState.setEditing(userId, '');
 
       const entry = await newsService.getEntry(dateKey);
       if (entry && state.messageId) {
@@ -266,9 +349,19 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
         });
       }
 
-      const admin = await botAdminService.getActive(userId);
-      const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
-      await ctx.reply('✅ متن ذخیره شد.', buildBotAdminPanelKeyboard(canBroadcast));
+      if (entry) {
+        await ctx.reply(entry.text as string, {
+          entities: entry.entities as any,
+          ...newsDayContentKeyboard(dateKey),
+          ...newsDayEditorReplyKeyboard(),
+        });
+      } else {
+        const kb = newsDayEmptyKeyboard(dateKey);
+        await ctx.reply(
+          `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`,
+          { ...kb, ...newsDayEditorReplyKeyboard() },
+        );
+      }
     } catch (err: any) {
       if (err?.message?.startsWith('TEXT_TOO_LONG')) {
         await ctx.reply('❌ متن شما بیشتر از ۴۰۹۶ کاراکتر است. لطفاً کوتاه‌تر ارسال کنید.');
