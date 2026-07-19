@@ -1,5 +1,4 @@
 import { Telegraf } from 'telegraf';
-import { Markup } from 'telegraf';
 import { newsService } from '../../services/news.service';
 import { newsState } from '../../services/news-state.service';
 import { scheduledMessageState } from '../../services/scheduled-message-state.service';
@@ -44,26 +43,6 @@ function calendarText(todayKey: string, displayMonth: string) {
   ].join('\n');
 }
 
-async function buildCalendarWithReply(ym: string) {
-  const [y, m] = ym.split('-').map(Number);
-  const todayKey = getTodayDateKey();
-  const contentDates = await newsService.getDatesWithContentInMonth(y, m);
-  const inlineKb = newsCalendarKeyboard(y, m, todayKey, contentDates);
-  const text = calendarText(todayKey, ym);
-  const replyRows = [['◀️ ماه قبل', '📍 ماه جاری', 'ماه بعد ▶️'], ['🔙 پنل ادمین']];
-  return {
-    text,
-    extra: {
-      reply_markup: {
-        inline_keyboard: inlineKb.reply_markup!.inline_keyboard,
-        keyboard: replyRows,
-        resize_keyboard: true,
-        is_persistent: true,
-      },
-    },
-  };
-}
-
 export function registerNewsAdminHandlers(bot: Telegraf) {
 
   // ─── Entry: 📰 اخبار (section 6.1) ───────────────────
@@ -86,8 +65,11 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const ym = `${y}-${String(m).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, ym);
 
-    const { text, extra } = await buildCalendarWithReply(ym);
-    await ctx.reply(text, extra);
+    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
+    const kb = newsCalendarKeyboard(y, m, todayKey, contentDates);
+    const text = calendarText(todayKey, ym);
+    await ctx.reply(text, kb);
+    await ctx.reply('', newsCalendarReplyKeyboard());
   });
 
   // ─── Reply keyboard: ماه قبل ──────────────────────────
@@ -102,8 +84,11 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const prevYm = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, prevYm);
 
-    const { text, extra } = await buildCalendarWithReply(prevYm);
-    await ctx.reply(text, extra);
+    const todayK = getTodayDateKey();
+    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
+    const kb = newsCalendarKeyboard(y, m, todayK, contentDates);
+    const text = calendarText(todayK, prevYm);
+    await ctx.reply(text, kb);
   });
 
   // ─── Reply keyboard: ماه بعد ──────────────────────────
@@ -118,8 +103,11 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const nextYm = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, nextYm);
 
-    const { text, extra } = await buildCalendarWithReply(nextYm);
-    await ctx.reply(text, extra);
+    const todayK = getTodayDateKey();
+    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
+    const kb = newsCalendarKeyboard(y, m, todayK, contentDates);
+    const text = calendarText(todayK, nextYm);
+    await ctx.reply(text, kb);
   });
 
   // ─── Reply keyboard: ماه جاری ─────────────────────────
@@ -127,13 +115,15 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     const userId = ctx.from?.id;
     if (!userId) return;
 
-    const todayKey = getTodayDateKey();
-    const [y, m] = todayKey.split('-').map(Number);
+    const todayK = getTodayDateKey();
+    const [y, m] = todayK.split('-').map(Number);
     const ym = `${y}-${String(m).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, ym);
 
-    const { text, extra } = await buildCalendarWithReply(ym);
-    await ctx.reply(text, extra);
+    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
+    const kb = newsCalendarKeyboard(y, m, todayK, contentDates);
+    const text = calendarText(todayK, ym);
+    await ctx.reply(text, kb);
   });
 
   // ─── Reply keyboard: بازگشت به تقویم (from day editor) ──
@@ -145,8 +135,12 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
 
     newsState.setEditing(userId, '');
 
-    const { text, extra } = await buildCalendarWithReply(state.currentMonth);
-    await ctx.reply(text, extra);
+    const [y, m] = state.currentMonth.split('-').map(Number);
+    const todayK = getTodayDateKey();
+    const contentDates = await newsService.getDatesWithContentInMonth(y, m);
+    const kb = newsCalendarKeyboard(y, m, todayK, contentDates);
+    const text = calendarText(todayK, state.currentMonth);
+    await ctx.reply(text, kb);
   });
 
   // ─── Reply keyboard: ویرایش متن (from day editor) ─────
@@ -192,10 +186,10 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
 
     newsState.setCurrentMonth(userId, ym);
     const [y, m] = ym.split('-').map(Number);
-    const todayKey = getTodayDateKey();
+    const todayK = getTodayDateKey();
     const contentDates = await newsService.getDatesWithContentInMonth(y, m);
-    const inlineKb = newsCalendarKeyboard(y, m, todayKey, contentDates);
-    const text = calendarText(todayKey, ym);
+    const inlineKb = newsCalendarKeyboard(y, m, todayK, contentDates);
+    const text = calendarText(todayK, ym);
     await safeEdit(ctx, text, { reply_markup: inlineKb.reply_markup });
   });
 
@@ -203,14 +197,14 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
   bot.action('news:cal:current', async (ctx: any) => {
     await safeAnswerCbQuery(ctx);
     const userId = ctx.from?.id;
-    const todayKey = getTodayDateKey();
-    const [y, m] = todayKey.split('-').map(Number);
+    const todayK = getTodayDateKey();
+    const [y, m] = todayK.split('-').map(Number);
     const ym = `${y}-${String(m).padStart(2, '0')}`;
     newsState.setCurrentMonth(userId, ym);
 
     const contentDates = await newsService.getDatesWithContentInMonth(y, m);
-    const inlineKb = newsCalendarKeyboard(y, m, todayKey, contentDates);
-    const text = calendarText(todayKey, ym);
+    const inlineKb = newsCalendarKeyboard(y, m, todayK, contentDates);
+    const text = calendarText(todayK, ym);
     await safeEdit(ctx, text, { reply_markup: inlineKb.reply_markup });
   });
 
