@@ -29,6 +29,7 @@ import { scheduledMessageService } from './services/scheduled-message.service';
 import { forumTopicService } from './services/forum-topic.service';
 import { registerScheduledMessageHandlers } from './bot/handlers/scheduled-message.handlers';
 import { registerAutoReplyHandlers } from './bot/handlers/auto-reply.handlers';
+import { registerNewsHandlers } from './bot/handlers/news.handlers';
 import { autoReplyService } from './services/auto-reply.service';
 
 async function bootstrap() {
@@ -121,6 +122,8 @@ async function bootstrap() {
     autoReplyState.clearAll(userId);
     autoReplyState.clearBindingScene(userId);
     scheduledMessageState.clearAll(userId);
+    const { newsState } = await import('./services/news-state.service');
+    newsState.clearAll(userId);
     cache.del(`ar:${userId}:selecting_group`);
 
     const admin = await botAdminService.getActive(userId);
@@ -131,6 +134,7 @@ async function bootstrap() {
   registerHandlers(bot);
   registerScheduledMessageHandlers(bot);
   registerAutoReplyHandlers(bot);
+  registerNewsHandlers(bot);
 
   // ─── Scheduled message service ──────────────────────────
   scheduledMessageService.setBot(bot);

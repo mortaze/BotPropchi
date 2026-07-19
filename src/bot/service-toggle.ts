@@ -8,6 +8,7 @@ export const BOT_TEXT_FEATURES: Record<string, string> = {
   '📋 تیکت\u200cهای من': 'ticket_system',
   '📊 گزارشات': 'reports',
   '📋 Posts': 'posts',
+  '📰 اخبار فارکس': 'forex_news',
 };
 
 export function featureForCallback(data?: string) {

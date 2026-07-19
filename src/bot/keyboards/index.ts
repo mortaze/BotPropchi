@@ -11,6 +11,7 @@ export const SERVICE_BUTTONS = [
   { id: 'referrals', text: '👥 دعوت دوستان', featureKey: 'referrals' },
   { id: 'points', text: '🏆 امتیازهای من', featureKey: 'leaderboard' },
   { id: 'ticket', text: '🎫 تیکت', featureKey: 'ticket_system' },
+  { id: 'forex_news', text: '📰 اخبار فارکس', featureKey: 'forex_news' },
 ];
 
 export function injectServiceButtons(layout: any[][], features: Record<string, boolean>): any[][] {
@@ -87,7 +88,7 @@ export function buildBotAdminPanelKeyboard(canBroadcast = false) {
   if (canBroadcast) rows.push(['📢 پیام همگانی']);
   rows.push(['📝 پست‌ها', '🎛 ویرایش منو']);
   rows.push(['👤 ادمین‌ها', '🎫 تیکت‌ها']);
-  rows.push(['🤖 اتوماسیون']);
+  rows.push(['🤖 اتوماسیون', '📰 اخبار']);
   rows.push(['↩️ بازگشت به منوی اصلی']);
   return Markup.keyboard(rows).resize().persistent();
 }

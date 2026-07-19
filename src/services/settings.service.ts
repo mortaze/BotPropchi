@@ -18,6 +18,7 @@ export const DEFAULT_FEATURES = [
   { key: 'points', label: 'امتیازدهی' },
   { key: 'posts', label: 'Posts / CMS' },
   { key: 'ticket_system', label: 'سیستم تیکت' },
+  { key: 'forex_news', label: 'اخبار فارکس' },
 ];
 
 export function isOwnerRole(role?: string | null) {

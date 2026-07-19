@@ -136,6 +136,22 @@ Admin panel MUST query `AutoReply` tables. Querying `KeywordReply` produces zero
 - **Path alias**: both root and admin use `@/*` → `src/*`
 - **Admin strict excludes**: `admin/tsconfig.json` excludes `src/api/`, `src/index.ts`, `src/scheduler.ts` from compilation
 
+## News / Forex News Module
+
+Callback prefix: `news:` | Feature toggle: `forex_news`
+
+Files:
+- `src/utils/news-date.ts` — pure date logic (Asia/Tehran timezone, Gregorian calendar), no DB/Telegram deps
+- `src/services/news.service.ts` — DB CRUD (`NewsCalendarEntry` model)
+- `src/services/news-state.service.ts` — admin state cache (`news:` prefix)
+- `src/bot/keyboards/news-keyboards.ts` — all inline/reply keyboards for this module
+- `src/bot/handlers/news-admin.handlers.ts` — admin flow (calendar, day management, text input)
+- `src/bot/handlers/news-user.handlers.ts` — user flow (yesterday/today/tomorrow, stateless)
+- `src/bot/handlers/news.handlers.ts` — wrapper: `registerNewsHandlers(bot)`
+- `src/__tests__/news-date.test.ts` — unit tests for date logic
+
+Key rules: raw entities only (no parse_mode), always `answerCbQuery`, never fallback to `ctx.reply` on edit failure, validate `isValidDateKey` on all input.
+
 ## Env Variables
 
 Required: `BOT_TOKEN`, `ADMIN_TELEGRAM_ID`, `JWT_SECRET`, `DATABASE_URL`

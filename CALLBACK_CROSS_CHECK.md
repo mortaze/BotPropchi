@@ -193,3 +193,18 @@ The "combat", "proopco", "sgb" unmatched callbacks happened because:
 6. User saw a permanent loading spinner
 
 The fix ensures CALLBACK buttons always generate structured `post:user:click:${postId}:${row}:${col}` callback_data, which matches the existing handler.
+
+## News / Forex News Module (news: prefix)
+
+| callback_data | Handler regex | Handler location | Status |
+|---|---|---|---|
+| `news:cal:{YYYY-MM}` | `/^news:cal:(\d{4}-\d{2})$/` | news-admin.handlers.ts | OK |
+| `news:cal:current` | exact `'news:cal:current'` | news-admin.handlers.ts | OK |
+| `news:day:{YYYY-MM-DD}` | `/^news:day:(\d{4}-\d{2}-\d{2})$/` | news-admin.handlers.ts | OK |
+| `news:edit:{YYYY-MM-DD}` | `/^news:edit:(\d{4}-\d{2}-\d{2})$/` | news-admin.handlers.ts | OK |
+| `news:clear:{YYYY-MM-DD}` | `/^news:clear:(\d{4}-\d{2}-\d{2})$/` | news-admin.handlers.ts | OK |
+| `news:clear:confirm:{YYYY-MM-DD}` | `/^news:clear:confirm:(\d{4}-\d{2}-\d{2})$/` | news-admin.handlers.ts | OK — registered before `news:clear:*` |
+| `news:clear:cancel:{YYYY-MM-DD}` | `/^news:clear:cancel:(\d{4}-\d{2}-\d{2})$/` | news-admin.handlers.ts | OK — registered before `news:clear:*` |
+| `news:back:admin` | exact `'news:back:admin'` | news-admin.handlers.ts | OK |
+| `news:user:{YYYY-MM-DD}` | `/^news:user:(\d{4}-\d{2}-\d{2})$/` | news-user.handlers.ts | OK |
+| `noop` | exact `'noop'` | handlers/index.ts (existing) | OK — calendar padding cells |
