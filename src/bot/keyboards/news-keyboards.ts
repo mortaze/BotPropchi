@@ -30,7 +30,7 @@ function styledCb(text: string, data: string, style?: ButtonStyle) {
 
 // ─── Calendar header row (ش ی د س چ پ ج) ────────────────
 function calendarHeader() {
-  return [WEEKDAYS_SHORT_SAT_FIRST.map(d => noop(d))];
+  return [WEEKDAYS_SHORT_SAT_FIRST.map(d => styledCb(d, 'noop', 'primary'))];
 }
 
 // ─── Calendar grid (section 6.1) ────────────────────────
