@@ -2361,11 +2361,12 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
   });
 
   // ✅ تایید حذف: Execute the delete with full cleanup
-  bot.hears('✅ تایید حذف', async (ctx: any) => {
-    const admin = await requirePostAdmin(ctx);
-    if (!isPostAdmin(admin)) return;
+  bot.hears('✅ تایید حذف', async (ctx: any, next: any) => {
+    if (!ctx.from) return next();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin || !isPostAdmin(admin)) return next();
     const postId = cache.get<number>(pendingKey(ctx.from.id, 'delete_post_id'));
-    if (!postId) return ctx.reply('❌ درخواست حذف یافت نشد.');
+    if (!postId) return next();
     const post = await postService.findById(postId);
     if (!post) return ctx.reply('❌ پست یافت نشد.');
     try {
