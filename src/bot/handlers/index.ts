@@ -28,7 +28,7 @@ import { setTicketBotInstance } from '../ticket-notification.service';
 import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../services/post-renderer.service';
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { automationService } from '../../services/automation.service';
-import { safeEdit, sendPostToUser, sendOrEditPostToUser } from '../shared';
+import { safeEdit, sendPostToUser } from '../shared';
 import {
   lotteryHistoryKeyboard,
   lotteryKeyboard,
@@ -970,7 +970,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
       return ctx.reply('❌ پست یافت نشد.');
     }
-    await sendOrEditPostToUser(ctx, post);
+    await sendPostToUser(ctx, post);
   });
 
   bot.action(/^post:user:copy:(.+)$/, async (ctx: any) => {
@@ -1085,7 +1085,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
           if (post && post.status === 'PUBLISHED' && post.isPublished) {
             logger.info(`[PostClick] t=${Date.now()} ✅ COMMAND resolved: post #${post.id} "${post.title}"`);
             await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-            await sendOrEditPostToUser(ctx, post);
+            await sendPostToUser(ctx, post);
             logger.info(`[PostClick] t=${Date.now()} ✅ COMMAND dispatched totalMs=${Date.now()-t0}`);
           } else {
             logger.warn(`[PostClick] t=${Date.now()} ❌ COMMAND not resolved: value="${resolvedValue}"`);
@@ -1112,7 +1112,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
       return ctx.reply('❌ Post not found.');
     }
-    await sendOrEditPostToUser(ctx, post);
+    await sendPostToUser(ctx, post);
   });
 
   // ─── Post INTERNAL_NAV routing (from renderer) ───────────
@@ -1124,7 +1124,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!post || post.status !== 'PUBLISHED' || !post.isPublished) {
       return ctx.reply('❌ Post not found.');
     }
-    await sendOrEditPostToUser(ctx, post);
+    await sendPostToUser(ctx, post);
   });
 
   // ─── Post Command Button routing ─────────────────────────
@@ -1150,7 +1150,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       if (post && post.status === 'PUBLISHED' && post.isPublished) {
         logger.info(`[CMD_BTN] t=${Date.now()} SENDING post#${post.id}...`);
         await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-        await sendOrEditPostToUser(ctx, post);
+        await sendPostToUser(ctx, post);
         logger.info(`[CMD_BTN] t=${Date.now()} ✅ SENT post#${post.id} totalMs=${Date.now()-t0}`);
       } else if (post) {
         logger.warn(`[CMD_BTN] t=${Date.now()} ❌ POST NOT PUBLISHED: postId=${post.id} status=${post.status} isPublished=${post.isPublished}`);
