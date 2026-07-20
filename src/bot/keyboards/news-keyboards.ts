@@ -69,16 +69,9 @@ export function newsCalendarKeyboard(
 
   const grid = calendarGridCells(cells);
 
-  const ym = `${year}-${String(month).padStart(2, '0')}`;
   const rows = [
     ...calendarHeader(),
     ...grid,
-    [
-      cb('◀️ ماه قبل', `news:cal:${ymPrev(year, month)}`),
-      noop('📍 ماه جاری'),
-      cb('ماه بعد ▶️', `news:cal:${ymNext(year, month)}`),
-    ],
-    [cb('🔙 پنل ادمین', 'news:back:admin')],
   ];
 
   return Markup.inlineKeyboard(rows);
@@ -155,11 +148,7 @@ export function newsUserKeyboard(
   ]);
 }
 
-// ─── Internal helpers ───────────────────────────────────
-function ymNext(year: number, month: number): string {
-  const dt = new Date(Date.UTC(year, month, 1));
-  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
-}
+
 
 function ymPrev(year: number, month: number): string {
   const dt = new Date(Date.UTC(year, month - 2, 1));
