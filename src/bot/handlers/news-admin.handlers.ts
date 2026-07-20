@@ -171,6 +171,18 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     await ctx.reply(KB_LABELS.calendar, newsCalendarReplyKeyboard());
   });
 
+  // ─── Reply keyboard: پنل ادمین (from any news state) ───
+  bot.hears('🔙 پنل ادمین', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    newsState.clearAll(userId);
+
+    const admin = await botAdminService.getActive(userId);
+    const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+  });
+
   // ─── Reply keyboard: افزودن متن (from day editor) ─────
   bot.hears('➕ افزودن متن', async (ctx: any) => {
     const userId = ctx.from?.id;
@@ -181,6 +193,20 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
     newsState.setAwaitingText(userId, true);
     await ctx.reply(
       '✍️ متن جدید را با هر فرمتی که می‌خواهید (بولد، ایتالیک، لینک، اسپویلر و ...) ارسال کنید.\n\nبرای انصراف، دکمهٔ «❌ لغو» را بزنید.',
+      newsCancelKeyboard(),
+    );
+  });
+
+  // ─── Reply keyboard: ویرایش متن (from day editor) ─────
+  bot.hears('✏️ ویرایش متن', async (ctx: any) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const state = newsState.getState(userId);
+    if (!state.editingDate) return;
+
+    newsState.setAwaitingText(userId, true);
+    await ctx.reply(
+      '✍️ متن جدید را با هر فرمتی که می‌خواهید (بولد، ایتالیک، لینک، اسپویلر و ...) ارسال کنید.\n\nمتن فعلی جایگزین خواهد شد.\n\nبرای انصراف، دکمهٔ «❌ لغو» را بزنید.',
       newsCancelKeyboard(),
     );
   });
@@ -384,19 +410,36 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
       const dateKey = state.editingDate;
       if (dateKey) {
         const entry = await newsService.getEntry(dateKey);
-        if (entry && state.messageId) {
-          const kb = newsDayContentKeyboard(dateKey);
-          await safeEditById(ctx, state.messageId, entry.text as string, {
-            entities: entry.entities as any,
-            reply_markup: kb.reply_markup,
-          });
-          await ctx.reply(KB_LABELS.dayEditor, newsDayEditorReplyKeyboard(true, dateKey));
-        } else if (state.messageId) {
-          const kb = newsDayEmptyKeyboard(dateKey);
-          const emptyText = `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
-          await safeEditById(ctx, state.messageId, emptyText, { reply_markup: kb.reply_markup });
-          await ctx.reply(KB_LABELS.dayEditor, newsDayEditorReplyKeyboard(false, dateKey));
+        const hasContent = !!entry;
+        try {
+          if (state.messageId) {
+            if (entry) {
+              const kb = newsDayContentKeyboard(dateKey);
+              await safeEditById(ctx, state.messageId, entry.text as string, {
+                entities: entry.entities as any,
+                reply_markup: kb.reply_markup,
+              });
+            } else {
+              const kb = newsDayEmptyKeyboard(dateKey);
+              const emptyText = `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
+              await safeEditById(ctx, state.messageId, emptyText, { reply_markup: kb.reply_markup });
+            }
+          }
+        } catch {
+          // edit failed (message deleted/too old) — send fresh messages
+          if (entry) {
+            await ctx.reply(entry.text as string, {
+              entities: entry.entities as any,
+              ...newsDayContentKeyboard(dateKey),
+            });
+          } else {
+            await ctx.reply(
+              `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`,
+              newsDayEmptyKeyboard(dateKey),
+            );
+          }
         }
+        await ctx.reply(KB_LABELS.dayEditor, newsDayEditorReplyKeyboard(hasContent, dateKey));
       } else {
         const admin = await botAdminService.getActive(userId);
         const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
@@ -422,32 +465,32 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
       newsState.setAwaitingText(userId, false);
 
       const entry = await newsService.getEntry(dateKey);
-      if (entry && state.messageId) {
-        const kb = newsDayContentKeyboard(dateKey);
-        await safeEditById(ctx, state.messageId, entry.text as string, {
-          entities: entry.entities as any,
-          reply_markup: kb.reply_markup,
-        });
-        await ctx.reply(KB_LABELS.dayEditor, newsDayEditorReplyKeyboard(true, dateKey));
-      } else if (state.messageId) {
-        const kb = newsDayEmptyKeyboard(dateKey);
-        const emptyText = `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
-        await safeEditById(ctx, state.messageId, emptyText, { reply_markup: kb.reply_markup });
-        await ctx.reply(KB_LABELS.dayEditor, newsDayEditorReplyKeyboard(false, dateKey));
-      } else {
+      try {
+        if (entry && state.messageId) {
+          const kb = newsDayContentKeyboard(dateKey);
+          await safeEditById(ctx, state.messageId, entry.text as string, {
+            entities: entry.entities as any,
+            reply_markup: kb.reply_markup,
+          });
+        } else if (state.messageId) {
+          const kb = newsDayEmptyKeyboard(dateKey);
+          const emptyText = `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
+          await safeEditById(ctx, state.messageId, emptyText, { reply_markup: kb.reply_markup });
+        }
+      } catch {
         if (entry) {
           await ctx.reply(entry.text as string, {
             entities: entry.entities as any,
             ...newsDayContentKeyboard(dateKey),
           });
-          await ctx.reply(KB_LABELS.dayEditor, newsDayEditorReplyKeyboard(true, dateKey));
         } else {
-          const kb = newsDayEmptyKeyboard(dateKey);
-          const emptyText = `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`;
-          await ctx.reply(emptyText, kb);
-          await ctx.reply(KB_LABELS.dayEditor, newsDayEditorReplyKeyboard(false, dateKey));
+          await ctx.reply(
+            `🈳 برای این تاریخ (${dateKey}) هنوز محتوایی ثبت نشده است.\n\nبرای افزودن محتوا از دکمهٔ زیر استفاده کنید.`,
+            newsDayEmptyKeyboard(dateKey),
+          );
         }
       }
+      await ctx.reply(KB_LABELS.dayEditor, newsDayEditorReplyKeyboard(!!entry, dateKey));
     } catch (err: any) {
       if (err?.message?.startsWith('TEXT_TOO_LONG')) {
         await ctx.reply('❌ متن شما بیشتر از ۴۰۹۶ کاراکتر است. لطفاً کوتاه‌تر ارسال کنید.');
