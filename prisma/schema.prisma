@@ -683,6 +683,7 @@ model Post {
   contentEntities Json?      @map("content_entities")
   renderMode      String?    @default("telegram_entities") @map("render_mode")
   previewText     String?    @map("preview_text")
+  editNavigation  Boolean    @default(false) @map("edit_navigation")
   postButtons     PostButton[]
   clickLogs       PostClickLog[]
   commands        PostCommand[]

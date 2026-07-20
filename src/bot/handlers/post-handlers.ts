@@ -475,6 +475,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           '✏️ ویرایش محتوا', '📝 ویرایش عنوان', 'ویرایش دکمه ها', '❌ لغو',
           '🔙 بازگشت به ویرایشگر',
           '🗑 حذف پست',
+          '🟢 حالت ویرایش پیام: فعال', '🔴 حالت ویرایش پیام: غیرفعال',
         ].includes(text);
         if (!isEditorAction) {
           logger.warn(`[StaleEditorKey] Clearing stale editor key for user ${ctx.from.id} (mode=${existingMode}, text="${text.substring(0, 30)}")`);
@@ -1104,7 +1105,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messages = (post.messages || []);
     await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__', (post as any).editNavigation),
     });
     await refreshEditorMessages(ctx, post);
   }
@@ -1301,7 +1302,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messages = (post.messages || []);
     await ctx.reply(`✅ پست منتشر شد!\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__', (post as any).editNavigation),
     });
     await refreshEditorMessages(ctx, post);
   });
@@ -1320,7 +1321,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messages = (post.messages || []);
     await ctx.reply(`📝 به عنوان پیش‌نویس ذخیره شد.\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__', (post as any).editNavigation),
     });
     await refreshEditorMessages(ctx, post);
   });
@@ -1339,7 +1340,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messages = (post.messages || []);
     await ctx.reply(`📦 پست بایگانی شد.\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__', (post as any).editNavigation),
     });
     await refreshEditorMessages(ctx, post);
   });
@@ -1365,7 +1366,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const msg = wasHidden ? '👻 پست اکنون قابل مشاهده است.' : '👻 پست مخفی شد.';
     await ctx.reply(`${msg}\n\n📝 ${updated.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postMultiMessageEditorReplyKeyboard(updated.isPublished, updated.slug === '__start__', updated.slug === '__anonymous__'),
+      ...postMultiMessageEditorReplyKeyboard(updated.isPublished, updated.slug === '__start__', updated.slug === '__anonymous__', (updated as any).editNavigation),
     });
     await refreshEditorMessages(ctx, updated);
   });
@@ -1466,7 +1467,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messages = (post.messages || []);
     await ctx.reply(`📥 انتشار پست لغو شد.\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__', (post as any).editNavigation),
     });
     await refreshEditorMessages(ctx, post);
   });
@@ -2408,7 +2409,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const messages = (post.messages || []);
     await ctx.reply(`✅ عملیات حذف لغو شد.\n\n📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
       link_preview_options: { is_disabled: true },
-      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+      ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__', (post as any).editNavigation),
     });
     await refreshEditorMessages(ctx, post);
   });
@@ -2715,11 +2716,11 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     try {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
         link_preview_options: { is_disabled: true },
-        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__', (post as any).editNavigation),
       });
     } catch (e: any) {
       await ctx.reply(`📝 ${post.title} | ✏️ ویرایشگر (${messages.length} پیام)`, {
-        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__'),
+        ...postMultiMessageEditorReplyKeyboard(post.isPublished, post.slug === '__start__', post.slug === '__anonymous__', (post as any).editNavigation),
       });
     }
 
@@ -3030,6 +3031,14 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
           );
           return;
         }
+        case '🟢 حالت ویرایش پیام: فعال':
+        case '🔴 حالت ویرایش پیام: غیرفعال': {
+          const newValue = !(post as any).editNavigation;
+          await postService.update(editorPostId, { editNavigation: newValue } as any);
+          const updatedPost = await postService.findById(editorPostId);
+          if (updatedPost) await refreshEditorMessages(ctx, updatedPost);
+          return;
+        }
         default:
           return next();
       }
@@ -3130,6 +3139,16 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
               ['❌ انصراف'],
             ]).resize().persistent(),
           );
+          return;
+        }
+        case '🟢 حالت ویرایش پیام: فعال':
+        case '🔴 حالت ویرایش پیام: غیرفعال': {
+          const postToggle = await postService.findById(editorPostId);
+          if (!postToggle) return ctx.reply('❌ پست یافت نشد.');
+          const newValue = !(postToggle as any).editNavigation;
+          await postService.update(editorPostId, { editNavigation: newValue } as any);
+          const updatedPost = await postService.findById(editorPostId);
+          if (updatedPost) await refreshEditorMessages(ctx, updatedPost);
           return;
         }
         case '🗂 بازگشت به لیست': {

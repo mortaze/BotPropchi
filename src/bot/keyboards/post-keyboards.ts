@@ -355,9 +355,10 @@ export const postCommandSubMenuKeyboard = (hasCommand: boolean) => {
   return Markup.keyboard(rows).resize().persistent();
 };
 
-export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean, isStart?: boolean, isAnonymous?: boolean) => {
+export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean, isStart?: boolean, isAnonymous?: boolean, editNavigation?: boolean) => {
   const rows: string[][] = [
     ['➕ افزودن پیام', '🔗 دستور'],
+    [editNavigation ? '🟢 حالت ویرایش پیام: فعال' : '🔴 حالت ویرایش پیام: غیرفعال'],
     ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
   ];
   if (isStart) {
