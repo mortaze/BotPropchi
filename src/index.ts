@@ -31,6 +31,8 @@ import { registerScheduledMessageHandlers } from './bot/handlers/scheduled-messa
 import { registerAutoReplyHandlers } from './bot/handlers/auto-reply.handlers';
 import { registerNewsHandlers } from './bot/handlers/news.handlers';
 import { autoReplyService } from './services/auto-reply.service';
+import { sendPostToUser } from './bot/shared';
+import { cache } from './utils/cache';
 
 async function bootstrap() {
   logger.info('🚀 در حال راه‌اندازی ربات...');
@@ -135,6 +137,34 @@ async function bootstrap() {
   registerScheduledMessageHandlers(bot);
   registerAutoReplyHandlers(bot);
   registerNewsHandlers(bot);
+
+  // ─── Anonymous Message Fallback (LAST handler) ──────────
+  // When a regular user sends any unrecognized message/command in private chat,
+  // and no other handler/state/wizard matched, send the system anonymous post.
+  // Must run AFTER registerNewsHandlers so news handlers get first chance.
+  bot.on('message', async (ctx: any, next) => {
+    if (!ctx.from) return next();
+    if (ctx.chat?.type !== 'private') return next();
+
+    const admin = await botAdminService.getActive(ctx.from.id).catch(() => null);
+    if (admin) return next();
+
+    const userId = ctx.from.id;
+    const hasPostState = cache.get<number>(`post:pending:${userId}:selected_post`) ||
+      cache.get<string>(`post:pending:${userId}:editing_field`) ||
+      cache.get<number>(`post:editor:${userId}:active`) ||
+      cache.get<string>(`post:editor:${userId}:mode`) ||
+      cache.get<boolean>(`post_mgmt_mode:${userId}`) ||
+      cache.get<boolean>(`admin_broadcast:${userId}`) ||
+      cache.get<boolean>(`menu:edit_mode:${userId}`) ||
+      cache.get<boolean>(`search_mode:${userId}`);
+    if (hasPostState) return next();
+
+    const anonPost = await postService.getOrCreateAnonymousPost().catch(() => null);
+    if (!anonPost) return next();
+
+    await sendPostToUser(ctx, { id: anonPost.id }).catch(() => {});
+  });
 
   // ─── Scheduled message service ──────────────────────────
   scheduledMessageService.setBot(bot);
