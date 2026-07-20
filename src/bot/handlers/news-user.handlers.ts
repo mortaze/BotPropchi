@@ -8,20 +8,26 @@ export function registerNewsUserHandlers(bot: Telegraf) {
 
   // ─── Entry: 📰 اخبار فارکس (section 7.1) ─────────────
   bot.hears('📰 اخبار فارکس', async (ctx: any) => {
-    const { yesterday, today, tomorrow } = getYesterdayTodayTomorrow();
-    const entry = await newsService.getEntry(today);
-    const kb = newsUserKeyboard(yesterday, today, tomorrow, today);
+    logger.info(`[NewsUser] handler reached, userId=${ctx.from?.id}`);
+    try {
+      const { yesterday, today, tomorrow } = getYesterdayTodayTomorrow();
+      const entry = await newsService.getEntry(today);
+      const kb = newsUserKeyboard(yesterday, today, tomorrow, today);
 
-    if (entry) {
-      await ctx.reply(entry.text as string, {
-        entities: entry.entities as any,
-        ...kb,
-      });
-    } else {
-      await ctx.reply(
-        `🈳 هنوز خبری برای امروز (${today}) ثبت نشده است.\n\nبعداً دوباره سر بزنید یا تاریخ دیگری را بررسی کنید.`,
-        kb,
-      );
+      if (entry) {
+        await ctx.reply(entry.text as string, {
+          entities: entry.entities as any,
+          ...kb,
+        });
+      } else {
+        await ctx.reply(
+          `🈳 هنوز خبری برای امروز (${today}) ثبت نشده است.\n\nبعداً دوباره سر بزنید یا تاریخ دیگری را بررسی کنید.`,
+          kb,
+        );
+      }
+    } catch (err) {
+      logger.error('[NewsUser] threw:', err);
+      await ctx.reply('خطایی رخ داد، دوباره تلاش کنید.').catch(() => {});
     }
   });
 

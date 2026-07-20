@@ -28,7 +28,7 @@ cd admin && npm run lint # next lint — only lint in repo
 
 No lint/typecheck at root. Only admin has lint (`next lint`).
 
-**Prisma schema**: `prisma/schema.prisma`. The `prisma/migrations/` directory exists but the project uses `prisma db push`, not migration-based workflow. `npx prisma migrate dev` is not part of the standard flow.
+**Prisma schema**: `prisma/schema.prisma` (63 models, ~1460 lines). The `prisma/migrations/` directory exists but the project uses `prisma db push`, not migration-based workflow. `npx prisma migrate dev` is not part of the standard flow.
 
 ## Key Docs (read for deep context)
 
@@ -55,7 +55,7 @@ Background workers (`src/workers/`): membership + leaderboard via BullMQ (Redis)
 
 One-off scripts: `src/scripts/`, `scripts/` (not auto-run).
 
-Feature toggle keys (from `DEFAULT_FEATURES` in `src/services/settings.service.ts`): `lottery`, `referrals`, `force_join`, `auto_replies`, `reports`, `groups`, `leaderboard`, `points`, `posts`, `ticket_system`.
+Feature toggle keys (from `DEFAULT_FEATURES` in `src/services/settings.service.ts:10`): `lottery`, `referrals`, `force_join`, `auto_replies`, `reports`, `groups`, `leaderboard`, `points`, `posts`, `ticket_system`, `forex_news`.
 
 Debug commands (admin only): `/debug_post_render <id>`, `/debug_compare_post <id>`, `/debug_delivery <id>`.
 
@@ -69,6 +69,7 @@ callback trace logger (BEFORE all middleware)
 → registerHandlers(bot)
 → registerScheduledMessageHandlers(bot)
 → registerAutoReplyHandlers(bot)
+→ registerNewsHandlers(bot)
 → forum topic discovery handler (group/supergroup messages)
 → bot.catch (global error handler — MUST answerCbQuery)
 → catch-all [UNMATCHED_CALLBACK] (log + answerCbQuery)
@@ -120,7 +121,7 @@ Admin panel MUST query `AutoReply` tables. Querying `KeywordReply` produces zero
 - **BigInt serialization**: Prisma BigInt in `JSON.stringify` paths → use `src/utils/serialize.ts:serializeBigInts` or BigInt replacer
 - **Do NOT refactor command architecture**: command bugs are runtime issues, not architectural. No new repositories, no command resolution redesign.
 - **Admin auth**: cookies (`admin_token` + `admin_user`), root API uses JWT Bearer. Admin stores use `useSyncExternalStore` (auth.store.ts + ui.store.ts), not Zustand (despite zustand in admin/package.json).
-- **`isOwnerRole()`** in `src/services/settings.service.ts:23` includes `OWNER`, `SUPER_ADMIN`, **and `ADMIN`** — broader than the `requireOwner` name suggests. Used by both API `requireOwner` middleware and panel route guards.
+- **`isOwnerRole()`** in `src/services/settings.service.ts:24` includes `OWNER`, `SUPER_ADMIN`, **and `ADMIN`** — broader than the `requireOwner` name suggests. Used by both API `requireOwner` middleware and panel route guards.
 - **Redis optional**: falls back to `node-cache` in-memory when `REDIS_URL` not set
 - **All user-facing strings**: Persian (Farsi)
 - **Bot middleware**: `src/bot/middlewares/` except `membershipGuard` in `src/middleware/`

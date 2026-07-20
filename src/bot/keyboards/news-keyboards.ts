@@ -21,6 +21,13 @@ function noop(text: string) {
   return Markup.button.callback(safe(text), 'noop');
 }
 
+type ButtonStyle = 'primary' | 'success' | 'danger';
+
+function styledCb(text: string, data: string, style?: ButtonStyle) {
+  const btn = Markup.button.callback(safe(text), data);
+  return style ? ({ ...btn, style } as typeof btn) : btn;
+}
+
 // ─── Calendar header row (ش ی د س چ پ ج) ────────────────
 function calendarHeader() {
   return [WEEKDAYS_SHORT_SAT_FIRST.map(d => noop(d))];
@@ -31,18 +38,14 @@ type CellWithContent = { day: number; dateKey: DateKey; hasContent: boolean };
 
 function calendarGridCells(
   cells: (CellWithContent | null)[],
-  todayKey: DateKey,
 ) {
-  const rows: ReturnType<typeof cb>[][] = [];
+  const rows: ReturnType<typeof styledCb>[][] = [];
   for (let i = 0; i < cells.length; i += 7) {
     const week = cells.slice(i, i + 7);
     rows.push(
       week.map(cell => {
         if (!cell) return noop(' ');
-        const isToday = cell.dateKey === todayKey;
-        const prefix = cell.hasContent ? '🟢' : '⚪️';
-        const label = isToday ? `[${cell.day}]` : `${cell.day}`;
-        return cb(`${prefix}${label}`, `news:day:${cell.dateKey}`);
+        return styledCb(String(cell.day), `news:day:${cell.dateKey}`, cell.hasContent ? 'success' : undefined);
       }),
     );
   }
@@ -64,7 +67,7 @@ export function newsCalendarKeyboard(
     c ? { ...c, hasContent: contentDates.has(c.dateKey) } : null,
   );
 
-  const grid = calendarGridCells(cells, todayKey);
+  const grid = calendarGridCells(cells);
 
   const ym = `${year}-${String(month).padStart(2, '0')}`;
   const rows = [
@@ -125,11 +128,16 @@ export function newsCalendarReplyKeyboard() {
 }
 
 // ─── Reply keyboard for day editor (Issue 3) ────────────
-export function newsDayEditorReplyKeyboard() {
-  return Markup.keyboard([
-    ['➕ افزودن پیام', '🗑 حذف پیام'],
-    ['◀️ بازگشت به تقویم', '🔙 پنل ادمین'],
-  ]).resize().persistent();
+export function newsDayEditorReplyKeyboard(hasContent: boolean) {
+  const actionRow = hasContent
+    ? ['✏️ ویرایش متن', '🗑 حذف متن']
+    : ['➕ افزودن متن'];
+  return Markup.keyboard([actionRow, ['◀️ بازگشت به تقویم', '🔙 پنل ادمین']]).resize().persistent();
+}
+
+// ─── Reply keyboard for clear confirmation (section 3.4) ──
+export function newsClearConfirmReplyKeyboard() {
+  return Markup.keyboard([['✅ تایید حذف'], ['❌ انصراف']]).resize().persistent();
 }
 
 // ─── User: yesterday/today/tomorrow (section 7.1) ───────
