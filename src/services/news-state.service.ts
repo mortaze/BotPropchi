@@ -6,7 +6,7 @@ function newsKey(userId: number, field: string) {
   return `${PREFIX}${userId}:${field}`;
 }
 
-const FIELDS = ['current_month', 'editing_date', 'awaiting_text', 'message_id'];
+const FIELDS = ['current_month', 'editing_date', 'awaiting_text', 'message_id', 'current_viewed_date'];
 
 export const newsState = {
   getState(userId: number) {
@@ -15,6 +15,7 @@ export const newsState = {
       editingDate: cache.get<string>(newsKey(userId, 'editing_date')),
       awaitingText: cache.get<boolean>(newsKey(userId, 'awaiting_text')),
       messageId: cache.get<number>(newsKey(userId, 'message_id')),
+      currentViewedDate: cache.get<string>(newsKey(userId, 'current_viewed_date')),
     };
   },
 
@@ -32,6 +33,10 @@ export const newsState = {
 
   setMessageId(userId: number, msgId: number) {
     cache.setPermanent(newsKey(userId, 'message_id'), msgId);
+  },
+
+  setCurrentViewedDate(userId: number, dateKey: string) {
+    cache.setPermanent(newsKey(userId, 'current_viewed_date'), dateKey);
   },
 
   clearAll(userId: number) {
