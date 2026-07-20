@@ -79,24 +79,12 @@ export function newsCalendarKeyboard(
 
 // ─── Day page — has content (section 6.2) ───────────────
 export function newsDayContentKeyboard(dateKey: DateKey) {
-  const ym = dateKey.slice(0, 7);
-  return Markup.inlineKeyboard([
-    [noop(`📅 ${formatWithWeekday(dateKey)}`)],
-    [cb('✏️ ویرایش متن', `news:edit:${dateKey}`), cb('🗑 حذف متن', `news:clear:${dateKey}`)],
-    [cb('◀️ بازگشت به تقویم', `news:cal:${ym}`)],
-    [cb('🔙 پنل ادمین', 'news:back:admin')],
-  ]);
+  return Markup.inlineKeyboard([]);
 }
 
 // ─── Day page — empty (section 6.2) ─────────────────────
 export function newsDayEmptyKeyboard(dateKey: DateKey) {
-  const ym = dateKey.slice(0, 7);
-  return Markup.inlineKeyboard([
-    [noop(`📅 ${formatWithWeekday(dateKey)} — بدون محتوا`)],
-    [cb('➕ افزودن متن', `news:edit:${dateKey}`)],
-    [cb('◀️ بازگشت به تقویم', `news:cal:${ym}`)],
-    [cb('🔙 پنل ادمین', 'news:back:admin')],
-  ]);
+  return Markup.inlineKeyboard([]);
 }
 
 // ─── Delete confirmation (section 6.4) ──────────────────
@@ -121,11 +109,12 @@ export function newsCalendarReplyKeyboard() {
 }
 
 // ─── Reply keyboard for day editor (Issue 3) ────────────
-export function newsDayEditorReplyKeyboard(hasContent: boolean) {
+export function newsDayEditorReplyKeyboard(hasContent: boolean, dateKey: DateKey) {
+  const dateLabel = formatWithWeekday(dateKey);
   const actionRow = hasContent
     ? ['✏️ ویرایش متن', '🗑 حذف متن']
     : ['➕ افزودن متن'];
-  return Markup.keyboard([actionRow, ['◀️ بازگشت به تقویم', '🔙 پنل ادمین']]).resize().persistent();
+  return Markup.keyboard([[dateLabel], actionRow, ['◀️ بازگشت به تقویم', '🔙 پنل ادمین']]).resize().persistent();
 }
 
 // ─── Reply keyboard for clear confirmation (section 3.4) ──
