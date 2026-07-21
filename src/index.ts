@@ -130,8 +130,7 @@ async function bootstrap() {
 
     const admin = await botAdminService.getActive(userId);
     const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
-    const features = await settingsService.getFeatureMap();
-    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast, features));
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
 
   registerHandlers(bot);

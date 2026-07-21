@@ -130,8 +130,7 @@ async function adminMainMenu(ctx: any) {
   const admin = await botAdminService.getActive(ctx.from.id);
   if (!admin) return;
   const canBroadcast = admin.role === 'OWNER' || admin.role === 'ADMIN';
-  const features = await settingsService.getFeatureMap();
-  await ctx.reply('⚙️ پنل مدیریت', buildBotAdminPanelKeyboard(canBroadcast, features));
+  await ctx.reply('⚙️ پنل مدیریت', buildBotAdminPanelKeyboard(canBroadcast));
 }
 
 const PENDING_POST_STATE = 'post:pending:';

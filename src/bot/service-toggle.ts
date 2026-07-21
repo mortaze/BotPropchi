@@ -16,7 +16,5 @@ export function featureForCallback(data?: string) {
   if (/^lottery:/.test(data)) return 'lottery';
   if (/^ticket:/.test(data)) return 'ticket_system';
   if (data.startsWith('referral:')) return 'referrals';
-  if (/^news:/.test(data)) return 'forex_news';
-  if (/^post:/.test(data)) return 'posts';
   return null;
 }

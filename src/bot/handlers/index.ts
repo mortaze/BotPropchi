@@ -313,8 +313,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (!admin) return;
     clearAllPostStates(ctx.from.id);
     const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
-    const features = await settingsService.getFeatureMap();
-    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast, features));
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
 
   // ─── Admin: Statistics (from new user notification) ─────────────
@@ -425,8 +424,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     cache.del(`menu:edit_mode:${ctx.from.id}`);
     await settingsService.cancelEditSession(ctx.from.id, false);
     const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
-    const features = await settingsService.getFeatureMap();
-    await safeEdit(ctx, '⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast, features));
+    await safeEdit(ctx, '⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
   });
 
   bot.action('menu:preview', async (ctx: any) => {
@@ -730,8 +728,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
         cache.del(`menu:selected:${ctx.from.id}`);
         await settingsService.cancelEditSession(ctx.from.id, false);
         const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
-        const features = await settingsService.getFeatureMap();
-        await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast, features));
+        await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
         return;
       }
 
