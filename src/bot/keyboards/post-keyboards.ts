@@ -337,7 +337,7 @@ export const buildMenuItemEditKeyboard = (row: number, col: number, button: any,
 
   // ── Action buttons ────────────────────────────────────
   rows.push([
-    Markup.button.callback(isHidden ? '🚫 نمایش' : '🙈 مخفی', `menu:item:toggle:${row}:${col}`),
+    Markup.button.callback(isHidden ? '🚫 نمایش' : 'مخفی', `menu:item:toggle:${row}:${col}`),
     Markup.button.callback('✏️ تغییر نام', `menu:item:rename:${row}:${col}`),
   ]);
   return Markup.inlineKeyboard(rows);
