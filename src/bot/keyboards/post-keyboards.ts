@@ -300,7 +300,7 @@ export const buildMenuEditorReplyKeyboard = (layout: any[][], selectedKey?: { ro
       for (let c = 0; c < row.length; c++) {
         const btn = row[c];
         if (!btn) continue;
-        const prefix = btn.visible === false ? '🙈 ' : '';
+        const prefix = btn.visible === false ? '🚫 ' : '';
         const text = `${prefix}${buildSafeTelegramButton(buttonDisplayText(btn, 'بدون عنوان'))}`;
         if (selectedKey && selectedKey.row === r && selectedKey.col === c) {
           resultRow.push(`{${text}}`);

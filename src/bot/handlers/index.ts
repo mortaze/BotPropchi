@@ -742,7 +742,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
           const btn = resolvedLayout[r][c];
           if (!btn) continue;
           const btnText = btn.text || btn.label || btn.title || btn.ref || 'بدون عنوان';
-          const prefix = btn.visible === false ? '🙈 ' : '';
+          const prefix = btn.visible === false ? '🚫 ' : '';
           const displayText = `${prefix}${btnText}`;
           if (displayText === matchText) {
             const rawButton = rawLayout[r]?.[c];
