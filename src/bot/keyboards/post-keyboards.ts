@@ -180,7 +180,7 @@ export const postInfoActionKeyboard = (post: any) => {
     rows[0].push(Markup.button.callback(isPublished ? '🚫 لغو انتشار' : '✅ انتشار', `post:manager:unpublish:${postId}`));
     rows[0].push(Markup.button.callback('📊 آمار', `post:manager:stats:${postId}`));
     rows.push([
-      Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
+      Markup.button.callback(isHidden ? '🚫 نمایش' : '🙈 مخفی', `post:manager:hide:${postId}`),
       Markup.button.callback('📦 بایگانی', `post:manager:archive:${postId}`),
       Markup.button.callback('🗑 حذف پست', `post:manager:delete:${postId}`),
     ]);
@@ -337,7 +337,7 @@ export const buildMenuItemEditKeyboard = (row: number, col: number, button: any,
 
   // ── Action buttons ────────────────────────────────────
   rows.push([
-    Markup.button.callback(isHidden ? '👁 نمایش' : '🙈 مخفی', `menu:item:toggle:${row}:${col}`),
+    Markup.button.callback(isHidden ? '🚫 نمایش' : '🙈 مخفی', `menu:item:toggle:${row}:${col}`),
     Markup.button.callback('✏️ تغییر نام', `menu:item:rename:${row}:${col}`),
   ]);
   return Markup.inlineKeyboard(rows);

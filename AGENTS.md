@@ -5,7 +5,7 @@
 Telegram bot for prop firm discount codes with lottery, scoring, and referral system. Two codebases in one repo:
 
 - **Root** (`src/`): Main Telegram bot (Telegraf) + Express API (TypeScript, Prisma, BullMQ)
-- **Admin** (`admin/`): Next.js 15 admin panel (calls root API via `NEXT_PUBLIC_API_URL`)
+- **Admin** (`admin/`): Next.js 15 admin panel (calls root API via `NEXT_PUBLIC_API_URL` in `admin/.env`)
 
 WordPress plugin directory was removed — but WordPress API env vars remain in `src/config/index.ts:60-65` for AI response routing (no direct Gemini calls).
 
@@ -28,11 +28,12 @@ cd admin && npm run lint # next lint — only lint in repo
 
 No lint/typecheck at root. Only admin has lint (`next lint`).
 
-**Prisma schema**: `prisma/schema.prisma` (63 models, ~1460 lines). The `prisma/migrations/` directory exists but the project uses `prisma db push`, not migration-based workflow. `npx prisma migrate dev` is not part of the standard flow.
+**Prisma schema**: `prisma/schema.prisma` (~1460 lines). Uses `prisma db push`, not migration-based workflow. `npx prisma migrate dev` is not part of the standard flow. Admin has its own Prisma config (`admin/prisma/`) but root `npm run db:push` is the canonical schema source.
 
 ## Key Docs (read for deep context)
 
 - `ARCHITECTURE.md` — full system architecture, data model, API routes, deployment (note: still references `wordpress-plugin/` which was removed)
+- `README.md` — project docs in Farsi, setup guide (also references `wordpress-plugin/` — stale)
 - `ADMIN_PANEL_AUDIT.md` — auth flow (two admin entity types: `Admin` for panel, `BotAdmin` for bot), panel page tree, feature toggles
 - `CALLBACK_CROSS_CHECK.md` — all callback_data patterns vs handler regex, with dead-pattern history
 
@@ -129,13 +130,14 @@ Admin panel MUST query `AutoReply` tables. Querying `KeywordReply` produces zero
 - **Admin legacy bot scripts** in `admin/package.json`: `dev:bot`, `build:bot`, `start:bot` — ignore
 - **Admin unused dep**: `zustand` in `admin/package.json` — stores use `useSyncExternalStore`
 - **Prisma client**: `src/prisma/client.ts` (singleton with dev query logging); generated in `node_modules/.prisma/client`
-- **Docker**: `docker-compose.yml` runs PostgreSQL 16 + Redis 7 only (bot service is commented out in the old section — built via Dockerfile at deploy)
+- **Docker**: `docker-compose.yml` runs PostgreSQL 16 + Redis 7 only (bot service is commented out — built via Dockerfile at deploy)
 - **Dockerfile** uses `CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]` — runs schema push before start
 - **No CI/CD, no husky, no prettier, no editorconfig**
-- **Stray dir**: `src/tests/` (1 file, `post-content-preservation.test.ts`) is NOT picked up by vitest — tests must be in `src/__tests__/`
+- **Tests**: `src/__tests__/` (~22 test files, pure unit — no DB/Redis). Vitest config (`vitest.config.ts`) includes `src/__tests__/**/*.test.ts`. Also has `src/__tests__/__snapshots__/`. Stray dir `src/tests/` (1 file) is NOT picked up by vitest.
 - **TypeScript strictness differs**: root `tsconfig.json` has `strict: false` / `noImplicitAny: false`; admin has `strict: true`
 - **Path alias**: both root and admin use `@/*` → `src/*`
 - **Admin strict excludes**: `admin/tsconfig.json` excludes `src/api/`, `src/index.ts`, `src/scheduler.ts` from compilation
+- **Admin tsconfig includes only**: `src/app`, `src/components`, `src/lib`, `src/services`, `src/store`, `src/types`, `src/middleware.ts` — other admin `src/` dirs are not compiled
 
 ## News / Forex News Module
 
@@ -158,3 +160,5 @@ Key rules: raw entities only (no parse_mode), always `answerCbQuery`, never fall
 Required: `BOT_TOKEN`, `ADMIN_TELEGRAM_ID`, `JWT_SECRET`, `DATABASE_URL`
 
 Notable optional: `REDIS_URL` (no Redis = in-memory cache), `WORDPRESS_API_URL` + `WORDPRESS_BOT_API_KEY` + `WORDPRESS_SIGNATURE_SECRET` (AI routing), `MEMBERSHIP_REQUIRED_CHANNELS`, `WINNER_CONTACT`, `CACHE_TTL_SECONDS` (default 300), `PORT` (default 3000), `TELEGRAM_MINI_APP_URL` / `FRONTEND_URL` (Mini App profile).
+
+Admin panel env: `admin/.env` has `NEXT_PUBLIC_API_URL` pointing to the root API (e.g. Railway production URL).
