@@ -17,6 +17,7 @@ import {
   newsClearConfirmReplyKeyboard,
 } from '../keyboards/news-keyboards';
 import { buildBotAdminPanelKeyboard } from '../keyboards/index';
+import { settingsService } from '../../services/settings.service';
 
 async function safeEdit(ctx: any, text: string, extra?: any) {
   try {
@@ -180,7 +181,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
 
     const admin = await botAdminService.getActive(userId);
     const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
-    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+    const features = await settingsService.getFeatureMap();
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast, features));
   });
 
   // ─── Reply keyboard: افزودن متن (from day editor) ─────
@@ -392,7 +394,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
 
     const admin = await botAdminService.getActive(userId);
     const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
-    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+    const features = await settingsService.getFeatureMap();
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast, features));
   });
 
   // ─── Text input handler (section 6.3 continuation) ──
@@ -443,7 +446,8 @@ export function registerNewsAdminHandlers(bot: Telegraf) {
       } else {
         const admin = await botAdminService.getActive(userId);
         const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
-        await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+        const features = await settingsService.getFeatureMap();
+        await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast, features));
       }
       return;
     }

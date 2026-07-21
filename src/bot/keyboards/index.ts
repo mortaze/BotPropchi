@@ -83,12 +83,17 @@ export function buildMiniAppProfileKeyboard() {
   return Markup.inlineKeyboard([[Markup.button.webApp('🚀 باز کردن پروفایل من', config.miniApp.url)]]);
 }
 
-export function buildBotAdminPanelKeyboard(canBroadcast = false) {
+export function buildBotAdminPanelKeyboard(canBroadcast = false, features: Record<string, boolean> = {}) {
   const rows: string[][] = [];
   if (canBroadcast) rows.push(['📢 پیام همگانی']);
   rows.push(['📝 پست‌ها', '🎛 ویرایش منو']);
-  rows.push(['👤 ادمین‌ها', '🎫 تیکت‌ها']);
-  rows.push(['🤖 اتوماسیون', '📰 اخبار']);
+  const row2: string[] = ['👤 ادمین‌ها'];
+  if (features.ticket_system !== false) row2.push('🎫 تیکت‌ها');
+  if (row2.length > 1) rows.push(row2);
+  const row3: string[] = [];
+  if (features.auto_replies !== false) row3.push('🤖 اتوماسیون');
+  if (features.forex_news !== false) row3.push('📰 اخبار');
+  if (row3.length > 0) rows.push(row3);
   rows.push(['↩️ بازگشت به منوی اصلی']);
   return Markup.keyboard(rows).resize().persistent();
 }

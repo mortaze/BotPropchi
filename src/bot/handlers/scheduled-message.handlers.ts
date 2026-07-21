@@ -12,6 +12,7 @@ import { cache } from '../../utils/cache';
 import { validateDbInput, sanitizeTelegramText } from '../../utils/unicode';
 import { graphemeTruncate } from '../../utils/grapheme';
 import { buildBotAdminPanelKeyboard } from '../keyboards/index';
+import { settingsService } from '../../services/settings.service';
 import {
   scheduledMessageMainMenuKeyboard,
   scheduledMessageAutomationKeyboard,
@@ -107,7 +108,8 @@ export function registerScheduledMessageHandlers(bot: Telegraf) {
     autoReplyState.clearBindingScene(ctx.from.id);
     const admin = await botAdminService.getActive(ctx.from.id);
     const canBroadcast = admin && (admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN);
-    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+    const features = await settingsService.getFeatureMap();
+    await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast, features));
   });
 
   // ─── Create new scheduled post ──────────────────────────

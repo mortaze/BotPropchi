@@ -7,13 +7,16 @@ import { usePathname } from "next/navigation";
 import { BarChart3, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X, Zap, Clock, BarChart2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
+import { useQuery } from "@tanstack/react-query";
+import { settingsApi } from "@/services/api";
 
 interface MenuItem {
   key: string;
   label: string;
   href: string;
   icon: any;
-  children?: { key: string; label: string; href: string; icon: any }[];
+  featureKey?: string;
+  children?: { key: string; label: string; href: string; icon: any; featureKey?: string }[];
 }
 
 const menuItems: MenuItem[] = [
@@ -21,29 +24,29 @@ const menuItems: MenuItem[] = [
       { key: "users", label: "کاربران", href: "/dashboard/users", icon: Users },
       { key: "deleted-users", label: "حذف‌شده‌ها", href: "/dashboard/deleted-users", icon: Trash2 },
   {
-    key: "posts", label: "پست‌ها", href: "/dashboard/posts", icon: FileText,
+    key: "posts", label: "پست‌ها", href: "/dashboard/posts", icon: FileText, featureKey: "posts",
     children: [
       { key: "menu", label: "ویرایش منو", href: "/dashboard/menu", icon: Settings },
     ],
   },
-  { key: "lotteries", label: "قرعه‌کشی‌ها", href: "/dashboard/lotteries", icon: Ticket },
-  { key: "ticket-categories", label: "دسته‌بندی تیکت", href: "/dashboard/ticket-categories", icon: Ticket },
+  { key: "lotteries", label: "قرعه‌کشی‌ها", href: "/dashboard/lotteries", icon: Ticket, featureKey: "lottery" },
+  { key: "ticket-categories", label: "دسته‌بندی تیکت", href: "/dashboard/ticket-categories", icon: Ticket, featureKey: "ticket_system" },
   {
-    key: "referrals", label: "دعوت دوستان", href: "/dashboard/referrals", icon: Share2,
+    key: "referrals", label: "دعوت دوستان", href: "/dashboard/referrals", icon: Share2, featureKey: "referrals",
     children: [
       { key: "seasons", label: "فصل‌ها", href: "/dashboard/seasons", icon: Trophy },
-      { key: "leaderboard", label: "لیدربورد", href: "/dashboard/leaderboard", icon: Trophy },
+      { key: "leaderboard", label: "لیدربورد", href: "/dashboard/leaderboard", icon: Trophy, featureKey: "leaderboard" },
     ],
   },
-  { key: "scoring", label: "سیستم امتیازدهی", href: "/dashboard/scoring", icon: Star },
+  { key: "scoring", label: "سیستم امتیازدهی", href: "/dashboard/scoring", icon: Star, featureKey: "points" },
   {
-    key: "required-channels", label: "عضویت اجباری", href: "/dashboard/required-channels", icon: RadioTower,
+    key: "required-channels", label: "عضویت اجباری", href: "/dashboard/required-channels", icon: RadioTower, featureKey: "force_join",
     children: [
-      { key: "groups", label: "مدیریت گروه‌ها", href: "/dashboard/groups", icon: ShieldCheck },
+      { key: "groups", label: "مدیریت گروه‌ها", href: "/dashboard/groups", icon: ShieldCheck, featureKey: "groups" },
     ],
   },
   {
-    key: "automation", label: "اتوماسیون", href: "/dashboard/automation", icon: Zap,
+    key: "automation", label: "اتوماسیون", href: "/dashboard/automation", icon: Zap, featureKey: "auto_replies",
     children: [
       { key: "auto-scheduled", label: "پیام‌های خودکار", href: "/dashboard/automation/scheduled", icon: Clock },
       { key: "auto-replies", label: "پاسخ‌های خودکار", href: "/dashboard/automation/replies", icon: MessageSquareReply },
@@ -51,7 +54,7 @@ const menuItems: MenuItem[] = [
       { key: "auto-logs", label: "تاریخچه فعالیت‌ها", href: "/dashboard/automation/logs", icon: History },
     ],
   },
-  { key: "analytics", label: "گزارشات", href: "/dashboard/analytics", icon: BarChart3,
+  { key: "analytics", label: "گزارشات", href: "/dashboard/analytics", icon: BarChart3, featureKey: "reports",
     children: [
       { key: "analytics-users", label: "تحلیل کاربران", href: "/dashboard/analytics", icon: BarChart3 },
       { key: "analytics-acquisition", label: "منابع جذب", href: "/dashboard/analytics/acquisition", icon: Share2 },
@@ -74,12 +77,18 @@ const menuItems: MenuItem[] = [
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const { data: featuresData } = useQuery({ queryKey: ["features"], queryFn: settingsApi.getFeatures });
+  const featureMap = featuresData?.items?.reduce((acc: Record<string, boolean>, f: { key: string; isEnabled: boolean }) => { acc[f.key] = f.isEnabled; return acc; }, {} as Record<string, boolean>) ?? {};
+
+  const isItemVisible = (item: { featureKey?: string }) => !item.featureKey || featureMap[item.featureKey] !== false;
 
   const toggleExpanded = (key: string, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  const visibleItems = menuItems.filter(isItemVisible);
 
   return (
     <>
@@ -91,14 +100,15 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <button className="rounded-lg p-2 text-muted-foreground hover:bg-muted md:hidden" onClick={onNavigate} aria-label="بستن منو"><X className="h-5 w-5" /></button>
       </div>
       <nav className="space-y-1">
-        {menuItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
-          const hasSubmenu = item.children && item.children.length > 0;
+          const visibleChildren = item.children?.filter(isItemVisible) ?? [];
+          const hasSubmenu = visibleChildren.length > 0;
           const isExpanded = expanded[item.key] ?? false;
           const Icon = item.icon;
 
           if (hasSubmenu) {
-            const anyChildActive = item.children!.some((child) => pathname.startsWith(child.href));
+            const anyChildActive = visibleChildren.some((child) => pathname.startsWith(child.href));
             return (
               <div key={item.key}>
                 <div className="flex items-center">
@@ -122,7 +132,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 </div>
                 {isExpanded && (
                   <div className="mr-6 mt-1 space-y-1 border-r-2 border-sidebar-border pr-2">
-                    {item.children!.map((child) => {
+                    {visibleChildren.map((child) => {
                       const childActive = pathname.startsWith(child.href);
                       const ChildIcon = child.icon;
                       return (

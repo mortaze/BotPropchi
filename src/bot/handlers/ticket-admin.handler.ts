@@ -7,6 +7,7 @@ import { botAdminService } from '../../services/bot-admin.service';
 import { ticketActionKeyboard, adminTicketListKeyboard, adminTicketFilterKeyboard, adminTicketByCategoryKeyboard } from '../keyboards/ticket.keyboards';
 import { notifyUserNewReply } from '../ticket-notification.service';
 import { prisma } from '../../prisma/client';
+import { settingsService } from '../../services/settings.service';
 
 function detectMessageType(ctx: any): string {
   if (ctx.message?.photo) return 'PHOTO';
@@ -257,7 +258,8 @@ export function registerTicketAdminHandlers(bot: Telegraf) {
     if (!admin) return;
     const { buildBotAdminPanelKeyboard } = require('../keyboards');
     const canBroadcast = admin.role === 'OWNER' || admin.role === 'ADMIN';
-    await ctx.reply('پنل ادمین:', buildBotAdminPanelKeyboard(canBroadcast));
+    const features = await settingsService.getFeatureMap();
+    await ctx.reply('پنل ادمین:', buildBotAdminPanelKeyboard(canBroadcast, features));
   });
 
   bot.action(/^tcat:mode:(view|edit|delete|disable|move)$/, async (ctx: any) => {
