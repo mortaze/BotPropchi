@@ -409,6 +409,13 @@ export const postService = {
     return post;
   },
 
+  async setNavEditInPlace(id: number, value: boolean) {
+    const post = await postRepository.update(id, { navEditInPlace: value });
+    this.invalidateCache();
+    logger.info(`[Post] navEditInPlace set to ${value} for post #${id} ("${post.title}")`);
+    return post;
+  },
+
   async archive(id: number) {
     const post = await postRepository.update(id, {
       status: PostStatus.ARCHIVED,

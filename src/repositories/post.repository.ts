@@ -18,7 +18,7 @@ export const postRepository = {
   async getPostMeta(id: number) {
     return prisma.post.findUnique({
       where: { id },
-      select: { id: true, title: true, slug: true, command: true, status: true, isPublished: true },
+      select: { id: true, title: true, slug: true, command: true, status: true, isPublished: true, navEditInPlace: true },
     });
   },
 

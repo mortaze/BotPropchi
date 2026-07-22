@@ -1149,8 +1149,10 @@ export function registerHandlers(bot: Telegraf<Context>) {
 
       if (post && post.status === 'PUBLISHED' && post.isPublished) {
         logger.info(`[CMD_BTN] t=${Date.now()} SENDING post#${post.id}...`);
-        await postService.incrementViews(post.id, undefined, BigInt(ctx.from.id));
-        await sendPostToUser(ctx, post);
+        const editTarget = (post.navEditInPlace && ctx.callbackQuery?.message)
+          ? { chatId: ctx.chat.id, messageId: ctx.callbackQuery.message.message_id }
+          : undefined;
+        await sendPostToUser(ctx, post, undefined, undefined, editTarget);
         logger.info(`[CMD_BTN] t=${Date.now()} ✅ SENT post#${post.id} totalMs=${Date.now()-t0}`);
       } else if (post) {
         logger.warn(`[CMD_BTN] t=${Date.now()} ❌ POST NOT PUBLISHED: postId=${post.id} status=${post.status} isPublished=${post.isPublished}`);

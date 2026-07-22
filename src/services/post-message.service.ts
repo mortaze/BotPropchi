@@ -476,7 +476,13 @@ export async function ensurePostMessages(postId: number): Promise<any[]> {
   return migrateSinglePost(postId);
 }
 
-export async function sendPostToChat(ctx: any, postId: number, templateVars?: Record<string, string>, lastMessageOptions?: any): Promise<void> {
+export async function sendPostToChat(
+  ctx: any,
+  postId: number,
+  templateVars?: Record<string, string>,
+  lastMessageOptions?: any,
+  editTarget?: { chatId: number; messageId: number },
+): Promise<void> {
   let rows = await loadPostMessages(postId);
   if (rows.length === 0) {
     rows = await ensurePostMessages(postId);
@@ -628,24 +634,42 @@ export async function sendPostToChat(ctx: any, postId: number, templateVars?: Re
         return true;
       });
     }
-    try {
-      if (method === 'sendMessage') {
-        await ctx.reply(params.text, params);
-      } else if (method === 'sendMediaGroup') {
-        await ctx.replyWithMediaGroup(params.media);
-      } else {
-        const media = params.media;
-        delete params.media;
-        const methodMap: Record<string, string> = {
-          sendPhoto: 'replyWithPhoto', sendVideo: 'replyWithVideo',
-          sendDocument: 'replyWithDocument', sendAudio: 'replyWithAudio',
-          sendAnimation: 'replyWithAnimation', sendVoice: 'replyWithVoice',
-        };
-        await ctx[methodMap[method] || 'replyWithDocument'](media, params);
+    let editedInPlace = false;
+    if (i === 0 && editTarget && method === 'sendMessage') {
+      try {
+        await ctx.telegram.editMessageText(editTarget.chatId, editTarget.messageId, undefined, params.text, params);
+        editedInPlace = true;
+        logger.info(`[SendPost][EditInPlace] postId=${postId} messageId=${editTarget.messageId} edited successfully`);
+      } catch (editErr: any) {
+        const desc = editErr?.response?.description || editErr?.message || '';
+        if (desc.includes('message is not modified')) {
+          editedInPlace = true;
+        } else {
+          logger.warn(`[SendPost][EditInPlace] postId=${postId} messageId=${editTarget.messageId} edit failed (${desc}), falling back to new message`);
+        }
       }
-    } catch (sendErr: any) {
-      logger.error(`[SendMessage] Telegram API error postId=${msg.postId} order=${msg.order} error=${sendErr?.message || sendErr}`);
-      throw sendErr;
+    }
+
+    if (!editedInPlace) {
+      try {
+        if (method === 'sendMessage') {
+          await ctx.reply(params.text, params);
+        } else if (method === 'sendMediaGroup') {
+          await ctx.replyWithMediaGroup(params.media);
+        } else {
+          const media = params.media;
+          delete params.media;
+          const methodMap: Record<string, string> = {
+            sendPhoto: 'replyWithPhoto', sendVideo: 'replyWithVideo',
+            sendDocument: 'replyWithDocument', sendAudio: 'replyWithAudio',
+            sendAnimation: 'replyWithAnimation', sendVoice: 'replyWithVoice',
+          };
+          await ctx[methodMap[method] || 'replyWithDocument'](media, params);
+        }
+      } catch (sendErr: any) {
+        logger.error(`[SendMessage] Telegram API error postId=${msg.postId} order=${msg.order} error=${sendErr?.message || sendErr}`);
+        throw sendErr;
+      }
     }
   }
 }

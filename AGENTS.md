@@ -28,7 +28,7 @@ cd admin && npm run lint # next lint — only lint in repo
 
 No lint/typecheck at root. Only admin has lint (`next lint`).
 
-**Prisma schema**: `prisma/schema.prisma` (~1460 lines). Uses `prisma db push`, not migration-based workflow. `npx prisma migrate dev` is not part of the standard flow. Admin has its own Prisma config (`admin/prisma/`) but root `npm run db:push` is the canonical schema source.
+**Prisma schema**: `prisma/schema.prisma` (~1460 lines). Uses `prisma db push`, not migration-based workflow. `npx prisma migrate dev` is not part of the standard flow. Admin has no Prisma schema of its own — root `npm run db:push` is the sole schema source. Admin `package.json` has `db:*` scripts but they are dead (no `admin/prisma/` dir).
 
 ## Key Docs (read for deep context)
 

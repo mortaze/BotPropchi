@@ -355,9 +355,16 @@ export const postCommandSubMenuKeyboard = (hasCommand: boolean) => {
   return Markup.keyboard(rows).resize().persistent();
 };
 
-export const postMultiMessageEditorReplyKeyboard = (isPublished: boolean, isStart?: boolean, isAnonymous?: boolean) => {
+export const postMultiMessageEditorReplyKeyboard = (
+  isPublished: boolean,
+  isStart?: boolean,
+  isAnonymous?: boolean,
+  navEditInPlace?: boolean,
+) => {
+  const navToggleLabel = navEditInPlace ? '🔁 غیرفعال‌سازی ادیت‌درجا' : '✏️ فعال‌سازی ادیت‌درجا';
   const rows: string[][] = [
     ['➕ افزودن پیام', '🔗 دستور'],
+    [navToggleLabel],
     ['🗂 بازگشت به لیست', '🏠 منو اصلی'],
   ];
   if (isStart) {
