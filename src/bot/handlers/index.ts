@@ -582,7 +582,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await ctx.answerCbQuery();
     const admin = await botAdminService.getActive(ctx.from.id);
     if (!admin) return;
-    const layout = settingsService.getEditableLayout(ctx.from.id);
+    const layout = await settingsService.getResolvedEditableLayout(ctx.from.id);
     const pos = resolveSelectedPosition(ctx, layout);
     if (!pos) return;
     if (layout.length < 2) return;
