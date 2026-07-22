@@ -329,6 +329,11 @@ export const buildMenuItemEditKeyboard = (row: number, col: number, button: any,
   if (canDown) vertRow.push(Markup.button.callback('⬇️ پایین', `menu:item:down:${row}:${col}`));
   if (vertRow.length > 0) rows.push(vertRow);
 
+  // ── Row jump button (only if multiple rows exist) ─────
+  if (layout.length > 1) {
+    rows.push([Markup.button.callback('🔀 تغییر سطر', `menu:item:changerow:${row}:${col}`)]);
+  }
+
   // ── Direction buttons (horizontal) ────────────────────
   const horRow: any[] = [];
   if (col > 0) horRow.push(Markup.button.callback('⬅️ چپ', `menu:item:left:${row}:${col}`));
@@ -341,6 +346,19 @@ export const buildMenuItemEditKeyboard = (row: number, col: number, button: any,
     Markup.button.callback('✏️ تغییر نام', `menu:item:rename:${row}:${col}`),
   ]);
   return Markup.inlineKeyboard(rows);
+};
+
+export const buildMenuRowPickerKeyboard = (currentRow: number, layout: any[][]) => {
+  const rows: any[] = layout.map((rowButtons, idx) => {
+    const preview = rowButtons
+      .map((b: any) => b?.text || b?.label || b?.title || b?.ref || '؟')
+      .join('، ');
+    const label = buildSafeTelegramButton(`سطر ${idx + 1}: ${preview}`, 40);
+    const btn = Markup.button.callback(label, `menu:item:setrow:${idx}`);
+    return idx === currentRow ? ({ ...btn, style: 'success' } as typeof btn) : btn;
+  });
+  rows.push(Markup.button.callback('❌ انصراف', 'menu:item:changerow:cancel'));
+  return Markup.inlineKeyboard(rows.map(r => [r]));
 };
 
 // ─── Multi-Message Editor Keyboards ────────────────────────

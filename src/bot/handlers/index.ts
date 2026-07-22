@@ -44,6 +44,7 @@ import {
 import {
   buildMenuEditorReplyKeyboard,
   buildMenuItemEditKeyboard,
+  buildMenuRowPickerKeyboard,
   buildCancelOnlyReplyKeyboard,
 } from '../keyboards/post-keyboards';
 import { clearAllPostStates } from './post-handlers';
@@ -574,6 +575,62 @@ export function registerHandlers(bot: Telegraf<Context>) {
       settingsService.notifySessionChanged(ctx.from.id, 'toggle');
       await updateAfterItemAction(ctx, pos.button.id);
     }
+  });
+
+  // ─── Menu Item: Change Row — Open Picker ───────────────
+  bot.action(/^menu:item:changerow:(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const layout = settingsService.getEditableLayout(ctx.from.id);
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (!pos) return;
+    if (layout.length < 2) return;
+    const btnText = pos.button?.text || pos.button?.label || pos.button?.title || pos.button?.ref || 'دکمه';
+    await ctx.editMessageText(
+      `🔀 دکمهٔ «${btnText}» به کدام سطر منتقل شود؟`,
+      buildMenuRowPickerKeyboard(pos.row, layout),
+    );
+  });
+
+  // ─── Menu Item: Change Row — Execute ───────────────────
+  bot.action(/^menu:item:setrow:(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+
+    const layout = settingsService.getEditableLayout(ctx.from.id);
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (!pos) return;
+
+    const targetRowIndex = Number(ctx.match[1]);
+    if (!Number.isInteger(targetRowIndex) || targetRowIndex < 0 || targetRowIndex >= layout.length) {
+      return ctx.answerCbQuery('این سطر دیگر معتبر نیست، لطفاً دوباره امتحان کنید.', { show_alert: true });
+    }
+
+    const button = pos.button;
+    const btnId = button.id;
+
+    layout[pos.row].splice(pos.col, 1);
+    layout[targetRowIndex].push(button);
+
+    const cleaned = layout.filter((row: any[]) => row.length > 0);
+
+    await settingsService.saveMenuLayout(cleaned);
+    settingsService.notifySessionChanged(ctx.from.id, 'changerow');
+    await updateAfterItemAction(ctx, btnId);
+  });
+
+  // ─── Menu Item: Change Row — Cancel ────────────────────
+  bot.action('menu:item:changerow:cancel', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) return;
+    const layout = settingsService.getEditableLayout(ctx.from.id);
+    const pos = resolveSelectedPosition(ctx, layout);
+    if (!pos) return;
+    const btnText = pos.button?.text || pos.button?.label || pos.button?.title || pos.button?.ref || 'دکمه';
+    await ctx.editMessageText(`ویرایش دکمه: ${btnText}`, buildMenuItemEditKeyboard(pos.row, pos.col, pos.button, layout));
   });
 
   // ─── Menu Item: Rename ─────────────────────────────────
