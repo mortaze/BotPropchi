@@ -2041,7 +2041,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       const colorText = btn.style && btn.style !== 'default' ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
       await safeEdit(ctx,
         `🔧 شما در حالت تنظیمات پیام هستید.\n❇️ حالت دکمه را انتخاب کنید.\n\nℹ️ مقدار فعلی:\n${currentType}\n${btn.text}: ${btn.value || ''}\n${colorText}`,
-        buildEditButtonTypeKeyboard(postId, row, col, btn.style));
+        buildEditButtonTypeKeyboard(postId, row, col, btn.style, btn.type, btn.isReplyKeyboard));
       return;
     }
 
@@ -2141,6 +2141,38 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_row'), row);
     cache.setPermanent(pendingKey(ctx.from.id, 'editor_col'), col);
     await ctx.reply('🎨 رنگ دکمه را انتخاب کنید:', buildButtonColorSelectionKeyboard());
+  });
+
+  // ─── Handler: Toggle Reply Keyboard for button ─────────────
+  bot.action(/^pbedit:replykb:(\d+):(\d+):(\d+)$/, async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await requirePostAdmin(ctx);
+    if (!isPostAdmin(admin)) return;
+    const postId = parseInt(ctx.match[1]);
+    if (!requireButtonEditSession(ctx)) return;
+    const row = parseInt(ctx.match[2]);
+    const col = parseInt(ctx.match[3]);
+    const messageIdx = cache.get<number>(pendingKey(ctx.from.id, 'editing_message_idx')) ?? 0;
+    const post = await postService.findById(postId);
+    if (!post) return safeEdit(ctx, '❌ پست یافت نشد.');
+    const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
+    const btn = buttons[row]?.[col];
+    if (!btn) return safeEdit(ctx, '❌ دکمه یافت نشد.');
+    if (btn.type !== 'COMMAND' && btn.type !== 'POPUP') {
+      return ctx.answerCbQuery('⛔ فقط دکمه‌های دستور یا POP-UP می‌توانند Reply Keyboard شوند.', { show_alert: true });
+    }
+    // Store new value in a separate variable — use this for both the status text and
+    // buildEditButtonTypeKeyboard call (NOT btn.isReplyKeyboard which is stale after this line)
+    const newIsReplyKeyboard = !btn.isReplyKeyboard;
+    // Spread — same pattern as color change (line ~1904 in post-handlers.ts):
+    buttons[row][col] = { ...btn, isReplyKeyboard: newIsReplyKeyboard };
+    await postService.update(postId, { buttons: setMessageButtons((post as any).buttons, messageIdx, buttons) } as any);
+    const currentType = btn.type === 'POPUP' ? '🪟 POP-UP' : '⌨️ دستور';
+    const colorText = btn.style && btn.style !== 'default' ? `🎨 ${btn.style}` : '⚪ بدون رنگ';
+    const kbText = newIsReplyKeyboard ? '⌨️ Reply Keyboard: روشن' : '📥 Reply Keyboard: خاموش';
+    await safeEdit(ctx,
+      `🔧 شما در حالت تنظیمات پیام هستید.\n❇️ حالت دکمه را انتخاب کنید.\n\nℹ️ مقدار فعلی:\n${currentType}\n${btn.text}: ${btn.value || ''}\n${colorText}\n${kbText}`,
+      buildEditButtonTypeKeyboard(postId, row, col, btn.style, btn.type, newIsReplyKeyboard));
   });
 
   // ─── Handler: Add new row (from pbedit:addrow inline button) ──

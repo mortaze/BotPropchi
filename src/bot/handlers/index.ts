@@ -127,12 +127,7 @@ function formatDuration(ms: number) {
 }
 
 async function adminReplyOptions(telegramId?: number) {
-  const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
-  const features = await settingsService.getFeatureMap();
-  // Resolve live post titles from DB (single source of truth)
-  const menuLayout = await settingsService.getResolvedMenuLayout(true).catch(() => []);
-  const displayMode = await settingsService.getMenuDisplayMode().catch(() => 'always_open' as const);
-  return buildMainMenuKeyboard(Boolean(admin), features, menuLayout, displayMode);
+  return settingsService.getResolvedMainMenuKeyboard(telegramId);
 }
 
 

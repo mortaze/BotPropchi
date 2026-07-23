@@ -529,7 +529,7 @@ function buildButtonEditorInlineKeyboard(
         const isConfirmDelete = mode === 'delete' && pendingDelete && pendingDelete.row === r && pendingDelete.col === c;
         const icon = isSelected ? '{✅}' : isConfirmDelete ? '{❌}' : mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : mode === 'move' ? '{🔀}' : '{＋}';
         rowButtons.push(
-          Markup.button.callback(`${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
+          Markup.button.callback(`${btn.isReplyKeyboard ? '⌨️' : ''}${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
         );
       }
       if (rowButtons.length > 0) rows.push(rowButtons);
@@ -552,17 +552,27 @@ function buildButtonEditorInlineKeyboard(
 }
 
 // ─── Edit button type selection inline keyboard ────────────
-export const buildEditButtonTypeKeyboard = (postId: number, row: number, col: number, currentColor?: string) => {
+export const buildEditButtonTypeKeyboard = (
+  postId: number, row: number, col: number,
+  currentColor?: string,
+  currentType?: string,
+  isReplyKeyboard?: boolean,
+) => {
   const colorLabel = currentColor
     ? `🎨 رنگ (${colorIndicator(currentColor)})`
     : '🎨 رنگ';
-  return Markup.inlineKeyboard([
+  const rows = [
     [Markup.button.callback('🔗 لینک یا اشتراک', `pbedit:type:url:${postId}:${row}:${col}`)],
     [Markup.button.callback('🪟 POP-UP', `pbedit:type:popup:${postId}:${row}:${col}`)],
     [Markup.button.callback('⌨️ دستور', `pbedit:type:command:${postId}:${row}:${col}`)],
     [Markup.button.callback(colorLabel, `pbedit:color:${postId}:${row}:${col}`)],
-    [Markup.button.callback('❌ لغو', `pbedit:type:cancel:${postId}`)],
-  ]);
+  ];
+  if (currentType === 'COMMAND' || currentType === 'POPUP') {
+    const kbLabel = isReplyKeyboard ? '↩️ بازگشت به Inline' : '⌨️ نمایش در Reply Keyboard';
+    rows.push([Markup.button.callback(kbLabel, `pbedit:replykb:${postId}:${row}:${col}`)]);
+  }
+  rows.push([Markup.button.callback('❌ لغو', `pbedit:type:cancel:${postId}`)]);
+  return Markup.inlineKeyboard(rows);
 };
 
 // ─── Reply Keyboard for Move Mode (directional arrows) ─────

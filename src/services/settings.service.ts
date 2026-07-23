@@ -4,7 +4,8 @@ import { BRAND_NAME } from '../constants';
 import { logger } from '../utils/logger';
 import { eventBus, Events } from '../utils/events';
 import { sanitizeTelegramText, validateUnicode, sanitizeJsonStrings, validateTelegramButton } from '../utils/unicode';
-
+import { botAdminService } from './bot-admin.service';
+import { buildMainMenuKeyboard } from '../bot/keyboards';
 
 
 export const DEFAULT_FEATURES = [
@@ -742,6 +743,14 @@ class SettingsService {
   async setMenuDisplayMode(mode: 'always_open' | 'toggle_allowed'): Promise<void> {
     await this.setSetting('menu_display_mode', mode);
     logger.info(`[MenuDisplay] Display mode set to: ${mode}`);
+  }
+
+  async getResolvedMainMenuKeyboard(telegramId?: number) {
+    const admin = telegramId ? await botAdminService.getActive(telegramId).catch(() => null) : null;
+    const features = await this.getFeatureMap();
+    const menuLayout = await this.getResolvedMenuLayout(true).catch(() => []);
+    const displayMode = await this.getMenuDisplayMode().catch(() => 'always_open' as const);
+    return buildMainMenuKeyboard(Boolean(admin), features, menuLayout, displayMode);
   }
 
 }

@@ -71,7 +71,8 @@ callback trace logger (BEFORE all middleware)
 → registerScheduledMessageHandlers(bot)
 → registerAutoReplyHandlers(bot)
 → registerNewsHandlers(bot)
-→ forum topic discovery handler (group/supergroup messages)
+→ anonymous message fallback (bot.on('message') — sends anonymous post to private non-admin users with no active state)
+→ forum topic discovery handler (bot.on('message') — group/supergroup messages only)
 → bot.catch (global error handler — MUST answerCbQuery)
 → catch-all [UNMATCHED_CALLBACK] (log + answerCbQuery)
 ```
@@ -89,12 +90,12 @@ my_chat_member / new_chat_members
 → membership check
 → ticket handlers
 → post-handlers (via registerPostHandlers())
-→ anonymous message fallback (LAST handler)
 ```
 
 Implications:
 - Dynamic Post Button Routing only skips when `post_mgmt_mode`, `menu:edit_mode`, or `post:editor:{userId}:active` is set
 - `bot.on('text')` in post-handlers has 12+ early returns consuming messages without `next()` — any `bot.hears` after it is unreachable
+- Anonymous message fallback is OUTSIDE `registerHandlers()` — it's a standalone `bot.on('message')` in `src/index.ts` that runs after all registered handlers. It checks for admin status, 8 distinct cache state keys, and falls back to `postService.getOrCreateAnonymousPost()`
 - Three large handler files: `handlers/index.ts` (~2000 lines), `post-handlers.ts` (~3700 lines), `scheduled-message.handlers.ts`
 
 ## Callback Rules (Production Bugs)

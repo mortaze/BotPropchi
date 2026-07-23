@@ -30,6 +30,7 @@ import { forumTopicService } from './services/forum-topic.service';
 import { registerScheduledMessageHandlers } from './bot/handlers/scheduled-message.handlers';
 import { registerAutoReplyHandlers } from './bot/handlers/auto-reply.handlers';
 import { registerNewsHandlers } from './bot/handlers/news.handlers';
+import { registerPostReplyKeyboardHandlers } from './bot/handlers/post-reply-keyboard.handlers';
 import { autoReplyService } from './services/auto-reply.service';
 import { sendPostToUser } from './bot/shared';
 import { cache } from './utils/cache';
@@ -137,6 +138,7 @@ async function bootstrap() {
   registerScheduledMessageHandlers(bot);
   registerAutoReplyHandlers(bot);
   registerNewsHandlers(bot);
+  registerPostReplyKeyboardHandlers(bot);
 
   // ─── Anonymous Message Fallback (LAST handler) ──────────
   // When a regular user sends any unrecognized message/command in private chat,

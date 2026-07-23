@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { normalizeEntities, normalizeTelegramEntities, telegramLength, isAtomicEntity, normalizeFinalEntities } from '../shared/message-format/normalizer';
 import { buildTelegramKeyboard, MEDIA_SENDERS, TelegramPayload } from './renderer';
 import { postService } from './post.service';
+import { syncPostReplyKeyboard } from './post-reply-keyboard.service';
 
 export type TelegramEntity = { type: string; offset: number; length: number; [key: string]: any };
 
@@ -237,7 +238,13 @@ async function getPostMessageRows(postId: number): Promise<any[]> {
 
 export function buildTelegramPayload(msg: NormalizedMessage): TelegramPayload {
   const buttons = Array.isArray(msg.replyMarkup) ? msg.replyMarkup : msg.replyMarkup?.inline_keyboard;
-  const reply_markup = buttons?.length ? { inline_keyboard: buildTelegramKeyboard(cloneJson(buttons), msg.postId) } : undefined;
+  const inlineOnlyButtons = (buttons || []).map((row: any[]) => {
+    const arr = Array.isArray(row) ? row : [row];
+    return arr.filter((b: any) => !b?.isReplyKeyboard);
+  });
+  const reply_markup = inlineOnlyButtons.some((r: any[]) => r.length > 0)
+    ? { inline_keyboard: buildTelegramKeyboard(cloneJson(inlineOnlyButtons), msg.postId) }
+    : undefined;
 
   if (msg.messageType === 'forward') {
     throw new Error(`[ForwardBlock] postId=${msg.postId} order=${msg.order} forward messages must be sent via forwardMessage — buildTelegramPayload must not produce a payload for forward type`);
@@ -672,6 +679,7 @@ export async function sendPostToChat(
       }
     }
   }
+  await syncPostReplyKeyboard(ctx, postId, validated);
 }
 
 export const postMessageService = {
