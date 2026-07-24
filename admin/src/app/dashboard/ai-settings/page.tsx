@@ -229,7 +229,7 @@ export default function AiSettingsPage() {
                 <Input
                   placeholder="جستجوی مدل (مثلاً gpt-4)..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e: any) => setSearchQuery(e.target.value)}
                   dir="ltr"
                 />
               </div>
