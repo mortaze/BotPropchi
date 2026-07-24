@@ -776,3 +776,9 @@ export const autoRepliesApi = {
     return data;
   },
 };
+
+export const aiSettingsApi = {
+  get: () => api.get<{ data: any }>("/api/ai-settings").then((r) => r.data.data),
+  update: (payload: any) => api.post<{ success: boolean }>("/api/ai-settings", payload).then((r) => r.data),
+  getModels: () => api.get<{ data: any[] }>("/api/ai-settings/models").then((r) => r.data.data),
+};
