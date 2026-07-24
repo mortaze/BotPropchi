@@ -24,11 +24,11 @@ aiSettingsRouter.get('/', requireOwner, async (_req, res) => {
 
 // POST /api/ai-settings -> Update settings
 const updateSchema = z.object({
-  openrouterApiKey: z.string().optional(),
-  selectedModel: z.string().optional(),
-  googleServiceAccountEmail: z.string().optional(),
-  googlePrivateKey: z.string().optional(),
-  googleSheetId: z.string().optional(),
+  openrouterApiKey: z.string().nullable().optional(),
+  selectedModel: z.string().nullable().optional(),
+  googleServiceAccountEmail: z.string().nullable().optional(),
+  googlePrivateKey: z.string().nullable().optional(),
+  googleSheetId: z.string().nullable().optional(),
 });
 
 aiSettingsRouter.post('/', requireOwner, async (req, res) => {

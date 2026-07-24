@@ -40,8 +40,20 @@ export default function AiSettingsPage() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSave = () => {
-    update.mutate(form);
+  const handleSaveOpenRouter = () => {
+    update.mutate({ openrouterApiKey: form.openrouterApiKey });
+  };
+
+  const handleSaveGoogle = () => {
+    update.mutate({
+      googleSheetId: form.googleSheetId,
+      googleServiceAccountEmail: form.googleServiceAccountEmail,
+      googlePrivateKey: form.googlePrivateKey,
+    });
+  };
+
+  const handleSaveModel = () => {
+    update.mutate({ selectedModel: form.selectedModel });
   };
 
   const loadModels = async () => {
@@ -99,7 +111,7 @@ export default function AiSettingsPage() {
               </p>
             </div>
 
-            <Button onClick={handleSave} loading={update.isPending} className="w-full">
+            <Button onClick={handleSaveOpenRouter} loading={update.isPending} className="w-full">
               <Save className="h-4 w-4 ml-2" />
               ذخیره تنظیمات
             </Button>
@@ -166,7 +178,7 @@ export default function AiSettingsPage() {
               </p>
             </div>
             
-            <Button onClick={handleSave} loading={update.isPending} className="w-full">
+            <Button onClick={handleSaveGoogle} loading={update.isPending} className="w-full">
               <Save className="h-4 w-4 ml-2" />
               ذخیره تنظیمات منبع داده
             </Button>
@@ -249,7 +261,7 @@ export default function AiSettingsPage() {
           
           {models && models.length > 0 && (
             <div className="mt-6">
-              <Button onClick={handleSave} loading={update.isPending}>
+              <Button onClick={handleSaveModel} loading={update.isPending}>
                 <Save className="h-4 w-4 ml-2" />
                 تایید مدل انتخاب شده
               </Button>
