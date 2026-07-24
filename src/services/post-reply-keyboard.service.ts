@@ -38,11 +38,12 @@ export function findReplyKeyboardButtonByText(messages: any[], text: string): an
 
 export async function syncPostReplyKeyboard(ctx: any, postId: number, messages: any[]): Promise<void> {
   const userId = ctx.from.id;
-  const cacheKey = `postReplyKb:lastPostId:${userId}`;
+  const stateKey = `postReplyKb:lastState:${userId}`;
+  const postKey = `postReplyKb:lastPostId:${userId}`;
   const rows = buildReplyKeyboardFromMessages(messages);
   const hasCustom = rows.length > 0;
-  const newState = hasCustom ? String(postId) : 'MAIN_MENU';
-  const prevState = cache.get<string>(cacheKey) ?? 'MAIN_MENU';
+  const newState = hasCustom ? JSON.stringify(rows) : 'MAIN_MENU';
+  const prevState = cache.get<string>(stateKey) ?? 'MAIN_MENU';
   logger.info(`[ReplyKbSync][DIAG] userId=${userId} postId=${postId} hasCustom=${hasCustom} newState=${newState} prevState=${prevState} willSend=${newState !== prevState}`);
   if (newState === prevState) return;
 
@@ -52,5 +53,6 @@ export async function syncPostReplyKeyboard(ctx: any, postId: number, messages: 
     const mainMenuKb = await settingsService.getResolvedMainMenuKeyboard(userId);
     await ctx.reply('↩️ بازگشت به منوی اصلی:', mainMenuKb);
   }
-  cache.setPermanent(cacheKey, newState);
+  cache.setPermanent(stateKey, newState);
+  cache.setPermanent(postKey, String(postId));
 }

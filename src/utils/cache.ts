@@ -27,7 +27,7 @@ class CacheService {
   }
 
   setPermanent<T>(key: string, value: T): void {
-    this.cache.set(key, value, 0);
+    this.cache.set(key, value, 86400 * 365);
   }
 
   del(key: string): void {
