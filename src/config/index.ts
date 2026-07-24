@@ -57,6 +57,10 @@ export const config = {
     requiredChannels: process.env.MEMBERSHIP_REQUIRED_CHANNELS || '',
   },
 
+  adminPanel: {
+    url: process.env.ADMIN_PANEL_URL || process.env.FRONTEND_URL || '',
+  },
+
   wordpress: {
     apiUrl: process.env.WORDPRESS_API_URL || '',
     botApiKey: process.env.WORDPRESS_BOT_API_KEY || '',

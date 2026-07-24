@@ -12,6 +12,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // صفحه SSO — همیشه اجازه دسترسی (توکن SSO جداگانه بررسی می‌شود)
+  if (pathname === "/sso") {
+    return NextResponse.next();
+  }
+
   // صفحات داشبورد — اگر لاگین نکرده بود، ریدایرکت به لاگین
   if (pathname.startsWith("/dashboard")) {
     if (!token) return NextResponse.redirect(new URL("/login", request.url));
@@ -28,5 +33,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/dashboard/:path*"],
+  matcher: ["/login", "/sso", "/dashboard/:path*"],
 };

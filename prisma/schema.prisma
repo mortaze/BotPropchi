@@ -492,6 +492,20 @@ model BotAdmin {
   @@map("bot_admins")
 }
 
+model AdminSsoToken {
+  id         Int      @id @default(autoincrement())
+  token      String   @unique
+  telegramId BigInt
+  adminId    Int
+  expiresAt  DateTime
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([token])
+  @@index([expiresAt])
+  @@map("admin_sso_tokens")
+}
+
 model MiniAppDebugLog {
   id         Int      @id @default(autoincrement())
   telegramId BigInt?

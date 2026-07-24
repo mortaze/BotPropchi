@@ -28,6 +28,7 @@ import { setTicketBotInstance } from '../ticket-notification.service';
 import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../services/post-renderer.service';
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { automationService } from '../../services/automation.service';
+import { ssoService } from '../../services/sso.service';
 import { safeEdit, sendPostToUser, showPopup } from '../shared';
 import {
   lotteryHistoryKeyboard,
@@ -310,6 +311,62 @@ export function registerHandlers(bot: Telegraf<Context>) {
     clearAllPostStates(ctx.from.id);
     const canBroadcast = admin.role === BotAdminRole.OWNER || admin.role === BotAdminRole.ADMIN;
     await ctx.reply('⚙️ پنل مدیریت ربات', buildBotAdminPanelKeyboard(canBroadcast));
+
+    // نمایش دکمه ورود به سایت ادمین (فقط اگر URL تنظیم شده باشد)
+    if (config.adminPanel.url) {
+      await ctx.reply(
+        '🌐 برای ورود مستقیم به سایت پنل ادمین دکمه زیر را بزنید:',
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔐 ورود به سایت ادمین', 'sso:login')],
+        ])
+      );
+    }
+  });
+
+  // ─── SSO: ورود مستقیم به سایت ادمین ─────────────────────
+  bot.action('sso:login', async (ctx: any) => {
+    await ctx.answerCbQuery();
+    const admin = await botAdminService.getActive(ctx.from.id);
+    if (!admin) {
+      await ctx.answerCbQuery('❌ شما ادمین نیستید', { show_alert: true }).catch(() => {});
+      return;
+    }
+
+    if (!config.adminPanel.url) {
+      await ctx.reply('❌ آدرس پنل ادمین تنظیم نشده است.');
+      return;
+    }
+
+    try {
+      // پیدا کردن یا ایجاد ادمین وب‌پنل متناظر
+      const panelAdmin = await ssoService.findOrCreatePanelAdmin({
+        telegramId: admin.telegramId,
+        username: admin.username,
+        firstName: admin.firstName,
+        lastName: admin.lastName,
+        role: admin.role,
+      });
+
+      if (!panelAdmin) {
+        await ctx.reply('❌ خطا در ایجاد دسترسی پنل ادمین.');
+        return;
+      }
+
+      // تولید توکن SSO
+      const token = await ssoService.generateToken(admin.telegramId, panelAdmin.id);
+      const ssoUrl = `${config.adminPanel.url.replace(/\/$/, '')}/sso?token=${token}`;
+
+      await ctx.editMessageText(
+        '🔐 لینک ورود امن به پنل ادمین\n\n⚠️ این لینک فقط ۵ دقیقه اعتبار دارد و یک‌بار مصرف است.',
+        Markup.inlineKeyboard([
+          [Markup.button.url('🌐 ورود به پنل ادمین', ssoUrl)],
+          [Markup.button.callback('🔄 لینک جدید', 'sso:login')],
+        ])
+      );
+    } catch (err) {
+      logger.error('[SSO] Error generating token:', err);
+      await ctx.reply('❌ خطا در تولید لینک ورود.');
+    }
   });
 
   // ─── Admin: Statistics (from new user notification) ─────────────

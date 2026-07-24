@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import { prisma } from '../../prisma/client';
 import { config } from '../../config';
+import { ssoService } from '../../services/sso.service';
 
 export const authRouter = Router();
 
@@ -206,3 +207,59 @@ authRouter.get('/me', async (req: Request, res: Response) => {
     });
   }
 });
+
+// ─────────────────────────────────────────────
+// POST /api/auth/sso/exchange
+// تبادل توکن SSO با JWT
+// ─────────────────────────────────────────────
+
+authRouter.post(
+  '/sso/exchange',
+  async (req: Request, res: Response) => {
+    try {
+      const { token } = req.body;
+
+      if (!token || typeof token !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'توکن SSO ارسال نشده',
+        });
+      }
+
+      const result = await ssoService.exchangeToken(token);
+
+      if (!result) {
+        return res.status(401).json({
+          success: false,
+          error: 'توکن SSO نامعتبر، منقضی یا قبلاً استفاده شده',
+        });
+      }
+
+      // ساخت JWT (همان فرمت login)
+      const jwtToken = jwt.sign(
+        {
+          adminId: result.adminId,
+          username: result.username,
+          role: result.role,
+        },
+        config.api.jwtSecret,
+        {
+          expiresIn: config.api.jwtExpiresIn,
+        } as jwt.SignOptions
+      );
+
+      return res.status(200).json({
+        success: true,
+        token: jwtToken,
+        admin: result.admin,
+      });
+    } catch (error) {
+      console.error('SSO EXCHANGE ERROR:', error);
+
+      return res.status(500).json({
+        success: false,
+        error: 'خطای داخلی سرور',
+      });
+    }
+  }
+);
