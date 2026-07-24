@@ -78,7 +78,7 @@ export const postRepository = {
     search?: string;
   }) {
     const page = Math.max(1, params.page || 1);
-    const limit = Math.min(50, Math.max(1, params.limit || 10));
+    const limit = Math.max(1, params.limit || 10);
     const skip = (page - 1) * limit;
     const where: Prisma.PostWhereInput = {
       ...(params.status ? { status: params.status } : {}),

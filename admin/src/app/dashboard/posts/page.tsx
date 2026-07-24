@@ -35,7 +35,7 @@ export default function PostsPage() {
   };
   const query = useQuery({
     queryKey: ["posts", page, status, search],
-    queryFn: () => postsApi.getAll({ page, limit: 20, status: status || undefined, search: search || undefined }),
+    queryFn: () => postsApi.getAll({ page, limit: 99999, status: status || undefined, search: search || undefined }),
     staleTime: 0,
     retry: 2,
   });
