@@ -394,6 +394,7 @@ export default function MenuPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="text-xs">نسخه {version}</Badge>
+          <Badge variant="info" className="text-xs">{layout.flat().length} آیتم</Badge>
           <Button variant="outline" size="sm" className="h-11 min-w-[44px]" onClick={() => rollbackMutation.mutate()} loading={rollbackMutation.isPending}>
             <RotateCcw className="h-4 w-4" />
             <span className="hidden sm:inline">بازگشت</span>

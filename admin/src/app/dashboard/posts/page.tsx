@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Eye, Plus, Search, Trash2, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { Badge, Button, Card, CardContent, CardHeader, EmptyState, Pagination, TableRowSkeleton } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardHeader, EmptyState, TableRowSkeleton } from "@/components/ui";
 import { getApiError, postsApi } from "@/services/api";
 import { formatNumber, safeDateFormat } from "@/lib/utils";
 import type { PostStatus } from "@/types";
@@ -20,7 +20,6 @@ const statusConfig: Record<PostStatus, { variant: "success" | "warning" | "info"
 };
 
 export default function PostsPage() {
-  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const qc = useQueryClient();
@@ -34,8 +33,8 @@ export default function PostsPage() {
     event.stopPropagation();
   };
   const query = useQuery({
-    queryKey: ["posts", page, status, search],
-    queryFn: () => postsApi.getAll({ page, limit: 99999, status: status || undefined, search: search || undefined }),
+    queryKey: ["posts", status, search],
+    queryFn: () => postsApi.getAllComplete({ status: status || undefined, search: search || undefined }),
     staleTime: 0,
     retry: 2,
   });
@@ -70,9 +69,9 @@ export default function PostsPage() {
           <div className="flex flex-wrap gap-3">
             <div className="relative min-w-[200px] flex-1">
               <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input className="input w-full pr-10" placeholder="جستجو در پست‌ها..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+              <input className="input w-full pr-10" placeholder="جستجو در پست‌ها..." value={search} onChange={(e) => { setSearch(e.target.value); }} />
             </div>
-            <select className="input w-44" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+            <select className="input w-44" value={status} onChange={(e) => { setStatus(e.target.value); }}>
               <option value="">همه وضعیت‌ها</option>
               <option value="DRAFT">پیش‌نویس</option>
               <option value="PUBLISHED">منتشر شده</option>
@@ -141,7 +140,6 @@ export default function PostsPage() {
           </table>
           {!query.isLoading && !(query.data?.items?.length ?? 0) && <EmptyState title="پستی یافت نشد" />}
         </CardContent>
-        <Pagination page={page} pages={query.data?.pages ?? 1} onChange={setPage} />
       </Card>
     </div>
   );

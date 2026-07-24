@@ -27,7 +27,7 @@ const menuButtonSchema = z.object({
   }
 });
 
-const layoutSchema = z.array(z.array(menuButtonSchema).max(8)).max(20);
+const layoutSchema = z.array(z.array(menuButtonSchema).max(8));
 
 menuRouter.get('/layout', async (_req, res) => {
   // Return resolved layout with current post titles from DB (admin mode: show all entries)
@@ -73,7 +73,7 @@ menuRouter.post('/delete-button', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
   try {
     await settingsService.removeButtonFromLayout(parsed.data.buttonId);
-    const layout = await settingsService.getMenuLayout();
+    const layout = await settingsService.getResolvedMenuLayout(false);
     const version = await settingsService.getSetting('menu_layout_version') || 0;
     res.json({ success: true, message: 'دکمه حذف شد', layout, version: Number(version) });
   } catch (err) {
@@ -87,7 +87,7 @@ menuRouter.post('/add-post', async (req, res) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
   await settingsService.addPostToMenu(parsed.data.postId, parsed.data.title);
-  const layout = await settingsService.getMenuLayout();
+  const layout = await settingsService.getResolvedMenuLayout(false);
   res.json({ success: true, layout });
 });
 
@@ -96,7 +96,7 @@ menuRouter.post('/remove-post', async (req, res) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.flatten() });
   await settingsService.removePostFromMenu(parsed.data.postId);
-  const layout = await settingsService.getMenuLayout();
+  const layout = await settingsService.getResolvedMenuLayout(false);
   res.json({ success: true, layout });
 });
 

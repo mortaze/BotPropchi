@@ -549,6 +549,19 @@ export const postsApi = {
     const { data } = await api.get("/api/posts", { params: { page: params.page ?? 1, limit: params.limit ?? 20, status: params.status, search: params.search } });
     return data;
   },
+  async getAllComplete(params: { status?: string; search?: string } = {}): Promise<{ items: PostItem[]; total: number; pages: number }> {
+    const first = await this.getAll({ page: 1, limit: 500, status: params.status, search: params.search });
+    if (first.pages <= 1) return first;
+
+    const rest = await Promise.all(
+      Array.from({ length: first.pages - 1 }, (_, index) =>
+        this.getAll({ page: index + 2, limit: 500, status: params.status, search: params.search })
+      )
+    );
+
+    const items = [first.items, ...rest.map((page) => page.items)].flat();
+    return { items, total: first.total, pages: 1 };
+  },
   async getById(id: number): Promise<PostItem> {
     const { data } = await api.get(`/api/posts/${id}`);
     return data;
