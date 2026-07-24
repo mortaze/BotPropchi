@@ -17,6 +17,7 @@ import { logger } from "../utils/logger";
 import { BRAND_NAME } from "../constants";
 
 import { authRouter } from "./routes/auth.routes";
+import { aiSettingsRouter } from "./routes/ai-settings.routes";
 import { analyticsRouter } from "./routes/analytics.routes";
 import { botAdminRouter } from "./routes/bot-admin.routes";
 import { systemLogRouter } from "./routes/system-log.routes";
@@ -206,6 +207,7 @@ export function startAdminApi(bot?: Telegraf) {
   app.use("/api/search", authMiddleware, searchRouter);
   app.use("/api/settings", authMiddleware, settingsRouter);
   app.use("/api/admin-users", authMiddleware, requireOwner, adminUserRouter);
+  app.use("/api/ai-settings", authMiddleware, aiSettingsRouter);
   app.use("/api/system-logs", authMiddleware, systemLogRouter);
   app.use("/api/mini-app-logs", authMiddleware, miniAppLogRouter);
 

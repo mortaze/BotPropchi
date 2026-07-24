@@ -1476,3 +1476,16 @@ model NewsCalendarEntry {
   @@index([date])
   @@map("news_calendar_entries")
 }
+
+// ─── AI Assistant Settings ───────────────────────────────────
+model AiSettings {
+  id                        Int      @id @default(autoincrement())
+  openrouterApiKey          String?
+  selectedModel             String?
+  googleServiceAccountEmail String?
+  googlePrivateKey          String?
+  googleSheetId             String?
+  updatedAt                 DateTime @updatedAt
+
+  @@map("ai_settings")
+}

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { BRAND_NAME } from "@/config/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X, Zap, Clock, BarChart2, History } from "lucide-react";
+import { Bot, BarChart3, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X, Zap, Clock, BarChart2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
 
@@ -63,6 +63,7 @@ const menuItems: MenuItem[] = [
     children: [
       { key: "bot-admins", label: "ادمین‌های ربات", href: "/dashboard/bot-admins", icon: UserCog },
       { key: "admin-users", label: "مدیریت ادمین‌ها", href: "/dashboard/admin-users", icon: UserCog },
+      { key: "ai-settings", label: "هوش مصنوعی", href: "/dashboard/ai-settings", icon: Bot },
       { key: "system-integrity", label: "سلامت سیستم", href: "/dashboard/system-integrity", icon: Shield },
       { key: "broadcast-diagnostics", label: "آنالیز پیام همگانی", href: "/dashboard/broadcast-diagnostics", icon: BarChart3 },
       { key: "broadcast-rca", label: "Root Cause Analysis", href: "/dashboard/broadcast-diagnostics/rca", icon: BarChart3 },
