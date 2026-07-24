@@ -1964,7 +1964,7 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
       if (buttons[row] && buttons[row][col]) {
         const newType = state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL';
         const prevBtn = buttons[row][col];
-        const preservedIsReplyKeyboard = (newType === 'COMMAND' || newType === 'POPUP') ? prevBtn.isReplyKeyboard : false;
+        const preservedIsReplyKeyboard = newType === 'COMMAND' ? prevBtn.isReplyKeyboard : false;
         buttons[row][col] = { text: title, type: newType, value, style: prevBtn.style, isReplyKeyboard: preservedIsReplyKeyboard };
       }
     }
@@ -2161,8 +2161,8 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     const buttons: any[][] = JSON.parse(JSON.stringify(extractButtonsForMessage(post, messageIdx)));
     const btn = buttons[row]?.[col];
     if (!btn) return safeEdit(ctx, '❌ دکمه یافت نشد.');
-    if (btn.type !== 'COMMAND' && btn.type !== 'POPUP') {
-      return ctx.answerCbQuery('⛔ فقط دکمه‌های دستور یا POP-UP می‌توانند Reply Keyboard شوند.', { show_alert: true });
+    if (btn.type !== 'COMMAND') {
+      return ctx.answerCbQuery('⛔ فقط دکمه‌های دستور می‌توانند Reply Keyboard شوند.', { show_alert: true });
     }
     // Store new value in a separate variable — use this for both the status text and
     // buildEditButtonTypeKeyboard call (NOT btn.isReplyKeyboard which is stale after this line)

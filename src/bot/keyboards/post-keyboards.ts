@@ -528,8 +528,9 @@ function buildButtonEditorInlineKeyboard(
         const isSelected = mode === 'move' && selectedPos && selectedPos.row === r && selectedPos.col === c;
         const isConfirmDelete = mode === 'delete' && pendingDelete && pendingDelete.row === r && pendingDelete.col === c;
         const icon = isSelected ? '{✅}' : isConfirmDelete ? '{❌}' : mode === 'edit' ? '{✏️}' : mode === 'delete' ? '{✖}' : mode === 'move' ? '{🔀}' : '{＋}';
+        const showReplyKbIndicator = btn.isReplyKeyboard && btn.type === 'COMMAND';
         rowButtons.push(
-          Markup.button.callback(`${btn.isReplyKeyboard ? '⌨️' : ''}${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
+          Markup.button.callback(`${showReplyKbIndicator ? '⌨️' : ''}${colorIndicator(btn.style)}${icon} ${safe}`, `pbedit:click:${postId}:${r}:${c}`),
         );
       }
       if (rowButtons.length > 0) rows.push(rowButtons);
@@ -567,7 +568,7 @@ export const buildEditButtonTypeKeyboard = (
     [Markup.button.callback('⌨️ دستور', `pbedit:type:command:${postId}:${row}:${col}`)],
     [Markup.button.callback(colorLabel, `pbedit:color:${postId}:${row}:${col}`)],
   ];
-  if (currentType === 'COMMAND' || currentType === 'POPUP') {
+  if (currentType === 'COMMAND') {
     const kbLabel = isReplyKeyboard ? '↩️ بازگشت به Inline' : '⌨️ نمایش در Reply Keyboard';
     rows.push([Markup.button.callback(kbLabel, `pbedit:replykb:${postId}:${row}:${col}`)]);
   }
