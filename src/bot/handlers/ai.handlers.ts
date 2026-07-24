@@ -60,12 +60,17 @@ export function registerAiHandlers(bot: any) {
         await sendComparisonTable(ctx.chat?.id.toString() || '', result.comparison_table);
       }
 
+      const propFirmsData = await import('../../services/ai-data.service').then(m => m.aiDataService.getPropFirmsData());
+      
       for (const firmId of result.matched_firm_ids) {
-        const post = await prisma.post.findFirst({
-          where: { id: parseInt(firmId, 10) },
-        });
-        if (post) {
-          await sendPost(ctx, post);
+        const firm = propFirmsData.find(f => f.id === firmId || f.name.toLowerCase() === firmId.toLowerCase());
+        if (firm && firm.related_post_id) {
+          const post = await prisma.post.findFirst({
+            where: { id: firm.related_post_id },
+          });
+          if (post) {
+            await sendPost(ctx, post);
+          }
         }
       }
     } catch (err: any) {
