@@ -1962,7 +1962,10 @@ export function registerPostHandlers(bot: Telegraf<Context>) {
     } else if (mode === 'edit' && row !== undefined && col !== undefined) {
       // Edit existing button
       if (buttons[row] && buttons[row][col]) {
-        buttons[row][col] = { text: title, type: state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL', value, style: buttons[row][col].style };
+        const newType = state === 'wait_popup' ? 'POPUP' : state === 'wait_command' ? 'COMMAND' : 'URL';
+        const prevBtn = buttons[row][col];
+        const preservedIsReplyKeyboard = (newType === 'COMMAND' || newType === 'POPUP') ? prevBtn.isReplyKeyboard : false;
+        buttons[row][col] = { text: title, type: newType, value, style: prevBtn.style, isReplyKeyboard: preservedIsReplyKeyboard };
       }
     }
 
