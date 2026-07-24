@@ -1485,6 +1485,7 @@ model AiSettings {
   googleServiceAccountEmail String?
   googlePrivateKey          String?
   googleSheetId             String?
+  googleSheetMapping        Json?
   updatedAt                 DateTime @updatedAt
 
   @@map("ai_settings")

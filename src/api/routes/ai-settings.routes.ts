@@ -29,6 +29,7 @@ const updateSchema = z.object({
   googleServiceAccountEmail: z.string().nullable().optional(),
   googlePrivateKey: z.string().nullable().optional(),
   googleSheetId: z.string().nullable().optional(),
+  googleSheetMapping: z.record(z.string()).nullable().optional(),
 });
 
 aiSettingsRouter.post('/', requireOwner, async (req, res) => {
@@ -67,6 +68,19 @@ aiSettingsRouter.get('/models', requireOwner, async (_req, res) => {
     res.json({ success: true, data: models });
   } catch (error: any) {
     console.error('[AiSettings API] Error getting models:', error);
+    res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+  }
+});
+
+import { aiDataService } from '../../services/ai-data.service';
+
+// GET /api/ai-settings/sheet-headers -> Get headers from Google Sheet
+aiSettingsRouter.get('/sheet-headers', requireOwner, async (_req, res) => {
+  try {
+    const headers = await aiDataService.getSheetHeaders();
+    res.json({ success: true, data: headers });
+  } catch (error: any) {
+    console.error('[AiSettings API] Error getting sheet headers:', error);
     res.status(500).json({ success: false, error: error.message || 'Internal server error' });
   }
 });

@@ -20,15 +20,37 @@ class AiDataService {
   private cache: { data: PropFirmData[] | null; loadedAt: number } = { data: null, loadedAt: 0 };
   private readonly CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
+  async getSheetHeaders(): Promise<string[]> {
+    const settings = await aiSettingsService.getSettings();
+    if (!settings.googleServiceAccountEmail || !settings.googlePrivateKey || !settings.googleSheetId) {
+      throw new Error('تنظیمات اتصال به Google Sheets کامل نیست');
+    }
+
+    const privateKey = settings.googlePrivateKey.replace(/\\n/g, '\n');
+    const auth = new JWT({
+      email: settings.googleServiceAccountEmail,
+      key: privateKey,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    });
+
+    const doc = new GoogleSpreadsheet(settings.googleSheetId, auth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByIndex[0];
+    await sheet.loadHeaderRow();
+    return sheet.headerValues;
+  }
+
   async loadPropFirmsFromSheet(): Promise<PropFirmData[]> {
     const settings = await aiSettingsService.getSettings();
     if (!settings.googleServiceAccountEmail || !settings.googlePrivateKey || !settings.googleSheetId) {
       throw new Error('تنظیمات اتصال به Google Sheets کامل نیست');
     }
 
-    // Fix private key formatting if needed
-    const privateKey = settings.googlePrivateKey.replace(/\\n/g, '\n');
+    const mapping: Record<string, string> = (settings.googleSheetMapping as Record<string, string>) || {};
 
+    const getKey = (field: string) => mapping[field] || field;
+
+    const privateKey = settings.googlePrivateKey.replace(/\\n/g, '\n');
     const auth = new JWT({
       email: settings.googleServiceAccountEmail,
       key: privateKey,
@@ -40,22 +62,19 @@ class AiDataService {
     const rows = await doc.sheetsByIndex[0].getRows();
 
     return rows
-      .map((r: any) => {
-        const obj = r.toObject();
-        return obj;
-      })
-      .filter((r: any) => String(r.active).toUpperCase() !== 'FALSE')
+      .map((r: any) => r.toObject())
+      .filter((r: any) => String(r[getKey('active')]).toUpperCase() !== 'FALSE')
       .map((r: any) => ({
-        id: r.id || '',
-        name: r.name || '',
-        aliases: (r.aliases || '').split(',').map((a: string) => a.trim()).filter(Boolean),
-        summary: r.summary || '',
-        rules_summary: r.rules_summary || '',
-        website: r.website || '',
-        discount_code: r.discount_code || '',
-        discount_percent: r.discount_percent || '',
-        valid_until: r.valid_until || '',
-        related_post_id: r.related_post_id ? parseInt(r.related_post_id, 10) : null,
+        id: r[getKey('id')] || '',
+        name: r[getKey('name')] || '',
+        aliases: (r[getKey('aliases')] || '').split(',').map((a: string) => a.trim()).filter(Boolean),
+        summary: r[getKey('summary')] || '',
+        rules_summary: r[getKey('rules_summary')] || '',
+        website: r[getKey('website')] || '',
+        discount_code: r[getKey('discount_code')] || '',
+        discount_percent: r[getKey('discount_percent')] || '',
+        valid_until: r[getKey('valid_until')] || '',
+        related_post_id: r[getKey('related_post_id')] ? parseInt(r[getKey('related_post_id')], 10) : null,
       }));
   }
 

@@ -32,9 +32,20 @@ export default function AiSettingsPage() {
     onError: (e) => toast.error(getApiError(e)),
   });
 
+  const { data: sheetHeaders, isLoading: isHeadersLoading, refetch: refetchHeaders } = useQuery({
+    queryKey: ["sheet-headers"],
+    queryFn: aiSettingsApi.getSheetHeaders,
+    enabled: false,
+  });
+
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+
   // Init form from loaded settings
   if (settings && Object.keys(form).length === 0) {
     setForm(settings);
+    if (settings.googleSheetMapping) {
+      setMapping(settings.googleSheetMapping);
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,6 +61,19 @@ export default function AiSettingsPage() {
       googleSheetId: form.googleSheetId,
       googleServiceAccountEmail: form.googleServiceAccountEmail,
       googlePrivateKey: form.googlePrivateKey,
+      googleSheetMapping: mapping,
+    });
+  };
+
+  const loadHeaders = async () => {
+    if (!form.googleSheetId || !form.googleServiceAccountEmail) {
+      toast.error("ابتدا تنظیمات منبع داده را کامل و ذخیره کنید");
+      return;
+    }
+    toast.promise(refetchHeaders(), {
+      loading: "در حال واکشی ستون‌ها از گوگل شیت...",
+      success: "ستون‌ها با موفقیت دریافت شدند",
+      error: (e) => getApiError(e),
     });
   };
 
@@ -169,7 +193,7 @@ export default function AiSettingsPage() {
                       return;
                     }
                   } catch (err) {
-                    // Ignore parse errors, they might just be typing the key directly
+                    // Ignore parse errors
                   }
                   handleChange(e as any);
                 }}
@@ -178,8 +202,58 @@ export default function AiSettingsPage() {
                 محتوای فایل JSON کلید خود را اینجا کپی کنید (ایمیل و کلید خصوصی به صورت خودکار استخراج می‌شوند) و یا فقط کلید خصوصی را وارد کنید.
               </p>
             </div>
+
+            <div className="border-t pt-4 mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-semibold">نگاشت ستون‌ها (Column Mapping)</h3>
+                  <p className="text-xs text-muted-foreground mt-1">ستون‌های فایل گوگل شیت را به فیلدهای مورد نیاز ربات متصل کنید.</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={loadHeaders} disabled={isHeadersLoading}>
+                  <RefreshCw className={`h-4 w-4 ml-2 ${isHeadersLoading ? "animate-spin" : ""}`} />
+                  دریافت ستون‌های شیت
+                </Button>
+              </div>
+
+              {sheetHeaders && sheetHeaders.length > 0 ? (
+                <div className="space-y-3 bg-muted/30 p-4 rounded-lg border">
+                  {[
+                    { key: "id", label: "شناسه (id)" },
+                    { key: "name", label: "نام پراپ‌فرم (name)" },
+                    { key: "aliases", label: "نام‌های جایگزین (aliases)" },
+                    { key: "summary", label: "توضیحات کوتاه (summary)" },
+                    { key: "rules_summary", label: "خلاصه قوانین (rules_summary)" },
+                    { key: "website", label: "لینک ثبت‌نام (website)" },
+                    { key: "discount_code", label: "کد تخفیف (discount_code)" },
+                    { key: "discount_percent", label: "درصد تخفیف (discount_percent)" },
+                    { key: "valid_until", label: "تاریخ انقضا (valid_until)" },
+                    { key: "related_post_id", label: "آیدی پست مرتبط (related_post_id)" },
+                    { key: "active", label: "وضعیت فعالیت (active)" },
+                  ].map((field) => (
+                    <div key={field.key} className="flex items-center justify-between gap-4">
+                      <label className="text-sm font-medium min-w-[200px]">{field.label}</label>
+                      <select
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        value={mapping[field.key] || ""}
+                        onChange={(e) => setMapping({ ...mapping, [field.key]: e.target.value })}
+                        dir="ltr"
+                      >
+                        <option value="">-- انتخاب ستون --</option>
+                        {sheetHeaders.map((header) => (
+                          <option key={header} value={header}>{header}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-center p-4 border border-dashed rounded-lg text-muted-foreground">
+                  برای اتصال ستون‌ها، ابتدا روی دکمه «دریافت ستون‌های شیت» کلیک کنید.
+                </div>
+              )}
+            </div>
             
-            <Button onClick={handleSaveGoogle} loading={update.isPending} className="w-full">
+            <Button onClick={handleSaveGoogle} loading={update.isPending} className="w-full mt-4">
               <Save className="h-4 w-4 ml-2" />
               ذخیره تنظیمات منبع داده
             </Button>
