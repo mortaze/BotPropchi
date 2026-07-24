@@ -134,17 +134,35 @@ export default function AiSettingsPage() {
             />
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">کلید خصوصی (Private Key)</label>
-              <Input
+              <label className="text-sm font-medium">کلید خصوصی یا محتوای فایل JSON</label>
+              <textarea
                 name="googlePrivateKey"
-                type="password"
                 dir="ltr"
-                placeholder="-----BEGIN PRIVATE KEY-----..."
+                rows={5}
+                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder='{"type": "service_account", "private_key": "...", "client_email": "..."}'
                 value={form.googlePrivateKey || ""}
-                onChange={handleChange}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  try {
+                    const parsed = JSON.parse(val);
+                    if (parsed.client_email && parsed.private_key) {
+                      setForm({
+                        ...form,
+                        googleServiceAccountEmail: parsed.client_email,
+                        googlePrivateKey: parsed.private_key,
+                      });
+                      toast.success("اطلاعات فایل JSON با موفقیت استخراج شد");
+                      return;
+                    }
+                  } catch (err) {
+                    // Ignore parse errors, they might just be typing the key directly
+                  }
+                  handleChange(e as any);
+                }}
               />
               <p className="text-xs text-muted-foreground">
-                محتوای فایل JSON کلید خود را اینجا کپی کنید.
+                محتوای فایل JSON کلید خود را اینجا کپی کنید (ایمیل و کلید خصوصی به صورت خودکار استخراج می‌شوند) و یا فقط کلید خصوصی را وارد کنید.
               </p>
             </div>
             
