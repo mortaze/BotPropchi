@@ -28,7 +28,7 @@ import { setTicketBotInstance } from '../ticket-notification.service';
 import { buildPostDebugSnapshot, comparePostNativeRoundtrip } from '../../services/post-renderer.service';
 import { deliveryDebugService } from '../../services/renderer/delivery-debug.service';
 import { automationService } from '../../services/automation.service';
-import { safeEdit, sendPostToUser } from '../shared';
+import { safeEdit, sendPostToUser, showPopup } from '../shared';
 import {
   lotteryHistoryKeyboard,
   lotteryKeyboard,
@@ -1287,11 +1287,11 @@ export function registerHandlers(bot: Telegraf<Context>) {
       if (!btn || btn.type !== 'POPUP') {
         const anyBtn = findAnyButtonAtPosition(post, row, col, messages);
         if (anyBtn) {
-          return ctx.answerCbQuery(anyBtn.value || anyBtn.text || '✅', { show_alert: true });
+          return showPopup(ctx, anyBtn.value || anyBtn.text);
         }
-        return ctx.answerCbQuery('❌ دکمه یافت نشد.', { show_alert: true });
+        return showPopup(ctx, '❌ دکمه یافت نشد.');
       }
-      await ctx.answerCbQuery(btn.value || '✅', { show_alert: true });
+      await showPopup(ctx, btn.value);
     } catch (err) {
       logger.error(`[PostPopup] FAILED postId=${postId}:`, err);
       await ctx.answerCbQuery('❌ خطا', { show_alert: true });

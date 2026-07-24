@@ -17,6 +17,15 @@ export async function safeEdit(ctx: any, text: string, extra?: any): Promise<voi
   await ctx.reply(safeText, safeExtra).catch(() => {});
 }
 
+export async function showPopup(ctx: any, value: string | undefined | null): Promise<void> {
+  const text = value || '✅';
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery(text, { show_alert: true });
+  } else {
+    await ctx.reply(text);
+  }
+}
+
 export async function sendPostToUser(
   ctx: any,
   rawPost: any,

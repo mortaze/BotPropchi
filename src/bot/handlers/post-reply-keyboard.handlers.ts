@@ -1,6 +1,6 @@
 import { Telegraf } from 'telegraf';
 import { postService } from '../../services/post.service';
-import { sendPostToUser } from '../shared';
+import { sendPostToUser, showPopup } from '../shared';
 import { cache } from '../../utils/cache';
 import { findReplyKeyboardButtonByText } from '../../services/post-reply-keyboard.service';
 
@@ -23,7 +23,7 @@ export function registerPostReplyKeyboardHandlers(bot: Telegraf) {
       return;
     }
     if (original.type === 'POPUP') {
-      await ctx.reply(original.value || '✅');
+      await showPopup(ctx, original.value);
       return;
     }
     return next();
