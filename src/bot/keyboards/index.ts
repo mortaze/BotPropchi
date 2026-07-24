@@ -12,6 +12,7 @@ export const SERVICE_BUTTONS = [
   { id: 'points', text: '🏆 امتیازهای من', featureKey: 'leaderboard' },
   { id: 'ticket', text: '🎫 تیکت', featureKey: 'ticket_system' },
   { id: 'forex_news', text: '📰 اخبار فارکس', featureKey: 'forex_news' },
+  { id: 'ai', text: '🤖 دستیار هوشمند', featureKey: 'ai_assistant' },
 ];
 
 export function injectServiceButtons(layout: any[][], features: Record<string, boolean>): any[][] {

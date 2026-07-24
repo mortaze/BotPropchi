@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Bot, BarChart3, ChevronDown, FileText, Gift, LayoutDashboard, MessageSquareReply, RadioTower, Settings, Shield, ShieldCheck, Share2, Star, Ticket, Trash2, Trophy, UserCog, Users, X, Zap, Clock, BarChart2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
+import { useAuthStore } from "@/store/auth.store";
 
 interface MenuItem {
   key: string;
@@ -74,6 +75,7 @@ const menuItems: MenuItem[] = [
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const admin = useAuthStore((s) => s.admin);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const toggleExpanded = (key: string, event: React.MouseEvent) => {
@@ -124,6 +126,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 {isExpanded && (
                   <div className="mr-6 mt-1 space-y-1 border-r-2 border-sidebar-border pr-2">
                     {item.children!.map((child) => {
+                      if (child.key === "ai-settings" && admin?.role !== "OWNER") return null;
                       const childActive = pathname.startsWith(child.href);
                       const ChildIcon = child.icon;
                       return (

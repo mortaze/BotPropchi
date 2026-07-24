@@ -10,6 +10,7 @@ import { aiSettingsApi, getApiError } from "@/services/api";
 export default function AiSettingsPage() {
   const qc = useQueryClient();
   const [form, setForm] = useState<any>({});
+  const [searchQuery, setSearchQuery] = useState("");
   
   const { data: settings, isLoading } = useQuery({
     queryKey: ["ai-settings"],
@@ -223,9 +224,18 @@ export default function AiSettingsPage() {
           )}
 
           {models && models.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-h-[500px] overflow-y-auto p-1">
-              {models.map((model) => {
-                const isSelected = form.selectedModel === model.id;
+            <>
+              <div className="mb-4">
+                <Input
+                  placeholder="جستجوی مدل (مثلاً gpt-4)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  dir="ltr"
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-h-[500px] overflow-y-auto p-1">
+                {models.filter((m: any) => m.id.toLowerCase().includes(searchQuery.toLowerCase()) || m.name.toLowerCase().includes(searchQuery.toLowerCase())).map((model: any) => {
+                  const isSelected = form.selectedModel === model.id;
                 return (
                   <div 
                     key={model.id}
@@ -257,6 +267,7 @@ export default function AiSettingsPage() {
                 );
               })}
             </div>
+            </>
           )}
           
           {models && models.length > 0 && (

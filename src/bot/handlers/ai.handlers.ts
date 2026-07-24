@@ -12,13 +12,16 @@ const OUT_OF_SCOPE_MSG =
 export const usersInAIMode = new Set<number>();
 
 export function registerAiHandlers(bot: any) {
-  bot.action('enter_ai_mode', async (ctx: Context) => {
+  const enterAiMode = async (ctx: Context) => {
     if (!ctx.from) return;
     usersInAIMode.add(ctx.from.id);
     await ctx.reply('سوالت رو درباره پراپ‌فرم‌ها یا کدهای تخفیف بپرس 👇',
       Markup.keyboard([['🔙 بازگشت به منو']]).resize()
     );
-  });
+  };
+
+  bot.action('enter_ai_mode', enterAiMode);
+  bot.hears('🤖 دستیار هوشمند', enterAiMode);
 
   bot.hears('🔙 بازگشت به منو', async (ctx: Context, next: any) => {
     if (!ctx.from) return next();

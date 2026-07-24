@@ -20,6 +20,7 @@ export const DEFAULT_FEATURES = [
   { key: 'posts', label: 'Posts / CMS' },
   { key: 'ticket_system', label: 'سیستم تیکت' },
   { key: 'forex_news', label: 'اخبار فارکس' },
+  { key: 'ai_assistant', label: 'دستیار هوشمند' },
 ];
 
 export function isOwnerRole(role?: string | null) {
