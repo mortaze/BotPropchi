@@ -1,10 +1,11 @@
 import { sanitizeTelegramText } from '../utils/unicode';
 import { cache } from '../utils/cache';
+import { logger } from '../utils/logger';
 import { Markup } from 'telegraf';
 import { settingsService } from './settings.service';
 
-export function buildReplyKeyboardFromMessages(messages: any[]): { text: string }[][] {
-  const rows: { text: string }[][] = [];
+export function buildReplyKeyboardFromMessages(messages: any[]): { text: string; style?: string }[][] {
+  const rows: { text: string; style?: string }[][] = [];
   const sorted = (messages || []).slice().sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
   for (const msg of sorted) {
     const grid: any[][] = Array.isArray(msg.replyMarkup) ? msg.replyMarkup : (msg.replyMarkup?.inline_keyboard || []);
@@ -12,7 +13,10 @@ export function buildReplyKeyboardFromMessages(messages: any[]): { text: string 
       if (!Array.isArray(gridRow)) continue;
       const flagged = gridRow.filter((b: any) => b?.isReplyKeyboard);
       if (flagged.length > 0) {
-        rows.push(flagged.map((b: any) => ({ text: sanitizeTelegramText(b.text || '', 128) })));
+        rows.push(flagged.map((b: any) => ({
+          text: sanitizeTelegramText(b.text || '', 128),
+          style: (b.style && b.style !== 'default') ? b.style : undefined,
+        })));
       }
     }
   }
@@ -39,6 +43,7 @@ export async function syncPostReplyKeyboard(ctx: any, postId: number, messages: 
   const hasCustom = rows.length > 0;
   const newState = hasCustom ? String(postId) : 'MAIN_MENU';
   const prevState = cache.get<string>(cacheKey) ?? 'MAIN_MENU';
+  logger.info(`[ReplyKbSync][DIAG] userId=${userId} postId=${postId} hasCustom=${hasCustom} newState=${newState} prevState=${prevState} willSend=${newState !== prevState}`);
   if (newState === prevState) return;
 
   if (hasCustom) {
