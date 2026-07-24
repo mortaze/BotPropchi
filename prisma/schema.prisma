@@ -554,6 +554,7 @@ model Admin {
   email        String?   @unique
   firstName    String?
   lastName     String?
+  telegramId   BigInt?   @unique
   updatedAt    DateTime  @updatedAt
 
   @@map("admins")

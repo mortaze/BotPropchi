@@ -141,44 +141,68 @@ export const ssoService = {
     lastName?: string | null;
     role: string;
   }): Promise<{ id: number; username: string } | null> {
+    const telegramIdBigInt = BigInt(botAdmin.telegramId);
     const telegramUsername = botAdmin.username;
     const generatedUsername = `bot_admin_${botAdmin.telegramId}`;
 
-    // ۱. جستجو بر اساس username تلگرام (اگر موجود باشد)
-    if (telegramUsername) {
-      const existing = await prisma.admin.findFirst({
-        where: { username: telegramUsername, isActive: true },
-        select: { id: true, username: true },
-      });
-      if (existing) return existing;
+    // ۱. جستجو بر اساس telegramId (مطمئن‌ترین روش)
+    const existingByTelegramId = await prisma.admin.findUnique({
+      where: { telegramId: telegramIdBigInt },
+      select: { id: true, username: true, isActive: true },
+    });
+    if (existingByTelegramId) {
+      if (existingByTelegramId.isActive) return existingByTelegramId;
+      return null; // اگر غیرفعال است اجازه ورود نده
     }
 
-    // ۲. جستجو بر اساس username ساخته شده اتوماتیک (bot_admin_XXXX)
-    const existingGenerated = await prisma.admin.findFirst({
-      where: { username: generatedUsername, isActive: true },
-      select: { id: true, username: true },
-    });
-    if (existingGenerated) return existingGenerated;
-
-    // ۳. جستجو از طریق توکن‌های SSO قبلی
-    const pastToken = await prisma.adminSsoToken.findFirst({
-      where: { telegramId: BigInt(botAdmin.telegramId) },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (pastToken) {
-      const pastAdmin = await prisma.admin.findUnique({
-        where: { id: pastToken.adminId },
+    // ۲. اگر با telegramId پیدا نشد، شاید ادمین قبلاً ساخته شده ولی لینک نشده (جستجو با یوزرنیم تلگرام یا یوزرنیم تولید شده)
+    let unlinkedAdmin = null;
+    if (telegramUsername) {
+      unlinkedAdmin = await prisma.admin.findFirst({
+        where: { username: telegramUsername },
         select: { id: true, username: true, isActive: true },
       });
-      if (pastAdmin?.isActive) return { id: pastAdmin.id, username: pastAdmin.username };
+    }
+    if (!unlinkedAdmin) {
+      unlinkedAdmin = await prisma.admin.findFirst({
+        where: { username: generatedUsername },
+        select: { id: true, username: true, isActive: true },
+      });
+    }
+    if (!unlinkedAdmin) {
+      // جستجو از طریق توکن‌های SSO قبلی (به عنوان fallback آخر)
+      const pastToken = await prisma.adminSsoToken.findFirst({
+        where: { telegramId: telegramIdBigInt },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (pastToken) {
+        unlinkedAdmin = await prisma.admin.findUnique({
+          where: { id: pastToken.adminId },
+          select: { id: true, username: true, isActive: true },
+        });
+      }
     }
 
-    // ۴. Auto-provision: ایجاد ادمین وب‌پنل جدید
+    // ۳. اگر ادمین پیدا شد ولی لینک نبود، الان لینک کن
+    if (unlinkedAdmin) {
+      if (!unlinkedAdmin.isActive) return null;
+      try {
+        await prisma.admin.update({
+          where: { id: unlinkedAdmin.id },
+          data: { telegramId: telegramIdBigInt },
+        });
+        logger.info(`[SSO] Linked existing panel admin ${unlinkedAdmin.username} to telegramId=${botAdmin.telegramId}`);
+      } catch (err) {
+        logger.warn(`[SSO] Failed to link panel admin ${unlinkedAdmin.username} to telegramId=${botAdmin.telegramId}`);
+      }
+      return { id: unlinkedAdmin.id, username: unlinkedAdmin.username };
+    }
+
+    // ۴. Auto-provision: ایجاد ادمین وب‌پنل جدید با telegramId
     const bcrypt = await import('bcryptjs');
     const randomPassword = crypto.randomBytes(32).toString('hex');
     const passwordHash = await bcrypt.hash(randomPassword, 10);
 
-    // تعیین role وب‌پنل بر اساس role ربات
     let panelRole: 'OWNER' | 'SUPER_ADMIN' | 'ADMIN' | 'MODERATOR' = 'ADMIN';
     if (botAdmin.role === 'OWNER') panelRole = 'OWNER';
     else if (botAdmin.role === 'SUPER_ADMIN') panelRole = 'SUPER_ADMIN';
@@ -194,17 +218,17 @@ export const ssoService = {
           isActive: true,
           firstName: botAdmin.firstName || null,
           lastName: botAdmin.lastName || null,
+          telegramId: telegramIdBigInt,
         },
       });
 
       logger.info(`[SSO] Auto-provisioned panel admin: ${newAdmin.username} (id=${newAdmin.id}) for telegramId=${botAdmin.telegramId}`);
       return { id: newAdmin.id, username: newAdmin.username };
     } catch (err: any) {
-      // اگر unique constraint خورد، یعنی بین چک و ایجاد ساخته شده — دوباره سرچ کن
       if (err?.code === 'P2002') {
-        logger.warn(`[SSO] Race condition on create, retrying findFirst for telegramId=${botAdmin.telegramId}`);
-        const retryAdmin = await prisma.admin.findFirst({
-          where: { username: generatedUsername },
+        logger.warn(`[SSO] Race condition on create, retrying findUnique for telegramId=${botAdmin.telegramId}`);
+        const retryAdmin = await prisma.admin.findUnique({
+          where: { telegramId: telegramIdBigInt },
           select: { id: true, username: true },
         });
         if (retryAdmin) return retryAdmin;
