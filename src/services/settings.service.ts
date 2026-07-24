@@ -496,7 +496,6 @@ class SettingsService {
         if (layout[r].length > 8) return { valid: false, reason: `Row ${r} exceeds 8 buttons` };
       }
     }
-    if (layout.length > 20) return { valid: false, reason: 'Layout exceeds 20 rows' };
     return { valid: true };
   }
 
@@ -676,7 +675,7 @@ class SettingsService {
   }
 
   // ─── Full menu synchronisation ─────────────────────────
-  // Scans all posts, adds missing publishable ones, removes invalid refs.
+  // Scans all posts, adds missing ones, removes refs to deleted posts only.
   // Safe and idempotent — running multiple times never creates duplicates.
   async syncMenuWithPosts(): Promise<{ added: number; removed: number; madeVisible: number }> {
     const layout = await this.getMenuLayout();
@@ -684,12 +683,9 @@ class SettingsService {
     let removed = 0;
     let madeVisible = 0;
 
-    // 1. Scan all publishable posts
+    // 1. Scan every post. The admin menu editor must be a complete structural view,
+    // regardless of publication status; live rendering still filters unpublished posts.
     const posts = await prisma.post.findMany({
-      where: {
-        status: { in: ['PUBLISHED', 'SCHEDULED'] },
-        isPublished: true,
-      },
       select: { id: true },
     });
 
@@ -717,7 +713,7 @@ class SettingsService {
       }
     }
 
-    // 3. Add missing publishable posts (title is NOT stored — resolved from DB at render time)
+    // 3. Add missing posts (title is NOT stored — resolved from DB at render time)
     this.ensureButtonIds(layout);
     for (const ref of validRefs) {
       if (!existingRefs.has(ref)) {
