@@ -7,6 +7,7 @@ export interface AiSettingsData {
   googleServiceAccountEmail: string | null;
   googlePrivateKey: string | null;
   googleSheetId: string | null;
+  googleSheetMapping?: any;
 }
 
 class AiSettingsService {
@@ -19,6 +20,7 @@ class AiSettingsService {
         googleServiceAccountEmail: null,
         googlePrivateKey: null,
         googleSheetId: null,
+        googleSheetMapping: null,
       };
     }
     return settings;
