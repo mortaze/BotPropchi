@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bot, Save, Server, Loader2, Key, Database, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardHeader, CardContent, Input, Button, Badge } from "@/components/ui";
-import { aiSettingsApi, getApiError } from "@/services/api";
+import { aiSettingsApi, postsApi, getApiError } from "@/services/api";
 
 export default function AiSettingsPage() {
   const qc = useQueryClient();
@@ -38,13 +38,22 @@ export default function AiSettingsPage() {
     enabled: false,
   });
 
+  const { data: allPosts } = useQuery({
+    queryKey: ["all-posts-for-ai"],
+    queryFn: () => postsApi.getAllComplete({ status: "PUBLISHED" }),
+  });
+
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [discountPostIds, setDiscountPostIds] = useState<number[]>([]);
 
   // Init form from loaded settings
   if (settings && Object.keys(form).length === 0) {
     setForm(settings);
     if (settings.googleSheetMapping) {
       setMapping(settings.googleSheetMapping);
+    }
+    if (settings.discountPostIds) {
+      setDiscountPostIds(settings.discountPostIds);
     }
   }
 
@@ -54,6 +63,10 @@ export default function AiSettingsPage() {
 
   const handleSaveOpenRouter = () => {
     update.mutate({ openrouterApiKey: form.openrouterApiKey });
+  };
+
+  const handleSaveDiscountPosts = () => {
+    update.mutate({ discountPostIds });
   };
 
   const handleSaveGoogle = () => {
@@ -359,6 +372,53 @@ export default function AiSettingsPage() {
               </Button>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Discount Code Posts */}
+      <Card>
+        <CardHeader>
+          <h2 className="font-semibold flex items-center gap-2">
+            <Bot className="h-5 w-5 text-blue-500" />
+            پست‌های کدهای تخفیف مرجع
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            پست‌هایی که حاوی کدهای تخفیف هستند را در اینجا انتخاب کنید تا هوش مصنوعی بتواند محتوای آن‌ها را دقیقاً بخواند.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!allPosts ? (
+            <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <div className="grid gap-2 max-h-[300px] overflow-y-auto p-1 border rounded-md">
+              {allPosts.items.length === 0 ? (
+                <p className="text-sm text-muted-foreground p-4 text-center">هیچ پستی یافت نشد.</p>
+              ) : (
+                allPosts.items.map((post: any) => (
+                  <label key={post.id} className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/30 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4"
+                      checked={discountPostIds.includes(post.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setDiscountPostIds([...discountPostIds, post.id]);
+                        } else {
+                          setDiscountPostIds(discountPostIds.filter((id) => id !== post.id));
+                        }
+                      }}
+                    />
+                    <span className="text-sm font-medium">{post.title || `پست #${post.id}`}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          )}
+          
+          <Button onClick={handleSaveDiscountPosts} loading={update.isPending} className="w-full mt-4">
+            <Save className="h-4 w-4 ml-2" />
+            ذخیره پست‌های کدهای تخفیف
+          </Button>
         </CardContent>
       </Card>
     </div>

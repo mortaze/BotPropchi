@@ -8,6 +8,7 @@ export interface AiSettingsData {
   googlePrivateKey: string | null;
   googleSheetId: string | null;
   googleSheetMapping?: any;
+  discountPostIds?: number[] | null;
 }
 
 class AiSettingsService {
@@ -21,9 +22,10 @@ class AiSettingsService {
         googlePrivateKey: null,
         googleSheetId: null,
         googleSheetMapping: null,
+        discountPostIds: null,
       };
     }
-    return settings;
+    return settings as unknown as AiSettingsData;
   }
 
   async updateSettings(data: Partial<AiSettingsData>): Promise<void> {

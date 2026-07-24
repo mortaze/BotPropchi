@@ -30,6 +30,7 @@ const updateSchema = z.object({
   googlePrivateKey: z.string().nullable().optional(),
   googleSheetId: z.string().nullable().optional(),
   googleSheetMapping: z.record(z.string()).nullable().optional(),
+  discountPostIds: z.array(z.number()).nullable().optional(),
 });
 
 aiSettingsRouter.post('/', requireOwner, async (req, res) => {
