@@ -141,9 +141,10 @@ export const ssoService = {
     lastName?: string | null;
     role: string;
   }): Promise<{ id: number; username: string } | null> {
-    // جستجو بر اساس username تلگرام
     const telegramUsername = botAdmin.username;
+    const generatedUsername = `bot_admin_${botAdmin.telegramId}`;
 
+    // ۱. جستجو بر اساس username تلگرام (اگر موجود باشد)
     if (telegramUsername) {
       const existing = await prisma.admin.findFirst({
         where: { username: telegramUsername, isActive: true },
@@ -152,9 +153,27 @@ export const ssoService = {
       if (existing) return existing;
     }
 
-    // Auto-provision: ایجاد ادمین وب‌پنل
-    const username = telegramUsername || `bot_admin_${botAdmin.telegramId}`;
-    // ایجاد یک رمز عبور تصادفی (ادمین از SSO وارد می‌شود، نیاز به رمز ندارد)
+    // ۲. جستجو بر اساس username ساخته شده اتوماتیک (bot_admin_XXXX)
+    const existingGenerated = await prisma.admin.findFirst({
+      where: { username: generatedUsername, isActive: true },
+      select: { id: true, username: true },
+    });
+    if (existingGenerated) return existingGenerated;
+
+    // ۳. جستجو از طریق توکن‌های SSO قبلی
+    const pastToken = await prisma.adminSsoToken.findFirst({
+      where: { telegramId: BigInt(botAdmin.telegramId) },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (pastToken) {
+      const pastAdmin = await prisma.admin.findUnique({
+        where: { id: pastToken.adminId },
+        select: { id: true, username: true, isActive: true },
+      });
+      if (pastAdmin?.isActive) return { id: pastAdmin.id, username: pastAdmin.username };
+    }
+
+    // ۴. Auto-provision: ایجاد ادمین وب‌پنل جدید
     const bcrypt = await import('bcryptjs');
     const randomPassword = crypto.randomBytes(32).toString('hex');
     const passwordHash = await bcrypt.hash(randomPassword, 10);
@@ -167,16 +186,9 @@ export const ssoService = {
     else if (botAdmin.role === 'MODERATOR') panelRole = 'MODERATOR';
 
     try {
-      // اگر username تکراری بود، به آن suffix اضافه کن
-      let finalUsername = username;
-      const existingByUsername = await prisma.admin.findFirst({ where: { username: finalUsername } });
-      if (existingByUsername) {
-        finalUsername = `${username}_${botAdmin.telegramId}`;
-      }
-
       const newAdmin = await prisma.admin.create({
         data: {
-          username: finalUsername,
+          username: generatedUsername,
           passwordHash,
           role: panelRole,
           isActive: true,
@@ -187,7 +199,16 @@ export const ssoService = {
 
       logger.info(`[SSO] Auto-provisioned panel admin: ${newAdmin.username} (id=${newAdmin.id}) for telegramId=${botAdmin.telegramId}`);
       return { id: newAdmin.id, username: newAdmin.username };
-    } catch (err) {
+    } catch (err: any) {
+      // اگر unique constraint خورد، یعنی بین چک و ایجاد ساخته شده — دوباره سرچ کن
+      if (err?.code === 'P2002') {
+        logger.warn(`[SSO] Race condition on create, retrying findFirst for telegramId=${botAdmin.telegramId}`);
+        const retryAdmin = await prisma.admin.findFirst({
+          where: { username: generatedUsername },
+          select: { id: true, username: true },
+        });
+        if (retryAdmin) return retryAdmin;
+      }
       logger.error(`[SSO] Failed to auto-provision panel admin for telegramId=${botAdmin.telegramId}:`, err);
       return null;
     }
