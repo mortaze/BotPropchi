@@ -70,11 +70,18 @@ export default function AiSettingsPage() {
       toast.error("ابتدا تنظیمات منبع داده را کامل و ذخیره کنید");
       return;
     }
-    toast.promise(refetchHeaders(), {
-      loading: "در حال واکشی ستون‌ها از گوگل شیت...",
-      success: "ستون‌ها با موفقیت دریافت شدند",
-      error: (e) => getApiError(e),
-    });
+    toast.promise(
+      refetchHeaders().then((res) => {
+        if (res.error) throw res.error;
+        if (!res.data || res.data.length === 0) throw new Error("هیچ ستونی در فایل یافت نشد.");
+        return res.data;
+      }),
+      {
+        loading: "در حال واکشی ستون‌ها از گوگل شیت...",
+        success: "ستون‌ها با موفقیت دریافت شدند",
+        error: (e) => getApiError(e),
+      }
+    );
   };
 
   const handleSaveModel = () => {
