@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Bot, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { BRAND_NAME } from "@/config/brand";
@@ -9,7 +9,7 @@ import { API_BASE_URL } from "@/services/api";
 
 type SsoState = "loading" | "success" | "error";
 
-export default function SsoPage() {
+function SsoContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const login = useAuthStore((state) => state.login);
@@ -45,10 +45,8 @@ export default function SsoPage() {
         login(data.token, data.admin);
         setState("success");
 
-        // ریدایرکت به داشبورد بعد از ۱.۵ ثانیه
-        setTimeout(() => {
-          router.replace("/dashboard");
-        }, 1500);
+        // ریدایرکت به داشبورد
+        router.replace("/dashboard");
       } catch (err) {
         setState("error");
         setError("خطا در برقراری ارتباط با سرور");
@@ -58,6 +56,62 @@ export default function SsoPage() {
     exchangeToken();
   }, [searchParams, login, router]);
 
+  return (
+    <>
+      {/* State: Loading */}
+      {state === "loading" && (
+        <div className="flex flex-col items-center gap-4 py-6">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">
+            در حال احراز هویت...
+          </p>
+        </div>
+      )}
+
+      {/* State: Success */}
+      {state === "success" && (
+        <div className="flex flex-col items-center gap-4 py-6">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
+            <ShieldCheck className="h-8 w-8 text-green-500" />
+          </div>
+          <div className="text-center">
+            <p className="text-base font-semibold text-foreground">
+              ورود موفقیت‌آمیز!
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              در حال انتقال به داشبورد...
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* State: Error */}
+      {state === "error" && (
+        <div className="flex flex-col items-center gap-4 py-6">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+            <ShieldAlert className="h-8 w-8 text-destructive" />
+          </div>
+          <div className="text-center">
+            <p className="text-base font-semibold text-foreground">
+              خطا در ورود
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {error}
+            </p>
+          </div>
+          <button
+            onClick={() => router.replace("/login")}
+            className="mt-2 rounded-xl bg-primary/10 px-6 py-2.5 text-sm font-medium text-primary transition-colors duration-200 hover:bg-primary/20"
+          >
+            ورود با رمز عبور
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function SsoPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-12">
       {/* Background gradient */}
@@ -82,55 +136,17 @@ export default function SsoPage() {
             </p>
           </div>
 
-          {/* State: Loading */}
-          {state === "loading" && (
-            <div className="flex flex-col items-center gap-4 py-6">
-              <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">
-                در حال احراز هویت...
-              </p>
-            </div>
-          )}
-
-          {/* State: Success */}
-          {state === "success" && (
-            <div className="flex flex-col items-center gap-4 py-6">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
-                <ShieldCheck className="h-8 w-8 text-green-500" />
+          {/* SSO Content with Suspense (required for useSearchParams in Next.js 15) */}
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center gap-4 py-6">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>
               </div>
-              <div className="text-center">
-                <p className="text-base font-semibold text-foreground">
-                  ورود موفقیت‌آمیز!
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  در حال انتقال به داشبورد...
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* State: Error */}
-          {state === "error" && (
-            <div className="flex flex-col items-center gap-4 py-6">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-                <ShieldAlert className="h-8 w-8 text-destructive" />
-              </div>
-              <div className="text-center">
-                <p className="text-base font-semibold text-foreground">
-                  خطا در ورود
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {error}
-                </p>
-              </div>
-              <button
-                onClick={() => router.replace("/login")}
-                className="mt-2 rounded-xl bg-primary/10 px-6 py-2.5 text-sm font-medium text-primary transition-colors duration-200 hover:bg-primary/20"
-              >
-                ورود با رمز عبور
-              </button>
-            </div>
-          )}
+            }
+          >
+            <SsoContent />
+          </Suspense>
         </div>
 
         {/* Footer */}
